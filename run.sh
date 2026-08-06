@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# Compass launcher — macOS and Linux.
+#
+# Double-click `Compass.command` (macOS) or run `./run.sh` from a terminal.
+# Handles the virtualenv, dependencies, and the API key so nobody has to
+# remember any of it.
+#
+#   ./run.sh              open on this computer only
+#   ./run.sh --lan        also reachable from other devices on the same network
+#                         (a tablet, his laptop) — prints the address to use
+
+set -euo pipefail
+cd "$(dirname "$0")"
+
+GREEN=$'\033[0;32m'; YELLOW=$'\033[0;33m'; RED=$'\033[0;31m'; BOLD=$'\033[1m'; OFF=$'\033[0m'
+say()  { printf '%s\n' "$*"; }
+ok()   { printf '%s✓%s %s\n' "$GREEN" "$OFF" "$*"; }
+warn() { printf '%s!%s %s\n' "$YELLOW" "$OFF" "$*"; }
+die()  { printf '%s✗ %s%s\n' "$RED" "$*" "$OFF" >&2; exit 1; }
+
+say ""
+say "${BOLD}🧭  Starting Compass${OFF}"
+say ""
+
+# --- Python ------------------------------------------------------------------
+
+PY=""
+for candidate in python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+        if "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3,10) else 1)' 2>/dev/null; then
+            PY="$candidate"; break
+        fi
+    fi
+done
+[ -n "$PY" ] || die "Python 3.10 or newer is required. Install it from python.org, then run this again."
+ok "Python $($PY -c 'import platform; print(platform.python_version())')"
+
+# --- Virtualenv + dependencies -----------------------------------------------
+# Kept inside the project so it never collides with other Python work.
+
+VENV=".venv"
+if [ ! -d "$VENV" ]; then
+    say "  First run — setting up. This takes a minute, only once."
+    "$PY" -m venv "$VENV" || die "Could not create the virtual environment."
+fi
+# shellcheck disable=SC1091
+source "$VENV/bin/activate"
+
+if ! python -c 'import streamlit, anthropic' >/dev/null 2>&1; then
+    say "  Installing dependencies…"
+    python -m pip install --quiet --upgrade pip
+    python -m pip install --quiet -r requirements.txt || die "Dependency install failed."
+fi
+ok "Dependencies ready"
+
+# Streamlit prompts for an email on its very first run and blocks on stdin
+# waiting for one. In a double-clicked window that reads as a hang. Pre-writing
+# an empty credentials file skips the prompt permanently.
+STREAMLIT_HOME="${HOME}/.streamlit"
+if [ ! -f "$STREAMLIT_HOME/credentials.toml" ]; then
+    mkdir -p "$STREAMLIT_HOME"
+    printf '[general]\nemail = ""\n' > "$STREAMLIT_HOME/credentials.toml"
+fi
+
+# --- API key -----------------------------------------------------------------
+# Order: whatever is already exported, else a local .env file (gitignored).
+
+if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -f .env ]; then
+    set -a; # shellcheck disable=SC1091
+    source .env; set +a
+fi
+
+if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+    warn "No API key found — lesson generation will be turned off."
+    say  "  Everything else still works: the compliance dashboard, activity log,"
+    say  "  math graph, choice topics, and life skills."
+    say  ""
+    say  "  To turn generation on, create a file called ${BOLD}.env${OFF} next to this script"
+    say  "  containing one line:"
+    say  ""
+    say  "      ANTHROPIC_API_KEY=sk-ant-..."
+    say  ""
+else
+    ok "API key loaded (…${ANTHROPIC_API_KEY: -6})"
+fi
+
+# --- Network mode ------------------------------------------------------------
+
+ADDRESS="localhost"
+if [ "${1:-}" = "--lan" ]; then
+    ADDRESS="0.0.0.0"
+    IP=$(python - <<'PY'
+import socket
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+try:
+    s.connect(("8.8.8.8", 80))
+    print(s.getsockname()[0])
+except OSError:
+    print("")
+finally:
+    s.close()
+PY
+)
+    say ""
+    if [ -n "$IP" ]; then
+        say "${BOLD}  On his tablet or laptop, open:  http://$IP:8501${OFF}"
+        say "  (Both devices must be on the same wifi or hotspot.)"
+    else
+        warn "Could not determine this machine's network address."
+    fi
+fi
+
+say ""
+say "  Opening Compass. ${BOLD}Leave this window open${OFF} while using it."
+say "  Press Ctrl-C here when finished."
+say ""
+
+exec streamlit run Home.py \
+    --server.address "$ADDRESS" \
+    --server.port 8501 \
+    --server.headless false

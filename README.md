@@ -7,6 +7,30 @@ homeschool compliance** and **the student's freedom of choice**.
 This is a fresh, standalone build — local SQLite, a Streamlit UI, and four
 subject agents on the Anthropic API.
 
+## Running it
+
+**Daily use — no terminal required.** Put the API key in a file called `.env`
+next to the launcher (gitignored, never committed):
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Then:
+
+- **macOS** — double-click `Compass.command` (first time: right-click → Open)
+- **Windows** — double-click `run.bat`
+- **Linux** — `./run.sh`
+
+The launcher creates its own virtualenv, installs dependencies on first run,
+loads the key, and opens the browser. Leave the window open while using it;
+Ctrl-C stops it.
+
+**On another device** (his tablet, a second laptop) — `./run.sh --lan` or
+`run.bat --lan` prints an address to open from anything on the same wifi.
+
+**From a terminal**, if you prefer:
+
 ```bash
 pip install -r requirements.txt
 export ANTHROPIC_API_KEY=sk-ant-...      # or: ant auth login
