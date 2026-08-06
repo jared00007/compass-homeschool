@@ -37,8 +37,16 @@ Prove the thing runs before testing what it does.
   *Pass: sidebar shows his name and Grade 8.*
 
 - [ ] **App survives without a key**
-  Quit, rename `.env` to `.env.off`, relaunch.
-  *Pass: red banner on agent pages; dashboard, log, and checklists still work. Rename back after.*
+  Quit, rename `.env` to `.env.off`, relaunch. The launcher will ask for a key in the
+  Terminal — **press Enter to skip it**.
+  *Pass: it says it's running without a key, then a red banner appears on the four agent
+  pages. Compliance, Activity Log, Math → The graph, Choice Topics and Life Skills all
+  still work. Rename the file back after.*
+
+- [ ] **The key prompt writes the file for you**
+  With no `.env` present, relaunch and paste your key at the Terminal prompt instead of
+  skipping.
+  *Pass: reports `Saved to .env`, the file now exists, and you aren't asked again next launch.*
 
 ---
 
