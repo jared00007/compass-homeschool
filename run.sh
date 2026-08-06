@@ -92,9 +92,18 @@ if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -t 0 ]; then
     say "  Paste your Anthropic API key to enable lesson generation, or just press"
     say "  Enter to skip — everything else in Compass works without one."
     say ""
+    # The input is hidden so the key never lands in Terminal scrollback. Say so
+    # explicitly: a prompt that shows nothing as you type is indistinguishable
+    # from one that isn't receiving the paste at all.
+    say "  ${YELLOW}Nothing will appear as you paste — that's deliberate.${OFF}"
+    say "  Paste with Cmd-V, then press Enter."
+    say ""
     printf '  API key: '
     read -r -s ENTERED || ENTERED=""
     say ""
+    if [ -n "$ENTERED" ]; then
+        say "  Received ${#ENTERED} characters."
+    fi
 
     if [ -n "$ENTERED" ]; then
         case "$ENTERED" in
