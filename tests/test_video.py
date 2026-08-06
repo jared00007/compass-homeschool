@@ -96,6 +96,79 @@ def test_an_empty_url_with_found_true_is_dropped():
     assert warnings
 
 
+# --- reformatted-but-real URLs are still recognized ----------------------------
+#
+# A model told to copy a URL exactly still reliably reformats it a little: adds
+# a timestamp, drops "www.", swaps http for https. None of that changes which
+# video it is, so these must NOT be treated as hallucinations.
+
+
+def test_a_url_with_an_added_timestamp_param_still_matches():
+    real = "https://www.youtube.com/watch?v=abc123"
+    payload = a_payload(
+        video={
+            "found": True,
+            "title": "Two-Step Equations Explained",
+            "url": "https://www.youtube.com/watch?v=abc123&t=32s",
+            "channel": "Some Channel",
+            "why": "x",
+        },
+        _search_result_urls=[real],
+    )
+    warnings = verify_video(payload)
+    assert not warnings
+    assert payload["video"]["found"] is True
+
+
+def test_a_shortened_youtu_be_url_matches_the_long_form_result():
+    payload = a_payload(
+        video={
+            "found": True,
+            "title": "Two-Step Equations Explained",
+            "url": "https://youtu.be/abc123",
+            "channel": "Some Channel",
+            "why": "x",
+        },
+        _search_result_urls=["https://www.youtube.com/watch?v=abc123"],
+    )
+    warnings = verify_video(payload)
+    assert not warnings
+    assert payload["video"]["found"] is True
+
+
+def test_dropping_www_and_switching_scheme_still_matches():
+    payload = a_payload(
+        video={
+            "found": True,
+            "title": "Two-Step Equations Explained",
+            "url": "http://youtube.com/watch?v=abc123",
+            "channel": "Some Channel",
+            "why": "x",
+        },
+        _search_result_urls=["https://www.youtube.com/watch?v=abc123"],
+    )
+    warnings = verify_video(payload)
+    assert not warnings
+    assert payload["video"]["found"] is True
+
+
+def test_a_different_video_id_on_the_same_host_is_still_rejected():
+    """The ID-tolerant matching must not turn into "any youtube.com URL is fine"."""
+    payload = a_payload(
+        video={
+            "found": True,
+            "title": "A Different Video",
+            "url": "https://www.youtube.com/watch?v=totallydifferentid",
+            "channel": "Some Channel",
+            "why": "x",
+        },
+        _search_result_urls=["https://www.youtube.com/watch?v=abc123"],
+    )
+    warnings = verify_video(payload)
+    assert payload["video"]["found"] is False
+    assert any("didn't match an actual web search result" in w for w in warnings)
+
+
 # --- a real, search-verified video on an untrusted host is still dropped -------
 
 

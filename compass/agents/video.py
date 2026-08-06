@@ -9,9 +9,14 @@ suggestion at all.
 
 So a claimed video is trusted only if both hold:
 
-1. Its URL is one the model's own web search actually returned this generation —
-   not recalled from training data. `llm.py` collects every URL surfaced by the
-   `web_search` tool during the request; this module accepts nothing else.
+1. Its URL corresponds to one the model's own web search actually returned this
+   generation — not recalled from training data. `llm.py` collects every URL
+   surfaced by the `web_search` tool during the request; this module accepts
+   nothing else. Matching is by extracted YouTube video ID, not exact string
+   equality, because a model told to "copy the URL exactly" still reliably adds
+   a timestamp or tracking parameter, drops `www.`, or swaps `http` for `https`
+   -- none of which changes which video it is, so exact-match would reject
+   real, search-found videos over punctuation.
 2. That URL is on a small allowlist of video hosts a parent already knows how to
    preview and control. A real, search-verified link to an unknown site is still
    not something this app will vouch for.
@@ -23,7 +28,7 @@ never surfaced half-verified.
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 # Deliberately small. The point isn't to cover every video host that could ever be
 # relevant — it's to keep this to one platform a parent already knows how to preview
@@ -47,6 +52,47 @@ def _domain(url: str) -> str:
 
 def is_trusted_domain(url: str) -> bool:
     return _domain(url) in TRUSTED_VIDEO_DOMAINS
+
+
+def _video_id(url: str) -> str | None:
+    """The YouTube video ID inside a URL, in whichever of its common shapes.
+
+    A model told to "copy the URL exactly" still routinely reformats it a
+    little -- http vs https, a dropped `www.`, an added `&t=32s` or `&si=...`
+    tracking suffix. None of that changes which video it points at, so an
+    exact string match against search results is too brittle: it would reject
+    a genuinely real, search-found video over punctuation. Comparing the
+    extracted ID instead tolerates the reformatting without weakening the
+    actual guarantee, since the ID still has to trace back to a URL a real
+    search returned.
+    """
+    parsed = urlparse(url)
+    host = _domain(url)
+
+    if host in ("youtube.com", "m.youtube.com"):
+        if parsed.path == "/watch":
+            values = parse_qs(parsed.query).get("v")
+            return values[0] if values else None
+        for prefix in ("/embed/", "/shorts/", "/live/"):
+            if parsed.path.startswith(prefix):
+                tail = parsed.path[len(prefix):].split("/")[0]
+                return tail or None
+        return None
+
+    if host == "youtu.be":
+        tail = parsed.path.lstrip("/").split("/")[0]
+        return tail or None
+
+    return None
+
+
+def _matches_a_real_result(url: str, search_urls: set[str]) -> bool:
+    if url in search_urls:
+        return True
+    claimed_id = _video_id(url)
+    if claimed_id is None:
+        return False
+    return any(claimed_id == _video_id(u) for u in search_urls)
 
 
 def verify_video(payload: dict[str, Any]) -> list[str]:
@@ -76,7 +122,7 @@ def verify_video(payload: dict[str, Any]) -> list[str]:
 
     url = (video.get("url") or "").strip()
 
-    if not url or url not in search_urls:
+    if not url or not _matches_a_real_result(url, search_urls):
         payload["video"] = dict(_EMPTY_VIDEO)
         return [
             "Dropped a suggested video whose link didn't match an actual web "
