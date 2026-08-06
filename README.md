@@ -134,10 +134,11 @@ compass/
     {math,science,english,history}_agent.py
   curriculum/math_graph.py   the hand-authored 50-node graph
   compliance/dashboard.py    WA hour/subject/tier reporting
+  costs.py                   token usage → dollars, per agent and projected
   storage/                   SQLite schema + repository
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
-tests/                       59 tests, no API key required
+tests/                       73 tests, no API key required
 ```
 
 `compass/` knows nothing about Streamlit — the agents, storage, and compliance
@@ -158,10 +159,30 @@ a safety-classifier decline gets re-served by the recommended fallback model
 rather than surfacing an error to a parent. If a key or platform doesn't support
 that beta, the request transparently retries on the standard path.
 
+### What it costs
+
+Every generation records its own token usage, and **Compliance → What the agents
+cost to run** turns that into dollars — spend to date, cost per lesson, a
+per-agent breakdown, and a straight-line year projection (withheld until there
+are at least 5 lessons, since a forecast off two is noise).
+
+Expect roughly **$0.11 per Math or English lesson** and **$0.20 for Science or
+History** — those two cost double because web-search results return as input
+tokens. A full school year lands near **$50–80**.
+
+Rates live in `compass/costs.py` and are the only thing to edit when pricing
+moves. The web-search per-query rate is the least certain number in that file;
+verify it against the pricing page before trusting a projection built on it.
+
+The biggest lever is `DEFAULT_EFFORT` in `compass/config.py` — thinking is about
+half the output tokens, so `high` → `medium` cuts the year roughly 30%. Prompt
+caching is *not* a meaningful lever here: output dominates the bill, and the
+cached system prompt is only ~1,200 tokens.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 59 tests, ~1s, no API key needed
+python -m pytest tests/ -q      # 73 tests, ~2s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

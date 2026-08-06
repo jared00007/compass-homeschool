@@ -9,6 +9,7 @@ import streamlit as st
 
 from compass import config
 from compass.compliance import build_report
+from compass.costs import WEB_SEARCH_COST_PER_QUERY, build_cost_report
 from compass.ui import page_setup
 
 db, student = page_setup("Compliance", icon="📋")
@@ -165,6 +166,59 @@ with right:
 st.divider()
 
 # --- settings + export -------------------------------------------------------
+
+st.subheader("What the agents cost to run")
+
+cost = build_cost_report(db, student["id"], start.isoformat(), end.isoformat())
+
+if cost.total_lessons == 0:
+    st.caption("No lessons generated in this range yet, so nothing has been billed.")
+else:
+    cost_columns = st.columns(4)
+    cost_columns[0].metric("Spend in this range", f"${cost.total_cost:,.2f}")
+    cost_columns[1].metric("Lessons generated", cost.total_lessons)
+    cost_columns[2].metric("Average per lesson", f"${cost.per_lesson:.3f}")
+    projected = cost.projected_year_cost()
+    cost_columns[3].metric(
+        "Projected for the year",
+        f"${projected:,.0f}" if projected else "—",
+        help="Straight-line from spend so far. Hidden until at least 5 lessons exist.",
+    )
+
+    if cost.by_agent:
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "Agent": entry.agent.title(),
+                        "Lessons": entry.lessons,
+                        "Cost": f"${entry.cost:.2f}",
+                        "Per lesson": f"${entry.per_lesson:.3f}",
+                        "Input tokens": f"{entry.input_tokens:,}",
+                        "Output tokens": f"{entry.output_tokens:,}",
+                        "Web searches": entry.web_searches,
+                    }
+                    for entry in cost.by_agent
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    if cost.unmeasured_lessons:
+        st.caption(
+            f"{cost.unmeasured_lessons} lesson(s) in this range have no usage recorded "
+            "and are excluded from the totals above."
+        )
+
+    st.caption(
+        "Computed from the token counts each generation actually reported, not an "
+        "estimate. Web search is billed per query at an assumed "
+        f"${WEB_SEARCH_COST_PER_QUERY:.3f} — the one rate worth checking against the "
+        "pricing page. Rates live in `compass/costs.py`."
+    )
+
+st.divider()
 
 st.subheader("Year settings and export")
 columns = st.columns(3)

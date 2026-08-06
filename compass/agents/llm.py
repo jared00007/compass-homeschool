@@ -235,12 +235,28 @@ def generate_lesson(
 
     lesson = _extract_json(response.content)
     lesson["_usage"] = {
-        "input_tokens": getattr(response.usage, "input_tokens", 0),
-        "output_tokens": getattr(response.usage, "output_tokens", 0),
-        "cache_read_input_tokens": getattr(response.usage, "cache_read_input_tokens", 0),
+        "input_tokens": getattr(response.usage, "input_tokens", 0) or 0,
+        "output_tokens": getattr(response.usage, "output_tokens", 0) or 0,
+        "cache_read_input_tokens": getattr(response.usage, "cache_read_input_tokens", 0) or 0,
+        "cache_creation_input_tokens": getattr(
+            response.usage, "cache_creation_input_tokens", 0
+        )
+        or 0,
+        # Server-tool queries are billed per search, not as tokens, so they have
+        # to be counted off the content blocks.
+        "web_searches": _count_web_searches(response.content),
         "model": getattr(response, "model", model),
     }
     return lesson
+
+
+def _count_web_searches(content: list[Any]) -> int:
+    return sum(
+        1
+        for block in content
+        if getattr(block, "type", None) == "server_tool_use"
+        and getattr(block, "name", None) == "web_search"
+    )
 
 
 def api_available() -> tuple[bool, str]:

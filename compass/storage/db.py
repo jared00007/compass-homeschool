@@ -411,6 +411,39 @@ class Database:
             row["metadata"] = json.loads(row["metadata"])
         return rows
 
+    def lesson_usage_between(
+        self, student_id: int, start: str, end: str
+    ) -> list[dict[str, Any]]:
+        """Per-lesson token usage, by *generation* date.
+
+        Generation date, not activity date — a lesson written in March and taught
+        in April is billed in March.
+
+        Pulls the `_usage` fields out with SQL rather than loading each payload
+        and parsing it in Python. A full school year is several hundred lessons,
+        and each payload carries the entire lesson text; deserializing all of it
+        to read six integers would make this page crawl by spring.
+        """
+        return _rows(
+            self.conn.execute(
+                """
+                SELECT
+                    agent,
+                    date(created_at) AS generated_on,
+                    json_extract(payload, '$._usage.model')                       AS model,
+                    json_extract(payload, '$._usage.input_tokens')                AS input_tokens,
+                    json_extract(payload, '$._usage.output_tokens')               AS output_tokens,
+                    json_extract(payload, '$._usage.cache_read_input_tokens')     AS cache_read_input_tokens,
+                    json_extract(payload, '$._usage.cache_creation_input_tokens') AS cache_creation_input_tokens,
+                    json_extract(payload, '$._usage.web_searches')                AS web_searches
+                FROM lessons
+                WHERE student_id = ? AND date(created_at) BETWEEN ? AND ?
+                ORDER BY created_at DESC, id DESC
+                """,
+                (student_id, start, end),
+            )
+        )
+
     def set_lesson_status(self, lesson_id: int, status: str) -> None:
         if status not in ("planned", "completed", "skipped"):
             raise ValueError(f"invalid lesson status: {status}")
