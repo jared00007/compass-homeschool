@@ -7,6 +7,8 @@ homeschool compliance** and **the student's freedom of choice**.
 This is a fresh, standalone build — local SQLite, a Streamlit UI, and four
 subject agents on the Anthropic API.
 
+**New here?** Read [GUIDE.md](GUIDE.md) — the parent-facing guide to how it works day to day.
+
 ## Running it
 
 **Daily use — no terminal required.**
