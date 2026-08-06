@@ -4,6 +4,23 @@ headless = true
 [browser]
 gatherUsageStats = false
 
+# Streamlit reads this file once, at startup, so it cannot be the theme picker —
+# see compass/theme.py, which repaints the app's surfaces at runtime instead.
+#
+# What this section is for is everything the injected CSS can't reach: the insides
+# of dropdown popovers, date pickers and scrollbars. Those are baked into
+# Streamlit's generated classes. Keeping the base on a neutral dark means they
+# already look right underneath whichever theme is showing, which is also why all
+# four shipped themes are dark. A light theme would need this file changed and the
+# app relaunched.
 [theme]
-base = "light"
-primaryColor = "#2E6F5E"
+base = "dark"
+backgroundColor = "#0B0E11"
+secondaryBackgroundColor = "#151A1F"
+textColor = "#E6EBE8"
+primaryColor = "#FF7A18"
+borderColor = "#242C31"
+baseRadius = "small"
+font = "-apple-system, BlinkMacSystemFont, Segoe UI, system-ui, sans-serif"
+codeFont = "SF Mono, Menlo, Consolas, monospace"
+showWidgetBorder = true

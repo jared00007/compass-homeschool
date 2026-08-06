@@ -344,3 +344,21 @@ One thing that follows from this split: **answers must live in the assessment,
 never in an activity**, since he reads activities directly. The agents are
 instructed accordingly, but it's worth a glance when you review a lesson — if you
 ever see an answer inside an activity, that's a real bug worth reporting.
+
+---
+
+## Look
+
+There's a **🎨 Look** picker in the sidebar, below the mode control, on every
+page. Four themes — Tech Tree, Arcade, High-Vis, Blueprint — each a genuinely
+different colour and type treatment, not a recolour of the same layout.
+
+His pick and yours are stored separately. He can make Compass look like whatever
+gets him to open it without asking, and it has no effect on what you see when you
+unlock. Neither of you can break the other's — change one, the other is untouched.
+
+All four are dark. That's a real constraint, not an oversight: Streamlit reads its
+base colours once at startup, so the parts of the page a live picker can't repaint
+— the inside of a date picker, a text box, a dropdown menu — always show through in
+whatever base the app launched with. Keeping that base dark means it never clashes
+with whichever of the four is showing on top of it.

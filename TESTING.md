@@ -53,6 +53,13 @@ Prove the thing runs before testing what it does.
   skipping.
   *Pass: reports `Saved to .env`, the file now exists, and you aren't asked again next launch.*
 
+- [ ] **Themes switch, and stay separate**
+  Sidebar → **🎨 Look**. Pick a different theme. Then set a parent PIN, switch to student
+  view, and pick a different one there.
+  *Pass: each page repaints instantly — sidebar, cards, buttons, metrics. His pick and
+  yours don't affect each other; switching between parent and student view always shows
+  the right one back.*
+
 ---
 
 ## 2 · Each agent generates — *≈ $1.10*

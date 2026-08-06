@@ -263,11 +263,51 @@ compass/
   storage/                   SQLite schema + repository
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
-tests/                       120 tests, no API key required
+  theme.py                   the four themes and the CSS that applies one
+tests/                       128 tests, no API key required
 ```
 
 `compass/` knows nothing about Streamlit — the agents, storage, and compliance
-layers stay testable and reusable if the UI is ever replaced.
+layers stay testable and reusable if the UI is ever replaced. `theme.py` is the one
+exception that talks CSS, and it talks *only* CSS — no Streamlit imports, so it's
+still unit-testable.
+
+---
+
+## Theming
+
+Four themes (Tech Tree, Arcade, High-Vis, Blueprint), picked independently by
+parent and student from a sidebar control on every page, stored as two settings
+keys (`theme_parent`, `theme_student`) so neither view can override the other's.
+
+Streamlit reads `.streamlit/config.toml` once at process start and, as of 1.61,
+declares no CSS custom properties of its own — theme values are baked directly
+into generated class names, so there's no variable layer to hook a runtime picker
+into. `theme.py` works around this by declaring its own custom properties and
+repainting Streamlit's surfaces through `data-testid` selectors, which are the one
+part of Streamlit's DOM that's stable across releases (its own test suite depends
+on them). The stylesheet is injected fresh at the top of `page_setup()`, before
+anything else renders, so a page never flashes the previous theme.
+
+Two things this approach can't do, and why the shipped themes work around them
+rather than fighting them:
+
+- **Anything Streamlit renders to canvas is out of reach.** The compliance
+  dataframe is a `glide-data-grid` canvas, not DOM, so CSS can only frame it —
+  the cells themselves follow `config.toml`'s base theme.
+- **Popovers, date pickers, and text inputs partly follow the config base too.**
+  Reachable surface gets repainted; the rest falls back to whatever base
+  `config.toml` set at launch. This is why `config.toml`'s base is a neutral dark
+  and all four shipped themes are dark — a light theme would need the config base
+  changed and the app relaunched, which a runtime picker cannot do.
+
+One regression worth naming: an early build painted every `st.metric` value in
+the theme's accent colour, which made the compliance page read as a wall of
+alarms — `0 / 1000 hours` in Blueprint's red looked like a failure rather than an
+ordinary September Tuesday. Metrics now render in the theme's text colour;
+the accent is reserved for things that actually need the reader's action, kept
+strictly apart from semantic colour (`good`/`warn`/`bad`) so a warning never
+borrows the same hue as "here's your next lesson." Both rules are pinned by test.
 
 ---
 
