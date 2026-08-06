@@ -18,9 +18,12 @@ from compass.backup import restore as restore_snapshot
 from compass.backup import snapshot as take_snapshot
 from compass.compliance import build_report
 from compass.costs import WEB_SEARCH_COST_PER_QUERY, build_cost_report
-from compass.ui import page_setup
+from compass.ui import page_setup, parent_only
 
 db, student = page_setup("Compliance", icon="📋")
+
+if not parent_only("The hours record and settings are for your parent."):
+    st.stop()
 
 st.title("📋 WA Compliance")
 st.caption(

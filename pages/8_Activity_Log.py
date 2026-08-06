@@ -9,9 +9,12 @@ import streamlit as st
 
 from compass import config
 from compass.subjects import SUBJECT_KEYS, label
-from compass.ui import page_setup
+from compass.ui import page_setup, parent_only
 
 db, student = page_setup("Activity Log", icon="🗂️")
+
+if not parent_only("The hours record is for your parent."):
+    st.stop()
 
 st.title("🗂️ Activity Log")
 st.caption(

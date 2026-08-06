@@ -225,3 +225,31 @@ Compass is a planning and record-keeping tool. It doesn't know whether a lesson 
 whether he was engaged, or whether today was a day to close the books and go for a hike
 instead. Those calls stay yours — the app just makes sure the year is documented when
 someone asks.
+
+---
+
+## Student view
+
+He shouldn't be reading the answer key to a test he's about to take. Set a PIN in
+the sidebar (**Set a parent PIN**) and Compass splits into two views.
+
+**What he sees:** today's lessons — objectives, activities, instructions,
+materials — plus his reading progress, vocabulary review, and his own Tier 3
+topics. Enough to do the work without you narrating it.
+
+**What only you see:** assessments and answer keys, mastery criteria, parent
+notes, subject credits, lesson generation, the compliance record, costs, and
+backups.
+
+Every new browser session starts in student view, because he opens the app far
+more often than you do. Unlock with the PIN from the sidebar when you need the
+parent side; switching back is one click.
+
+> **Be realistic about what this is.** It stops the idle glance and the accident.
+> It does not stop a determined 13-year-old — `compass.db` sits on a machine he
+> uses, and any SQLite viewer opens it. It's a cupboard lock, not a safe.
+
+One thing that follows from this split: **answers must live in the assessment,
+never in an activity**, since he reads activities directly. The agents are
+instructed accordingly, but it's worth a glance when you review a lesson — if you
+ever see an answer inside an activity, that's a real bug worth reporting.

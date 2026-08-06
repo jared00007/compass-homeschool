@@ -8,6 +8,8 @@ from compass.agents import LessonGenerationError, get_agent
 from compass.agents.strategies import ELA_FOCUS_ROTATION
 from compass.ui import (
     api_status_banner,
+    is_parent,
+    student_lesson_view,
     context_for,
     log_lesson_form,
     page_setup,
@@ -23,6 +25,11 @@ st.caption(
     "Reading level, vocabulary, and writing all come off the book he is currently "
     "reading — not a generic passage list."
 )
+
+# Student view: his lesson, without the answer key or the admin surface.
+if not is_parent():
+    student_lesson_view(db, student, "english", "English")
+    st.stop()
 
 plan_tab, books_tab, vocab_tab = st.tabs(["Plan a lesson", "Books", "Vocabulary"])
 

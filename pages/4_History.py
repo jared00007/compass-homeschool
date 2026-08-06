@@ -8,6 +8,8 @@ from compass.agents import LessonGenerationError, get_agent
 from compass.agents.strategies import ERAS
 from compass.ui import (
     api_status_banner,
+    is_parent,
+    student_lesson_view,
     context_for,
     log_lesson_form,
     page_setup,
@@ -23,6 +25,11 @@ st.caption(
     "Timeline-driven, with a standing override: if where you are has a real historical "
     "connection, that beats what's next in the sequence."
 )
+
+# Student view: his lesson, without the answer key or the admin surface.
+if not is_parent():
+    student_lesson_view(db, student, "history", "history")
+    st.stop()
 
 plan_tab, timeline_tab = st.tabs(["Plan a lesson", "Timeline coverage"])
 

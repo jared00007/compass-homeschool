@@ -12,7 +12,7 @@ import streamlit as st
 
 from compass import config
 from compass.subjects import SUBJECT_KEYS, label
-from compass.ui import page_setup
+from compass.ui import is_parent, page_setup
 
 db, student = page_setup("Choice Topics", icon="⭐")
 
@@ -29,7 +29,10 @@ STATUS_FLOW = {
     "active": ("Mark done", "done"),
 }
 
-add_tab, log_tab = st.tabs(["The list", "Log time"])
+tab_labels = ["The list"] + (["Log time"] if is_parent() else [])
+tabs = st.tabs(tab_labels)
+add_tab = tabs[0]
+log_tab = tabs[1] if is_parent() else None
 
 with add_tab:
     with st.form("add_choice", clear_on_submit=True):
@@ -88,7 +91,8 @@ with add_tab:
                 db.delete_choice_topic(topic["id"])
                 st.rerun()
 
-with log_tab:
+if log_tab is not None:
+  with log_tab:
     st.subheader("Log time on a choice topic")
     st.caption(
         "These hours count toward the 1,000-hour floor in full. The compliance page "

@@ -10,9 +10,76 @@ from compass import config
 from compass.compliance import build_report
 from compass.curriculum import frontier_report
 from compass.subjects import label
-from compass.ui import page_setup
+from compass.ui import is_parent, page_setup, render_lesson
 
 db, student = page_setup("Home", icon="🧭")
+
+# --- student view -------------------------------------------------------------
+# When a PIN is set, this is what he lands on: today's work, and nothing that
+# would spoil it.
+
+if not is_parent():
+    st.title(f"Hi {student['name'].split()[0]} 👋")
+    st.caption("Here's what's set up for you. Open a subject in the sidebar for the details.")
+
+    planned = [
+        lesson
+        for lesson in db.list_lessons(student["id"], limit=25)
+        if lesson["status"] == "planned"
+    ]
+
+    if not planned:
+        st.info("Nothing new is set up yet. Check back after your parent plans a lesson.")
+    else:
+        st.subheader(f"Ready for you ({len(planned)})")
+        for lesson in planned:
+            with st.container(border=True):
+                payload = lesson["payload"]
+                st.markdown(f"### {payload.get('title', lesson['title'])}")
+                st.caption(f"{lesson['agent'].title()} · {payload.get('estimated_minutes', '?')} min")
+                if payload.get("overview"):
+                    st.write(payload["overview"])
+                with st.expander("Open this lesson"):
+                    render_lesson(payload, for_parent=False)
+
+    st.divider()
+    columns = st.columns(3)
+
+    with columns[0]:
+        st.markdown("#### 📖 Reading")
+        book = db.current_book(student["id"])
+        if book:
+            st.markdown(f"**{book['title']}**")
+            if book["total_pages"]:
+                st.progress(
+                    min((book["current_page"] or 0) / book["total_pages"], 1.0),
+                    text=f"page {book['current_page']} of {book['total_pages']}",
+                )
+        else:
+            st.caption("No book set up yet.")
+
+    with columns[1]:
+        st.markdown("#### 🔤 Words to review")
+        due = db.vocabulary_due(student["id"])
+        st.metric("Due today", len(due))
+        if due:
+            st.page_link("pages/3_English.py", label="Review them", icon="➡️")
+
+    with columns[2]:
+        st.markdown("#### ⭐ Your choice topics")
+        topics = [
+            t for t in db.list_choice_topics(student["id"]) if t["status"] in ("active", "approved")
+        ]
+        if topics:
+            for topic in topics[:4]:
+                st.markdown(f"- {topic['title']}")
+        else:
+            st.caption("Nothing yet — add something you want to learn.")
+        st.page_link("pages/6_Choice_Topics.py", label="Add a topic", icon="➡️")
+
+    st.stop()
+
+# --- parent view --------------------------------------------------------------
 
 st.title("🧭 Compass")
 st.caption(

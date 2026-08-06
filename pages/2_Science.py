@@ -7,6 +7,8 @@ import streamlit as st
 from compass.agents import LessonGenerationError, get_agent
 from compass.ui import (
     api_status_banner,
+    is_parent,
+    student_lesson_view,
     context_for,
     log_lesson_form,
     page_setup,
@@ -22,6 +24,11 @@ st.caption(
     "Spiderweb branching. Each lesson pulls one thread and proposes the next branches, "
     "so the year's path grows out of where you actually are."
 )
+
+# Student view: his lesson, without the answer key or the admin surface.
+if not is_parent():
+    student_lesson_view(db, student, "science", "science")
+    st.stop()
 
 plan_tab, web_tab = st.tabs(["Plan a lesson", "The web"])
 

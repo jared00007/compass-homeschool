@@ -197,3 +197,12 @@ def test_system_prompt_names_the_allowed_credit_subjects(db, student):
     prompt = agent.build_system_prompt(ctx_for(db, student))
     assert "1,000 instructional hours" in prompt
     assert "Art & Music" not in prompt.split("You may additionally credit any of:")[1].split("\n")[0]
+
+
+def test_prompt_tells_the_model_where_answers_may_live(db, student):
+    """Student view depends on answers staying out of `activities`."""
+    agent = get_agent("math")
+    prompt = agent.build_system_prompt(ctx_for(db, student))
+    assert "never in \\\nan activity's instructions" in prompt or "never in" in prompt
+    assert "answer key" in prompt.lower()
+    assert "Questions go in the activity; answers go in the assessment." in prompt

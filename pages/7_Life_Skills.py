@@ -13,7 +13,7 @@ import streamlit as st
 
 from compass import config
 from compass.subjects import SUBJECT_KEYS, label
-from compass.ui import page_setup
+from compass.ui import is_parent, page_setup
 
 db, student = page_setup("Life Skills", icon="🛠️")
 
@@ -39,7 +39,11 @@ if skills:
     columns[1].metric("Categories", len({s["category"] for s in skills}))
     columns[2].progress(len(done) / len(skills), text="Overall")
 
-checklist_tab, log_tab, manage_tab = st.tabs(["Checklist", "Log time", "Add a skill"])
+if is_parent():
+    checklist_tab, log_tab, manage_tab = st.tabs(["Checklist", "Log time", "Add a skill"])
+else:
+    checklist_tab = st.container()
+    log_tab = manage_tab = None
 
 with checklist_tab:
     by_category: dict[str, list[dict]] = {}
@@ -66,7 +70,8 @@ with checklist_tab:
                 db.delete_life_skill(skill["id"])
                 st.rerun()
 
-with log_tab:
+if log_tab is not None:
+  with log_tab:
     st.subheader("Log time on a life skill")
     st.caption(
         "Health and occupational education are two of the eleven required subjects, and "
@@ -111,7 +116,8 @@ with log_tab:
                 st.success("Logged.")
                 st.rerun()
 
-with manage_tab:
+if manage_tab is not None:
+  with manage_tab:
     with st.form("add_life_skill", clear_on_submit=True):
         columns = st.columns([1, 2, 1])
         category = columns[0].text_input("Category", value="General")

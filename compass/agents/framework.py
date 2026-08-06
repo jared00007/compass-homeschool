@@ -157,6 +157,12 @@ busywork.
 generic curriculum, when the location genuinely fits.
 - Write activity instructions to the student in second person. Write \
 `parent_notes` and `overview` to the parent.
+- **The student reads `activities` and `materials` directly, on his own screen. \
+He never sees `assessment`, `parent_notes`, or `subject_credits`.** So put every \
+answer, worked solution, scoring rule, and answer key in `assessment` — never in \
+an activity's instructions, and never in `materials`. Questions go in the \
+activity; answers go in the assessment. Getting this wrong hands him the answer \
+key to the test he is about to sit.
 - Target roughly {minutes} minutes total. Match `estimated_minutes` to the sum \
 of your activity minutes.
 """

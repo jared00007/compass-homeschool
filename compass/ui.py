@@ -13,7 +13,7 @@ from typing import Any
 
 import streamlit as st
 
-from compass import config, subjects
+from compass import auth, config, subjects
 from compass.backup import auto_snapshot
 from compass.agents import GeneratedLesson, LessonAgent, StudentContext
 from compass.storage.db import Database
@@ -41,16 +41,99 @@ def page_setup(title: str, icon: str = "🧭") -> tuple[Database, dict[str, Any]
     return db, student
 
 
+# --- parent / student mode ---------------------------------------------------
+#
+# When a PIN is set, every new browser session starts in student mode. That's the
+# right default: he opens the app far more often than you do, and the failure that
+# matters is the answer key being visible when nobody meant it to be.
+
+
+def is_parent() -> bool:
+    """True when parent-only content should be shown."""
+    db = get_db()
+    if not auth.pin_is_set(db):
+        return True  # No PIN configured — the app behaves as it always has.
+    return bool(st.session_state.get("parent_unlocked", False))
+
+
 def _sidebar(db: Database, student: dict[str, Any]) -> None:
     with st.sidebar:
         st.markdown(f"### 🧭 Compass\n**{student['name']}** · Grade {student['grade']}")
         start, end = db.school_year_bounds()
         st.caption(f"School year {start} → {end}")
         st.divider()
-        st.caption(
-            "Tier 1 is agent-planned and WA-mandated. Tier 2 is credited inside Tier 1 "
-            "activities. Tier 3 is his to choose."
-        )
+        _mode_control(db)
+
+
+def _mode_control(db: Database) -> None:
+    if not auth.pin_is_set(db):
+        st.caption("**Parent view** — everything visible.")
+        with st.expander("Set a parent PIN"):
+            st.caption(
+                "Hides answer keys, mastery criteria, and parent notes from the student "
+                "view, and keeps lesson generation and the records behind a PIN."
+            )
+            pin = st.text_input("New PIN", type="password", key="pin_new")
+            again = st.text_input("Confirm", type="password", key="pin_again")
+            if st.button("Turn on student view"):
+                if pin != again:
+                    st.error("Those don't match.")
+                else:
+                    try:
+                        auth.set_pin(db, pin)
+                    except auth.PinError as exc:
+                        st.error(str(exc))
+                    else:
+                        st.session_state["parent_unlocked"] = True
+                        st.success("Student view is on. Write the PIN down somewhere.")
+                        st.rerun()
+        return
+
+    if is_parent():
+        st.caption("🔓 **Parent view**")
+        if st.button("Switch to student view", use_container_width=True):
+            st.session_state["parent_unlocked"] = False
+            st.rerun()
+        with st.expander("Change or remove the PIN"):
+            current = st.text_input("Current PIN", type="password", key="pin_cur")
+            replacement = st.text_input("New PIN (blank to remove)", type="password", key="pin_rep")
+            if st.button("Save"):
+                if not auth.verify(db, current):
+                    st.error("That PIN is not right.")
+                elif replacement.strip() == "":
+                    auth.clear_pin(db)
+                    st.success("PIN removed — everything is visible again.")
+                    st.rerun()
+                else:
+                    try:
+                        auth.set_pin(db, replacement)
+                    except auth.PinError as exc:
+                        st.error(str(exc))
+                    else:
+                        st.success("PIN changed.")
+                        st.rerun()
+        return
+
+    st.caption("🎒 **Student view**")
+    with st.expander("Parent unlock"):
+        pin = st.text_input("PIN", type="password", key="pin_unlock")
+        if st.button("Unlock", use_container_width=True):
+            if auth.verify(db, pin):
+                st.session_state["parent_unlocked"] = True
+                st.rerun()
+            else:
+                st.error("Not right. Try again.")
+
+
+def parent_only(message: str = "") -> bool:
+    """Guard for a whole page. Returns True when the parent view is active."""
+    if is_parent():
+        return True
+    st.info(
+        message
+        or "This part is for your parent. Use **Parent unlock** in the sidebar if that's you."
+    )
+    return False
 
 
 def context_for(
@@ -75,7 +158,15 @@ def render_proposal(agent: LessonAgent, proposal) -> None:
                 st.markdown(f"- {line}")
 
 
-def render_lesson(lesson: dict[str, Any]) -> None:
+def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> None:
+    """Render a lesson. In student view the answer key never reaches the page.
+
+    The redaction happens here rather than in a CSS class or an expander, because
+    anything sent to the browser can be read out of it. What a student must not
+    see is simply not written.
+    """
+    parent = is_parent() if for_parent is None else for_parent
+
     st.subheader(lesson.get("title", "Lesson"))
     if lesson.get("overview"):
         st.write(lesson["overview"])
@@ -106,30 +197,36 @@ def render_lesson(lesson: dict[str, Any]) -> None:
                 st.markdown(f"- {item}")
     with columns[1]:
         assessment = lesson.get("assessment") or {}
-        if assessment:
+        if assessment and parent:
             st.markdown("**Assessment**")
             st.markdown(f"*{assessment.get('kind', '')}* — {assessment.get('description', '')}")
             if assessment.get("mastery_criteria"):
                 st.markdown(f"**Mastery:** {assessment['mastery_criteria']}")
-
-    if lesson.get("parent_notes"):
-        with st.expander("Notes for the parent"):
-            st.write(lesson["parent_notes"])
-
-    credits = lesson.get("subject_credits") or []
-    if credits:
-        st.markdown("**Subject credit (feeds the WA compliance dashboard)**")
-        for credit in credits:
-            st.markdown(
-                f"- **{subjects.label(credit['subject'])}** — {credit['minutes']} min · "
-                f"{credit.get('justification', '')}"
+        elif assessment:
+            st.markdown("**Assessment**")
+            st.caption(
+                "There's a check at the end of this lesson — your parent has it."
             )
 
-    branches = lesson.get("branches") or []
-    if branches:
-        with st.expander(f"Branches this opens up ({len(branches)})"):
-            for branch in branches:
-                st.markdown(f"- **{branch.get('topic')}** — {branch.get('rationale', '')}")
+    if parent:
+        if lesson.get("parent_notes"):
+            with st.expander("Notes for the parent"):
+                st.write(lesson["parent_notes"])
+
+        credits = lesson.get("subject_credits") or []
+        if credits:
+            st.markdown("**Subject credit (feeds the WA compliance dashboard)**")
+            for credit in credits:
+                st.markdown(
+                    f"- **{subjects.label(credit['subject'])}** — {credit['minutes']} min · "
+                    f"{credit.get('justification', '')}"
+                )
+
+        branches = lesson.get("branches") or []
+        if branches:
+            with st.expander(f"Branches this opens up ({len(branches)})"):
+                for branch in branches:
+                    st.markdown(f"- **{branch.get('topic')}** — {branch.get('rationale', '')}")
 
 
 def log_lesson_form(
@@ -194,6 +291,32 @@ def log_lesson_form(
         )
         st.success("Logged. The compliance dashboard is updated.")
         st.balloons()
+
+
+def student_lesson_view(
+    db: Database, student: dict[str, Any], agent_key: str, subject_label: str
+) -> None:
+    """What the student sees on a subject page: his work, and nothing else."""
+    lessons = db.list_lessons(student["id"], agent=agent_key, limit=5)
+    planned = [l for l in lessons if l["status"] == "planned"]
+    current = planned[0] if planned else (lessons[0] if lessons else None)
+
+    if current is None:
+        st.info(
+            f"No {subject_label} lesson has been set up yet. Ask your parent to plan one."
+        )
+        return
+
+    if current["status"] == "completed":
+        st.caption("This one's already marked done — here it is again.")
+    render_lesson(current["payload"], for_parent=False)
+
+    older = [l for l in lessons if l["id"] != current["id"]]
+    if older:
+        with st.expander(f"Earlier {subject_label} lessons ({len(older)})"):
+            for lesson in older:
+                st.markdown(f"**{lesson['created_at'][:10]} — {lesson['title']}**")
+                st.caption(lesson["payload"].get("overview", ""))
 
 
 def api_status_banner() -> bool:

@@ -15,6 +15,8 @@ from compass.curriculum import (
 )
 from compass.ui import (
     api_status_banner,
+    is_parent,
+    student_lesson_view,
     context_for,
     log_lesson_form,
     page_setup,
@@ -36,6 +38,11 @@ mastered = db.mastered_skills(student["id"])
 mastery = db.mastery_map(student["id"])
 frontier = frontier_report(mastered)
 ready = available_skills(mastered)
+
+# Student view: his lesson, without the answer key or the admin surface.
+if not is_parent():
+    student_lesson_view(db, student, "math", "math")
+    st.stop()
 
 plan_tab, mastery_tab, graph_tab = st.tabs(["Plan a lesson", "Record mastery", "The graph"])
 
