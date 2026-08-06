@@ -54,7 +54,10 @@ SPEC = AgentSpec(
     agent_guidance=GUIDANCE,
     next_topic=reading_tied,
     build_user_prompt=_prompt,
-    use_web_search=False,
+    # On, but only for the shared video search -- the book itself is the source
+    # of truth here, not the web, so the budget stays tight.
+    use_web_search=True,
+    max_web_searches=2,
     post_process=_post_process,
 )
 

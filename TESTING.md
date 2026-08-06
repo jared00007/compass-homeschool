@@ -294,6 +294,12 @@ Check the app's numbers against the real bill once, early.
   *Pass: input, output, and cached tokens plus web searches, broken out per agent. History
   should show the most of everything.*
 
+- [ ] **Math and English now show web searches too**
+  Same table — they used to show zero.
+  *Pass: a small number (usually 0-2) per lesson, not the 3-6 Science and History run.
+  That's the video lookup, not a location search — Math and English still don't ground
+  lessons in the general web.*
+
 - [ ] ⚠ **CRITICAL — Cross-check the real bill**
   platform.claude.com → Usage. Compare to what the app reports.
   *Pass: close enough that you trust the in-app number. It estimates a real bill; it isn't the bill.*
@@ -323,6 +329,19 @@ The tests only you can run. Slow down here — this decides whether you trust it
 - [ ] **Location grounding is real**
   Generate Science or History for somewhere you know well.
   *Pass: real species, real dates, real place names — not plausible-sounding filler.*
+
+- [ ] ⚠ **CRITICAL — A suggested video, when there is one, is real and on-topic**
+  Generate a few lessons across different agents. When **▶️ Suggested video** appears
+  (parent view only), open the link yourself before doing anything else with it.
+  *Pass: the link actually opens, and the video genuinely matches today's topic. If a
+  link is dead, wrong, or the section never appears at all across several lessons — the
+  second is normal and not a bug, since a good video isn't always out there — note which.
+  What would be a real problem: a link that doesn't work or doesn't match.*
+
+- [ ] **The video suggestion stays on your side of the PIN**
+  With a PIN set and a lesson that has a suggested video, switch to student view and open
+  the same lesson.
+  *Pass: no video section anywhere in student view — not collapsed, not hinted at, absent.*
 
 - [ ] **Math assessments are gradeable**
   Read a math lesson's mastery criteria.

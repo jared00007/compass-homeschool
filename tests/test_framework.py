@@ -256,6 +256,90 @@ def test_reasonable_secondary_credits_are_left_alone(db, student):
     assert not any("scaled down" in w for w in warnings)
 
 
+def test_all_four_agents_may_search_for_a_video(db, student):
+    """Math and English couldn't search at all before; now every agent can, but
+    only Science and History get the larger budget location grounding needs."""
+    from compass.agents import all_agents
+
+    for key, agent in all_agents().items():
+        assert agent.spec.use_web_search is True, key
+
+    assert get_agent("math").spec.max_web_searches == 2
+    assert get_agent("english").spec.max_web_searches == 2
+    assert get_agent("science").spec.max_web_searches == 6
+    assert get_agent("history").spec.max_web_searches == 6
+
+
+def test_normalize_keeps_a_search_verified_video(db, student):
+    agent = get_agent("math")
+    url = "https://www.youtube.com/watch?v=abc123"
+    payload = {
+        "activities": [{"minutes": 60}],
+        "estimated_minutes": 60,
+        "subject_credits": [{"subject": "math", "minutes": 60, "justification": ""}],
+        "video": {
+            "found": True,
+            "title": "Two-Step Equations",
+            "url": url,
+            "channel": "Some Channel",
+            "why": "Shows it worked in real time.",
+        },
+        "_search_result_urls": [url],
+    }
+    warnings, payload = normalize(agent, payload, db, student)
+    assert payload["video"]["found"] is True
+    assert payload["video"]["url"] == url
+    assert "_search_result_urls" not in payload, "the sidecar must never reach storage"
+    assert not any("video" in w.lower() for w in warnings), "a good video needs no warning"
+
+
+def test_normalize_drops_a_hallucinated_video(db, student):
+    """The exact failure mode this feature exists to prevent: a plausible title,
+    channel, and URL that a real search never returned."""
+    agent = get_agent("history")
+    payload = {
+        "activities": [{"minutes": 60}],
+        "estimated_minutes": 60,
+        "subject_credits": [{"subject": "history", "minutes": 60, "justification": ""}],
+        "video": {
+            "found": True,
+            "title": "A Documentary That Sounds Exactly Right",
+            "url": "https://www.youtube.com/watch?v=doesnotexist",
+            "channel": "History Channel",
+            "why": "Perfectly on topic.",
+        },
+        "_search_result_urls": ["https://www.youtube.com/watch?v=somethingelse"],
+    }
+    warnings, payload = normalize(agent, payload, db, student)
+    assert payload["video"]["found"] is False
+    assert payload["video"]["url"] == ""
+    assert any("didn't match an actual web search result" in w for w in warnings)
+    # credit policing must still run normally alongside it
+    assert payload["subject_credits"][0]["subject"] == "history"
+
+
+def test_normalize_fills_in_video_for_a_payload_that_never_had_one(db, student):
+    """Back-compat: a lesson generated before this feature existed, or hand-built
+    in a test, still gets a consistent shape to render against."""
+    agent = get_agent("english")
+    payload = {
+        "activities": [{"minutes": 60}],
+        "estimated_minutes": 60,
+        "subject_credits": [{"subject": "reading", "minutes": 60, "justification": ""}],
+    }
+    warnings, payload = normalize(agent, payload, db, student)
+    assert payload["video"] == {
+        "found": False, "title": "", "url": "", "channel": "", "why": "",
+    }
+
+
+def test_prompt_forbids_inventing_a_video_url(db, student):
+    agent = get_agent("math")
+    prompt = agent.build_system_prompt(ctx_for(db, student))
+    assert "Never write a URL from memory" in prompt
+    assert "found: false" in prompt
+
+
 def test_single_subject_lesson_is_untouched(db, student):
     agent = get_agent("math")
     payload = {

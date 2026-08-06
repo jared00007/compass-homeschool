@@ -286,6 +286,10 @@ def generate_plan(
     )
     for key in ("materials", "watch_for", "follow_ups"):
         payload.setdefault(key, [])
+    # This plan's schema has no `video` field to check it against, and it has
+    # no value once verification would have happened -- drop it rather than
+    # persist an unused sidecar key.
+    payload.pop("_search_result_urls", None)
 
     lesson_id = db.save_lesson(
         student_id=student["id"],

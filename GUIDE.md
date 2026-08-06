@@ -223,6 +223,23 @@ Take Science or History somewhere you know well and check the specifics. Real pl
 real species, real dates — or plausible-sounding filler? It has been accurate in testing,
 but you know your own ground better than any search result.
 
+### The suggested video, before you share it
+
+Any lesson may come with one **▶️ Suggested video**, tucked in the parent-only part of the
+lesson. It's there because seeing a technique worked in real time, or real footage of
+something the lesson only describes, teaches things a page of text can't. Two guardrails
+sit behind it:
+
+- It only appears when the agent actually found a specific, real video through a live
+  search — never one recalled from memory. If nothing suitable turns up, the section is
+  simply absent. No video is the honest, common outcome; don't read anything into it.
+- It's restricted to YouTube. Not because other sites don't have good teaching videos, but
+  because YouTube is the one platform you already know how to preview and set limits on.
+
+That said, **preview it yourself and hand him the link directly** — don't just point him at
+the open YouTube app. Compass can verify the video itself is real and on-topic; it has no
+say over what YouTube recommends the moment the video ends.
+
 ### Lessons that are impressive but not teachable
 
 A six-activity lesson with a full answer key can still be wrong for a Tuesday with three
@@ -240,6 +257,10 @@ hours of driving in it. Cut it down. The lesson is a proposal.
 | English | $0.20 | ~2 min |
 | Science | $0.27 | ~3.5 min |
 | History | $0.42 | ~6 min |
+
+Measured before every agent could search for a video to go with the lesson. Math and
+English now each spend a search or two looking — expect a cent or so more per lesson,
+usually less.
 
 A school year runs roughly **$60–120** depending on how often you generate fresh rather
 than reusing a lesson across sessions. Set a monthly cap in your Anthropic account

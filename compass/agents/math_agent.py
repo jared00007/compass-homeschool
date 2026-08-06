@@ -43,7 +43,10 @@ SPEC = AgentSpec(
     agent_guidance=GUIDANCE,
     next_topic=graph_walk,
     build_user_prompt=_prompt,
-    use_web_search=False,
+    # On, but only for the shared video search -- math never needs the general
+    # web to teach a fixed skill, so the budget stays tight.
+    use_web_search=True,
+    max_web_searches=2,
 )
 
 AGENT = LessonAgent(SPEC)

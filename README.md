@@ -251,6 +251,7 @@ compass/
   agents/
     framework.py             LessonAgent, AgentSpec, generation pipeline
     credits.py               the one credit-policing implementation
+    video.py                 verifying a claimed video against real search results
     strategies.py            the four next-topic strategies
     llm.py                   Anthropic client, lesson JSON schema, error handling
     prompts.py               shared user-prompt assembly
@@ -264,7 +265,7 @@ compass/
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
   theme.py                   the four themes and the CSS that applies one
-tests/                       128 tests, no API key required
+tests/                       155 tests, no API key required
 ```
 
 `compass/` knows nothing about Streamlit — the agents, storage, and compliance
@@ -315,9 +316,10 @@ borrows the same hue as "here's your next lesson." Both rules are pinned by test
 
 `claude-opus-5` with adaptive thinking and `effort: high`. Lessons come back as
 **structured output** against a JSON schema, so the compliance-critical fields
-are guaranteed well-formed rather than parsed out of prose. Science and History
-additionally get Anthropic's server-side **web search** so location-specific
-lessons are grounded in real facts.
+are guaranteed well-formed rather than parsed out of prose. All four agents get
+Anthropic's server-side **web search** — Science and History use most of it to
+ground location-specific lessons in real facts, and all four use a little of it
+to look for a real supplementary video (see below).
 
 Server-side refusal fallbacks are enabled by default (`fallbacks: "default"`), so
 a safety-classifier decline gets re-served by the recommended fallback model
@@ -340,6 +342,10 @@ Measured on live generations (Opus 5, `effort: high`), not estimated:
 | Science | ~$0.27 | ~3.5 min | ~7,100 + web search |
 | History | ~$0.42 | ~6 min | ~9,900 + web search |
 
+Measured before every agent could search for a supplementary video (see below).
+Math and English now carry a search or two of their own — call it another cent
+per lesson, usually less since one search is normally enough.
+
 A full school year lands around **$60–120** depending on how often you generate
 fresh rather than reusing a lesson across sessions.
 
@@ -360,6 +366,43 @@ The biggest lever is `DEFAULT_EFFORT` in `compass/config.py` — thinking is abo
 half the output tokens, so `high` → `medium` cuts the year roughly 30%. Prompt
 caching is *not* a meaningful lever here: output dominates the bill, and the
 cached system prompt is only ~1,200 tokens.
+
+---
+
+## Supplementary videos
+
+All four Tier 1 agents may propose one video per lesson — something to actually
+see or hear the topic, not just read about it. Math and English didn't have web
+search at all before this; they now get a small budget (`max_web_searches: 2`)
+for it. Science and History keep their existing 6-query budget, which now covers
+both location grounding and the video.
+
+**The risk this exists to manage:** asked to "find a video," a model will, if
+trusted at face value, return a plausible title, channel, and URL that correspond
+to nothing real. A dead or wrong link is a minor annoyance; a fabricated one that
+happens to resolve to something unrelated is worse than no suggestion. So a
+claimed video is accepted only if both hold:
+
+1. **Its URL matches a real search result from this generation.** `llm.py`
+   collects every URL a `web_search_tool_result` block actually returned;
+   `compass/agents/video.py` accepts nothing else. A title, channel, and URL that
+   sound right but never appeared in a real search are indistinguishable from a
+   confident fabrication, so they're rejected the same way — reset to "no video
+   found," never surfaced half-verified.
+2. **That URL is on a small allowlist of hosts** (`youtube.com`, `youtu.be`,
+   `m.youtube.com`) **a parent already knows how to preview.** A real,
+   search-verified link to an unknown site still isn't something this app will
+   vouch for. Widening this list is a deliberate choice for a family to make, not
+   a default.
+
+Every rejection surfaces as a warning, the same pattern as credit normalization —
+a silent downgrade would be worse than not checking at all.
+
+**Rendered parent-only, never to the student**, for the same reason a lot of
+things here are: a video link is an on-ramp to the open web — autoplay, related
+videos, comments — that Compass can verify the destination of but not what
+happens after he's there. The parent previews it and shares the link directly,
+the same "read it before he does" pattern as the rest of a lesson.
 
 ## Tests
 

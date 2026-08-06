@@ -101,6 +101,13 @@ def _lesson():
         "parent_notes": "Watch for him reversing the definition.",
         "estimated_minutes": 60,
         "branches": [],
+        "video": {
+            "found": True,
+            "title": "Functions Explained With Real Examples",
+            "url": "https://www.youtube.com/watch?v=abc123",
+            "channel": "Some Teaching Channel",
+            "why": "Shows several worked examples back to back.",
+        },
     }
 
 
@@ -157,6 +164,52 @@ def test_parent_view_shows_everything(monkeypatch):
     assert "Answer key" in page
     assert "Watch for him reversing" in page
     assert "Sort the relations" in page
+    assert "Functions Explained With Real Examples" in page
+    assert "https://www.youtube.com/watch?v=abc123" in page
+
+
+def test_student_view_never_sees_the_suggested_video(monkeypatch):
+    """A video link is an on-ramp to the open web -- the parent previews it first,
+    same as everything else that isn't the day's actual work."""
+    page = _rendered(monkeypatch, for_parent=False)
+    assert "Functions Explained With Real Examples" not in page
+    assert "youtube.com" not in page
+
+
+def test_no_video_section_when_none_was_found(monkeypatch):
+    lesson = _lesson()
+    lesson["video"] = {"found": False, "title": "", "url": "", "channel": "", "why": ""}
+
+    import compass.ui as ui
+
+    written: list[str] = []
+
+    class Recorder:
+        def __getattr__(self, _name):
+            def record(*args, **kwargs):
+                for arg in args:
+                    if isinstance(arg, str):
+                        written.append(arg)
+                return Recorder()
+            return record
+
+        def __getitem__(self, _index):
+            return Recorder()
+
+        def __iter__(self):
+            return iter([Recorder(), Recorder()])
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(ui, "st", Recorder())
+    monkeypatch.setattr(ui, "is_parent", lambda: True)
+    ui.render_lesson(lesson, for_parent=True)
+    page = "\n".join(written)
+    assert "Suggested video" not in page
 
 
 def test_student_view_hides_compliance_credit_detail(monkeypatch):

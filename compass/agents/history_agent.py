@@ -56,6 +56,7 @@ SPEC = AgentSpec(
     next_topic=timeline,
     build_user_prompt=_prompt,
     use_web_search=True,
+    max_web_searches=6,  # location grounding needs several; the video is one more
     post_process=_post_process,
 )
 

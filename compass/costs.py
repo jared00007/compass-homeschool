@@ -29,7 +29,9 @@ FALLBACK_PRICING = PRICING["claude-opus-5"]
 
 # Server-side web search is billed per query rather than per token. This rate is
 # the least certain number in this file — verify it against the pricing page
-# before trusting a projection built on it. Only Science and History use search.
+# before trusting a projection built on it. All four Tier 1 agents may search
+# now (one video lookup at most for Math/English; several for Science/History's
+# location grounding, plus their own video lookup).
 WEB_SEARCH_COST_PER_QUERY = 0.01
 
 

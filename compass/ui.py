@@ -286,6 +286,20 @@ def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> Non
             with st.expander("Notes for the parent"):
                 st.write(lesson["parent_notes"])
 
+        video = lesson.get("video") or {}
+        if video.get("found") and video.get("url"):
+            with st.expander(f"▶️ Suggested video — {video.get('title') or 'watch'}"):
+                st.markdown(f"**[{video.get('title', 'Watch')}]({video['url']})**")
+                if video.get("channel"):
+                    st.caption(video["channel"])
+                if video.get("why"):
+                    st.write(video["why"])
+                st.caption(
+                    "Preview it and share the link yourself rather than handing him the "
+                    "open YouTube app — Compass can verify the video, not what it "
+                    "recommends afterward."
+                )
+
         credits = lesson.get("subject_credits") or []
         if credits:
             st.markdown("**Subject credit (feeds the WA compliance dashboard)**")

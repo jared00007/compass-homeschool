@@ -20,6 +20,7 @@ from typing import Any, Callable, Protocol
 from compass import config, subjects
 from compass.agents.credits import normalize_credits
 from compass.agents.llm import LessonGenerationError, generate_lesson
+from compass.agents.video import verify_video
 from compass.storage.db import Database
 
 
@@ -158,6 +159,25 @@ is worth more than one that pads four.
 - Minutes per subject may exceed the lesson's total minutes when one activity \
 really does teach several subjects at once. That is the intent.
 
+## A supplementary video, if a real one exists
+Use `web_search` to look for one video that would help him actually see or hear \
+today's specific topic — a worked example in real time, real footage, a real \
+demonstration. This is optional and secondary to the lesson itself.
+
+- **Only report `found: true` if a search this turn actually returned a specific \
+video, and you are copying its title and URL exactly as the search gave them.** \
+Never write a URL from memory, never guess at one that "should" exist, and never \
+adjust or shorten a URL you found. A missing video costs nothing; a fabricated \
+or broken link is worse than no suggestion, so when you're not sure, report \
+`found: false` and leave the other fields empty.
+- One search is usually enough. This is not the lesson's research budget — do \
+not spend it here if the topic also needs grounding in real places, species, or \
+sources.
+- `why` is one sentence and specific: what he'll actually see in the video that \
+the lesson doesn't already show him. Not "this is a good video about X."
+- The lesson must stand on its own without it. Nothing in `activities` or \
+`assessment` may depend on him having watched it.
+
 ## The family's approach
 - The design goal is that {student_name} does not feel like he is doing eleven \
 separate subjects. Fold naturally; do not bolt on a token art question.
@@ -188,6 +208,9 @@ class AgentSpec:
     next_topic: NextTopicStrategy
     build_user_prompt: Callable[[StudentContext, TopicProposal], str]
     use_web_search: bool = False
+    # Science and History search several times to ground location facts; an
+    # agent whose only reason to search is finding one video needs far fewer.
+    max_web_searches: int = 6
     post_process: Callable[[StudentContext, TopicProposal, dict[str, Any]], None] | None = None
     default_effort: str = config.DEFAULT_EFFORT
 
@@ -246,6 +269,7 @@ class LessonAgent:
             system=self.build_system_prompt(ctx),
             user_prompt=self.spec.build_user_prompt(ctx, proposal),
             use_web_search=self.spec.use_web_search,
+            max_web_searches=self.spec.max_web_searches,
             effort=self.spec.default_effort,
         )
         warnings = self._normalize(payload, proposal, ctx)
@@ -285,9 +309,11 @@ class LessonAgent:
             allowed=self.allowed_subjects,
             fallback_minutes=ctx.minutes,
         )
+        warnings += verify_video(payload)
         payload.setdefault("branches", [])
         payload.setdefault("materials", [])
         payload.setdefault("learning_objectives", [])
+        payload.setdefault("video", {"found": False, "title": "", "url": "", "channel": "", "why": ""})
         return warnings
 
 

@@ -116,6 +116,35 @@ LESSON_SCHEMA: dict[str, Any] = _object(
             ),
             "items": _object({"topic": {"type": "string"}, "rationale": {"type": "string"}}),
         },
+        "video": _object(
+            {
+                "found": {
+                    "type": "boolean",
+                    "description": (
+                        "True only if a real web search this turn returned a specific video "
+                        "with a URL you are copying exactly. Set false whenever you are not "
+                        "certain -- never true just because a good video probably exists "
+                        "somewhere; it must be one you actually found."
+                    ),
+                },
+                "title": {"type": "string", "description": "Exact title from the search result. Empty if found is false."},
+                "url": {
+                    "type": "string",
+                    "description": (
+                        "The exact URL from the search result, character for character. "
+                        "Empty if found is false."
+                    ),
+                },
+                "channel": {"type": "string", "description": "Empty if found is false."},
+                "why": {
+                    "type": "string",
+                    "description": (
+                        "One sentence: what he'll actually see in it that this lesson doesn't "
+                        "already show him. Empty if found is false."
+                    ),
+                },
+            }
+        ),
     }
 )
 
@@ -155,6 +184,7 @@ def generate_lesson(
     user_prompt: str,
     *,
     use_web_search: bool = False,
+    max_web_searches: int = 6,
     schema: dict[str, Any] | None = None,
     model: str = config.DEFAULT_MODEL,
     effort: str = config.DEFAULT_EFFORT,
@@ -165,7 +195,10 @@ def generate_lesson(
 
     `use_web_search` turns on Anthropic's server-side web search so the
     location-aware agents can ground a lesson in facts about where the family
-    actually is this week.
+    actually is this week, and so any agent can look for a real supplementary
+    video. `max_web_searches` bounds how many queries one generation may spend --
+    Science and History need several for location grounding; an agent only
+    looking for one video needs far fewer.
 
     `schema` defaults to the Tier 1 lesson shape. The life-skills planner passes
     its own, because a plan for teaching a tire change is not a lesson with an
@@ -179,7 +212,9 @@ def generate_lesson(
 
     tools: list[dict[str, Any]] = []
     if use_web_search:
-        tools.append({"type": "web_search_20260209", "name": "web_search", "max_uses": 6})
+        tools.append(
+            {"type": "web_search_20260209", "name": "web_search", "max_uses": max_web_searches}
+        )
 
     messages: list[dict[str, Any]] = [{"role": "user", "content": user_prompt}]
     request: dict[str, Any] = {
@@ -241,6 +276,10 @@ def generate_lesson(
         raise LessonGenerationError("No response from the model.")
 
     lesson = _extract_json(response.content)
+    # Every URL a real search actually surfaced this turn -- the only thing a
+    # claimed `video.url` is allowed to match. Consumed and removed by
+    # `video.verify_video` before the lesson is persisted.
+    lesson["_search_result_urls"] = _search_result_urls(response.content)
     lesson["_usage"] = {
         "input_tokens": getattr(response.usage, "input_tokens", 0) or 0,
         "output_tokens": getattr(response.usage, "output_tokens", 0) or 0,
@@ -264,6 +303,26 @@ def _count_web_searches(content: list[Any]) -> int:
         if getattr(block, "type", None) == "server_tool_use"
         and getattr(block, "name", None) == "web_search"
     )
+
+
+def _search_result_urls(content: list[Any]) -> list[str]:
+    """Every URL a `web_search_tool_result` block actually returned this turn.
+
+    This is the ground truth `video.py` checks a claimed video against. A failed
+    search (`WebSearchToolResultError`) has no `.url` to read and is skipped.
+    """
+    urls: list[str] = []
+    for block in content:
+        if getattr(block, "type", None) != "web_search_tool_result":
+            continue
+        results = getattr(block, "content", None)
+        if not isinstance(results, list):
+            continue  # an error block, not a list of results
+        for result in results:
+            url = getattr(result, "url", None)
+            if url:
+                urls.append(url)
+    return urls
 
 
 def api_available() -> tuple[bool, str]:
