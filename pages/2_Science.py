@@ -48,9 +48,22 @@ with plan_tab:
         pool = db.unexplored_web_nodes(student["id"], "science", location or None)
         st.metric("Open branches", len(pool))
 
+    branch_options = [(0, "Let the agent choose the next branch")] + [
+        (n["id"], f"{'  ' * n['depth']}{n['topic']}") for n in pool
+    ]
+    picked_id = st.selectbox(
+        "Which thread to pull",
+        [o[0] for o in branch_options],
+        format_func=lambda i: dict(branch_options)[i],
+        help="Open branches proposed by earlier lessons. The agent takes the top one "
+             "unless you choose.",
+    )
+
     seed_topic = st.text_input(
-        "Or force a specific thread (optional)",
+        "Or start something new entirely (optional)",
         placeholder="e.g. why nurse logs grow hemlocks and not spruce",
+        help="Typing here ignores the branches above and starts a fresh thread. The "
+             "existing branches stay in the web for later.",
     )
     parent_note = st.text_input(
         "Note for this lesson (optional)", placeholder="e.g. keep it to a two-hour hike"
@@ -63,6 +76,7 @@ with plan_tab:
         minutes=minutes,
         parent_note=parent_note,
         seed_topic=seed_topic,
+        node_id=picked_id or None,
     )
     proposal = agent.propose_topic(ctx)
     render_proposal(agent, proposal)
@@ -108,12 +122,23 @@ with web_tab:
 
         st.subheader("Open branches")
         st.caption("The next lesson is drawn from here, nearest the trunk first.")
+        st.caption(
+            "Each lesson proposes 2-4 new branches and follows one, so the web grows. "
+            "Prune anything you know you'll never teach — an unfollowed branch costs "
+            "nothing, but a long list makes the useful ones harder to see."
+        )
         for node in sorted(open_nodes, key=lambda n: (n["depth"], n["id"])):
             parent = by_id.get(node["parent_id"])
             lineage = f" ← {parent['topic']}" if parent else ""
             where = f" · {node['location']}" if node["location"] else ""
-            st.markdown(f"- **{node['topic']}**{where}  \n  <small>{node['rationale']}{lineage}</small>",
-                        unsafe_allow_html=True)
+            row = st.columns([6, 1])
+            row[0].markdown(
+                f"**{node['topic']}**{where}  \n<small>{node['rationale']}{lineage}</small>",
+                unsafe_allow_html=True,
+            )
+            if row[1].button("Dismiss", key=f"sci_drop_{node['id']}"):
+                db.delete_web_node(node["id"])
+                st.rerun()
 
         st.subheader("Already explored")
         for node in sorted(explored, key=lambda n: n["explored_on"] or "", reverse=True):

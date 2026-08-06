@@ -206,3 +206,65 @@ def test_prompt_tells_the_model_where_answers_may_live(db, student):
     assert "never in \\\nan activity's instructions" in prompt or "never in" in prompt
     assert "answer key" in prompt.lower()
     assert "Questions go in the activity; answers go in the assessment." in prompt
+
+
+def test_secondary_credits_cannot_exceed_the_lesson_they_sit_inside(db, student):
+    """Observed live: a 60-min history lesson claimed 135 min across six subjects.
+
+    Each credit was individually under the cap; the sum was 2.25x the lesson.
+    """
+    agent = get_agent("history")
+    payload = {
+        "activities": [{"minutes": 60}],
+        "estimated_minutes": 60,
+        "subject_credits": [
+            {"subject": "history", "minutes": 60, "justification": ""},
+            {"subject": "social_studies", "minutes": 22, "justification": ""},
+            {"subject": "reading", "minutes": 18, "justification": ""},
+            {"subject": "writing", "minutes": 15, "justification": ""},
+            {"subject": "art_and_music", "minutes": 12, "justification": ""},
+            {"subject": "language", "minutes": 8, "justification": ""},
+        ],
+    }
+    warnings, payload = normalize(agent, payload, db, student)
+
+    credits = {c["subject"]: c["minutes"] for c in payload["subject_credits"]}
+    assert credits["history"] == 60, "the primary keeps the full lesson"
+    secondary_total = sum(m for s, m in credits.items() if s != "history")
+    assert secondary_total <= 60, f"secondaries still overflow: {secondary_total}"
+    assert any("scaled down" in w for w in warnings)
+    # Relative weighting is preserved rather than arbitrarily truncated.
+    assert credits["social_studies"] > credits["language"]
+
+
+def test_reasonable_secondary_credits_are_left_alone(db, student):
+    """Science claimed 55 min of secondaries in a 75 min lesson — that's fine."""
+    agent = get_agent("science")
+    payload = {
+        "activities": [{"minutes": 75}],
+        "estimated_minutes": 75,
+        "subject_credits": [
+            {"subject": "science", "minutes": 75, "justification": ""},
+            {"subject": "math", "minutes": 20, "justification": ""},
+            {"subject": "writing", "minutes": 20, "justification": ""},
+            {"subject": "art_and_music", "minutes": 15, "justification": ""},
+        ],
+    }
+    warnings, payload = normalize(agent, payload, db, student)
+    credits = {c["subject"]: c["minutes"] for c in payload["subject_credits"]}
+    assert credits == {"science": 75, "math": 20, "writing": 20, "art_and_music": 15}
+    assert not any("scaled down" in w for w in warnings)
+
+
+def test_single_subject_lesson_is_untouched(db, student):
+    agent = get_agent("math")
+    payload = {
+        "activities": [{"minutes": 60}],
+        "estimated_minutes": 60,
+        "subject_credits": [{"subject": "math", "minutes": 60, "justification": ""}],
+    }
+    warnings, payload = normalize(agent, payload, db, student)
+    assert payload["subject_credits"] == [
+        {"subject": "math", "minutes": 60, "justification": ""}
+    ]
+    assert not warnings

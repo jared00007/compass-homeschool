@@ -108,6 +108,13 @@ Strategies are **deterministic and offline** — no model call. A strategy decid
 *what* to teach; the model call decides *how*. That means the home page can show
 what all four agents would do next for free, and strategy logic is unit-testable.
 
+Science and History share a `web_nodes` table: each lesson consumes one open node
+and grafts its 2–4 proposals on as children, so the frontier widens over time. The
+parent can override the pick (`node_id` input), seed an unrelated thread without
+disturbing the existing frontier, or dismiss a node — children are re-parented via
+`ON DELETE SET NULL` rather than cascading, since a grandchild topic is still a
+good lesson.
+
 **Rule of thumb, carried through:** use the least agency that solves the problem.
 Tier 3 and Core Life Skills are plain CRUD features with no agent at all, and the
 orchestrator agent was deliberately not built.
@@ -139,10 +146,21 @@ framework polices every claim before it's persisted:
   bill itself as art appreciation for drawing a graph)
 - Credits exceeding the lesson length are **capped**
 - A missing primary-subject credit is **added**
+- The **secondary credits are scaled to sum to no more than the lesson length**,
+  proportionally, so the whole lesson can never credit more than 2× its own duration
 - Duplicates merged, unknown subjects dropped, total time reconciled to the
   activity list
 
 Every adjustment surfaces in the UI as a warning rather than happening silently.
+
+The secondary-sum cap came out of live testing too. Each individual claim passed —
+a 60-minute history lesson credited history 60, social studies 22, reading 18,
+writing 15, art 12, language 8 — but nothing was adding them up, so the lesson
+billed 135 minutes of coverage for an hour of work (2.25×). Per-credit caps can't
+catch this; six subjects each legitimately under 60 still sum to 360. Secondary
+subjects are credited for the *segment* that earns them, segments live inside the
+lesson, so their sum is bounded by the lesson. The prompt says so and
+`_normalize()` enforces it.
 
 The prompt-level rule is stricter than the code-level one, and it was tightened
 after live testing caught the Math agent billing 5 minutes of *language* for

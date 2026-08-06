@@ -130,6 +130,11 @@ Deliberate refusals. These should block, and tell you why.
   Watch for small ⚠ notes above a generated lesson.
   *Pass: if the app corrected an over-claimed credit, it says so rather than fixing it silently.*
 
+- [ ] ⚠ **CRITICAL — Credits can't exceed double the lesson**
+  On each generated lesson, add up the subject credits.
+  *Pass: the total is at most twice the lesson length — 120 minutes of credit on a 60-minute
+  lesson, never more. If the app scaled something back, it says so above the lesson.*
+
 ---
 
 ## 5 · His real data — *no cost*
@@ -242,6 +247,11 @@ Check the app's numbers against the real bill once, early.
   Compare against roughly $0.17 Math, $0.20 English, $0.27 Science, $0.42 History.
   *Pass: same ballpark.*
 
+- [ ] **Token consumption is visible**
+  Same page, the per-agent table.
+  *Pass: input, output, and cached tokens plus web searches, broken out per agent. History
+  should show the most of everything.*
+
 - [ ] ⚠ **CRITICAL — Cross-check the real bill**
   platform.claude.com → Usage. Compare to what the app reports.
   *Pass: close enough that you trust the in-app number. It estimates a real bill; it isn't the bill.*
@@ -279,6 +289,19 @@ The tests only you can run. Slow down here — this decides whether you trust it
 - [ ] **Science branches are worth following**
   Science → The web. Read the open branches.
   *Pass: genuinely different directions, not four rewordings of the same idea.*
+
+- [ ] **You can steer the web**
+  Science → Plan a lesson → *Which thread to pull*. Pick a branch other than the default.
+  *Pass: the proposed topic is the one you picked.*
+
+- [ ] **Dismissing prunes without collateral damage**
+  Science → The web → Dismiss a branch you'd never teach.
+  *Pass: it's gone; anything that branched off it is still listed.*
+
+- [ ] **A new direction doesn't wipe the web**
+  Science → Plan a lesson → type something unrelated into the seed topic box, generate,
+  then reopen The web.
+  *Pass: your earlier open branches are still there.*
 
 ---
 

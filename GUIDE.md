@@ -69,6 +69,31 @@ Two of these need location; two don't. If you're parked somewhere ordinary, leav
 location blank — Science and History will teach a good at-home lesson rather than
 forcing a weak local connection.
 
+### The branches Science and History build
+
+Both of those agents leave a trail behind them, and it's worth understanding because it
+grows on its own.
+
+Every Science lesson ends by proposing two to four follow-on questions — *mycorrhizal
+networks*, *decomposition rates by species* — and those get saved as open branches. Next
+lesson consumes one and adds two to four more, so the web widens rather than shrinking.
+Eight open branches after a handful of lessons is the system working, not a backlog you're
+behind on. History does the same thing alongside its era sequence.
+
+You have three moves, all on the Science and History pages:
+
+- **Let it choose.** The default. It takes the oldest open branch, unless one matches
+  where you are — then that wins.
+- **Pick one yourself.** The *Which thread to pull* dropdown on the plan tab. Use it when
+  you know what this week should be about.
+- **Dismiss the ones you'll never teach.** The Web tab lists every open branch with a
+  Dismiss button. Dismissing keeps that branch's own children — a grandchild topic is
+  often still a good lesson.
+
+And if you want to start something completely unrelated, just type it into the seed topic
+box. That begins a new thread; your existing branches stay exactly where they are, waiting.
+Nothing is discarded because you went somewhere new.
+
 ---
 
 ## The counting rule
@@ -89,6 +114,14 @@ and it's exactly right, as long as each credit points at something he really did
 What you must not do is add the per-subject numbers together and call it your annual total.
 That would inflate your year by more than half. The dashboard never does this, and neither
 should you if a district asks.
+
+**There is a ceiling on this.** Secondary subjects are credited for the *segment* that
+earns them — the eighteen minutes he spent reading the source, not the whole lesson — so
+those segments live inside the hour and can't add up to more than it. A 60-minute lesson
+can credit at most 60 minutes of primary plus 60 minutes of secondaries: two hours of
+subject coverage from one hour, and never more. If an agent claims past that, Compass
+scales the secondaries back to fit and tells you it did, so you can check they're still
+fair before logging.
 
 ---
 
@@ -139,12 +172,14 @@ The single thing most worth your scepticism. When a science lesson claims 20 min
 writing, look at the activity it points to. A 250-word argument with cited evidence is
 writing. A two-sentence caption is not.
 
-This already happened once in testing: the Math agent billed five minutes of *language*
-for "restating the definition in his own words" and ten minutes of *occupational education*
-because a worked example used game-modding keybindings. Both were math instruction wearing
-another subject's label. The rules were tightened and it stopped — but watch for the
-pattern returning in a form nobody anticipated. Every credit is editable when you log the
-activity.
+This already happened twice in testing. First the Math agent billed five minutes of
+*language* for "restating the definition in his own words" and ten minutes of *occupational
+education* because a worked example used game-modding keybindings — both were math
+instruction wearing another subject's label. Then a 60-minute history lesson credited 135
+minutes across six subjects, because each individual claim was defensible but nobody was
+adding them up. The first was fixed by tightening the rules, the second by capping the
+total. Watch for the pattern returning in a form nobody anticipated. Every credit is
+editable when you log the activity.
 
 ### Location grounding that isn't real
 
@@ -171,8 +206,14 @@ hours of driving in it. Cut it down. The lesson is a proposal.
 | History | $0.42 | ~6 min |
 
 A school year runs roughly **$60–120** depending on how often you generate fresh rather
-than reusing a lesson across sessions. The compliance page tracks your real spend, so you
-never have to guess. Set a monthly cap in your Anthropic account regardless.
+than reusing a lesson across sessions. Set a monthly cap in your Anthropic account
+regardless.
+
+You don't have to guess at any of this. **Compliance → What the agents cost to run** shows
+your actual spend for any date range, the average per lesson, a projection for the full
+year, and a per-agent breakdown of input tokens, output tokens, cached tokens, and web
+searches. That's where to look when a bill surprises you — it will usually be History,
+which researches hardest and costs the most per lesson.
 
 ### Backups
 

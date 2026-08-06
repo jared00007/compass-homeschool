@@ -231,6 +231,19 @@ class Database:
         )
         self.conn.commit()
 
+    def get_web_node(self, node_id: int) -> dict[str, Any] | None:
+        return _row(self.conn.execute("SELECT * FROM topic_web WHERE id = ?", (node_id,)))
+
+    def delete_web_node(self, node_id: int) -> None:
+        """Drop a branch nobody intends to follow.
+
+        Children are re-parented by the schema's ON DELETE SET NULL rather than
+        cascading — a grandchild topic is still a perfectly good lesson, and
+        deleting a branch shouldn't silently take a subtree with it.
+        """
+        self.conn.execute("DELETE FROM topic_web WHERE id = ?", (node_id,))
+        self.conn.commit()
+
     def web_nodes(self, student_id: int, agent: str) -> list[dict[str, Any]]:
         return _rows(
             self.conn.execute(

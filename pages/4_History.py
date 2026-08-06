@@ -49,8 +49,18 @@ with plan_tab:
         pool = db.unexplored_web_nodes(student["id"], "history", location or None)
         st.metric("Open threads", len(pool))
 
+    thread_options = [(0, "Let the agent choose (era coverage, or the location)")] + [
+        (n["id"], n["topic"]) for n in pool
+    ]
+    picked_id = st.selectbox(
+        "Which thread to follow",
+        [o[0] for o in thread_options],
+        format_func=lambda i: dict(thread_options)[i],
+        help="Open threads proposed by earlier lessons.",
+    )
+
     seed_topic = st.text_input(
-        "Or force a specific topic (optional)",
+        "Or start something new entirely (optional)",
         placeholder="e.g. the 1855 Walla Walla Treaty Council",
     )
     parent_note = st.text_input("Note for this lesson (optional)")
@@ -62,6 +72,7 @@ with plan_tab:
         minutes=minutes,
         parent_note=parent_note,
         seed_topic=seed_topic,
+        node_id=picked_id or None,
     )
     proposal = agent.propose_topic(ctx)
     render_proposal(agent, proposal)
@@ -121,5 +132,11 @@ with timeline_tab:
         st.subheader("Open threads")
         for node in open_threads:
             where = f" · {node['location']}" if node["location"] else ""
-            st.markdown(f"- **{node['topic']}**{where} — <small>{node['rationale']}</small>",
-                        unsafe_allow_html=True)
+            row = st.columns([6, 1])
+            row[0].markdown(
+                f"**{node['topic']}**{where} — <small>{node['rationale']}</small>",
+                unsafe_allow_html=True,
+            )
+            if row[1].button("Dismiss", key=f"hist_drop_{node['id']}"):
+                db.delete_web_node(node["id"])
+                st.rerun()

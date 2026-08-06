@@ -231,3 +231,59 @@ def test_timeline_lets_location_override_the_sequence(db, student):
     )
     assert "Whitman Mission" in proposal.topic or "Whitman Mission" in proposal.rationale
     assert any("Whitman Mission" in line for line in proposal.context_lines)
+
+
+# --- branch selection and pruning --------------------------------------------
+
+
+def test_parent_can_pick_a_specific_branch(db, student):
+    db.add_web_node(student["id"], "science", "first in queue", depth=1)
+    wanted = db.add_web_node(student["id"], "science", "the one I actually want", depth=3)
+
+    default = get_agent("science").propose_topic(ctx_for(db, student))
+    assert default.topic == "first in queue"
+
+    chosen = get_agent("science").propose_topic(ctx_for(db, student, node_id=wanted))
+    assert chosen.topic == "the one I actually want"
+    assert chosen.metadata["node_id"] == wanted
+
+
+def test_picking_an_already_explored_branch_falls_back(db, student):
+    node = db.add_web_node(student["id"], "science", "already done", depth=1)
+    db.mark_web_node_explored(node)
+    db.add_web_node(student["id"], "science", "still open", depth=1)
+
+    proposal = get_agent("science").propose_topic(ctx_for(db, student, node_id=node))
+    assert proposal.topic == "still open"
+
+
+def test_history_can_follow_a_chosen_thread(db, student):
+    wanted = db.add_web_node(student["id"], "history", "Celilo Falls and the dam", depth=1)
+    proposal = get_agent("history").propose_topic(ctx_for(db, student, node_id=wanted))
+    assert proposal.topic == "Celilo Falls and the dam"
+    assert proposal.metadata["node_id"] == wanted
+
+
+def test_a_new_seed_leaves_existing_branches_alone(db, student):
+    """Starting something different must not silently discard the web."""
+    db.add_web_node(student["id"], "science", "branch A", depth=1)
+    db.add_web_node(student["id"], "science", "branch B", depth=1)
+
+    proposal = get_agent("science").propose_topic(
+        ctx_for(db, student, seed_topic="something completely different")
+    )
+    assert proposal.topic == "something completely different"
+
+    still_open = {n["topic"] for n in db.unexplored_web_nodes(student["id"], "science")}
+    assert still_open == {"branch A", "branch B"}
+
+
+def test_dismissing_a_branch_keeps_its_children(db, student):
+    parent = db.add_web_node(student["id"], "science", "parent branch", depth=1)
+    child = db.add_web_node(student["id"], "science", "child branch", parent_id=parent, depth=2)
+
+    db.delete_web_node(parent)
+
+    remaining = {n["topic"] for n in db.unexplored_web_nodes(student["id"], "science")}
+    assert remaining == {"child branch"}, "a grandchild topic is still a good lesson"
+    assert db.get_web_node(child)["parent_id"] is None

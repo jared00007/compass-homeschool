@@ -140,6 +140,16 @@ example happens to use a computer, a recipe, or a car, that is context — it is
 not occupational education. If you cannot name the activity number and say what \
 artifact it produces, do not claim the credit.
 
+**How many minutes to claim.** The primary subject gets the full lesson length, \
+because the whole lesson is that subject. A secondary subject gets the minutes of \
+the *segment* that earns it — the 18 minutes he spends reading the source, the 15 \
+he spends writing about it. Not the whole lesson.
+
+Segments live inside the lesson, so **the secondary minutes added together must \
+not exceed the lesson's total length.** A 60-minute lesson has at most 60 minutes \
+of secondary segments to distribute, however many subjects you name. If that \
+forces you to choose, choose: two well-earned credits beat five thin ones.
+
 - Never claim a subject that isn't in the allowed list, and never inflate. The \
 parent has to defend these hours to a district. An over-credited hour is a \
 compliance problem, not a win — and a lesson that honestly credits one subject \
@@ -330,6 +340,30 @@ class LessonAgent:
             warnings.append(
                 f"Added the missing primary {subjects.label(primary)} credit."
             )
+
+        # The per-credit cap above is not enough on its own. Capping each credit
+        # at the lesson length still lets six subjects each claim most of the
+        # hour — a 60-minute history lesson was observed claiming 135 minutes
+        # across six subjects, so every minute was counted 2.25 times.
+        #
+        # The defensible rule: the primary subject gets the whole lesson, because
+        # the whole lesson is that subject. Secondary subjects are *segments
+        # within* it — the 18 minutes reading a source, the 15 minutes writing
+        # about it. Segments may overlap each other, but they cannot collectively
+        # exceed the lesson they sit inside. So secondaries are capped, together,
+        # at the lesson length.
+        secondary = [c for c in cleaned if c["subject"] != primary]
+        secondary_total = sum(c["minutes"] for c in secondary)
+        if secondary_total > estimated and secondary_total > 0:
+            scale = estimated / secondary_total
+            for credit in secondary:
+                credit["minutes"] = max(int(round(credit["minutes"] * scale)), 1)
+            warnings.append(
+                f"Secondary subjects claimed {secondary_total} min inside a "
+                f"{estimated} min lesson — scaled down to fit. Check they're still fair "
+                "before logging."
+            )
+            cleaned = [c for c in cleaned if c["minutes"] > 0]
 
         payload["subject_credits"] = cleaned
         payload.setdefault("branches", [])

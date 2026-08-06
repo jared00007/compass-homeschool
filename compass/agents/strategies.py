@@ -207,6 +207,13 @@ def spiderweb(ctx: StudentContext) -> TopicProposal:
             metadata={"seed": True, "location": location},
         )
 
+    # The parent may pick a specific branch rather than taking the pool's head.
+    chosen_id = ctx.inputs.get("node_id")
+    if chosen_id:
+        picked = ctx.db.get_web_node(int(chosen_id))
+        if picked and not picked["explored_on"]:
+            pool = [picked] + [n for n in pool if n["id"] != picked["id"]]
+
     if pool:
         node = pool[0]
         parent = ""
@@ -387,6 +394,25 @@ def timeline(ctx: StudentContext) -> TopicProposal:
             "Open branches from earlier lessons you may pick up instead: "
             + "; ".join(n["topic"] for n in pool[:5])
         )
+
+    chosen_id = ctx.inputs.get("node_id")
+    if chosen_id:
+        picked = ctx.db.get_web_node(int(chosen_id))
+        if picked and not picked["explored_on"]:
+            return TopicProposal(
+                topic=picked["topic"],
+                rationale=f"Picked from the open threads. {picked['rationale']}".strip(),
+                strategy="timeline",
+                guidance=guidance,
+                context_lines=context_lines,
+                metadata={
+                    "era": era_key,
+                    "era_label": era_label,
+                    "location": location,
+                    "node_id": picked["id"],
+                    "depth": picked["depth"],
+                },
+            )
 
     if seed:
         topic = seed
