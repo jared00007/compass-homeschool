@@ -364,3 +364,8 @@ base colours once at startup, so the parts of the page a live picker can't repai
 — the inside of a date picker, a text box, a dropdown menu — always show through in
 whatever base the app launched with. Keeping that base dark means it never clashes
 with whichever of the four is showing on top of it.
+
+**If the sidebar looks cut off** — the mode control or the Look picker missing
+below the nav links — it's a short browser window, not a missing feature. The
+sidebar scrolls independently now; put your mouse over it and scroll to reach
+anything below the fold. A taller window avoids it entirely.

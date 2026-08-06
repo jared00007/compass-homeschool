@@ -59,6 +59,19 @@ def test_css_is_balanced_and_carries_the_theme():
         assert "compass-theme" in css
 
 
+def test_css_forces_the_sidebar_to_scroll():
+    """Regression: Streamlit sets `height: auto` as an *inline* style on the
+    sidebar, so it grows to fit its content instead of the window. Once enough
+    controls stack up -- nine nav links, the profile editor, the mode control,
+    the theme picker -- that content outgrew a short browser window with no
+    scrollbar reachable anywhere, by mouse wheel or otherwise. `!important` is
+    the only thing in a stylesheet that beats an inline style."""
+    css = theme.css(theme.THEMES[theme.DEFAULT_THEME])
+    block = css.split('[data-testid="stSidebar"]', 1)[1].split("}")[0]
+    assert "height: 100vh !important" in block
+    assert "overflow-y: auto !important" in block
+
+
 def test_css_never_paints_metrics_in_the_accent():
     """Regression: every metric in the accent made compliance read as alarms."""
     css = theme.css(theme.THEMES["blueprint"])

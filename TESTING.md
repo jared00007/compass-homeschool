@@ -63,6 +63,14 @@ Prove the thing runs before testing what it does.
   yours don't affect each other; switching between parent and student view always shows
   the right one back.*
 
+- [ ] **The sidebar scrolls on a short window**
+  Shrink the browser window's height until the sidebar's content is clearly taller than
+  it. Scroll with the mouse over the sidebar.
+  *Pass: the sidebar scrolls independently of the page and reaches the mode control and
+  the Look picker at the bottom. If nothing scrolls no matter where you try, that's the
+  bug this item exists to catch — say so rather than just resizing back to a taller
+  window and moving on.*
+
 ---
 
 ## 2 · Each agent generates — *≈ $1.10*

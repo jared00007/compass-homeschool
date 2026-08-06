@@ -179,6 +179,16 @@ def css(theme: Theme) -> str:
 [data-testid="stSidebar"] {{
   background: var(--c-side);
   border-right: 1px solid var(--c-border);
+  /* Streamlit sets `height: auto` as an *inline* style on this element, which
+     beats any stylesheet rule regardless of selector specificity -- `!important`
+     is the only way a stylesheet wins that fight. Without it, the sidebar simply
+     grows to fit its content, and once enough controls stack up (nine nav links,
+     the profile editor, the mode control, the theme picker) that content outgrows
+     a short window with nothing to scroll: not the sidebar, not the page behind
+     it. Confirmed live: a 760px-tall window clipped everything below "Parent
+     view" with no scrollbar reachable by any means, including the mouse wheel. */
+  height: 100vh !important;
+  overflow-y: auto !important;
 }}
 [data-testid="stSidebarNavSeparator"] {{ border-color: var(--c-border); }}
 
