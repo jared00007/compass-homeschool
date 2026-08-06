@@ -398,11 +398,10 @@ claimed video is accepted only if both hold:
 Every rejection surfaces as a warning, the same pattern as credit normalization —
 a silent downgrade would be worse than not checking at all.
 
-**Rendered parent-only, never to the student**, for the same reason a lot of
-things here are: a video link is an on-ramp to the open web — autoplay, related
-videos, comments — that Compass can verify the destination of but not what
-happens after he's there. The parent previews it and shares the link directly,
-the same "read it before he does" pattern as the rest of a lesson.
+**Rendered to both parent and student.** Unlike the answer key, a verified video
+is meant for him directly — there's nothing left to redact once it's passed both
+checks above. The parent's copy carries one extra line the student's doesn't:
+Compass verifies the video itself, not what YouTube recommends once it ends.
 
 ## Tests
 

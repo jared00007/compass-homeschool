@@ -223,12 +223,13 @@ Take Science or History somewhere you know well and check the specifics. Real pl
 real species, real dates — or plausible-sounding filler? It has been accurate in testing,
 but you know your own ground better than any search result.
 
-### The suggested video, before you share it
+### The suggested video
 
-Any lesson may come with one **▶️ Suggested video**, tucked in the parent-only part of the
-lesson. It's there because seeing a technique worked in real time, or real footage of
-something the lesson only describes, teaches things a page of text can't. Two guardrails
-sit behind it:
+Any lesson may come with one **▶️ Suggested video**, and he sees it directly — it's not
+locked behind the parent view like the answer key is. It's there because seeing a
+technique worked in real time, or real footage of something the lesson only describes,
+teaches things a page of text can't. Two guardrails sit behind it before it ever reaches
+either of you:
 
 - It only appears when the agent actually found a specific, real video through a live
   search — never one recalled from memory. If nothing suitable turns up, the section is
@@ -236,9 +237,9 @@ sit behind it:
 - It's restricted to YouTube. Not because other sites don't have good teaching videos, but
   because YouTube is the one platform you already know how to preview and set limits on.
 
-That said, **preview it yourself and hand him the link directly** — don't just point him at
-the open YouTube app. Compass can verify the video itself is real and on-topic; it has no
-say over what YouTube recommends the moment the video ends.
+Compass verifies the video itself is real and on-topic; it has no say over what YouTube
+recommends the moment the video ends, which is worth being aware of even though he can
+now open the link himself.
 
 ### Lessons that are impressive but not teachable
 
@@ -348,8 +349,9 @@ He shouldn't be reading the answer key to a test he's about to take. Set a PIN i
 the sidebar (**Set a parent PIN**) and Compass splits into two views.
 
 **What he sees:** today's lessons — objectives, activities, instructions,
-materials — plus his reading progress, vocabulary review, and his own Tier 3
-topics. Enough to do the work without you narrating it.
+materials, a suggested video when there is one — plus his reading progress,
+vocabulary review, and his own Tier 3 topics. Enough to do the work without you
+narrating it.
 
 **What only you see:** assessments and answer keys, mastery criteria, parent
 notes, subject credits, lesson generation, the compliance record, costs, and

@@ -166,14 +166,18 @@ def test_parent_view_shows_everything(monkeypatch):
     assert "Sort the relations" in page
     assert "Functions Explained With Real Examples" in page
     assert "https://www.youtube.com/watch?v=abc123" in page
+    assert "Compass doesn't control what YouTube recommends" in page
 
 
-def test_student_view_never_sees_the_suggested_video(monkeypatch):
-    """A video link is an on-ramp to the open web -- the parent previews it first,
-    same as everything else that isn't the day's actual work."""
+def test_student_view_also_sees_the_suggested_video(monkeypatch):
+    """Unlike the answer key, a verified video is meant for him too -- it's
+    checked against a real search result and restricted to YouTube before it
+    ever reaches the renderer, so there's nothing left to redact."""
     page = _rendered(monkeypatch, for_parent=False)
-    assert "Functions Explained With Real Examples" not in page
-    assert "youtube.com" not in page
+    assert "Functions Explained With Real Examples" in page
+    assert "https://www.youtube.com/watch?v=abc123" in page
+    # The parent-only "here's why this is safe" framing stays parent-side, though.
+    assert "Compass doesn't control what YouTube recommends" not in page
 
 
 def test_no_video_section_when_none_was_found(monkeypatch):

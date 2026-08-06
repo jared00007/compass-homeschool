@@ -281,24 +281,28 @@ def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> Non
                 "There's a check at the end of this lesson — your parent has it."
             )
 
+    # Shown to both views. Verified against a real search result and restricted
+    # to YouTube (see compass/agents/video.py) before it ever gets this far, so
+    # there's nothing here for the student's version to redact.
+    video = lesson.get("video") or {}
+    if video.get("found") and video.get("url"):
+        with st.expander(f"▶️ Suggested video — {video.get('title') or 'watch'}"):
+            st.markdown(f"**[{video.get('title', 'Watch')}]({video['url']})**")
+            if video.get("channel"):
+                st.caption(video["channel"])
+            if video.get("why"):
+                st.write(video["why"])
+            if parent:
+                st.caption(
+                    "Checked against a real search result and restricted to YouTube, "
+                    "but Compass doesn't control what YouTube recommends once the "
+                    "video ends."
+                )
+
     if parent:
         if lesson.get("parent_notes"):
             with st.expander("Notes for the parent"):
                 st.write(lesson["parent_notes"])
-
-        video = lesson.get("video") or {}
-        if video.get("found") and video.get("url"):
-            with st.expander(f"▶️ Suggested video — {video.get('title') or 'watch'}"):
-                st.markdown(f"**[{video.get('title', 'Watch')}]({video['url']})**")
-                if video.get("channel"):
-                    st.caption(video["channel"])
-                if video.get("why"):
-                    st.write(video["why"])
-                st.caption(
-                    "Preview it and share the link yourself rather than handing him the "
-                    "open YouTube app — Compass can verify the video, not what it "
-                    "recommends afterward."
-                )
 
         credits = lesson.get("subject_credits") or []
         if credits:

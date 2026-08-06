@@ -331,17 +331,20 @@ The tests only you can run. Slow down here — this decides whether you trust it
   *Pass: real species, real dates, real place names — not plausible-sounding filler.*
 
 - [ ] ⚠ **CRITICAL — A suggested video, when there is one, is real and on-topic**
-  Generate a few lessons across different agents. When **▶️ Suggested video** appears
-  (parent view only), open the link yourself before doing anything else with it.
+  Generate a few lessons across different agents (as the parent, before he ever sees them).
+  When **▶️ Suggested video** appears, open the link yourself before he does.
   *Pass: the link actually opens, and the video genuinely matches today's topic. If a
   link is dead, wrong, or the section never appears at all across several lessons — the
   second is normal and not a bug, since a good video isn't always out there — note which.
-  What would be a real problem: a link that doesn't work or doesn't match.*
+  What would be a real problem: a link that doesn't work or doesn't match. Since he'll see
+  this one directly, this check matters more than most.*
 
-- [ ] **The video suggestion stays on your side of the PIN**
+- [ ] **The video suggestion reaches student view too**
   With a PIN set and a lesson that has a suggested video, switch to student view and open
   the same lesson.
-  *Pass: no video section anywhere in student view — not collapsed, not hinted at, absent.*
+  *Pass: unlike the answer key, the video section is there for him too — title, channel,
+  and link all visible. The parent-only line about YouTube's own recommendations should
+  NOT appear in his view.*
 
 - [ ] **Math assessments are gradeable**
   Read a math lesson's mastery criteria.
