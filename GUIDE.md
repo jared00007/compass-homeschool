@@ -185,8 +185,10 @@ Generate one lesson from each agent. Read them as a teacher, not a tester: would
 actually teach this? Is it pitched right for him? Roughly $1 total.
 
 **Week 2 — Load his real state.**
-Math mastery, the book he's reading, the life-skills checklist edited to what you care
-about. Let him add three or four Tier 3 topics himself. Costs nothing.
+His actual name, grade, age, and interests (sidebar → **✏️ Edit his profile** — interests
+feed every agent's prompt, so this isn't cosmetic), math mastery, the book he's reading,
+the life-skills checklist edited to what you care about. Let him add three or four Tier 3
+topics himself. Costs nothing.
 
 **Week 3 — Run a full week as if it were school.**
 Generate, teach, log, record mastery. This is where you find out whether the daily loop

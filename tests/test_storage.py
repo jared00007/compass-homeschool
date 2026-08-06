@@ -156,3 +156,30 @@ def test_unexplored_web_nodes_prefer_the_current_location(db, student):
     db.add_web_node(student["id"], "science", "salmon runs", location="Hoh River", depth=3)
     nodes = db.unexplored_web_nodes(student["id"], "science", location="Hoh River")
     assert nodes[0]["topic"] == "salmon runs", "location match beats shallower depth"
+
+
+def test_update_student_changes_only_the_named_fields(db, student):
+    db.update_student(student["id"], name="Sam", grade="8", age=13, interests="guitar")
+    reloaded = db.get_student(student["id"])
+    assert reloaded["name"] == "Sam"
+    assert reloaded["interests"] == "guitar"
+
+    db.update_student(student["id"], grade="9")
+    reloaded = db.get_student(student["id"])
+    assert reloaded["grade"] == "9"
+    assert reloaded["name"] == "Sam", "an unrelated field must not be reset"
+
+
+def test_update_student_ignores_unknown_fields(db, student):
+    """The sidebar form only ever sends the four real columns, but the method
+    itself should refuse to become a general-purpose SQL injection point."""
+    db.update_student(student["id"], name="Sam", is_admin=True, agent="root")
+    reloaded = db.get_student(student["id"])
+    assert reloaded["name"] == "Sam"
+    assert "is_admin" not in reloaded and "agent" not in reloaded
+
+
+def test_update_student_with_no_recognised_fields_is_a_no_op(db, student):
+    before = db.get_student(student["id"])
+    db.update_student(student["id"])
+    assert db.get_student(student["id"]) == before

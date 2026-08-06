@@ -38,8 +38,11 @@ Prove the thing runs before testing what it does.
   *Pass: every page renders, no red error boxes.*
 
 - [ ] **Student details are right**
-  Check the sidebar. If it says "Student", correct the name and grade.
-  *Pass: sidebar shows his name and Grade 8.*
+  Sidebar → **✏️ Edit his profile**. If it says "Student", correct the name, grade, age,
+  and interests, then Save.
+  *Pass: sidebar and Home immediately show his real name and grade. The "What each agent
+  would plan next" cards on Home pick up his interests too — that's the same field feeding
+  every lesson, not just cosmetic.*
 
 - [ ] **App survives without a key**
   Quit, rename `.env` to `.env.off`, relaunch. The launcher will ask for a key in the

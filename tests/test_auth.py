@@ -162,3 +162,45 @@ def test_parent_view_shows_everything(monkeypatch):
 def test_student_view_hides_compliance_credit_detail(monkeypatch):
     page = _rendered(monkeypatch, for_parent=False)
     assert "Whole lesson." not in page
+
+
+def test_profile_editor_is_parent_only(monkeypatch, tmp_path):
+    """His name, age, and interests feed every agent's prompt — configuration,
+    not a preference — so he must not be able to open, let alone submit, this
+    form himself."""
+    import compass.ui as ui
+
+    written: list[str] = []
+
+    class Recorder:
+        def __getattr__(self, _name):
+            def record(*args, **kwargs):
+                for arg in args:
+                    if isinstance(arg, str):
+                        written.append(arg)
+                return Recorder()
+            return record
+
+        def __getitem__(self, _index):
+            return Recorder()
+
+        def __iter__(self):
+            return iter([Recorder(), Recorder()])
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    from compass.storage.db import Database
+
+    db = Database(tmp_path / "test.db")
+    student = db.ensure_default_student()
+
+    monkeypatch.setattr(ui, "st", Recorder())
+    monkeypatch.setattr(ui, "is_parent", lambda: False)
+    ui._profile_control(db, student)
+    db.close()
+
+    assert not written, "the student-view branch must render nothing at all"
