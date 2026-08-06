@@ -27,9 +27,18 @@ def test_every_theme_is_self_consistent():
     for key, t in theme.THEMES.items():
         assert t.key == key, "the dict key and the theme's own key must agree"
         assert t.name and t.tagline
-        for field in ("bg", "panel", "side", "text", "dim", "primary", "alt", "border"):
+        for field in ("panel", "text", "dim", "primary", "alt", "border"):
             value = getattr(t, field)
             assert re.fullmatch(r"#[0-9A-Fa-f]{6}", value), f"{key}.{field} = {value!r}"
+
+
+def test_theme_has_no_bg_or_side_of_its_own():
+    """The backdrop is fixed app-wide (BACKDROP_BG/BACKDROP_SIDE) precisely so no
+    theme can carry its own version to override it with."""
+    assert not hasattr(theme.THEMES[theme.DEFAULT_THEME], "bg")
+    assert not hasattr(theme.THEMES[theme.DEFAULT_THEME], "side")
+    assert re.fullmatch(r"#[0-9A-Fa-f]{6}", theme.BACKDROP_BG)
+    assert re.fullmatch(r"#[0-9A-Fa-f]{6}", theme.BACKDROP_SIDE)
 
 
 def test_the_default_theme_exists():
@@ -55,8 +64,56 @@ def test_css_is_balanced_and_carries_the_theme():
         assert css.count("{") == css.count("}"), f"{key} has unbalanced braces"
         assert "{{" not in css and "}}" not in css, f"{key} leaked f-string escapes"
         assert f'data-theme="{key}"' in css
-        assert t.bg in css and t.primary in css and t.border in css
+        assert t.primary in css and t.border in css
         assert "compass-theme" in css
+
+
+def test_css_backdrop_is_identical_across_every_theme():
+    """The literal claim made to the user: switching themes cannot move the
+    page ground or the sidebar, because every theme's CSS is generated from the
+    same two fixed constants rather than a per-theme field."""
+    outputs = [theme.css(t) for t in theme.THEMES.values()]
+    for css in outputs:
+        assert f".stApp {{ background: {theme.BACKDROP_BG};" in css
+        assert f'background: {theme.BACKDROP_SIDE};' in css
+
+
+def test_container_mechanics_are_present_for_every_theme():
+    """panel/texture/glow/border framing must reach the real containers --
+    expanders, alerts, metrics -- not just live in unused CSS variables."""
+    for key, t in theme.THEMES.items():
+        css = theme.css(t)
+        assert '[data-testid="stExpander"] details,' in css
+        assert '[data-testid="stMetric"] {' in css
+        assert "--c-panel-texture" in css
+        assert "--c-top-bar" in css
+
+
+def test_arcades_two_tone_border_is_wired_to_its_own_colours():
+    t = theme.THEMES["arcade"]
+    css = theme.css(t)
+    assert f"--c-border-top: {t.primary};" in css
+    assert f"--c-border-bottom: {t.alt};" in css
+
+
+def test_highvis_is_the_only_theme_with_a_real_top_bar():
+    for key, t in theme.THEMES.items():
+        css = theme.css(t)
+        if key == "highvis":
+            assert "var(--c-primary) 0 6px" in t.top_bar
+        else:
+            assert t.top_bar == "transparent", key
+
+
+def test_comic_book_is_registered_and_distinct():
+    assert "comic" in theme.THEMES
+    comic = theme.THEMES["comic"]
+    assert comic.heading_stroke != "0px"
+    assert comic.heading_fill == "var(--c-primary)"
+    # every other theme leaves the page title in plain text colour
+    for key, t in theme.THEMES.items():
+        if key != "comic":
+            assert t.heading_fill == "var(--c-text)", key
 
 
 def test_css_forces_the_sidebar_to_scroll():

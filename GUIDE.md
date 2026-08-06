@@ -381,18 +381,25 @@ ever see an answer inside an activity, that's a real bug worth reporting.
 ## Look
 
 There's a **🎨 Look** picker in the sidebar, below the mode control, on every
-page. Four themes — Tech Tree, Arcade, High-Vis, Blueprint — each a genuinely
-different colour and type treatment, not a recolour of the same layout.
+page. Five themes — Comic Book, Arcade, Tech Tree, High-Vis, Blueprint — each a
+genuinely different colour and type treatment, not a recolour of the same layout.
 
 His pick and yours are stored separately. He can make Compass look like whatever
 gets him to open it without asking, and it has no effect on what you see when you
 unlock. Neither of you can break the other's — change one, the other is untouched.
 
-All four are dark. That's a real constraint, not an oversight: Streamlit reads its
+**The page itself never changes colour — only what sits on it does.** The
+background and the sidebar are the same near-black in all five; what a theme
+actually repaints is the containers — the expanders lessons open into, the
+warning banners, the little tiles showing his hours and skill counts. That split
+is deliberate: five backgrounds fighting for attention would be exhausting to read
+for an hour, but five distinct ways of framing the same content is just decor.
+
+All five are dark. That's a real constraint, not an oversight: Streamlit reads its
 base colours once at startup, so the parts of the page a live picker can't repaint
 — the inside of a date picker, a text box, a dropdown menu — always show through in
 whatever base the app launched with. Keeping that base dark means it never clashes
-with whichever of the four is showing on top of it.
+with whichever of the five is showing on top of it.
 
 **If the sidebar looks cut off** — the mode control or the Look picker missing
 below the nav links — it's a short browser window, not a missing feature. The

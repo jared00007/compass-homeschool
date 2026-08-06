@@ -57,11 +57,17 @@ Prove the thing runs before testing what it does.
   *Pass: reports `Saved to .env`, the file now exists, and you aren't asked again next launch.*
 
 - [ ] **Themes switch, and stay separate**
-  Sidebar → **🎨 Look**. Pick a different theme. Then set a parent PIN, switch to student
-  view, and pick a different one there.
-  *Pass: each page repaints instantly — sidebar, cards, buttons, metrics. His pick and
-  yours don't affect each other; switching between parent and student view always shows
-  the right one back.*
+  Sidebar → **🎨 Look**. Try all five (Comic Book, Arcade, Tech Tree, High-Vis, Blueprint).
+  Then set a parent PIN, switch to student view, and pick a different one there.
+  *Pass: each page repaints instantly — expanders, warning banners, the metric tiles on
+  Home and Compliance. His pick and yours don't affect each other; switching between
+  parent and student view always shows the right one back.*
+
+- [ ] **The page background never actually changes**
+  Flip between all five themes on any page.
+  *Pass: the background and the sidebar stay the exact same near-black throughout — only
+  the cards, tiles, and banners on top of it change colour. If the page itself shifts
+  colour when you switch themes, that's a bug — the backdrop is supposed to be fixed.*
 
 - [ ] **The sidebar scrolls on a short window**
   Shrink the browser window's height until the sidebar's content is clearly taller than

@@ -264,8 +264,8 @@ compass/
   storage/                   SQLite schema + repository
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
-  theme.py                   the four themes and the CSS that applies one
-tests/                       168 tests, no API key required
+  theme.py                   the five themes and the CSS that applies one
+tests/                       174 tests, no API key required
 ```
 
 `compass/` knows nothing about Streamlit — the agents, storage, and compliance
@@ -277,9 +277,10 @@ still unit-testable.
 
 ## Theming
 
-Four themes (Tech Tree, Arcade, High-Vis, Blueprint), picked independently by
-parent and student from a sidebar control on every page, stored as two settings
-keys (`theme_parent`, `theme_student`) so neither view can override the other's.
+Five themes (Comic Book, Arcade, Tech Tree, High-Vis, Blueprint), picked
+independently by parent and student from a sidebar control on every page, stored
+as two settings keys (`theme_parent`, `theme_student`) so neither view can
+override the other's.
 
 Streamlit reads `.streamlit/config.toml` once at process start and, as of 1.61,
 declares no CSS custom properties of its own — theme values are baked directly
@@ -290,6 +291,19 @@ part of Streamlit's DOM that's stable across releases (its own test suite depend
 on them). The stylesheet is injected fresh at the top of `page_setup()`, before
 anything else renders, so a page never flashes the previous theme.
 
+**The backdrop is structurally fixed, not just visually consistent.** `BACKDROP_BG`
+and `BACKDROP_SIDE` are module-level constants, not fields on `Theme` — no theme
+instance carries its own version to override them with, so `.stApp` and the
+sidebar always render from the same two hex values regardless of which theme is
+active. Every `Theme` field instead targets the *containers*: expanders, alert
+banners, and `st.metric` tiles all share one set of rules (`panel`, `panel_texture`,
+`border`, `glow`), so a theme only has to say what its containers look like once.
+A few themes layer on a signature touch through the same generic mechanism —
+Arcade's two-tone top/bottom border (`border_top`/`border_bottom`), High-Vis's
+hazard-chevron top bar (`top_bar`), Comic Book's inked page-title stroke
+(`heading_stroke`/`heading_fill`) — each expressed as a CSS variable that defaults
+to a no-op for the other four themes, rather than per-theme conditionals in `css()`.
+
 Two things this approach can't do, and why the shipped themes work around them
 rather than fighting them:
 
@@ -299,7 +313,7 @@ rather than fighting them:
 - **Popovers, date pickers, and text inputs partly follow the config base too.**
   Reachable surface gets repainted; the rest falls back to whatever base
   `config.toml` set at launch. This is why `config.toml`'s base is a neutral dark
-  and all four shipped themes are dark — a light theme would need the config base
+  and all five shipped themes are dark — a light theme would need the config base
   changed and the app relaunched, which a runtime picker cannot do.
 
 One regression worth naming: an early build painted every `st.metric` value in
@@ -309,6 +323,9 @@ ordinary September Tuesday. Metrics now render in the theme's text colour;
 the accent is reserved for things that actually need the reader's action, kept
 strictly apart from semantic colour (`good`/`warn`/`bad`) so a warning never
 borrows the same hue as "here's your next lesson." Both rules are pinned by test.
+`st.metric` itself did get a container treatment in the round that added the other
+four fields — background, border, texture, and glow, same as an expander — so the
+numbers on Home and Compliance read as distinct tiles rather than bare text.
 
 ---
 
@@ -426,7 +443,7 @@ Compass verifies the video itself, not what YouTube recommends once it ends.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 87 tests, ~2s, no API key needed
+python -m pytest tests/ -q      # 174 tests, ~5s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the
