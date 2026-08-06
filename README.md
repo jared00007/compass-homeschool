@@ -8,6 +8,7 @@ This is a fresh, standalone build — local SQLite, a Streamlit UI, and four
 subject agents on the Anthropic API.
 
 **New here?** Read [GUIDE.md](GUIDE.md) — the parent-facing guide to how it works day to day.
+**Testing before the school year?** [TESTING.md](TESTING.md) — 56 checks, in the order that finds problems soonest.
 
 ## Running it
 
