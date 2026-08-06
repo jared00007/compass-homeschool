@@ -7,6 +7,7 @@ from datetime import date
 import streamlit as st
 
 from compass import config
+from compass.agents import life_skills
 from compass.compliance import build_report
 from compass.curriculum import frontier_report
 from compass.subjects import label
@@ -22,10 +23,12 @@ if not is_parent():
     st.title(f"Hi {student['name'].split()[0]} 👋")
     st.caption("Here's what's set up for you. Open a subject in the sidebar for the details.")
 
+    # Life-skill plans live in the same table but are written *to the parent* —
+    # "demonstrate once, then hand him the jack and stay quiet" is not his to read.
     planned = [
         lesson
         for lesson in db.list_lessons(student["id"], limit=25)
-        if lesson["status"] == "planned"
+        if lesson["status"] == "planned" and lesson["agent"] != life_skills.AGENT_KEY
     ]
 
     if not planned:

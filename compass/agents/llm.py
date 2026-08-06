@@ -155,6 +155,7 @@ def generate_lesson(
     user_prompt: str,
     *,
     use_web_search: bool = False,
+    schema: dict[str, Any] | None = None,
     model: str = config.DEFAULT_MODEL,
     effort: str = config.DEFAULT_EFFORT,
     max_tokens: int = config.DEFAULT_MAX_TOKENS,
@@ -165,6 +166,12 @@ def generate_lesson(
     `use_web_search` turns on Anthropic's server-side web search so the
     location-aware agents can ground a lesson in facts about where the family
     actually is this week.
+
+    `schema` defaults to the Tier 1 lesson shape. The life-skills planner passes
+    its own, because a plan for teaching a tire change is not a lesson with an
+    answer key — but everything else about the request path is identical, and
+    duplicating the retry, refusal, and usage-capture logic to say so would be a
+    poor trade.
     """
     import anthropic
 
@@ -181,7 +188,7 @@ def generate_lesson(
         "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
         "output_config": {
             "effort": effort,
-            "format": {"type": "json_schema", "schema": LESSON_SCHEMA},
+            "format": {"type": "json_schema", "schema": schema or LESSON_SCHEMA},
         },
         "messages": messages,
     }

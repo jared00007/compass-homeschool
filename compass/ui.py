@@ -229,6 +229,66 @@ def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> Non
                     st.markdown(f"- **{branch.get('topic')}** — {branch.get('rationale', '')}")
 
 
+def render_life_skill_plan(plan: dict[str, Any]) -> None:
+    """Render a life-skill teaching plan. Parent-facing throughout.
+
+    Unlike a Tier 1 lesson there's no student view of this and no redaction to
+    do: a life skill is something the parent runs standing next to him, so the
+    plan is addressed to them. Guard the call site, not the fields.
+    """
+    st.subheader(plan.get("title", "Session plan"))
+    if plan.get("overview"):
+        st.write(plan["overview"])
+
+    columns = st.columns(2)
+    with columns[0]:
+        prep = (plan.get("prep") or "").strip()
+        if prep and prep.lower().rstrip(".") != "nothing":
+            st.markdown("**Before you start**")
+            st.write(prep)
+    with columns[1]:
+        materials = plan.get("materials") or []
+        if materials:
+            st.markdown("**What you need**")
+            for item in materials:
+                st.markdown(f"- {item}")
+
+    steps = plan.get("steps") or []
+    if steps:
+        st.markdown("**How to run it**")
+        for index, step in enumerate(steps, start=1):
+            header = f"{index}. {step.get('title', 'Step')} · {step.get('minutes', 0)} min"
+            with st.expander(header, expanded=index == 1):
+                st.markdown("**He does**")
+                st.write(step.get("what_he_does", ""))
+                st.markdown("**You do**")
+                st.write(step.get("what_you_do", ""))
+
+    if plan.get("done_looks_like"):
+        st.success(f"**Done looks like:** {plan['done_looks_like']}")
+
+    watch_for = plan.get("watch_for") or []
+    if watch_for:
+        with st.expander(f"Where this goes wrong ({len(watch_for)})"):
+            for item in watch_for:
+                st.markdown(f"- {item}")
+
+    follow_ups = plan.get("follow_ups") or []
+    if follow_ups:
+        with st.expander("Making it stick"):
+            for item in follow_ups:
+                st.markdown(f"- {item}")
+
+    credits = plan.get("subject_credits") or []
+    if credits:
+        st.markdown("**Subject credit (feeds the WA compliance dashboard)**")
+        for credit in credits:
+            st.markdown(
+                f"- **{subjects.label(credit['subject'])}** — {credit['minutes']} min · "
+                f"{credit.get('justification', '')}"
+            )
+
+
 def log_lesson_form(
     db: Database,
     student: dict[str, Any],
@@ -237,6 +297,7 @@ def log_lesson_form(
     primary_subject: str,
     location: str = "",
     key_prefix: str = "log",
+    tier: str = config.TIER_CORE,
 ) -> None:
     """Let the parent confirm and log the hours this lesson actually took."""
     lesson = generated.payload
@@ -279,7 +340,7 @@ def log_lesson_form(
         db.log_activity(
             student_id=student["id"],
             title=lesson.get("title", "Lesson"),
-            tier=config.TIER_CORE,
+            tier=tier,
             primary_subject=primary_subject,
             minutes=int(minutes),
             subject_credits={k: v for k, v in credits.items() if v > 0},

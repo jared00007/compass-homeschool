@@ -425,6 +425,25 @@ class Database:
             row["metadata"] = json.loads(row["metadata"])
         return rows
 
+    def latest_life_skill_plan(self, student_id: int, skill_id: int) -> dict[str, Any] | None:
+        """The most recent generated plan for one life skill, if there is one.
+
+        Matched on the metadata rather than the title so that renaming a skill
+        doesn't orphan its plan.
+        """
+        row = _row(
+            self.conn.execute(
+                "SELECT * FROM lessons WHERE student_id = ? AND agent = 'life_skills' "
+                "AND json_extract(metadata, '$.life_skill_id') = ? "
+                "ORDER BY created_at DESC, id DESC LIMIT 1",
+                (student_id, skill_id),
+            )
+        )
+        if row:
+            row["payload"] = json.loads(row["payload"])
+            row["metadata"] = json.loads(row["metadata"])
+        return row
+
     def lesson_usage_between(
         self, student_id: int, start: str, end: str
     ) -> list[dict[str, Any]]:

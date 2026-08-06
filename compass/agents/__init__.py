@@ -1,4 +1,8 @@
-"""Tier 1 agents. Importing this package registers all four."""
+"""Tier 1 agents. Importing this package registers all four.
+
+`life_skills` is exported alongside them but deliberately *not* registered: it has
+no next-topic strategy because it never chooses a topic. The parent does.
+"""
 
 from compass.agents.framework import (
     AgentSpec,
@@ -11,6 +15,7 @@ from compass.agents.framework import (
     register,
 )
 from compass.agents.llm import LessonGenerationError, api_available
+from compass.agents import life_skills
 
 from compass.agents.math_agent import AGENT as MATH_AGENT
 from compass.agents.science_agent import AGENT as SCIENCE_AGENT
@@ -34,5 +39,6 @@ __all__ = [
     "all_agents",
     "api_available",
     "get_agent",
+    "life_skills",
     "register",
 ]

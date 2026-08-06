@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
 from compass import config, subjects
+from compass.agents.credits import normalize_credits
 from compass.agents.llm import LessonGenerationError, generate_lesson
 from compass.storage.db import Database
 
@@ -278,94 +279,12 @@ class LessonAgent:
         The compliance dashboard reads these numbers directly, so this is the
         one place where being strict matters more than being agreeable.
         """
-        warnings: list[str] = []
-        allowed = set(self.allowed_subjects)
-
-        activities = payload.get("activities") or []
-        activity_minutes = sum(int(a.get("minutes") or 0) for a in activities)
-        estimated = int(payload.get("estimated_minutes") or 0)
-        if activity_minutes and abs(activity_minutes - estimated) > 5:
-            payload["estimated_minutes"] = activity_minutes
-            estimated = activity_minutes
-            warnings.append(
-                f"Adjusted total time to {activity_minutes} min to match the listed activities."
-            )
-        if estimated <= 0:
-            payload["estimated_minutes"] = ctx.minutes
-            estimated = ctx.minutes
-
-        cleaned: list[dict[str, Any]] = []
-        seen: set[str] = set()
-        for credit in payload.get("subject_credits") or []:
-            subject = credit.get("subject")
-            minutes = int(credit.get("minutes") or 0)
-            if not subjects.is_valid(subject):
-                warnings.append(f"Dropped credit for unknown subject '{subject}'.")
-                continue
-            if subject not in allowed:
-                warnings.append(
-                    f"Dropped {subjects.label(subject)} credit — outside this agent's scope."
-                )
-                continue
-            if subject in seen:
-                warnings.append(f"Merged a duplicate {subjects.label(subject)} credit.")
-                continue
-            if minutes <= 0:
-                continue
-            if minutes > estimated:
-                warnings.append(
-                    f"Capped {subjects.label(subject)} at the lesson's {estimated} min "
-                    f"(claimed {minutes})."
-                )
-                minutes = estimated
-            seen.add(subject)
-            cleaned.append(
-                {
-                    "subject": subject,
-                    "minutes": minutes,
-                    "justification": credit.get("justification", ""),
-                }
-            )
-
-        primary = self.spec.primary_subject
-        if primary not in seen:
-            cleaned.insert(
-                0,
-                {
-                    "subject": primary,
-                    "minutes": estimated,
-                    "justification": "Primary subject for this agent.",
-                },
-            )
-            warnings.append(
-                f"Added the missing primary {subjects.label(primary)} credit."
-            )
-
-        # The per-credit cap above is not enough on its own. Capping each credit
-        # at the lesson length still lets six subjects each claim most of the
-        # hour — a 60-minute history lesson was observed claiming 135 minutes
-        # across six subjects, so every minute was counted 2.25 times.
-        #
-        # The defensible rule: the primary subject gets the whole lesson, because
-        # the whole lesson is that subject. Secondary subjects are *segments
-        # within* it — the 18 minutes reading a source, the 15 minutes writing
-        # about it. Segments may overlap each other, but they cannot collectively
-        # exceed the lesson they sit inside. So secondaries are capped, together,
-        # at the lesson length.
-        secondary = [c for c in cleaned if c["subject"] != primary]
-        secondary_total = sum(c["minutes"] for c in secondary)
-        if secondary_total > estimated and secondary_total > 0:
-            scale = estimated / secondary_total
-            for credit in secondary:
-                credit["minutes"] = max(int(round(credit["minutes"] * scale)), 1)
-            warnings.append(
-                f"Secondary subjects claimed {secondary_total} min inside a "
-                f"{estimated} min lesson — scaled down to fit. Check they're still fair "
-                "before logging."
-            )
-            cleaned = [c for c in cleaned if c["minutes"] > 0]
-
-        payload["subject_credits"] = cleaned
+        warnings = normalize_credits(
+            payload,
+            primary=self.spec.primary_subject,
+            allowed=self.allowed_subjects,
+            fallback_minutes=ctx.minutes,
+        )
         payload.setdefault("branches", [])
         payload.setdefault("materials", [])
         payload.setdefault("learning_objectives", [])

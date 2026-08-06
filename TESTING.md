@@ -40,8 +40,8 @@ Prove the thing runs before testing what it does.
   Quit, rename `.env` to `.env.off`, relaunch. The launcher will ask for a key in the
   Terminal — **press Enter to skip it**.
   *Pass: it says it's running without a key, then a red banner appears on the four agent
-  pages. Compliance, Activity Log, Math → The graph, Choice Topics and Life Skills all
-  still work. Rename the file back after.*
+  pages and on Life Skills → Plan a session. Compliance, Activity Log, Math → The graph,
+  Choice Topics and the Life Skills checklist all still work. Rename the file back after.*
 
 - [ ] **The key prompt writes the file for you**
   With no `.env` present, relaunch and paste your key at the Terminal prompt instead of
@@ -172,6 +172,25 @@ The highest-value hour in this whole plan, and it costs nothing.
 - [ ] **Life skill hours log**
   Life Skills → Log time → tick "Mark this skill complete".
   *Pass: hours land under Core life skills; Health or Occupational Education gains coverage.*
+
+- [ ] **A life-skill plan is worth having** — *≈ $0.20*
+  Life Skills → Plan a session. Pick something hands-on and write a plan.
+  *Pass: you could run it on Saturday without further thought. Real tools, real amounts,
+  a step where it tells you to shut up and let him struggle. If it reads like a lecture
+  outline, that's a finding.*
+
+- [ ] ⚠ **CRITICAL — It plans, it doesn't choose**
+  Read the plan for anything it says about *which* skill he should do.
+  *Pass: nothing. It should never propose a different skill or claim he needs a
+  prerequisite first. That's your call and it isn't invited.*
+
+- [ ] **Plans stay on your side of the PIN**
+  With a PIN set, switch to student view and open Home and Life Skills.
+  *Pass: no teaching plan anywhere. "Demonstrate once then stay quiet" is not his to read.*
+
+- [ ] **The plan is saved, not re-bought**
+  Leave the page, come back, reselect the same skill.
+  *Pass: the plan is still there without spending anything.*
 
 ---
 

@@ -22,7 +22,7 @@ trust it further than it deserves.
 | **Tier 1 — core subjects** | The app | Math, Science, English, History. Each agent picks the next topic from his actual state, then writes the lesson. You approve, teach, and log it. |
 | **Tier 2 — folded in** | The app | Reading, writing, spelling, art and music aren't separate lessons. They're earned inside Tier 1 work — a field journal entry is real writing. The agent claims those credits and must justify each one. |
 | **Tier 3 — his choice** | **He does** | A list he curates, you approve. Coding, guitar, whatever he's into. No agent, no "optimal next step," no prerequisites. This is the counterweight to Tier 1's structure — protect it. |
-| **Core life skills** | **You do** | Budgeting, cooking, changing a tire, writing a decent email. A checklist you maintain. Deliberately not agent-generated — and in practice where most Health and Occupational Education coverage comes from. |
+| **Core life skills** | **You pick, it plans** | Budgeting, cooking, changing a tire, writing a decent email. A checklist you maintain — nothing chooses skills for you. Once you've picked one, Compass will write you a plan for teaching it. In practice this is where most Health and Occupational Education coverage comes from. |
 
 ---
 
@@ -93,6 +93,40 @@ You have three moves, all on the Science and History pages:
 And if you want to start something completely unrelated, just type it into the seed topic
 box. That begins a new thread; your existing branches stay exactly where they are, waiting.
 Nothing is discarded because you went somewhere new.
+
+---
+
+## Life skills: you choose, it plans
+
+There is no agent picking his next life skill, and there won't be. The four core
+agents exist because each answers something you genuinely can't answer off the top of
+your head — what he isn't ready for in a 50-skill chain, which era he's covered least,
+which vocabulary is due today. "Budgeting or changing a tire next?" isn't that
+question. You know your family, your week, and your vehicle.
+
+What is worth a model call is the blank page *after* you've decided. **Life Skills →
+Plan a session** takes a skill you picked and writes you something you could actually
+run on a Saturday: the order, the timing, what to demonstrate, where to shut up and
+let him do it badly, where it can genuinely hurt him, what "done" looks like, and an
+honest read on which required subjects it covers. It will never propose a different
+skill or tell you he needs a prerequisite first.
+
+A few things worth knowing:
+
+- **The plan is written to you, not him.** "Demonstrate once, then hand him the jack
+  and stay quiet" isn't his to read, so these never appear in the student view.
+- **Your subject choice wins.** Each skill carries a credit subject you set. The
+  planner credits that first and may add from a short list — health, occupational
+  education, math, reading, writing, language, social studies. It can't claim science;
+  that's the Science agent's ground, and letting both bill it would double-count.
+- **"Look things up first"** is off by default. Turn it on for anything whose rules or
+  prices change — permits, tax forms, insurance. Skip it for changing a tire. It's
+  slower and about 15¢ dearer.
+- Each plan costs roughly what a math lesson does, and shows up in the cost readout
+  under `life_skills` like everything else.
+
+One plan per skill is usually all you need — it's saved and comes back when you
+reopen the skill, so this isn't a per-session expense.
 
 ---
 

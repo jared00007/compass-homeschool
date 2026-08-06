@@ -116,7 +116,8 @@ disturbing the existing frontier, or dismiss a node — children are re-parented
 good lesson.
 
 **Rule of thumb, carried through:** use the least agency that solves the problem.
-Tier 3 and Core Life Skills are plain CRUD features with no agent at all, and the
+Tier 3 has no agent at all. Core Life Skills has no *strategy* — the parent picks
+the skill, and the model is only asked how to teach the one they picked. The
 orchestrator agent was deliberately not built.
 
 ---
@@ -187,8 +188,34 @@ prerequisite logic, no agent picking an "optimal next step" — that's the whole
 point. Hours count in full.
 
 **Core Life Skills.** Budgeting, cooking, vehicle maintenance, communication. A
-parent-maintained checklist, deliberately not agentic. In practice this is where
-most Health and Occupational Education coverage genuinely comes from.
+parent-maintained checklist. In practice this is where most Health and
+Occupational Education coverage genuinely comes from.
+
+Nothing here decides *what* comes next, and that's the deliberate part. A Tier 1
+agent earns its strategy by answering something the parent can't answer offhand —
+what he isn't ready for in a 50-node graph, which era is least covered, which
+vocabulary is due. "Budgeting or changing a tire next?" is not that question; a
+model picking from a checklist would be a dropdown in a costume.
+
+What does earn a model call is the blank page *after* that decision. `compass/
+agents/life_skills.py` turns a parent-chosen skill into a runnable session — order,
+timing, what to demonstrate, where to stay quiet, where it can genuinely hurt him,
+an observable completion bar, and honest subject credit. It is not registered in
+the agent registry, because it has no next-topic strategy to register.
+
+Two boundaries worth naming:
+
+- The skill's credit subject is set by the parent and is always the primary, even
+  when it's outside the planner's own shortlist — the starter checklist bills
+  "write a polite email" as Language, and quietly rebilling that as occupational
+  education would be the silent wrong answer this track exists to avoid. The
+  shortlist (health, occupational education, math, reading, writing, language,
+  social studies) bounds only what the *model* adds unprompted. `science` is
+  absent: cooking chemistry is a Science lesson, and letting both claim it would
+  double-count.
+- Plans are stored in the `lessons` table so the cost page bills them like
+  anything else, but they are filtered out of the student's home page. "Demonstrate
+  once, then hand him the jack and stay quiet" is written to the parent.
 
 ---
 
@@ -222,10 +249,12 @@ pages/                       Math, Science, English, History, Compliance,
                              Choice Topics, Life Skills, Activity Log
 compass/
   agents/
-    framework.py             LessonAgent, AgentSpec, credit normalization
+    framework.py             LessonAgent, AgentSpec, generation pipeline
+    credits.py               the one credit-policing implementation
     strategies.py            the four next-topic strategies
     llm.py                   Anthropic client, lesson JSON schema, error handling
     prompts.py               shared user-prompt assembly
+    life_skills.py           teaching plans for parent-chosen skills (no strategy)
     {math,science,english,history}_agent.py
   curriculum/math_graph.py   the hand-authored 50-node graph
   compliance/dashboard.py    WA hour/subject/tier reporting
@@ -234,7 +263,7 @@ compass/
   storage/                   SQLite schema + repository
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
-tests/                       87 tests, no API key required
+tests/                       120 tests, no API key required
 ```
 
 `compass/` knows nothing about Streamlit — the agents, storage, and compliance
