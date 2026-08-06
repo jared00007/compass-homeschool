@@ -7,7 +7,7 @@ correspond to nothing real. A dead or wrong link is a minor annoyance; a fabrica
 one that happens to resolve to something unrelated (or unsuitable) is worse than no
 suggestion at all.
 
-So a claimed video is trusted only if both hold:
+So a claimed video is trusted only if all three hold:
 
 1. Its URL corresponds to one the model's own web search actually returned this
    generation — not recalled from training data. `llm.py` collects every URL
@@ -20,13 +20,28 @@ So a claimed video is trusted only if both hold:
 2. That URL is on a small allowlist of video hosts a parent already knows how to
    preview and control. A real, search-verified link to an unknown site is still
    not something this app will vouch for.
+3. Its claimed channel is on this subject's own short list of vetted educational
+   channels (`TRUSTED_CHANNELS`). This one is honest about its limits: Anthropic's
+   search results give a title and URL, not a verified uploader, so `channel` is
+   still the model's own claim rather than something this module can independently
+   confirm. What narrows the risk is upstream, not this check alone -- the prompt
+   directs the model to search *by channel name* ("Khan Academy two-step
+   equations," not just "two-step equations"), so a real search naturally surfaces
+   that channel's own uploads. This check then closes the loop: if the model
+   claims a channel outside the approved list, the video is dropped regardless of
+   how real or on-topic it otherwise looks. A cryptographic guarantee -- actually
+   looking up the video's channel ID via the YouTube Data API -- would need a new
+   API key and quota for a family homeschool app; this project's calibration has
+   been the least infrastructure that solves the problem, so that's a deliberate
+   choice to skip unless a family wants it.
 
-Anything that fails either check is treated exactly like "no video was found" —
-never surfaced half-verified.
+Anything that fails any of the three is treated exactly like "no video was
+found" — never surfaced half-verified.
 """
 
 from __future__ import annotations
 
+import re
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -35,6 +50,53 @@ from urllib.parse import parse_qs, urlparse
 # and set restrictions on. Widen this list only if a family specifically wants
 # another host, not by default.
 TRUSTED_VIDEO_DOMAINS = frozenset({"youtube.com", "youtu.be", "m.youtube.com"})
+
+# One family's vetted list per subject, not a general "reputable education
+# channel" ranking -- a family that trusts a different set should edit this
+# directly. Channels appear on more than one list where that's genuinely true
+# (Khan Academy and Crash Course both cover several subjects); TRUSTED_CHANNELS
+# keys match each AgentSpec.key exactly, since that's what selects the list.
+TRUSTED_CHANNELS: dict[str, tuple[str, ...]] = {
+    "math": ("Khan Academy", "Math Antics", "Mashup Math"),
+    "science": (
+        "Khan Academy",
+        "Crash Course",
+        "SciShow",
+        "Bozeman Science",
+        "National Geographic",
+    ),
+    "english": ("Khan Academy", "Crash Course", "TED-Ed"),
+    "history": ("Khan Academy", "Crash Course", "TED-Ed"),
+}
+
+
+def channels_for_prompt(agent_key: str) -> str:
+    """The channel list as prose for this agent's system prompt."""
+    return ", ".join(TRUSTED_CHANNELS.get(agent_key, ())) or "none configured"
+
+
+def _normalize_channel(name: str) -> str:
+    """Lowercase, letters-and-digits-only, so hyphens/spacing/case don't matter.
+
+    "TED-Ed", "TED Ed", and "Ted-ed Official" all reduce to strings that contain
+    "teded" -- which is exactly the tolerance a substring match needs.
+    """
+    return re.sub(r"[^a-z0-9]", "", name.lower())
+
+
+def channel_is_trusted(agent_key: str, channel: str) -> bool:
+    """Does the claimed channel match one of this subject's approved names?
+
+    A subchannel like "Crash Course Chemistry" is meant to match the approved
+    "Crash Course" entry -- checked as substring-of, not equality, for exactly
+    that reason. "Math Antics" approved for math must NOT pass for a science
+    lesson; the list is looked up per agent, never pooled across all four.
+    """
+    normalized_channel = _normalize_channel(channel)
+    if not normalized_channel:
+        return False
+    allowed = TRUSTED_CHANNELS.get(agent_key, ())
+    return any(_normalize_channel(name) in normalized_channel for name in allowed)
 
 _EMPTY_VIDEO: dict[str, Any] = {
     "found": False,
@@ -95,8 +157,12 @@ def _matches_a_real_result(url: str, search_urls: set[str]) -> bool:
     return any(claimed_id == _video_id(u) for u in search_urls)
 
 
-def verify_video(payload: dict[str, Any]) -> list[str]:
+def verify_video(payload: dict[str, Any], agent_key: str) -> list[str]:
     """Check `payload["video"]` against this generation's real search results.
+
+    `agent_key` selects which subject's channel allowlist applies -- a channel
+    approved for math is not automatically approved for science, even if it's a
+    real, well-known name (see `channel_is_trusted`).
 
     `_search_result_urls` is a sidecar key `generate_lesson` attaches with every
     URL actually returned by web search this call; it is consumed and removed
@@ -135,6 +201,14 @@ def verify_video(payload: dict[str, Any]) -> list[str]:
         return [
             f"Dropped a suggested video at an unrecognised site ({_domain(url) or url}) "
             "— only YouTube links are trusted for now."
+        ]
+
+    channel = video.get("channel") or ""
+    if not channel_is_trusted(agent_key, channel):
+        payload["video"] = dict(_EMPTY_VIDEO)
+        return [
+            f"Dropped a suggested video from a channel not on the approved list "
+            f"for this subject ({channel or 'unlabeled'})."
         ]
 
     return []

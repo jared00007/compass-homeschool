@@ -281,7 +281,7 @@ def test_normalize_keeps_a_search_verified_video(db, student):
             "found": True,
             "title": "Two-Step Equations",
             "url": url,
-            "channel": "Some Channel",
+            "channel": "Khan Academy",
             "why": "Shows it worked in real time.",
         },
         "_search_result_urls": [url],
@@ -291,6 +291,29 @@ def test_normalize_keeps_a_search_verified_video(db, student):
     assert payload["video"]["url"] == url
     assert "_search_result_urls" not in payload, "the sidecar must never reach storage"
     assert not any("video" in w.lower() for w in warnings), "a good video needs no warning"
+
+
+def test_normalize_drops_a_video_from_a_channel_not_on_this_subjects_list(db, student):
+    """A real, search-verified, correctly-hosted video from an unapproved channel
+    must still be dropped -- content and source are separate checks."""
+    agent = get_agent("science")
+    url = "https://www.youtube.com/watch?v=abc123"
+    payload = {
+        "activities": [{"minutes": 75}],
+        "estimated_minutes": 75,
+        "subject_credits": [{"subject": "science", "minutes": 75, "justification": ""}],
+        "video": {
+            "found": True,
+            "title": "How Nurse Logs Work",
+            "url": url,
+            "channel": "Math Antics",  # approved for math, not for science
+            "why": "x",
+        },
+        "_search_result_urls": [url],
+    }
+    warnings, payload = normalize(agent, payload, db, student)
+    assert payload["video"]["found"] is False
+    assert any("not on the approved list" in w for w in warnings)
 
 
 def test_normalize_drops_a_hallucinated_video(db, student):
@@ -338,6 +361,20 @@ def test_prompt_forbids_inventing_a_video_url(db, student):
     prompt = agent.build_system_prompt(ctx_for(db, student))
     assert "Never write a URL from memory" in prompt
     assert "found: false" in prompt
+
+
+def test_prompt_lists_only_this_agents_video_channels(db, student):
+    """Math's prompt should steer toward Khan Academy/Math Antics/Mashup Math and
+    say nothing about SciShow -- each agent only ever sees its own subject's list."""
+    math_prompt = get_agent("math").build_system_prompt(ctx_for(db, student))
+    science_prompt = get_agent("science").build_system_prompt(ctx_for(db, student))
+
+    assert "Khan Academy" in math_prompt
+    assert "Math Antics" in math_prompt
+    assert "SciShow" not in math_prompt
+
+    assert "SciShow" in science_prompt
+    assert "Math Antics" not in science_prompt
 
 
 def test_single_subject_lesson_is_untouched(db, student):

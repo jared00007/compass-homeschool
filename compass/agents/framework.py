@@ -20,7 +20,7 @@ from typing import Any, Callable, Protocol
 from compass import config, subjects
 from compass.agents.credits import normalize_credits
 from compass.agents.llm import LessonGenerationError, generate_lesson
-from compass.agents.video import verify_video
+from compass.agents.video import channels_for_prompt, verify_video
 from compass.storage.db import Database
 
 
@@ -164,12 +164,19 @@ Use `web_search` to look for one video that would help him actually see or hear 
 today's specific topic — a worked example in real time, real footage, a real \
 demonstration. This is optional and secondary to the lesson itself.
 
+**Only look for a video from one of these channels, because they're the ones \
+this family has vetted for his age and this subject: {video_channels}.** Search \
+by including the channel name in your query — "Khan Academy two-step equations," \
+not just "two-step equations video" — so results actually point at their \
+uploads instead of whatever ranks highest.
+
 - **Only report `found: true` if a search this turn actually returned a specific \
-video, and you are copying its title and URL exactly as the search gave them.** \
-Never write a URL from memory, never guess at one that "should" exist, and never \
-adjust or shorten a URL you found. A missing video costs nothing; a fabricated \
-or broken link is worse than no suggestion, so when you're not sure, report \
-`found: false` and leave the other fields empty.
+video from one of those channels, and you are copying its title and URL exactly \
+as the search gave them.** Never write a URL from memory, never guess at one \
+that "should" exist, and never adjust or shorten a URL you found. If the best \
+result you find is from a channel not on that list, report `found: false` — the \
+channel matters as much as the content here, and a wrong-source video doesn't \
+belong even if it looks fine. A missing video costs nothing.
 - One search is usually enough. This is not the lesson's research budget — do \
 not spend it here if the topic also needs grounding in real places, species, or \
 sources.
@@ -256,6 +263,7 @@ class LessonAgent:
             all_subjects=", ".join(subjects.label(k) for k in subjects.SUBJECT_KEYS),
             allowed_secondary=", ".join(subjects.label(s) for s in allowed_secondary) or "none",
             minutes=ctx.minutes,
+            video_channels=channels_for_prompt(self.spec.key),
         )
 
     def generate(
@@ -309,7 +317,7 @@ class LessonAgent:
             allowed=self.allowed_subjects,
             fallback_minutes=ctx.minutes,
         )
-        warnings += verify_video(payload)
+        warnings += verify_video(payload, self.spec.key)
         payload.setdefault("branches", [])
         payload.setdefault("materials", [])
         payload.setdefault("learning_objectives", [])

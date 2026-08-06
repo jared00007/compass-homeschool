@@ -228,7 +228,7 @@ but you know your own ground better than any search result.
 Any lesson may come with one **▶️ Suggested video**, and he sees it directly — it's not
 locked behind the parent view like the answer key is. It's there because seeing a
 technique worked in real time, or real footage of something the lesson only describes,
-teaches things a page of text can't. Two guardrails sit behind it before it ever reaches
+teaches things a page of text can't. Three guardrails sit behind it before it ever reaches
 either of you:
 
 - It only appears when the agent actually found a specific, real video through a live
@@ -236,6 +236,12 @@ either of you:
   simply absent. No video is the honest, common outcome; don't read anything into it.
 - It's restricted to YouTube. Not because other sites don't have good teaching videos, but
   because YouTube is the one platform you already know how to preview and set limits on.
+- **It has to come from a channel actually vetted for that subject** — Khan Academy, Math
+  Antics, and Mashup Math for math; Crash Course, SciShow, Bozeman Science, and National
+  Geographic added in for science; Crash Course and TED-Ed added in for English and
+  history. Anything else gets treated as no video found, even if the link is completely
+  real. Want a different channel added, or one of these removed? It's a short list in
+  `compass/agents/video.py` — `TRUSTED_CHANNELS` — and it's yours to edit.
 
 Compass verifies the video itself is real and on-topic; it has no say over what YouTube
 recommends the moment the video ends, which is worth being aware of even though he can

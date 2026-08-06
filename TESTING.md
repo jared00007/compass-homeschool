@@ -339,6 +339,15 @@ The tests only you can run. Slow down here — this decides whether you trust it
   What would be a real problem: a link that doesn't work or doesn't match. Since he'll see
   this one directly, this check matters more than most.*
 
+- [ ] **The suggested video is from a channel you'd actually recognize**
+  Same generated lessons — check the channel named under the video, per subject: Khan
+  Academy / Math Antics / Mashup Math for math; those plus Crash Course, SciShow, Bozeman
+  Science, National Geographic for science; Khan Academy / Crash Course / TED-Ed for
+  English and history.
+  *Pass: the channel is one of that subject's approved names, not something unfamiliar.
+  If you want a different channel trusted, edit `TRUSTED_CHANNELS` in
+  `compass/agents/video.py` — this list is yours, not fixed.*
+
 - [ ] **The video suggestion reaches student view too**
   With a PIN set and a lesson that has a suggested video, switch to student view and open
   the same lesson.

@@ -265,7 +265,7 @@ compass/
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
   theme.py                   the four themes and the CSS that applies one
-tests/                       155 tests, no API key required
+tests/                       168 tests, no API key required
 ```
 
 `compass/` knows nothing about Streamlit — the agents, storage, and compliance
@@ -381,19 +381,39 @@ both location grounding and the video.
 trusted at face value, return a plausible title, channel, and URL that correspond
 to nothing real. A dead or wrong link is a minor annoyance; a fabricated one that
 happens to resolve to something unrelated is worse than no suggestion. So a
-claimed video is accepted only if both hold:
+claimed video is accepted only if all three hold:
 
 1. **Its URL matches a real search result from this generation.** `llm.py`
    collects every URL a `web_search_tool_result` block actually returned;
-   `compass/agents/video.py` accepts nothing else. A title, channel, and URL that
-   sound right but never appeared in a real search are indistinguishable from a
-   confident fabrication, so they're rejected the same way — reset to "no video
-   found," never surfaced half-verified.
+   `compass/agents/video.py` accepts nothing else. Matching is by extracted
+   YouTube video ID rather than exact string equality — a model told to "copy
+   the URL exactly" still reliably adds a timestamp, drops `www.`, or swaps
+   `http` for `https`, none of which changes which video it is, and an exact
+   match would reject real, search-found videos over punctuation. A title,
+   channel, and URL that sound right but trace back to no real search result at
+   all are indistinguishable from a confident fabrication, so they're rejected
+   the same way — reset to "no video found," never surfaced half-verified.
 2. **That URL is on a small allowlist of hosts** (`youtube.com`, `youtu.be`,
    `m.youtube.com`) **a parent already knows how to preview.** A real,
    search-verified link to an unknown site still isn't something this app will
    vouch for. Widening this list is a deliberate choice for a family to make, not
    a default.
+3. **Its claimed channel is on that subject's own vetted list**
+   (`TRUSTED_CHANNELS` in `video.py`) — Math gets Khan Academy, Math Antics, and
+   Mashup Math; Science adds Crash Course, SciShow, Bozeman Science, and National
+   Geographic; English and History add Crash Course and TED-Ed. This check is
+   honest about its limits: Anthropic's search results hand back a title and URL,
+   not a verified uploader, so `channel` is still the model's own claim, not
+   something independently confirmed. What actually narrows the risk is upstream
+   — the prompt directs the model to search *by channel name* ("Khan Academy
+   two-step equations," not just "two-step equations"), so a real search
+   naturally surfaces that channel's own uploads — and this check closes the
+   loop by rejecting anything claiming a channel outside the list, real video or
+   not. A cryptographic guarantee here (looking up the video's actual channel ID
+   via the YouTube Data API) would mean a new API key, quota, and dependency for
+   a family homeschool app; this project has consistently chosen the least
+   infrastructure that solves the problem, so that's deliberately skipped unless
+   a family wants it.
 
 Every rejection surfaces as a warning, the same pattern as credit normalization —
 a silent downgrade would be worse than not checking at all.
