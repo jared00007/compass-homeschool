@@ -42,7 +42,8 @@ def _row(cursor: sqlite3.Cursor) -> dict[str, Any] | None:
 
 class Database:
     def __init__(self, db_path: str | Path | None = None):
-        self.conn = connect(db_path)
+        self.path = Path(db_path or config.DEFAULT_DB_PATH)
+        self.conn = connect(self.path)
         self.migrate()
 
     # -- schema ---------------------------------------------------------------

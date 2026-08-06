@@ -40,6 +40,23 @@ streamlit run Home.py
 Everything except lesson generation works without an API key: the compliance
 dashboard, activity log, math graph, choice topics, and life skills are all local.
 
+### Backups
+
+The year's logged hours are the family's documentation of instruction, and they
+live in one SQLite file. Compass snapshots it **once per calendar day on first
+open**, keeps every snapshot for 30 days, then keeps the first of each month
+indefinitely. **Compliance → Backups** shows the state, takes one on demand,
+downloads any snapshot, and restores one.
+
+Snapshots use SQLite's backup API rather than a file copy — copying a database
+with an open connection can capture a torn write. Restore writes *into* the live
+connection for the same reason, and always snapshots the current state first, so
+a mistaken restore is itself undoable.
+
+Snapshots sit in `backups/` next to `compass.db` and are gitignored. **Copy that
+folder somewhere off this machine** — a cloud drive or a USB stick. A daily
+snapshot on the same disk does not survive losing the disk.
+
 ---
 
 ## Why four agents instead of one
@@ -168,10 +185,11 @@ compass/
   curriculum/math_graph.py   the hand-authored 50-node graph
   compliance/dashboard.py    WA hour/subject/tier reporting
   costs.py                   token usage → dollars, per agent and projected
+  backup.py                  daily snapshots, retention, and restore
   storage/                   SQLite schema + repository
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
-tests/                       73 tests, no API key required
+tests/                       87 tests, no API key required
 ```
 
 `compass/` knows nothing about Streamlit — the agents, storage, and compliance
@@ -232,7 +250,7 @@ cached system prompt is only ~1,200 tokens.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 73 tests, ~2s, no API key needed
+python -m pytest tests/ -q      # 87 tests, ~2s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

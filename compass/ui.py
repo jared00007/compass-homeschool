@@ -7,19 +7,30 @@ reusable if the UI is ever replaced.
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import date
 from typing import Any
 
 import streamlit as st
 
 from compass import config, subjects
+from compass.backup import auto_snapshot
 from compass.agents import GeneratedLesson, LessonAgent, StudentContext
 from compass.storage.db import Database
 
 
 @st.cache_resource
 def get_db() -> Database:
-    return Database()
+    db = Database()
+    # One snapshot per calendar day, taken on first open. Cheap on every
+    # subsequent open, and it means the compliance record survives the laptop.
+    try:
+        auto_snapshot(db.conn, db.path)
+    except (OSError, sqlite3.Error):
+        # A backup problem must never stop the family using the app; the
+        # Compliance page surfaces the real state of the backups.
+        pass
+    return db
 
 
 def page_setup(title: str, icon: str = "🧭") -> tuple[Database, dict[str, Any]]:

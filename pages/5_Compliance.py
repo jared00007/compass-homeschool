@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import date
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
 from compass import config
+from compass.backup import (
+    KEEP_DAILY_DAYS,
+    list_snapshots,
+)
+from compass.backup import restore as restore_snapshot
+from compass.backup import snapshot as take_snapshot
 from compass.compliance import build_report
 from compass.costs import WEB_SEARCH_COST_PER_QUERY, build_cost_report
 from compass.ui import page_setup
@@ -248,6 +256,109 @@ with columns[2]:
     if year_start_setting != db.get_setting("school_year_start"):
         db.set_setting("school_year_start", year_start_setting)
         st.rerun()
+
+st.divider()
+
+# --- backups -----------------------------------------------------------------
+
+st.subheader("Backups")
+st.caption(
+    "This year's logged hours are your documentation of instruction, and they live "
+    "in a single file on this computer. Compass snapshots it once a day automatically."
+)
+
+snapshots = list_snapshots(db.path)
+latest = snapshots[0] if snapshots else None
+
+if latest:
+    age_days = (date.today() - latest.taken_at.date()).days
+    freshness = {0: "Today", 1: "Yesterday"}.get(age_days, f"{age_days} days ago")
+else:
+    freshness = "Never"
+
+backup_columns = st.columns([1, 1, 2])
+backup_columns[0].metric("Snapshots kept", len(snapshots))
+backup_columns[1].metric(
+    "Last backed up",
+    freshness,
+    help=f"Taken {latest.label}" if latest else "No snapshot has been taken yet.",
+)
+with backup_columns[2]:
+    if st.button("Back up now", type="primary"):
+        try:
+            path = take_snapshot(db.conn, db.path, reason="manual")
+            st.success(f"Saved {path.name}")
+            st.rerun()
+        except (OSError, sqlite3.Error) as exc:
+            st.error(f"Backup failed: {exc}")
+
+if latest is None:
+    st.warning(
+        "No snapshot exists yet. One is taken automatically the first time Compass "
+        "opens each day, or press **Back up now**."
+    )
+else:
+    age = (date.today() - latest.taken_at.date()).days
+    if age > 2:
+        st.warning(
+            f"The most recent snapshot is {age} days old. If Compass hasn't been "
+            "opened in a while that's expected — press **Back up now** to be current."
+        )
+
+st.caption(
+    f"Every snapshot from the last {KEEP_DAILY_DAYS} days is kept, then the first of "
+    f"each month indefinitely. They live in `{db.path.parent / 'backups'}` — copy that "
+    "folder to a cloud drive or a USB stick and the year survives losing this laptop."
+)
+
+if snapshots:
+    with st.expander(f"All snapshots ({len(snapshots)})"):
+        for snap in snapshots[:40]:
+            snap_columns = st.columns([3, 1, 1])
+            snap_columns[0].markdown(
+                f"**{snap.label}** · {snap.reason} · {snap.size_kb:,} KB"
+            )
+            try:
+                snap_columns[1].download_button(
+                    "Download",
+                    snap.path.read_bytes(),
+                    file_name=snap.path.name,
+                    mime="application/octet-stream",
+                    key=f"dl_{snap.path.name}",
+                )
+            except OSError:
+                snap_columns[1].caption("unreadable")
+            if snap_columns[2].button("Restore", key=f"restore_{snap.path.name}"):
+                st.session_state["pending_restore"] = str(snap.path)
+                st.rerun()
+
+pending = st.session_state.get("pending_restore")
+if pending:
+    st.error(
+        f"**Restore from {Path(pending).name}?** This replaces everything currently "
+        "in Compass — activities, lessons, mastery, books — with the contents of that "
+        "snapshot. The current state is saved as its own snapshot first, so this can "
+        "be undone."
+    )
+    confirm_columns = st.columns([1, 1, 4])
+    if confirm_columns[0].button("Yes, restore", type="primary"):
+        try:
+            safety = restore_snapshot(db.conn, db.path, pending)
+            st.session_state.pop("pending_restore", None)
+            st.success(
+                f"Restored. The previous state was saved as {safety.name} if you need "
+                "it back."
+            )
+            st.cache_resource.clear()
+            st.rerun()
+        except (OSError, sqlite3.Error, FileNotFoundError) as exc:
+            st.error(f"Restore failed, nothing was changed: {exc}")
+    if confirm_columns[1].button("Cancel"):
+        st.session_state.pop("pending_restore", None)
+        st.rerun()
+
+st.divider()
+st.subheader("Export")
 
 activities = db.list_activities(student["id"], start=start.isoformat(), end=end.isoformat())
 if activities:
