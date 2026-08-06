@@ -294,6 +294,22 @@ convenient; you don't lose a day over it.
 worse happens, restore yesterday's snapshot from **Compliance → Backups** — it saves your
 current state first, so restoring is itself undoable.
 
+**A grey `ImportError` box right after you update Compass.** Not a broken download —
+a half-reloaded app. Streamlit re-reads the page you're looking at on every click,
+but the shared code underneath stays loaded from when the app started, so pulling an
+update while it's running leaves the two out of step.
+
+> **Quit and relaunch after every update.** `Ctrl-C` in the Terminal window, then
+> double-click `Compass.command` again. Refreshing the browser is not enough — the
+> Python process has to restart.
+
+If it still fails after a clean restart, the files really are behind. In Terminal:
+> ```
+> cd ~/Documents/GitHub/compass-homeschool
+> git pull
+> ```
+> then relaunch.
+
 ---
 
 Compass is a planning and record-keeping tool. It doesn't know whether a lesson landed,

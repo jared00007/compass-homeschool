@@ -27,6 +27,11 @@ Prove the thing runs before testing what it does.
   Read the Terminal window as it starts.
   *Pass: prints `✓ API key loaded (…abc123)`, not a warning.*
 
+- [ ] **You relaunched after updating**
+  If you pulled changes, quit the Terminal window (`Ctrl-C`) and launch again.
+  *Pass: no grey `ImportError` box. Streamlit keeps shared code loaded from startup, so
+  updating a running app leaves it half-reloaded. Refreshing the browser won't fix it.*
+
 - [ ] **All nine pages open**
   Click every sidebar item: Home, Math, Science, English, History, Compliance, Choice
   Topics, Life Skills, Activity Log.
