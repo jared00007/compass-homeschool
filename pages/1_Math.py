@@ -1,0 +1,191 @@
+"""Math Agent — prerequisite graph walk."""
+
+from __future__ import annotations
+
+import streamlit as st
+
+from compass.agents import LessonGenerationError, get_agent
+from compass.curriculum import (
+    MATH_GRAPH,
+    STRANDS,
+    available_skills,
+    frontier_report,
+    missing_prerequisites,
+    prerequisite_chain,
+)
+from compass.ui import (
+    api_status_banner,
+    context_for,
+    log_lesson_form,
+    page_setup,
+    render_lesson,
+    render_proposal,
+)
+
+db, student = page_setup("Math", icon="📐")
+agent = get_agent("math")
+
+st.title("📐 Math Agent")
+st.caption(
+    "Walks a hand-authored 8th-grade prerequisite graph. A skill unlocks only when "
+    "every prerequisite is mastered — the agent reasons over the graph, it does not "
+    "invent it."
+)
+
+mastered = db.mastered_skills(student["id"])
+mastery = db.mastery_map(student["id"])
+frontier = frontier_report(mastered)
+ready = available_skills(mastered)
+
+plan_tab, mastery_tab, graph_tab = st.tabs(["Plan a lesson", "Record mastery", "The graph"])
+
+# --- plan --------------------------------------------------------------------
+
+with plan_tab:
+    api_ok = api_status_banner()
+
+    columns = st.columns([2, 1, 1])
+    with columns[0]:
+        options = ["Let the agent choose"] + [f"{s.title}" for s in ready]
+        choice = st.selectbox(
+            "Skill",
+            options,
+            help="Only unlocked skills are listed. Locked skills need their prerequisites first.",
+        )
+    with columns[1]:
+        minutes = st.number_input("Minutes", min_value=15, max_value=180, value=60, step=5)
+    with columns[2]:
+        st.metric("Unlocked now", len(ready))
+
+    parent_note = st.text_input(
+        "Note for this lesson (optional)",
+        placeholder="e.g. he struggled with negative signs last time",
+    )
+
+    skill_id = ""
+    if choice != "Let the agent choose":
+        skill_id = next((s.id for s in ready if s.title == choice), "")
+
+    ctx = context_for(
+        db, student, minutes=minutes, parent_note=parent_note, skill_id=skill_id
+    )
+    proposal = agent.propose_topic(ctx)
+    render_proposal(agent, proposal)
+
+    if st.button("Generate lesson", type="primary", disabled=not api_ok or proposal.blocked):
+        with st.spinner("The Math Agent is writing the lesson…"):
+            try:
+                st.session_state["math_lesson"] = agent.generate(ctx, proposal)
+            except LessonGenerationError as exc:
+                st.error(str(exc))
+
+    generated = st.session_state.get("math_lesson")
+    if generated:
+        st.divider()
+        for warning in generated.warnings:
+            st.caption(f"⚠️ {warning}")
+        render_lesson(generated.payload)
+        st.divider()
+        log_lesson_form(
+            db, student, generated, source="math", primary_subject="math", key_prefix="math"
+        )
+
+# --- mastery -----------------------------------------------------------------
+
+with mastery_tab:
+    st.subheader("Record mastery")
+    st.caption(
+        "This is the only thing that unlocks the next node. Record it after he does the "
+        "assessment — the agent reads this, not the lesson history."
+    )
+
+    all_skills = sorted(MATH_GRAPH.values(), key=lambda s: (s.strand, s.title))
+    target = st.selectbox(
+        "Skill",
+        all_skills,
+        format_func=lambda s: f"{s.title} — {STRANDS[s.strand]}",
+    )
+
+    missing = missing_prerequisites(target.id, mastered)
+    if missing:
+        st.warning(
+            "Locked. Unmastered prerequisites: "
+            + ", ".join(MATH_GRAPH[m].title for m in missing)
+        )
+        chain = prerequisite_chain(target.id, mastered)
+        if chain:
+            st.caption(
+                "Teaching order to get there: "
+                + " → ".join(MATH_GRAPH[c].title for c in chain)
+            )
+
+    current = mastery.get(target.id, {})
+    with st.form("mastery_form"):
+        columns = st.columns(3)
+        with columns[0]:
+            status_options = ["not_started", "in_progress", "mastered"]
+            current_status = current.get("status", "not_started")
+            status = st.selectbox(
+                "Status",
+                status_options,
+                index=status_options.index(current_status)
+                if current_status in status_options
+                else 0,
+            )
+        with columns[1]:
+            score = st.number_input(
+                "Score (%)", min_value=0, max_value=100, value=int(current.get("score") or 0)
+            )
+        with columns[2]:
+            st.markdown(f"**Strand**\n\n{STRANDS[target.strand]}")
+        notes = st.text_area("Notes", value=current.get("notes", ""))
+        if st.form_submit_button("Save mastery", type="primary"):
+            db.set_mastery(
+                student["id"],
+                target.id,
+                status,
+                score=float(score) if score else None,
+                notes=notes,
+            )
+            st.success(f"Recorded {target.title} as {status.replace('_', ' ')}.")
+            st.rerun()
+
+# --- graph -------------------------------------------------------------------
+
+with graph_tab:
+    columns = st.columns(3)
+    columns[0].metric("Skills mastered", f"{frontier['mastered_count']} / {frontier['total_skills']}")
+    columns[1].metric("Unlocked and ready", len(ready))
+    columns[2].metric("Still locked", frontier["locked_count"])
+
+    st.subheader("Progress by strand")
+    for strand_key, strand_label in STRANDS.items():
+        counts = frontier["by_strand"][strand_key]
+        total = counts["total"] or 1
+        st.progress(
+            counts["mastered"] / total,
+            text=f"{strand_label} — {counts['mastered']} / {counts['total']}",
+        )
+
+    st.subheader("Full scope and sequence")
+    st.caption(
+        "Hand-authored and version-controlled, so it can be handed to a district as the "
+        "year's documented math plan."
+    )
+    for strand_key, strand_label in STRANDS.items():
+        with st.expander(strand_label):
+            for skill in [s for s in MATH_GRAPH.values() if s.strand == strand_key]:
+                if skill.id in mastered:
+                    marker = "✅"
+                elif not missing_prerequisites(skill.id, mastered):
+                    marker = "🔓"
+                else:
+                    marker = "🔒"
+                prereqs = (
+                    ", ".join(MATH_GRAPH[p].title for p in skill.prerequisites) or "none"
+                )
+                st.markdown(
+                    f"{marker} **{skill.title}** — {skill.description}  \n"
+                    f"<small>Prerequisites: {prereqs}</small>",
+                    unsafe_allow_html=True,
+                )

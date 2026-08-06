@@ -1,0 +1,195 @@
+-- Compass local storage. Single-file SQLite; no external service required.
+--
+-- Design notes:
+--   * `activities` holds *logged* instructional time. Its `minutes` column is
+--     the single source of truth for the 1,000-hour WA floor.
+--   * `activity_subject_credits` holds the multi-subject tagging. Credits may
+--     sum to MORE than the activity's minutes (that is the whole point of Tier
+--     2 folding) — so per-subject coverage reads from here, and total
+--     instructional hours read from `activities.minutes`. Never sum credits to
+--     get a total; that double-counts.
+--   * `lessons` holds agent output that has not necessarily happened yet.
+--     Completing a lesson creates an activity + credits.
+
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS students (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    name              TEXT NOT NULL,
+    grade             TEXT NOT NULL,
+    age               INTEGER,
+    interests         TEXT NOT NULL DEFAULT '',
+    created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ---------------------------------------------------------------------------
+-- Math: mastery over the hand-authored prerequisite graph.
+-- The graph itself lives in code (compass/curriculum/math_graph.py) so it is
+-- versioned and auditable for compliance documentation. Only *mastery state*
+-- is data.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS skill_mastery (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    skill_id    TEXT NOT NULL,
+    status      TEXT NOT NULL CHECK (status IN ('not_started', 'in_progress', 'mastered')),
+    score       REAL,
+    assessed_on TEXT,
+    notes       TEXT NOT NULL DEFAULT '',
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (student_id, skill_id)
+);
+
+-- ---------------------------------------------------------------------------
+-- Spiderweb exploration, shared by Science and History.
+-- A node is a topic; `parent_id` is the branch it grew from. Unexplored nodes
+-- are the candidate pool the spiderweb strategy draws its next topic from.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS topic_web (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    agent       TEXT NOT NULL,
+    topic       TEXT NOT NULL,
+    rationale   TEXT NOT NULL DEFAULT '',
+    location    TEXT NOT NULL DEFAULT '',
+    parent_id   INTEGER REFERENCES topic_web(id) ON DELETE SET NULL,
+    depth       INTEGER NOT NULL DEFAULT 0,
+    explored_on TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_topic_web_pool
+    ON topic_web (student_id, agent, explored_on);
+
+-- ---------------------------------------------------------------------------
+-- English: what he is currently reading, plus vocabulary spaced repetition.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS books (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id   INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    title        TEXT NOT NULL,
+    author       TEXT NOT NULL DEFAULT '',
+    reading_level TEXT NOT NULL DEFAULT '',
+    total_pages  INTEGER,
+    current_page INTEGER NOT NULL DEFAULT 0,
+    status       TEXT NOT NULL DEFAULT 'reading'
+                 CHECK (status IN ('reading', 'finished', 'abandoned')),
+    started_on   TEXT,
+    finished_on  TEXT,
+    notes        TEXT NOT NULL DEFAULT '',
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Leitner-box spaced repetition. box 1 = review tomorrow, escalating to box 5.
+CREATE TABLE IF NOT EXISTS vocabulary (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id     INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    word           TEXT NOT NULL,
+    definition     TEXT NOT NULL DEFAULT '',
+    source_book_id INTEGER REFERENCES books(id) ON DELETE SET NULL,
+    box            INTEGER NOT NULL DEFAULT 1 CHECK (box BETWEEN 1 AND 5),
+    next_review_on TEXT NOT NULL,
+    times_correct  INTEGER NOT NULL DEFAULT 0,
+    times_missed   INTEGER NOT NULL DEFAULT 0,
+    created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (student_id, word)
+);
+
+CREATE INDEX IF NOT EXISTS idx_vocab_due
+    ON vocabulary (student_id, next_review_on);
+
+-- ---------------------------------------------------------------------------
+-- Generated lessons (agent output), and logged activities (actual hours).
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS lessons (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id   INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    agent        TEXT NOT NULL,
+    subject      TEXT NOT NULL,
+    topic        TEXT NOT NULL,
+    title        TEXT NOT NULL,
+    strategy     TEXT NOT NULL DEFAULT '',
+    rationale    TEXT NOT NULL DEFAULT '',
+    payload      TEXT NOT NULL,          -- full lesson JSON as returned by the agent
+    metadata     TEXT NOT NULL DEFAULT '{}',
+    status       TEXT NOT NULL DEFAULT 'planned'
+                 CHECK (status IN ('planned', 'completed', 'skipped')),
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_lessons_student
+    ON lessons (student_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS activities (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id      INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    lesson_id       INTEGER REFERENCES lessons(id) ON DELETE SET NULL,
+    title           TEXT NOT NULL,
+    description     TEXT NOT NULL DEFAULT '',
+    tier            TEXT NOT NULL CHECK (tier IN ('core', 'folded', 'choice', 'life_skills')),
+    primary_subject TEXT NOT NULL,
+    source          TEXT NOT NULL DEFAULT 'manual',  -- agent key, 'manual', 'choice', 'life_skills'
+    minutes         INTEGER NOT NULL CHECK (minutes > 0),
+    occurred_on     TEXT NOT NULL,
+    location        TEXT NOT NULL DEFAULT '',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_activities_student_date
+    ON activities (student_id, occurred_on);
+
+CREATE TABLE IF NOT EXISTS activity_subject_credits (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    activity_id INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    subject     TEXT NOT NULL,
+    minutes     INTEGER NOT NULL CHECK (minutes > 0),
+    UNIQUE (activity_id, subject)
+);
+
+CREATE INDEX IF NOT EXISTS idx_credits_subject
+    ON activity_subject_credits (subject);
+
+-- ---------------------------------------------------------------------------
+-- Tier 3 — his choice. No prerequisite logic, no agent. He curates it; the
+-- parent approves. Compass only tracks it.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS choice_topics (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    category    TEXT NOT NULL DEFAULT '',
+    credit_subject TEXT NOT NULL DEFAULT 'occupational_education',
+    status      TEXT NOT NULL DEFAULT 'proposed'
+                CHECK (status IN ('proposed', 'approved', 'active', 'done', 'declined')),
+    proposed_on TEXT NOT NULL DEFAULT (date('now')),
+    decided_on  TEXT,
+    parent_note TEXT NOT NULL DEFAULT ''
+);
+
+-- ---------------------------------------------------------------------------
+-- Core life skills — parent-maintained checklist. Deliberately not agentic.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS life_skills (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id   INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    category     TEXT NOT NULL DEFAULT 'General',
+    title        TEXT NOT NULL,
+    description  TEXT NOT NULL DEFAULT '',
+    credit_subject TEXT NOT NULL DEFAULT 'occupational_education',
+    completed_on TEXT,
+    notes        TEXT NOT NULL DEFAULT '',
+    sort_order   INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);

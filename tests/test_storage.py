@@ -1,0 +1,158 @@
+"""Storage-layer behaviour that the rest of the app depends on."""
+
+from __future__ import annotations
+
+from datetime import date, timedelta
+
+import pytest
+
+from compass import config
+from compass.storage.db import Database
+
+
+@pytest.fixture()
+def db(tmp_path):
+    database = Database(tmp_path / "test.db")
+    yield database
+    database.close()
+
+
+@pytest.fixture()
+def student(db):
+    return db.ensure_default_student()
+
+
+def test_migrate_is_idempotent(tmp_path):
+    path = tmp_path / "twice.db"
+    first = Database(path)
+    first.create_student("Sam", "8")
+    first.close()
+    second = Database(path)
+    assert len(second.list_students()) == 1
+    second.close()
+
+
+def test_settings_fall_back_to_defaults(db):
+    assert db.get_int_setting("annual_hour_target") == config.WA_ANNUAL_HOURS
+    db.set_setting("annual_hour_target", "1100")
+    assert db.get_int_setting("annual_hour_target") == 1100
+
+
+def test_school_year_bounds_wrap_correctly(db):
+    db.set_setting("school_year_start", "09-01")
+    start, end = db.school_year_bounds(date(2026, 3, 15))
+    assert start == "2025-09-01"
+    assert end == "2026-08-31"
+
+    start, end = db.school_year_bounds(date(2026, 9, 1))
+    assert start == "2026-09-01"
+    assert end == "2027-08-31"
+
+
+def test_logging_an_activity_defaults_credit_to_the_primary_subject(db, student):
+    activity_id = db.log_activity(
+        student_id=student["id"],
+        title="Math",
+        tier=config.TIER_CORE,
+        primary_subject="math",
+        minutes=45,
+        subject_credits={},
+    )
+    assert activity_id
+    activity = db.list_activities(student["id"])[0]
+    assert activity["credits"] == {"math": 45}
+
+
+def test_logging_a_lesson_marks_it_completed(db, student):
+    lesson_id = db.save_lesson(
+        student["id"], "math", "math", "topic", "title", payload={"a": 1}
+    )
+    assert db.get_lesson(lesson_id)["status"] == "planned"
+    db.log_activity(
+        student_id=student["id"],
+        title="title",
+        tier=config.TIER_CORE,
+        primary_subject="math",
+        minutes=45,
+        subject_credits={"math": 45},
+        lesson_id=lesson_id,
+    )
+    assert db.get_lesson(lesson_id)["status"] == "completed"
+
+
+def test_zero_minute_activity_is_rejected(db, student):
+    with pytest.raises(ValueError):
+        db.log_activity(
+            student_id=student["id"],
+            title="Nothing",
+            tier=config.TIER_CORE,
+            primary_subject="math",
+            minutes=0,
+            subject_credits={"math": 0},
+        )
+
+
+def test_deleting_an_activity_removes_its_credits(db, student):
+    activity_id = db.log_activity(
+        student_id=student["id"],
+        title="Science",
+        tier=config.TIER_CORE,
+        primary_subject="science",
+        minutes=60,
+        subject_credits={"science": 60, "writing": 20},
+    )
+    db.delete_activity(activity_id)
+    remaining = db.conn.execute(
+        "SELECT COUNT(*) AS n FROM activity_subject_credits"
+    ).fetchone()["n"]
+    assert remaining == 0
+
+
+def test_leitner_promotes_on_correct_and_resets_on_miss(db, student):
+    db.add_vocabulary(student["id"], "prudent", "careful")
+    entry = db.list_vocabulary(student["id"])[0]
+    assert entry["box"] == 1
+
+    db.record_vocabulary_review(entry["id"], correct=True)
+    entry = db.list_vocabulary(student["id"])[0]
+    assert entry["box"] == 2
+    assert entry["next_review_on"] == (date.today() + timedelta(days=3)).isoformat()
+
+    db.record_vocabulary_review(entry["id"], correct=False)
+    entry = db.list_vocabulary(student["id"])[0]
+    assert entry["box"] == 1
+    assert entry["times_missed"] == 1
+
+
+def test_leitner_box_is_capped_at_five(db, student):
+    db.add_vocabulary(student["id"], "prudent", "careful")
+    entry_id = db.list_vocabulary(student["id"])[0]["id"]
+    for _ in range(10):
+        db.record_vocabulary_review(entry_id, correct=True)
+    assert db.list_vocabulary(student["id"])[0]["box"] == 5
+
+
+def test_adding_a_known_word_again_does_not_reset_progress(db, student):
+    db.add_vocabulary(student["id"], "prudent", "careful")
+    entry_id = db.list_vocabulary(student["id"])[0]["id"]
+    db.record_vocabulary_review(entry_id, correct=True)
+    db.add_vocabulary(student["id"], "prudent", "careful and sensible")
+
+    entries = db.list_vocabulary(student["id"])
+    assert len(entries) == 1
+    assert entries[0]["box"] == 2, "re-adding a word must not wipe its review history"
+    assert entries[0]["definition"] == "careful and sensible"
+
+
+def test_life_skills_seed_only_once(db, student):
+    first = db.seed_life_skills(student["id"])
+    second = db.seed_life_skills(student["id"])
+    assert first > 0
+    assert second == 0
+
+
+def test_unexplored_web_nodes_prefer_the_current_location(db, student):
+    db.add_web_node(student["id"], "science", "desert varnish", location="Moab", depth=2)
+    db.add_web_node(student["id"], "science", "salmon runs", location="Hoh River", depth=3)
+    nodes = db.unexplored_web_nodes(student["id"], "science", location="Hoh River")
+    assert nodes[0]["topic"] == "salmon runs", "location match beats shallower depth"

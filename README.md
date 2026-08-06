@@ -1,0 +1,175 @@
+# Compass — Homeschool Curriculum Agents
+
+Multi-agent curriculum system for a homeschooled 8th grader (age 13), built around
+two constraints treated as first-class rather than afterthoughts: **Washington
+homeschool compliance** and **the student's freedom of choice**.
+
+This is a fresh, standalone build — local SQLite, a Streamlit UI, and four
+subject agents on the Anthropic API.
+
+```bash
+pip install -r requirements.txt
+export ANTHROPIC_API_KEY=sk-ant-...      # or: ant auth login
+streamlit run Home.py
+```
+
+Everything except lesson generation works without an API key: the compliance
+dashboard, activity log, math graph, choice topics, and life skills are all local.
+
+---
+
+## Why four agents instead of one
+
+Each core subject has genuinely different "what's a good next lesson" logic.
+Forcing them into one prompt means compromising all of them, so the thing that
+differs is factored out into a pluggable strategy and everything else is shared:
+
+```
+        system prompt template  +  tool config  +  next-topic strategy
+        └──────────── shared framework ────────────┘  └── the only difference ──┘
+```
+
+| Agent | Strategy | How it picks the next lesson |
+|---|---|---|
+| **Math** | `graph_walk` | Walks a hand-authored 50-node prerequisite graph. A skill unlocks only when every prerequisite is *demonstrably mastered*. Ties break toward the strand that's furthest behind. |
+| **Science** | `spiderweb` | Branches outward from a topic or a location. Each lesson proposes 2–4 new branches that become the pool the next lesson draws from. Uses web search to ground lessons in real local specifics. |
+| **History** | `timeline` | Least-covered era on a fixed 15-era scope — *unless* the family's current location has a genuine historical connection, which takes priority. |
+| **English** | `reading_tied` | Anchored to the book he is actually reading, with Leitner spaced-repetition vocabulary. Refuses to run without a current book rather than falling back to generic passages. |
+
+Strategies are **deterministic and offline** — no model call. A strategy decides
+*what* to teach; the model call decides *how*. That means the home page can show
+what all four agents would do next for free, and strategy logic is unit-testable.
+
+**Rule of thumb, carried through:** use the least agency that solves the problem.
+Tier 3 and Core Life Skills are plain CRUD features with no agent at all, and the
+orchestrator agent was deliberately not built.
+
+---
+
+## Washington compliance
+
+WA requires instruction across **11 subjects** and **1,000 instructional hours/year**
+(~180 days). One arithmetic rule governs the whole dashboard:
+
+> **Total hours** come from `activities.minutes` — real elapsed time.
+> **Per-subject hours** come from `activity_subject_credits` — multi-subject credit.
+> **These do not reconcile, and are not supposed to.**
+
+A 60-minute waterfall field study can legitimately credit 60 min science, 25 min
+writing, and 15 min art. That's Tier 2 folding, and it's how eleven subjects get
+covered without running eleven subjects. But it's still *one hour of the student's
+life*, and the 1,000-hour floor counts hours of his life. Summing credits to get a
+year total would inflate the record by ~60% — the kind of error that looks fine on
+a dashboard and falls apart under review. There's a test pinning this.
+
+### Keeping the agents honest
+
+The model returns `subject_credits` directly into the compliance record, so the
+framework polices every claim before it's persisted:
+
+- Credits outside the agent's allowed scope are **dropped** (a math lesson can't
+  bill itself as art appreciation for drawing a graph)
+- Credits exceeding the lesson length are **capped**
+- A missing primary-subject credit is **added**
+- Duplicates merged, unknown subjects dropped, total time reconciled to the
+  activity list
+
+Every adjustment surfaces in the UI as a warning rather than happening silently.
+
+---
+
+## The three tiers
+
+**Tier 1 — Core (agent-planned).** The four agents above. WA-mandated, structured.
+
+**Tier 2 — Folded in.** Reading, writing, spelling, and art/music are earned as
+*byproducts* of Tier 1 output, not as separate agents. Each agent declares which
+secondary subjects it may claim and must justify each claim with a specific part
+of the lesson.
+
+**Tier 3 — His choice.** A list he curates with light parent approval. No
+prerequisite logic, no agent picking an "optimal next step" — that's the whole
+point. Hours count in full.
+
+**Core Life Skills.** Budgeting, cooking, vehicle maintenance, communication. A
+parent-maintained checklist, deliberately not agentic. In practice this is where
+most Health and Occupational Education coverage genuinely comes from.
+
+---
+
+## Answers to the design doc's open questions
+
+The three questions raised for discussion before building, and what was built:
+
+**Where does mastery/assessment data live?** Local SQLite (`compass.db`), its own
+schema. One portable file, zero setup, easy to inspect and back up.
+
+**Hand-authored or agent-inferred math graph?** Hand-authored, in
+`compass/curriculum/math_graph.py`. 50 nodes covering CCSS grade 8 (8.NS, 8.EE,
+8.F, 8.G, 8.SP) plus the grade 6–7 prerequisites an 8th grader must actually hold.
+It's versioned data, not model output — deterministic, and defensible as a dated
+scope-and-sequence you can hand to a district. Its structure is unit-tested
+(no cycles, no orphans, no unreachable nodes).
+
+**How much should Tier 3 count toward the 1,000 hours?** Counts fully, with a
+configurable soft guideline (default 20%). WA mandates no split, so this is a
+family policy call and the dashboard treats it as a warning, never a block. The
+warning is proportional and waits for ≥10 logged hours — an absolute cap alone
+would only trip around May, far too late to rebalance.
+
+---
+
+## Layout
+
+```
+Home.py                      Streamlit entry — dashboard
+pages/                       Math, Science, English, History, Compliance,
+                             Choice Topics, Life Skills, Activity Log
+compass/
+  agents/
+    framework.py             LessonAgent, AgentSpec, credit normalization
+    strategies.py            the four next-topic strategies
+    llm.py                   Anthropic client, lesson JSON schema, error handling
+    prompts.py               shared user-prompt assembly
+    {math,science,english,history}_agent.py
+  curriculum/math_graph.py   the hand-authored 50-node graph
+  compliance/dashboard.py    WA hour/subject/tier reporting
+  storage/                   SQLite schema + repository
+  subjects.py                the 11 WA subjects and Tier 2 folding rules
+  config.py                  statutory constants vs. editable family policy
+tests/                       59 tests, no API key required
+```
+
+`compass/` knows nothing about Streamlit — the agents, storage, and compliance
+layers stay testable and reusable if the UI is ever replaced.
+
+---
+
+## Model configuration
+
+`claude-opus-5` with adaptive thinking and `effort: high`. Lessons come back as
+**structured output** against a JSON schema, so the compliance-critical fields
+are guaranteed well-formed rather than parsed out of prose. Science and History
+additionally get Anthropic's server-side **web search** so location-specific
+lessons are grounded in real facts.
+
+Server-side refusal fallbacks are enabled by default (`fallbacks: "default"`), so
+a safety-classifier decline gets re-served by the recommended fallback model
+rather than surfacing an error to a parent. If a key or platform doesn't support
+that beta, the request transparently retries on the standard path.
+
+## Tests
+
+```bash
+python -m pytest tests/ -q      # 59 tests, ~1s, no API key needed
+```
+
+Coverage focuses where being wrong is expensive: the math graph's structure, the
+compliance arithmetic, the credit-normalization guardrails, and all four
+strategies' selection logic.
+
+## Not built, on purpose
+
+The orchestrator agent that balances the day across subjects. The design doc says
+to build it only if juggling four agents' daily hour allocation actually gets
+unwieldy — that's a decision to make with a term of real usage data, not now.
