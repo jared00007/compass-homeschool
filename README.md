@@ -76,6 +76,15 @@ framework polices every claim before it's persisted:
 
 Every adjustment surfaces in the UI as a warning rather than happening silently.
 
+The prompt-level rule is stricter than the code-level one, and it was tightened
+after live testing caught the Math agent billing 5 minutes of *language* for
+"restating the definition in his own words" and 10 minutes of *occupational
+education* because a worked example used game-modding keybindings. Both are the
+primary instruction described in another subject's vocabulary. The rule now is:
+**name the activity and the artifact it produces, or don't claim the credit** —
+and `language` was removed from what math may claim at all. Re-testing the same
+skill afterward produced a single honest math credit.
+
 ---
 
 ## The three tiers
@@ -166,9 +175,26 @@ cost to run** turns that into dollars — spend to date, cost per lesson, a
 per-agent breakdown, and a straight-line year projection (withheld until there
 are at least 5 lessons, since a forecast off two is noise).
 
-Expect roughly **$0.11 per Math or English lesson** and **$0.20 for Science or
-History** — those two cost double because web-search results return as input
-tokens. A full school year lands near **$50–80**.
+Measured on live generations (Opus 5, `effort: high`), not estimated:
+
+| Agent | Cost/lesson | Time | Output tokens |
+|---|---|---|---|
+| Math | ~$0.17 | ~85 s | ~5,900 |
+| English | ~$0.20 | ~110 s | ~7,400 |
+| Science | ~$0.27 | ~3.5 min | ~7,100 + web search |
+| History | ~$0.42 | ~6 min | ~9,900 + web search |
+
+A full school year lands around **$60–120** depending on how often you generate
+fresh rather than reusing a lesson across sessions.
+
+The cost driver is **output tokens, not web search** — lessons come back far
+richer than a first estimate suggests (full answer keys, per-item mastery
+criteria, primary-source excerpts). Search adds only 2–3 queries per lesson.
+History is the outlier on both cost and time because it does the most sourcing.
+
+**Generation is slow — plan lessons ahead, not at the kitchen table.** History
+can take six minutes. That's the model doing real research, but it is not an
+interactive experience.
 
 Rates live in `compass/costs.py` and are the only thing to edit when pricing
 moves. The web-search per-query rate is the least certain number in that file;

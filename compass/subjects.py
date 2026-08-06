@@ -70,7 +70,13 @@ def is_valid(key: str) -> bool:
 # as art appreciation.
 
 FOLDABLE_SUBJECTS: dict[str, tuple[str, ...]] = {
-    "math": ("reading", "language", "occupational_education", "science"),
+    # `language` is deliberately absent from math. Restating a definition
+    # precisely is what good math instruction looks like, not language
+    # instruction — and leaving it available invited exactly that claim in
+    # testing. Math earns occupational education only via a genuine applied
+    # task (a real budget, a real measurement job), not because an example
+    # mentions software.
+    "math": ("reading", "occupational_education", "science"),
     "science": (
         "reading",
         "writing",

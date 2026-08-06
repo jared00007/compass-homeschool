@@ -149,6 +149,41 @@ def test_total_minutes_are_reconciled_to_the_activities(db, student):
     assert any("Adjusted total time" in w for w in warnings)
 
 
+def test_math_cannot_claim_language_credit(db, student):
+    """Restating a definition precisely is math instruction, not language.
+
+    Observed in live testing: the Math agent billed 5 minutes of language for
+    'restating the definition in his own words'. That's the primary instruction
+    described in another subject's vocabulary.
+    """
+    agent = get_agent("math")
+    assert "language" not in agent.allowed_subjects
+
+    payload = {
+        "activities": [{"minutes": 60}],
+        "estimated_minutes": 60,
+        "subject_credits": [
+            {"subject": "math", "minutes": 60, "justification": ""},
+            {
+                "subject": "language",
+                "minutes": 5,
+                "justification": "restating the definition in his own words",
+            },
+        ],
+    }
+    warnings, payload = normalize(agent, payload, db, student)
+    assert {c["subject"] for c in payload["subject_credits"]} == {"math"}
+    assert any("outside this agent's scope" in w for w in warnings)
+
+
+def test_credit_rules_demand_a_named_artifact(db, student):
+    agent = get_agent("math")
+    prompt = agent.build_system_prompt(ctx_for(db, student))
+    assert "artifact" in prompt
+    assert "not language instruction" in prompt
+    assert "it is not occupational education" in prompt
+
+
 def test_every_agent_only_allows_valid_wa_subjects():
     from compass.agents import all_agents
 

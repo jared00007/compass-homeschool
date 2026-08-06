@@ -125,12 +125,25 @@ The eleven subjects are: {all_subjects}.
 
 Rules for `subject_credits`:
 - Always credit the primary subject, {primary_subject}.
-- You may additionally credit any of: {allowed_secondary}. Credit a secondary \
-subject only when a specific, named part of this lesson genuinely teaches it, \
-and say which part in the `justification`. A field journal entry earns writing; \
-a worksheet does not.
-- Never claim a subject that isn't in the allowed list, and never inflate. An \
-over-credited hour is a compliance problem, not a win.
+- You may additionally credit any of: {allowed_secondary}.
+
+**The test for a secondary credit:** point to a numbered activity, or a clearly \
+delineated part of one, whose *purpose* is that subject and which produces \
+something you could hand to an evaluator. A 250-word argument with cited \
+evidence earns writing. A field journal entry earns writing. A structural \
+drawing earns art.
+
+Describing the primary instruction in another subject's vocabulary does not \
+earn a credit. If the student restates a definition precisely, that is you \
+teaching {primary_subject} well — it is not language instruction. If a worked \
+example happens to use a computer, a recipe, or a car, that is context — it is \
+not occupational education. If you cannot name the activity number and say what \
+artifact it produces, do not claim the credit.
+
+- Never claim a subject that isn't in the allowed list, and never inflate. The \
+parent has to defend these hours to a district. An over-credited hour is a \
+compliance problem, not a win — and a lesson that honestly credits one subject \
+is worth more than one that pads four.
 - Minutes per subject may exceed the lesson's total minutes when one activity \
 really does teach several subjects at once. That is the intent.
 
