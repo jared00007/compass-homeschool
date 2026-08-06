@@ -70,16 +70,40 @@ if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -f .env ]; then
     source .env; set +a
 fi
 
+if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -t 0 ]; then
+    # Creating a dotfile by hand is awkward on both macOS and Windows, so ask
+    # for the key here and write the file. Only when there's a real terminal
+    # attached — otherwise this would hang exactly the way Streamlit's email
+    # prompt did.
+    say ""
+    say "  ${BOLD}No API key set up yet.${OFF}"
+    say "  Paste your Anthropic API key to enable lesson generation, or just press"
+    say "  Enter to skip — everything else in Compass works without one."
+    say ""
+    printf '  API key: '
+    read -r -s ENTERED || ENTERED=""
+    say ""
+
+    if [ -n "$ENTERED" ]; then
+        case "$ENTERED" in
+            sk-ant-*)
+                printf 'ANTHROPIC_API_KEY=%s\n' "$ENTERED" > .env
+                chmod 600 .env
+                export ANTHROPIC_API_KEY="$ENTERED"
+                ok "Saved to .env — you won't be asked again."
+                ;;
+            *)
+                warn "That doesn't look like an Anthropic key (they start with 'sk-ant-')."
+                say  "  Skipping for now. Lesson generation will be off."
+                ;;
+        esac
+    fi
+fi
+
 if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-    warn "No API key found — lesson generation will be turned off."
+    warn "Running without an API key — lesson generation is off."
     say  "  Everything else still works: the compliance dashboard, activity log,"
     say  "  math graph, choice topics, and life skills."
-    say  ""
-    say  "  To turn generation on, create a file called ${BOLD}.env${OFF} next to this script"
-    say  "  containing one line:"
-    say  ""
-    say  "      ANTHROPIC_API_KEY=sk-ant-..."
-    say  ""
 else
     ok "API key loaded (…${ANTHROPIC_API_KEY: -6})"
 fi

@@ -60,11 +60,31 @@ if "%ANTHROPIC_API_KEY%"=="" (
     )
 )
 
+REM Creating a dotfile by hand is awkward on Windows, so ask and write it here.
 if "%ANTHROPIC_API_KEY%"=="" (
-    echo   [!] No API key found - lesson generation will be turned off.
-    echo       Everything else still works.
-    echo       To turn it on, create a file called .env next to this script
-    echo       containing one line:  ANTHROPIC_API_KEY=sk-ant-...
+    echo.
+    echo   No API key set up yet.
+    echo   Paste your Anthropic API key to enable lesson generation, or just press
+    echo   Enter to skip - everything else in Compass works without one.
+    echo.
+    set /p "ENTERED=  API key: "
+    if not "!ENTERED!"=="" (
+        echo !ENTERED! | findstr /b "sk-ant-" >nul
+        if errorlevel 1 (
+            echo   [!] That doesn't look like an Anthropic key ^(they start with 'sk-ant-'^).
+            echo       Skipping for now. Lesson generation will be off.
+        ) else (
+            > .env echo ANTHROPIC_API_KEY=!ENTERED!
+            set "ANTHROPIC_API_KEY=!ENTERED!"
+            echo   [OK] Saved to .env - you won't be asked again.
+        )
+    )
+)
+
+if "%ANTHROPIC_API_KEY%"=="" (
+    echo   [!] Running without an API key - lesson generation is off.
+    echo       Everything else still works: the compliance dashboard, activity
+    echo       log, math graph, choice topics, and life skills.
 ) else (
     echo   [OK] API key loaded
 )

@@ -9,18 +9,23 @@ subject agents on the Anthropic API.
 
 ## Running it
 
-**Daily use — no terminal required.** Put the API key in a file called `.env`
-next to the launcher (gitignored, never committed):
-
-```
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-Then:
+**Daily use — no terminal required.**
 
 - **macOS** — double-click `Compass.command` (first time: right-click → Open)
 - **Windows** — double-click `run.bat`
 - **Linux** — `./run.sh`
+
+On first launch it asks for an Anthropic API key and writes it to `.env` itself
+(mode 600, gitignored). Press Enter to skip — everything except lesson
+generation works without one, and you'll be asked again next time.
+
+To set the key up in advance instead, create `.env` next to the launcher
+containing one line. It's a plain text file with no extension — watch for
+editors silently appending `.txt`:
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
 
 The launcher creates its own virtualenv, installs dependencies on first run,
 loads the key, and opens the browser. Leave the window open while using it;
