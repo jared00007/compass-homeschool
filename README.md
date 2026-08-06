@@ -37,6 +37,25 @@ Ctrl-C stops it.
 **On another device** (his tablet, a second laptop) — `./run.sh --lan` or
 `run.bat --lan` prints an address to open from anything on the same wifi.
 
+### macOS: "Apple could not verify Compass.command"
+
+macOS quarantines anything downloaded through a browser, so Gatekeeper blocks the
+launcher. It returns on every fresh ZIP download, because the new copy carries a
+new quarantine flag.
+
+Clear it once — **the folder path must be on the same line**:
+
+```bash
+xattr -dr com.apple.quarantine /path/to/compass-homeschool
+```
+
+After that the launcher clears the flag itself on every start, so it won't come
+back even if you re-download later.
+
+**The structural fix is to stop downloading ZIPs.** Files from `git clone` or
+GitHub Desktop are never quarantined, and updates become one button instead of a
+re-download plus copying `.env` and `compass.db` across.
+
 **From a terminal**, if you prefer:
 
 ```bash

@@ -22,6 +22,18 @@ say ""
 say "${BOLD}🧭  Starting Compass${OFF}"
 say ""
 
+# macOS quarantines anything downloaded through a browser, so Gatekeeper blocks
+# the launcher on every fresh download of the project. Once the user has
+# approved it far enough for this script to be running, clear the flag from the
+# whole folder — that covers files added by a later download too, so the warning
+# does not come back. Silent and harmless on Linux, where xattr doesn't exist.
+if [ "$(uname -s)" = "Darwin" ] && command -v xattr >/dev/null 2>&1; then
+    if xattr -pr com.apple.quarantine . >/dev/null 2>&1; then
+        xattr -dr com.apple.quarantine . 2>/dev/null && \
+            ok "Cleared macOS quarantine — you won't be asked to approve this again."
+    fi
+fi
+
 # --- Python ------------------------------------------------------------------
 
 PY=""
