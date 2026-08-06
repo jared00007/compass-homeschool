@@ -14,8 +14,6 @@ here — a strategy decides *what*, the framework's model call decides *how*.
 
 from __future__ import annotations
 
-import random
-from datetime import date
 from typing import Any
 
 from compass.agents.framework import StudentContext, TopicProposal
@@ -341,8 +339,6 @@ ERAS: tuple[tuple[str, str], ...] = (
     ("geography-economics", "Geography and economics of the United States"),
     ("pacific-northwest", "Pacific Northwest and Washington state history"),
 )
-
-ERA_LABELS = dict(ERAS)
 
 
 def timeline(ctx: StudentContext) -> TopicProposal:

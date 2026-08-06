@@ -98,9 +98,9 @@ def test_arcades_two_tone_border_is_wired_to_its_own_colours():
 
 def test_highvis_is_the_only_theme_with_a_real_top_bar():
     for key, t in theme.THEMES.items():
-        css = theme.css(t)
         if key == "highvis":
             assert "var(--c-primary) 0 6px" in t.top_bar
+            assert t.top_bar in theme.css(t)
         else:
             assert t.top_bar == "transparent", key
 

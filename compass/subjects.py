@@ -68,6 +68,11 @@ def is_valid(key: str) -> bool:
 # The agent still has to justify the credit with a real activity component —
 # this just bounds what it may claim, so a Math lesson can't quietly bill itself
 # as art appreciation.
+#
+# Health and occupational education appear here only where an activity genuinely
+# earns them opportunistically (cooking, trail safety, a real measurement job).
+# The family's primary coverage for both comes from the Core Life Skills
+# checklist, not from an agent.
 
 FOLDABLE_SUBJECTS: dict[str, tuple[str, ...]] = {
     # `language` is deliberately absent from math. Restating a definition
@@ -96,13 +101,6 @@ FOLDABLE_SUBJECTS: dict[str, tuple[str, ...]] = {
         "occupational_education",
     ),
 }
-
-# Subjects that are explicitly NOT satisfied by agent output. Health and
-# occupational education can be *folded in* opportunistically (a field activity
-# involving cooking or trail safety genuinely counts), but the family's primary
-# coverage for them comes from the Core Life Skills checklist, not an agent.
-NON_AGENTIC_SUBJECTS: tuple[str, ...] = ("health", "occupational_education")
-
 
 def allowed_credit_subjects(agent_key: str, primary_subject: str) -> tuple[str, ...]:
     """Subjects an agent may credit hours to, primary first."""

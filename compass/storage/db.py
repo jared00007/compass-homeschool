@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Sequence
 
 from compass import config
 
@@ -78,9 +78,6 @@ class Database:
             (key, str(value)),
         )
         self.conn.commit()
-
-    def all_settings(self) -> dict[str, str]:
-        return {r["key"]: r["value"] for r in _rows(self.conn.execute("SELECT * FROM settings"))}
 
     # -- students -------------------------------------------------------------
 
@@ -365,10 +362,6 @@ class Database:
         )
         self.conn.commit()
 
-    def delete_vocabulary(self, vocab_id: int) -> None:
-        self.conn.execute("DELETE FROM vocabulary WHERE id = ?", (vocab_id,))
-        self.conn.commit()
-
     # -- lessons --------------------------------------------------------------
 
     def save_lesson(
@@ -587,20 +580,6 @@ class Database:
     def delete_activity(self, activity_id: int) -> None:
         self.conn.execute("DELETE FROM activities WHERE id = ?", (activity_id,))
         self.conn.commit()
-
-    def recent_activity_titles(
-        self, student_id: int, source: str, limit: int = 10
-    ) -> list[str]:
-        return [
-            r["title"]
-            for r in _rows(
-                self.conn.execute(
-                    "SELECT title FROM activities WHERE student_id = ? AND source = ? "
-                    "ORDER BY occurred_on DESC, id DESC LIMIT ?",
-                    (student_id, source, limit),
-                )
-            )
-        ]
 
     # -- Tier 3 choice topics -------------------------------------------------
 

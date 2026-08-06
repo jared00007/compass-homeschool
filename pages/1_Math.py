@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from compass.agents import LessonGenerationError, get_agent
+from compass.agents import get_agent
 from compass.curriculum import (
     MATH_GRAPH,
     STRANDS,
@@ -15,13 +15,12 @@ from compass.curriculum import (
 )
 from compass.ui import (
     api_status_banner,
-    is_parent,
-    student_lesson_view,
     context_for,
-    log_lesson_form,
+    generate_and_log,
+    is_parent,
     page_setup,
-    render_lesson,
     render_proposal,
+    student_lesson_view,
 )
 
 db, student = page_setup("Math", icon="📐")
@@ -79,23 +78,16 @@ with plan_tab:
     proposal = agent.propose_topic(ctx)
     render_proposal(agent, proposal)
 
-    if st.button("Generate lesson", type="primary", disabled=not api_ok or proposal.blocked):
-        with st.spinner("The Math Agent is writing the lesson…"):
-            try:
-                st.session_state["math_lesson"] = agent.generate(ctx, proposal)
-            except LessonGenerationError as exc:
-                st.error(str(exc))
-
-    generated = st.session_state.get("math_lesson")
-    if generated:
-        st.divider()
-        for warning in generated.warnings:
-            st.caption(f"⚠️ {warning}")
-        render_lesson(generated.payload)
-        st.divider()
-        log_lesson_form(
-            db, student, generated, source="math", primary_subject="math", key_prefix="math"
-        )
+    generate_and_log(
+        db,
+        student,
+        agent,
+        ctx,
+        proposal,
+        primary_subject="math",
+        spinner="The Math Agent is writing the lesson…",
+        api_ok=api_ok,
+    )
 
 # --- mastery -----------------------------------------------------------------
 

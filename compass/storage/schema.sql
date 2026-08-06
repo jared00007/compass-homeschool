@@ -155,8 +155,13 @@ CREATE TABLE IF NOT EXISTS activity_subject_credits (
     UNIQUE (activity_id, subject)
 );
 
-CREATE INDEX IF NOT EXISTS idx_credits_subject
-    ON activity_subject_credits (subject);
+-- No index on `subject` alone: nothing ever queries credits that way. The only
+-- read is `WHERE activity_id IN (...)` from list_activities, which the UNIQUE
+-- (activity_id, subject) constraint's implicit index already serves. Dropped
+-- rather than left in place, since an unused index still costs a write on every
+-- credit inserted. `migrate()` re-runs this file on every open, so the DROP is
+-- how existing databases shed it too.
+DROP INDEX IF EXISTS idx_credits_subject;
 
 -- ---------------------------------------------------------------------------
 -- Tier 3 — his choice. No prerequisite logic, no agent. He curates it; the

@@ -8,7 +8,7 @@ This is a fresh, standalone build — local SQLite, a Streamlit UI, and four
 subject agents on the Anthropic API.
 
 **New here?** Read [GUIDE.md](GUIDE.md) — the parent-facing guide to how it works day to day.
-**Testing before the school year?** [TESTING.md](TESTING.md) — 57 checks, in the order that finds problems soonest.
+**Testing before the school year?** [TESTING.md](TESTING.md) — 74 checks, in the order that finds problems soonest.
 
 ## Running it
 
@@ -265,13 +265,28 @@ compass/
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
   theme.py                   the five themes and the CSS that applies one
-tests/                       174 tests, no API key required
+tests/                       179 tests, no API key required
 ```
 
 `compass/` knows nothing about Streamlit — the agents, storage, and compliance
 layers stay testable and reusable if the UI is ever replaced. `theme.py` is the one
 exception that talks CSS, and it talks *only* CSS — no Streamlit imports, so it's
 still unit-testable.
+
+The four agent pages are deliberately thin. Everything past "which skill / which
+branch / which book" runs through `ui.generate_and_log()`, one shared
+generate → review → log loop. That consolidation is a correctness measure more
+than a tidiness one: the redaction in `render_lesson` and the warnings from
+credit and video normalization are the two things that must never be skipped on
+any page, and four hand-maintained copies were four chances to forget one.
+
+**Concurrency.** `get_db()` is `@st.cache_resource`, so one `Database` — and one
+SQLite connection — is shared across every browser session, each of which
+Streamlit runs on its own thread. That's safe here rather than merely convenient:
+`sqlite3.threadsafety` is `3` on this build (SQLite compiled in serialized mode),
+so the driver itself serializes access. Writes commit immediately and there are
+no cross-request transactions to interleave, so parent and student can have the
+app open at once without a lock of our own.
 
 ---
 
@@ -443,7 +458,7 @@ Compass verifies the video itself, not what YouTube recommends once it ends.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 174 tests, ~5s, no API key needed
+python -m pytest tests/ -q      # 179 tests, ~5s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

@@ -113,11 +113,6 @@ def list_snapshots(db_path: str | Path) -> list[Snapshot]:
     return sorted((s for s in found if s), key=lambda s: s.taken_at, reverse=True)
 
 
-def latest_snapshot(db_path: str | Path) -> Snapshot | None:
-    snapshots = list_snapshots(db_path)
-    return snapshots[0] if snapshots else None
-
-
 def prune(db_path: str | Path, today: date | None = None) -> list[Path]:
     """Drop snapshots outside the retention policy. Returns what was removed."""
     today = today or date.today()

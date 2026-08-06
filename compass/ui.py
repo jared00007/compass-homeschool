@@ -15,7 +15,12 @@ import streamlit as st
 
 from compass import auth, config, subjects, theme as theming
 from compass.backup import auto_snapshot
-from compass.agents import GeneratedLesson, LessonAgent, StudentContext
+from compass.agents import (
+    GeneratedLesson,
+    LessonAgent,
+    LessonGenerationError,
+    StudentContext,
+)
 from compass.storage.db import Database
 
 
@@ -214,6 +219,64 @@ def context_for(
 ) -> StudentContext:
     return StudentContext(
         db=db, student_id=student["id"], student=student, inputs=inputs
+    )
+
+
+# --- the generate → review → log loop ----------------------------------------
+
+
+def generate_and_log(
+    db: Database,
+    student: dict[str, Any],
+    agent: LessonAgent,
+    ctx: StudentContext,
+    proposal,
+    *,
+    primary_subject: str,
+    spinner: str,
+    api_ok: bool,
+    location: str = "",
+    after_render: str = "",
+) -> None:
+    """The whole Tier 1 loop: generate, surface warnings, render, offer to log.
+
+    All four agent pages ran a near-identical copy of this. Keeping one copy
+    matters beyond tidiness: the redaction in `render_lesson` and the warnings
+    from credit/video normalization are the two things that must never be
+    skipped on any page, and four hand-maintained copies is four chances to
+    forget one.
+
+    The generated lesson is held in session state under the agent's own key, so
+    a rerun (logging hours, changing a widget) doesn't lose an expensive lesson.
+    """
+    state_key = f"{agent.key}_lesson"
+
+    if st.button("Generate lesson", type="primary", disabled=not api_ok or proposal.blocked):
+        with st.spinner(spinner):
+            try:
+                st.session_state[state_key] = agent.generate(ctx, proposal)
+            except LessonGenerationError as exc:
+                st.error(str(exc))
+
+    generated = st.session_state.get(state_key)
+    if not generated:
+        return
+
+    st.divider()
+    for warning in generated.warnings:
+        st.caption(f"⚠️ {warning}")
+    render_lesson(generated.payload)
+    if after_render:
+        st.caption(after_render)
+    st.divider()
+    log_lesson_form(
+        db,
+        student,
+        generated,
+        source=agent.key,
+        primary_subject=primary_subject,
+        location=location,
+        key_prefix=agent.key,
     )
 
 
