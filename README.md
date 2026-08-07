@@ -266,7 +266,8 @@ compass/
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
   theme.py                   the five themes and the CSS that applies one
-tests/                       201 tests, no API key required
+tests/                       204 tests, no API key required
+scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 ```
 
 `compass/` knows nothing about Streamlit — the agents, storage, and compliance
@@ -501,7 +502,7 @@ is a family policy setting, the same category as the Tier 3 guideline percent.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 201 tests, ~5s, no API key needed
+python -m pytest tests/ -q      # 204 tests, ~5s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

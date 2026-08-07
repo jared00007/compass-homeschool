@@ -367,6 +367,18 @@ If it still fails after a clean restart, the files really are behind. In Termina
 > ```
 > then relaunch.
 
+**An update changes what's inside a lesson (like the quiz did) and old lessons don't
+have it.** Expected — a lesson only has what was generated at the time. Generate a new
+one to see the new part, or clear all of them at once from Terminal:
+> ```
+> cd ~/Documents/GitHub/compass-homeschool
+> python3 scripts/clear_lessons.py
+> ```
+> This only touches the `lessons` table — logged hours, the compliance record, your
+> PIN, student profile, and math mastery are all untouched. Works from any folder, so
+> the `cd` above is just to be in the right place to run it, not a requirement of the
+> script itself.
+
 ---
 
 Compass is a planning and record-keeping tool. It doesn't know whether a lesson landed,
