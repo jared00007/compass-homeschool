@@ -198,3 +198,20 @@ CREATE TABLE IF NOT EXISTS life_skills (
     sort_order   INTEGER NOT NULL DEFAULT 0,
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- ---------------------------------------------------------------------------
+-- Washington's annual Declaration of Intent to homeschool (RCW 28A.200.010) --
+-- a once-a-year filing with the local school district, unrelated to hours or
+-- subject coverage. `due_on` is the actual computed deadline date for one
+-- year's filing, so a new year gets a new row rather than overwriting last
+-- year's -- a family that filed for 2025 shouldn't read as "filed" in 2026.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS declarations_of_intent (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    due_on      TEXT NOT NULL,
+    filed_on    TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (student_id, due_on)
+);

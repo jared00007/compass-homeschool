@@ -9,7 +9,13 @@ from compass.agents import life_skills
 from compass.compliance import build_report
 from compass.curriculum import frontier_report
 from compass.subjects import label
-from compass.ui import is_parent, page_setup, render_lesson
+from compass.ui import (
+    is_parent,
+    page_setup,
+    render_declaration_banner,
+    render_lesson,
+    render_school_start_countdown,
+)
 
 db, student = page_setup("Home", icon="🧭")
 
@@ -20,6 +26,7 @@ db, student = page_setup("Home", icon="🧭")
 if not is_parent():
     st.title(f"Hi {student['name'].split()[0]} 👋")
     st.caption("Here's what's set up for you. Open a subject in the sidebar for the details.")
+    render_school_start_countdown(db)
 
     # Life-skill plans live in the same table but are written *to the parent* —
     # "demonstrate once, then hand him the jack and stay quiet" is not his to read.
@@ -86,6 +93,8 @@ st.title("🧭 Compass")
 st.caption(
     f"Multi-agent homeschool curriculum for {student['name']}, grade {student['grade']}."
 )
+render_school_start_countdown(db)
+render_declaration_banner(db, student)
 
 report = build_report(db, student["id"])
 pace = report.pace()

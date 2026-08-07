@@ -22,6 +22,8 @@ from compass.agents import (
     StudentContext,
 )
 from compass.agents.quiz import grade, passed as quiz_passes
+from compass.compliance import declaration_status
+from compass.school_calendar import next_annual_date
 from compass.storage.db import Database
 
 
@@ -676,3 +678,57 @@ def api_status_banner() -> bool:
             "choice topics, and life skills — works without it."
         )
     return ok
+
+
+# --- school-year and Declaration of Intent countdowns -------------------------
+
+
+def render_school_start_countdown(db: Database) -> None:
+    """Shown to both parent and student -- there's nothing here to redact."""
+    next_start = next_annual_date(db.get_setting("school_year_start") or "09-01")
+    remaining = (next_start - date.today()).days
+    when = f"{next_start.strftime('%B')} {next_start.day}"
+    if remaining <= 0:
+        st.caption(f"🎉 Today's the first day of school ({when}).")
+    else:
+        plural = "s" if remaining != 1 else ""
+        st.caption(f"🗓️ {remaining} day{plural} until the first day of school ({when}).")
+
+
+def render_declaration_banner(db: Database, student: dict[str, Any]) -> None:
+    """Parent-only: filing paperwork with the district, not a lesson matter.
+
+    Washington's Declaration of Intent (RCW 28A.200.010) has nothing to do
+    with hours or subject coverage, which is why it's tracked here rather than
+    folded into the compliance report -- a family perfectly on pace for 1,000
+    hours can still be about to miss this deadline.
+    """
+    ds = declaration_status(db, student["id"])
+    when = f"{ds.due_on.strftime('%B')} {ds.due_on.day}, {ds.due_on.year}"
+
+    if ds.filed:
+        st.success(f"✅ Declaration of Intent filed on {ds.filed_on} for the {when} deadline.")
+        return
+
+    if ds.overdue:
+        st.error(
+            f"📌 **Declaration of Intent was due {when}** — file with your school "
+            "district as soon as possible (WA RCW 28A.200.010)."
+        )
+    else:
+        message = (
+            f"📌 **Declaration of Intent due in {ds.days_remaining} days** — file with "
+            f"your school district by {when} (WA RCW 28A.200.010)."
+        )
+        (st.warning if ds.days_remaining <= 14 else st.info)(message)
+
+    columns = st.columns([3, 1])
+    with columns[0]:
+        if ds.url:
+            st.caption(f"[Your district's filing page]({ds.url})")
+        else:
+            st.caption("Add your district's filing link in Compliance → Year settings.")
+    with columns[1]:
+        if st.button("Mark as filed", key="mark_declaration_filed"):
+            db.mark_declaration_filed(student["id"], ds.due_on.isoformat())
+            st.rerun()

@@ -47,6 +47,16 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "quiz_pass_percent": "80",
     # School year start (MM-DD). Used to bucket activities into a school year.
     "school_year_start": "09-01",
+    # Washington's annual Declaration of Intent filing deadline (MM-DD). Default
+    # is RCW 28A.200.010's September 15th; a family starting home-based
+    # instruction after the school year begins instead has two weeks from that
+    # start date, so this is editable rather than a hardcoded constant.
+    "declaration_due": "09-15",
+    # The family's own school district's filing page or contact. Left blank by
+    # default -- Compass has no business guessing which of Washington's ~300
+    # districts a family reports to, or what that district's process looks
+    # like this year.
+    "declaration_url": "",
 }
 
 # --- Tiers -------------------------------------------------------------------

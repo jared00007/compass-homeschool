@@ -16,9 +16,9 @@ from compass.backup import (
 )
 from compass.backup import restore as restore_snapshot
 from compass.backup import snapshot as take_snapshot
-from compass.compliance import build_report
+from compass.compliance import build_report, declaration_status
 from compass.costs import WEB_SEARCH_COST_PER_QUERY, build_cost_report
-from compass.ui import page_setup, parent_only
+from compass.ui import page_setup, parent_only, render_declaration_banner
 
 db, student = page_setup("Compliance", icon="📋")
 
@@ -258,6 +258,51 @@ with columns[2]:
     )
     if year_start_setting != db.get_setting("school_year_start"):
         db.set_setting("school_year_start", year_start_setting)
+        st.rerun()
+
+st.divider()
+
+# --- Declaration of Intent ----------------------------------------------------
+
+st.subheader("Declaration of Intent")
+st.caption(
+    "Washington requires filing this annually with your local school district — separate "
+    "from hours and subjects, and not something logging a lesson satisfies."
+)
+render_declaration_banner(db, student)
+
+with st.expander("Filing details and how Compass tracks this"):
+    st.markdown(
+        """
+Every family electing to homeschool in Washington files a signed Declaration of Intent
+with the superintendent of their local school district — by **September 15th**, or
+within two weeks of starting home-based instruction if that's later in the year
+(RCW 28A.200.010). There's no single statewide form or portal: each district runs its
+own process, so Compass can't link you to yours automatically — paste it below once
+you know it.
+        """
+    )
+    due_columns = st.columns(2)
+    with due_columns[0]:
+        due_setting = st.text_input(
+            "Filing deadline (MM-DD)", value=db.get_setting("declaration_due") or "09-15"
+        )
+        if due_setting != db.get_setting("declaration_due"):
+            db.set_setting("declaration_due", due_setting)
+            st.rerun()
+    with due_columns[1]:
+        url_setting = st.text_input(
+            "Your district's filing page (optional)",
+            value=db.get_setting("declaration_url") or "",
+            placeholder="https://your-district.example/homeschool",
+        )
+        if url_setting != db.get_setting("declaration_url"):
+            db.set_setting("declaration_url", url_setting.strip())
+            st.rerun()
+
+    ds = declaration_status(db, student["id"])
+    if ds.filed and st.button("Undo — not actually filed"):
+        db.clear_declaration_filed(student["id"], ds.due_on.isoformat())
         st.rerun()
 
 st.divider()

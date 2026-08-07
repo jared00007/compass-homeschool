@@ -713,6 +713,35 @@ class Database:
         self.conn.commit()
         return len(starter)
 
+    # -- Declaration of Intent (WA RCW 28A.200.010) ---------------------------
+
+    def declaration_status(self, student_id: int, due_on: str) -> dict[str, Any] | None:
+        return _row(
+            self.conn.execute(
+                "SELECT * FROM declarations_of_intent WHERE student_id = ? AND due_on = ?",
+                (student_id, due_on),
+            )
+        )
+
+    def mark_declaration_filed(
+        self, student_id: int, due_on: str, filed_on: str | None = None
+    ) -> None:
+        self.conn.execute(
+            "INSERT INTO declarations_of_intent (student_id, due_on, filed_on) "
+            "VALUES (?, ?, ?) "
+            "ON CONFLICT(student_id, due_on) DO UPDATE SET filed_on = excluded.filed_on",
+            (student_id, due_on, filed_on or date.today().isoformat()),
+        )
+        self.conn.commit()
+
+    def clear_declaration_filed(self, student_id: int, due_on: str) -> None:
+        self.conn.execute(
+            "UPDATE declarations_of_intent SET filed_on = NULL "
+            "WHERE student_id = ? AND due_on = ?",
+            (student_id, due_on),
+        )
+        self.conn.commit()
+
     # -- school-year helper ---------------------------------------------------
 
     def school_year_bounds(self, on: date | None = None) -> tuple[str, str]:

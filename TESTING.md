@@ -271,6 +271,23 @@ The part a district could ask about. Worth being fussy here.
   Compliance → Download the instructional record. Open in Numbers or Excel.
   *Pass: one row per activity, a column per credited subject, readable by someone who isn't you.*
 
+- [ ] **Declaration of Intent banner and countdown**
+  Home page, parent view. Also check the first-day-of-school countdown at the top,
+  visible in both parent and student view.
+  *Pass: a due-date countdown referencing RCW 28A.200.010; a separate plain countdown to
+  the first day of school shows on Home in both views.*
+
+- [ ] **Marking the Declaration filed, and undoing it**
+  Press "Mark as filed" on the Home banner. Then Compliance → Declaration of Intent →
+  expand the details → "Undo — not actually filed".
+  *Pass: banner turns into a green "filed on [today]" message; Undo reverts it to the
+  countdown/overdue state.*
+
+- [ ] ⚠ **CRITICAL — A missed deadline stays flagged, it doesn't quietly reset**
+  Set "Filing deadline (MM-DD)" to yesterday's date, don't mark it filed, reload the page.
+  *Pass: the banner reads as overdue for that date — it must NOT roll forward to a calm
+  365-day countdown for next year just because the date passed.*
+
 ---
 
 ## 7 · Backups — *no cost*

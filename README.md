@@ -260,13 +260,15 @@ compass/
     {math,science,english,history}_agent.py
   curriculum/math_graph.py   the hand-authored 50-node graph
   compliance/dashboard.py    WA hour/subject/tier reporting
+  compliance/declaration.py  Declaration of Intent due-date/filed tracking
+  school_calendar.py         shared annual MM-DD date arithmetic
   costs.py                   token usage → dollars, per agent and projected
   backup.py                  daily snapshots, retention, and restore
   storage/                   SQLite schema + repository
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
   theme.py                   the five themes and the CSS that applies one
-tests/                       204 tests, no API key required
+tests/                       223 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 ```
 
@@ -499,10 +501,41 @@ grade and show a score without a side effect — a real check with no mechanism 
 it yet, rather than force-fitting one. The pass bar (`quiz_pass_percent`, default 80)
 is a family policy setting, the same category as the Tier 3 guideline percent.
 
+## Declaration of Intent and school-year countdowns
+
+Washington also requires a once-a-year filing with the local school district (RCW
+28A.200.010) — a paperwork deadline that has nothing to do with instructional hours
+or subject coverage, which is exactly why `compass/compliance/declaration.py` is a
+separate module from `dashboard.py` rather than another field on `ComplianceReport`.
+A family perfectly on pace for 1,000 hours can still be about to miss this deadline.
+
+**Getting "overdue" right took a second pass.** The obvious implementation — roll the
+due date forward to next year the instant it passes, the same way the first-day-of-
+school countdown works — is wrong here specifically: a missed filing would silently
+turn into a calm 350-day countdown instead of staying a visible problem. So
+`declaration_status()` computes the deadline as *this calendar year's* occurrence of
+the configured date, full stop — no early rollover. That single date then does three
+things depending on state: still in the future → a countdown; passed and unfiled →
+stays flagged overdue, for the rest of that year; passed and filed → reads as done.
+The transition to next year's date happens automatically once the calendar itself
+turns over, not on any special-cased timer. `compass/school_calendar.py` holds the
+shared MM-DD arithmetic (`date_in_year`, `next_annual_date`) both this and the
+school-year-start countdown are built on.
+
+**The filing link is never guessed.** Washington has roughly 300 school districts,
+each running its own process — there's no single state URL Compass could point to
+correctly, so `declaration_url` starts empty and is only ever whatever the family
+pastes into Compliance → Declaration of Intent themselves.
+
+Shown on the Home page: the parent gets the Declaration banner (with a **Mark as
+filed** button that writes straight to a small `declarations_of_intent` table,
+keyed by student and due date so each year gets its own row) and, in both parent and
+student view, a plain countdown to the first day of school.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 204 tests, ~5s, no API key needed
+python -m pytest tests/ -q      # 223 tests, ~5s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

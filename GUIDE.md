@@ -159,6 +159,25 @@ fair before logging.
 
 ---
 
+## The Declaration of Intent
+
+Separate from everything above, and easy to forget because logging hours has nothing to
+do with it: Washington requires a signed **Declaration of Intent** filed with your local
+school district, once a year, by **September 15th** (RCW 28A.200.010) — or within two
+weeks of starting home-based instruction if that's later in the year.
+
+Compass tracks this on the Home page (parent view) and in **Compliance → Declaration of
+Intent**: a banner counting down to the deadline, a place to paste your own district's
+filing page once you know it (every district runs its own process — there's no single
+state form Compass could link you to), and a **Mark as filed** button once it's done. A
+missed deadline stays flagged as overdue rather than quietly resetting to a calm
+countdown for next year — it only clears once you actually mark it filed.
+
+Also on the Home page, for both of you: a plain countdown to the first day of school,
+based on the same school-year-start date used everywhere else in Compass.
+
+---
+
 ## Math mastery is the gate
 
 Everything the Math agent does depends on one thing: what you've marked mastered. Not
