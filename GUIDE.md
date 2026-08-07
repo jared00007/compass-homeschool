@@ -175,6 +175,33 @@ gets retaught next time rather than moving on.
 
 ---
 
+## The in-app quiz
+
+Every lesson, on every subject, ends with a **"Check your understanding"** quiz he can take
+himself right on the screen: three to five multiple-choice questions on that lesson's own
+content, graded the moment he submits.
+
+**On Math, a passing score records mastery automatically** — no trip to **Record mastery**
+required. A failing score does nothing to the mastery record either way; only a pass writes
+anything, so a bad day never un-masters something he already knows. You can still record
+mastery by hand at any time, and the two paths write to the same place.
+
+On Science, English, and History there's no mastery gate to hook into, so the quiz just
+shows him his score — a real check without a mechanism behind it yet.
+
+The pass bar defaults to 80% and is a family policy call, not a Washington requirement — a
+setting, not a constant, if you want it stricter or looser.
+
+**On not being able to peek.** The correct answer is never sent to the page until after he
+submits — this isn't a CSS trick, it's that Streamlit reruns the whole page from the server
+on every click, so the only way to leak an answer early would be to write it into the page
+before he's answered, which the code simply never does. Copying a question out to search for
+it is blocked by ordinary browser text-selection rules on that section — real friction, but
+the same honest caveat as the PIN: it stops the casual case, not a determined kid with
+dev tools open.
+
+---
+
 ## The test month
 
 Four weeks, and most of it isn't about the app working — it's about whether you trust what
@@ -355,13 +382,14 @@ He shouldn't be reading the answer key to a test he's about to take. Set a PIN i
 the sidebar (**Set a parent PIN**) and Compass splits into two views.
 
 **What he sees:** today's lessons — objectives, activities, instructions,
-materials, a suggested video when there is one — plus his reading progress,
-vocabulary review, and his own Tier 3 topics. Enough to do the work without you
-narrating it.
+materials, a suggested video when there is one, and the quiz at the end — plus
+his reading progress, vocabulary review, and his own Tier 3 topics. Enough to
+do the work without you narrating it.
 
-**What only you see:** assessments and answer keys, mastery criteria, parent
-notes, subject credits, lesson generation, the compliance record, costs, and
-backups.
+**What only you see:** assessments and answer keys (including the quiz's — an
+expander on your side shows every question with the correct choice marked),
+mastery criteria, parent notes, subject credits, lesson generation, the
+compliance record, costs, and backups.
 
 Every new browser session starts in student view, because he opens the app far
 more often than you do. Unlock with the PIN from the sidebar when you need the

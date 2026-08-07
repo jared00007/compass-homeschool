@@ -103,6 +103,35 @@ LESSON_SCHEMA: dict[str, Any] = _object(
                 }
             ),
         },
+        "quiz": {
+            "type": "array",
+            "description": (
+                "Three to five multiple-choice questions checking whether he actually "
+                "learned today's content, for him to take himself and get graded "
+                "automatically. Separate from `assessment`, which the parent uses."
+            ),
+            "items": _object(
+                {
+                    "question": {"type": "string"},
+                    "choices": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Exactly four answer choices, one clearly correct and three "
+                            "plausible distractors."
+                        ),
+                    },
+                    "correct_index": {
+                        "type": "integer",
+                        "description": "0-based index into `choices` of the correct answer.",
+                    },
+                    "explanation": {
+                        "type": "string",
+                        "description": "One sentence on why that answer is correct, shown after he answers.",
+                    },
+                }
+            ),
+        },
         "estimated_minutes": {"type": "integer"},
         "parent_notes": {
             "type": "string",

@@ -8,7 +8,7 @@ This is a fresh, standalone build — local SQLite, a Streamlit UI, and four
 subject agents on the Anthropic API.
 
 **New here?** Read [GUIDE.md](GUIDE.md) — the parent-facing guide to how it works day to day.
-**Testing before the school year?** [TESTING.md](TESTING.md) — 74 checks, in the order that finds problems soonest.
+**Testing before the school year?** [TESTING.md](TESTING.md) — 78 checks, in the order that finds problems soonest.
 
 ## Running it
 
@@ -252,6 +252,7 @@ compass/
     framework.py             LessonAgent, AgentSpec, generation pipeline
     credits.py               the one credit-policing implementation
     video.py                 verifying a claimed video against real search results
+    quiz.py                  verifying/grading the self-graded quiz
     strategies.py            the four next-topic strategies
     llm.py                   Anthropic client, lesson JSON schema, error handling
     prompts.py               shared user-prompt assembly
@@ -265,7 +266,7 @@ compass/
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
   theme.py                   the five themes and the CSS that applies one
-tests/                       179 tests, no API key required
+tests/                       201 tests, no API key required
 ```
 
 `compass/` knows nothing about Streamlit — the agents, storage, and compliance
@@ -455,10 +456,52 @@ is meant for him directly — there's nothing left to redact once it's passed bo
 checks above. The parent's copy carries one extra line the student's doesn't:
 Compass verifies the video itself, not what YouTube recommends once it ends.
 
+## The in-app quiz
+
+Every lesson, from every agent, ends with `quiz`: three to five multiple-choice
+questions the student takes himself and gets graded on the spot, alongside the
+existing free-text `assessment` the parent administers. Two things had to be true
+for this to be worth building rather than just another free-text field: the model's
+questions had to be structurally trustworthy before they reach a grading UI, and
+the correct answer had to be genuinely unreachable before he answers — not just
+hidden behind CSS.
+
+**Structural verification (`compass/agents/quiz.py`).** The JSON schema enforces
+types, not invariants across fields — nothing stops the model from returning
+`correct_index: 4` for a four-choice question, or three choices instead of four.
+Either one wouldn't just look wrong, it would silently break grading: a correct
+answer that can never be selected. `verify_quiz()` drops any question that fails a
+structural check (question text, exactly four non-empty choices, `correct_index`
+a genuine `int` in range — explicitly rejecting `bool`, which is a subtype of `int`
+in Python) rather than trusting the shape, the same anti-hallucination posture
+`credits.py` and `video.py` already take toward the rest of a lesson's claims.
+
+**The correct answer is never sent to the browser before he submits — architecturally,
+not by convention.** Streamlit reruns the whole page from the server on every
+interaction; `ui.render_quiz()` simply never reads `correct_index` into a widget or
+a string until *after* `st.form_submit_button` has fired. There's no answer for a
+browser dev-tools inspection to find early, because the ungraded branch of the code
+never puts it on the page — the same reasoning `render_lesson`'s parent/student
+redaction already relies on. A `user-select: none` rule on the quiz's container
+(`st.container(key=...)`, a CSS class Streamlit itself provides) adds a second,
+much weaker layer against copying a question out to search for it — real friction,
+the same honestly-caveated kind as the PIN, not something that stops a determined
+kid with dev tools open.
+
+**A pass on Math auto-records mastery.** `render_quiz()` reads `metadata["skill_id"]`
+— the same key `graph_walk`'s proposal already writes for every Math lesson — and on
+a passing score calls the same `db.set_mastery(..., "mastered", ...)` the parent's
+**Record mastery** form calls by hand. A failing score does nothing to the mastery
+record either way, so a bad day never un-masters something already recorded. Science,
+English, and History have no analogous mastery concept to hook into, so their quizzes
+grade and show a score without a side effect — a real check with no mechanism behind
+it yet, rather than force-fitting one. The pass bar (`quiz_pass_percent`, default 80)
+is a family policy setting, the same category as the Tier 3 guideline percent.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 179 tests, ~5s, no API key needed
+python -m pytest tests/ -q      # 201 tests, ~5s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

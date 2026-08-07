@@ -107,6 +107,11 @@ One lesson from each. Math first — cheapest and fastest.
   Scroll to the bottom of each generated lesson.
   *Pass: each credit names a subject, minutes, and which part of the lesson earns it.*
 
+- [ ] **Every lesson includes a quiz**
+  As the parent, expand "Quiz answer key" under any generated lesson.
+  *Pass: three to five questions, four choices each, exactly one marked correct, an
+  explanation on each.*
+
 ---
 
 ## 3 · The full loop — *no cost*
@@ -136,6 +141,21 @@ Generate → teach → log → dashboard. The path you'll walk every day.
 - [ ] **Deleting corrects the record**
   Delete a test activity from the Activity Log.
   *Pass: Compliance total drops by exactly that activity's minutes.*
+
+- [ ] ⚠ **CRITICAL — Taking the quiz never shows the answer early**
+  Set a PIN, switch to student view, open the Math quiz. Before answering anything,
+  view page source or check the DOM (right-click → Inspect) for the questions.
+  *Pass: no correct answer is findable anywhere on the page before you submit.*
+
+- [ ] **A passing quiz score auto-records Math mastery**
+  As the student, answer every question right and submit. Then unlock the parent view
+  and check Math → Record mastery for that skill — do this *without* touching the
+  Record mastery form yourself first.
+  *Pass: the skill already shows "mastered", with a note that it was auto-graded.*
+
+- [ ] **A failing quiz score does not touch mastery**
+  Take a different lesson's quiz and get most of it wrong.
+  *Pass: score and pass/fail message are correct; the skill's mastery status is unchanged.*
 
 ---
 

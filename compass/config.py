@@ -42,6 +42,9 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "tier3_cap_percent": "20",
     # Typical instructional day length in minutes, used to size lesson requests.
     "default_lesson_minutes": "60",
+    # Score needed on the in-app quiz to count as a pass. A pass on a Math lesson
+    # auto-records mastery; other subjects just show the score.
+    "quiz_pass_percent": "80",
     # School year start (MM-DD). Used to bucket activities into a school year.
     "school_year_start": "09-01",
 }

@@ -476,6 +476,26 @@ class Database:
         self.conn.execute("UPDATE lessons SET status = ? WHERE id = ?", (status, lesson_id))
         self.conn.commit()
 
+    def record_quiz_result(self, lesson_id: int, correct: int, total: int, passed: bool) -> None:
+        """Stash the graded score into the lesson's metadata, alongside the
+        strategy metadata already stored there (skill_id, era, and so on)."""
+        self.conn.execute(
+            "UPDATE lessons SET metadata = json_set(metadata, '$.quiz_result', json(?)) "
+            "WHERE id = ?",
+            (
+                json.dumps(
+                    {
+                        "correct": correct,
+                        "total": total,
+                        "passed": passed,
+                        "graded_on": date.today().isoformat(),
+                    }
+                ),
+                lesson_id,
+            ),
+        )
+        self.conn.commit()
+
     # -- activities and multi-subject credits ---------------------------------
 
     def log_activity(

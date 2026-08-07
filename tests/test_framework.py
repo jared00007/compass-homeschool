@@ -377,6 +377,66 @@ def test_prompt_lists_only_this_agents_video_channels(db, student):
     assert "Math Antics" not in science_prompt
 
 
+def test_normalize_keeps_a_well_formed_quiz(db, student):
+    agent = get_agent("math")
+    payload = {
+        "activities": [{"minutes": 60}],
+        "estimated_minutes": 60,
+        "subject_credits": [{"subject": "math", "minutes": 60, "justification": ""}],
+        "quiz": [
+            {
+                "question": "What is 2 + 2?",
+                "choices": ["3", "4", "5", "6"],
+                "correct_index": 1,
+                "explanation": "2 + 2 = 4.",
+            }
+        ],
+    }
+    warnings, payload = normalize(agent, payload, db, student)
+    assert len(payload["quiz"]) == 1
+    assert not any("quiz" in w.lower() for w in warnings)
+
+
+def test_normalize_drops_a_malformed_quiz_question(db, student):
+    """An out-of-range correct_index would silently break grading, not just
+    look odd -- this has to be caught before the quiz reaches the student."""
+    agent = get_agent("math")
+    payload = {
+        "activities": [{"minutes": 60}],
+        "estimated_minutes": 60,
+        "subject_credits": [{"subject": "math", "minutes": 60, "justification": ""}],
+        "quiz": [
+            {
+                "question": "Broken question",
+                "choices": ["a", "b", "c", "d"],
+                "correct_index": 9,
+                "explanation": "",
+            }
+        ],
+    }
+    warnings, payload = normalize(agent, payload, db, student)
+    assert payload["quiz"] == []
+    assert any("malformed quiz question" in w for w in warnings)
+
+
+def test_normalize_fills_in_quiz_for_a_payload_that_never_had_one(db, student):
+    agent = get_agent("english")
+    payload = {
+        "activities": [{"minutes": 60}],
+        "estimated_minutes": 60,
+        "subject_credits": [{"subject": "reading", "minutes": 60, "justification": ""}],
+    }
+    warnings, payload = normalize(agent, payload, db, student)
+    assert payload["quiz"] == []
+
+
+def test_prompt_describes_the_self_graded_quiz(db, student):
+    agent = get_agent("math")
+    prompt = agent.build_system_prompt(ctx_for(db, student))
+    assert "three to five multiple-choice questions" in prompt
+    assert "graded automatically" in prompt
+
+
 def test_single_subject_lesson_is_untouched(db, student):
     agent = get_agent("math")
     payload = {

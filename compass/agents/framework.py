@@ -20,6 +20,7 @@ from typing import Any, Callable, Protocol
 from compass import config, subjects
 from compass.agents.credits import normalize_credits
 from compass.agents.llm import LessonGenerationError, generate_lesson
+from compass.agents.quiz import verify_quiz
 from compass.agents.video import channels_for_prompt, verify_video
 from compass.storage.db import Database
 
@@ -185,6 +186,22 @@ the lesson doesn't already show him. Not "this is a good video about X."
 - The lesson must stand on its own without it. Nothing in `activities` or \
 `assessment` may depend on him having watched it.
 
+## A quiz he takes himself
+Write `quiz`: three to five multiple-choice questions checking whether he \
+actually learned today's content — straightforward recall and application of \
+exactly what this lesson taught, nothing outside it. This is separate from \
+`assessment`: he takes this one himself, right on the screen, and it is graded \
+automatically the moment he submits it.
+
+- Each question needs exactly four choices: one clearly correct, three \
+plausible distractors that aren't obviously wrong.
+- Vary which position the correct answer sits in from question to question — \
+do not default to always putting it first or last.
+- `explanation` is one sentence, shown to him after he answers, on why the \
+correct choice is correct.
+- Base every question on this lesson's own material. If he could pass by \
+guessing or from outside knowledge, the question isn't doing its job.
+
 ## The family's approach
 - The design goal is that {student_name} does not feel like he is doing eleven \
 separate subjects. Fold naturally; do not bolt on a token art question.
@@ -201,6 +218,9 @@ answer, worked solution, scoring rule, and answer key in `assessment` — never 
 an activity's instructions, and never in `materials`. Questions go in the \
 activity; answers go in the assessment. Getting this wrong hands him the answer \
 key to the test he is about to sit.
+- **He does take `quiz` directly, but Compass reveals each `correct_index` only \
+after he submits an answer.** Don't work a quiz question's answer into an \
+activity's instructions either — that undermines the check just as much.
 - Target roughly {minutes} minutes total. Match `estimated_minutes` to the sum \
 of your activity minutes.
 """
@@ -318,10 +338,12 @@ class LessonAgent:
             fallback_minutes=ctx.minutes,
         )
         warnings += verify_video(payload, self.spec.key)
+        warnings += verify_quiz(payload)
         payload.setdefault("branches", [])
         payload.setdefault("materials", [])
         payload.setdefault("learning_objectives", [])
         payload.setdefault("video", {"found": False, "title": "", "url": "", "channel": "", "why": ""})
+        payload.setdefault("quiz", [])
         return warnings
 
 

@@ -21,6 +21,7 @@ from compass.agents import (
     LessonGenerationError,
     StudentContext,
 )
+from compass.agents.quiz import grade, passed as quiz_passes
 from compass.storage.db import Database
 
 
@@ -382,6 +383,17 @@ def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> Non
                 for branch in branches:
                     st.markdown(f"- **{branch.get('topic')}** — {branch.get('rationale', '')}")
 
+        quiz = lesson.get("quiz") or []
+        if quiz:
+            with st.expander(f"Quiz answer key ({len(quiz)} questions)"):
+                for index, item in enumerate(quiz, start=1):
+                    st.markdown(f"**{index}. {item['question']}**")
+                    for choice_index, choice in enumerate(item["choices"]):
+                        marker = "✅" if choice_index == item["correct_index"] else "—"
+                        st.markdown(f"{marker} {choice}")
+                    if item.get("explanation"):
+                        st.caption(item["explanation"])
+
 
 def render_life_skill_plan(plan: dict[str, Any]) -> None:
     """Render a life-skill teaching plan. Parent-facing throughout.
@@ -508,6 +520,118 @@ def log_lesson_form(
         st.balloons()
 
 
+def render_quiz(
+    db: Database,
+    student: dict[str, Any],
+    lesson_id: int,
+    metadata: dict[str, Any],
+    quiz: list[dict[str, Any]],
+) -> None:
+    """The student's self-graded check on this lesson's content.
+
+    The only thing standing between him and the answer key is that this
+    function never writes a `correct_index` anywhere onto the page until after
+    he submits. No CSS trick is needed for that part: Streamlit reruns this
+    whole function on every interaction, so as long as the ungraded branch
+    below never puts `correct_index` into a widget or a string, it never
+    reaches the browser either — the answer simply isn't there to find, the
+    same reasoning `render_lesson`'s redaction relies on.
+
+    The `user-select: none` below is a separate, much weaker measure against
+    copying the question text out to search for it — real friction, like the
+    PIN, not a lock that can't be picked.
+    """
+    if not quiz:
+        return
+
+    state_key = f"quiz_result_{lesson_id}"
+    result = st.session_state.get(state_key)
+
+    st.divider()
+    st.markdown("### 📝 Check your understanding")
+
+    with st.container(key=f"quiz_nocopy_{lesson_id}"):
+        st.markdown(
+            f"<style>.st-key-quiz_nocopy_{lesson_id} "
+            "{ -webkit-user-select: none; user-select: none; }</style>",
+            unsafe_allow_html=True,
+        )
+
+        if result is None:
+            picks: list[int | None] = []
+            with st.form(f"quiz_form_{lesson_id}"):
+                for index, item in enumerate(quiz):
+                    st.markdown(f"**{index + 1}. {item['question']}**")
+                    pick = st.radio(
+                        "choices",
+                        options=list(range(len(item["choices"]))),
+                        format_func=lambda i, choices=item["choices"]: choices[i],
+                        index=None,
+                        label_visibility="collapsed",
+                        key=f"quiz_pick_{lesson_id}_{index}",
+                    )
+                    picks.append(pick)
+                submitted = st.form_submit_button("Submit quiz", type="primary")
+
+            if not submitted:
+                return
+            if any(pick is None for pick in picks):
+                st.warning("Answer every question before submitting.")
+                return
+
+            correct, total = grade(quiz, picks)
+            threshold = db.get_int_setting("quiz_pass_percent")
+            did_pass = quiz_passes(correct, total, threshold)
+            st.session_state[state_key] = {"picks": picks, "correct": correct}
+            db.record_quiz_result(lesson_id, correct, total, did_pass)
+
+            skill_id = metadata.get("skill_id")
+            if did_pass and skill_id:
+                db.set_mastery(
+                    student["id"],
+                    skill_id,
+                    "mastered",
+                    score=100 * correct / total,
+                    notes="Auto-graded from the in-app quiz.",
+                )
+            st.rerun()
+            return
+
+        picks = result["picks"]
+        correct, total = result["correct"], len(quiz)
+        threshold = db.get_int_setting("quiz_pass_percent")
+        did_pass = quiz_passes(correct, total, threshold)
+        pct = round(100 * correct / total)
+        if did_pass:
+            st.success(f"**{correct} / {total} correct ({pct}%)** — nice work.")
+            if metadata.get("skill_id"):
+                st.caption("Counted toward mastery of this skill.")
+        else:
+            st.warning(
+                f"**{correct} / {total} correct ({pct}%)** — under the "
+                f"{threshold}% needed to pass. Ask your parent about another go."
+            )
+
+        for index, item in enumerate(quiz):
+            pick = picks[index]
+            right = pick == item["correct_index"]
+            marker = "✅" if right else "❌"
+            with st.expander(f"{marker} {index + 1}. {item['question']}", expanded=not right):
+                for choice_index, choice in enumerate(item["choices"]):
+                    tag = ""
+                    if choice_index == item["correct_index"]:
+                        tag = " — correct answer"
+                    elif choice_index == pick:
+                        tag = " — your answer"
+                    st.markdown(f"- {choice}{tag}")
+                if item.get("explanation"):
+                    st.caption(item["explanation"])
+
+        if st.button("Try again", key=f"quiz_retry_{lesson_id}"):
+            del st.session_state[state_key]
+            st.rerun()
+
+
 def student_lesson_view(
     db: Database, student: dict[str, Any], agent_key: str, subject_label: str
 ) -> None:
@@ -525,6 +649,13 @@ def student_lesson_view(
     if current["status"] == "completed":
         st.caption("This one's already marked done — here it is again.")
     render_lesson(current["payload"], for_parent=False)
+    render_quiz(
+        db,
+        student,
+        current["id"],
+        current.get("metadata") or {},
+        current["payload"].get("quiz") or [],
+    )
 
     older = [l for l in lessons if l["id"] != current["id"]]
     if older:
