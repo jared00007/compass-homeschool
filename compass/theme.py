@@ -10,9 +10,9 @@ So this module does it the other way round. It declares its own custom propertie
 on `:root`, then repaints Streamlit's surfaces through them using `data-testid`
 selectors — which are stable across versions because Streamlit's own test suite
 depends on them. Everything the CSS can't reach (the insides of dropdown popovers,
-date pickers, text inputs) is covered by keeping `config.toml` on a neutral dark
-base, which is why all five themes here are dark. A light theme would need that
-base changed and the app relaunched; it is not something a picker can do.
+date pickers, and the compliance dataframe, which renders to a canvas) is covered
+by keeping `config.toml`'s base theme in step with these five — light, to match —
+so those native surfaces already look right underneath whichever theme is showing.
 
 The backdrop rule: the page ground and the sidebar are fixed, not themed. Color
 lives on the containers -- expanders, alerts, metrics, buttons -- never on the
@@ -30,8 +30,9 @@ SANS = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif'
 MONO = 'ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace'
 
 # The static backdrop. Fixed across every theme, on purpose -- see module docstring.
-BACKDROP_BG = "#0A0A0D"
-BACKDROP_SIDE = "#050506"
+# A warm, bright off-white pair rather than pure white/grey -- chosen, not inherited.
+BACKDROP_BG = "#FBF7EE"
+BACKDROP_SIDE = "#F3ECDA"
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,14 @@ class Theme:
     heading_stroke: str = "0px"       # an inked outline behind the page title
     heading_fill: str = "var(--c-text)"  # the page title's own colour, separate
     # from body text so a theme can make it pop without recoloring every h2-h4
+    # The primary button prints in this colour over `primary`. Defaults to the
+    # theme's own dark `text` -- but `primary` isn't always light enough for
+    # that to clear WCAG AA (4.5:1); Arcade's magenta and Blueprint's red are
+    # both under 4.5:1 with dark text, so those two override this to white
+    # rather than lightening `primary` itself, which is also the page's accent
+    # and heading colour elsewhere. Checked with a contrast calculator, not by
+    # eye -- "looks fine" and "4.5:1" are not the same claim.
+    button_text: str = "var(--c-text)"
     panel_texture: str = "none"       # a background-image every container gets
     glow: str = "none"
     # Two-tone container frame (Arcade's marquee edge). None on either side means
@@ -70,93 +79,95 @@ class Theme:
     # Semantic colours. Kept separate from `primary` on purpose — "this needs you"
     # and "this is wrong" must never be the same colour, or a warning stops reading
     # as a warning.
-    good: str = "#3FB37F"
-    warn: str = "#E0A32E"
-    bad: str = "#E5544B"
+    good: str = "#2F9B68"
+    warn: str = "#B9791A"
+    bad: str = "#C43B32"
 
 
 THEMES: dict[str, Theme] = {
     "comic": Theme(
         key="comic",
         name="Comic Book",
-        tagline="Ink borders, pop-art shadow",
-        panel="#1C160F", text="#F5EFE4", dim="#B7A88E",
-        primary="#FFD400", alt="#3D7AFF", border="#E63946",
+        tagline="Ink outlines, sunlit paper",
+        panel="#FFFBF0", text="#241C12", dim="#8A7A5E",
+        primary="#F2B705", alt="#2F63E0", border="#E63946",
         radius="3px",
         heading_font='"Avenir Next", "Helvetica Neue", ' + SANS,
         heading_caps="uppercase", heading_track=".02em", heading_weight="800",
-        heading_stroke="1.4px", heading_fill="var(--c-primary)",
+        heading_stroke="1.1px", heading_fill="var(--c-primary)",
         panel_texture=(
             "repeating-radial-gradient(circle at 100% 0%, "
-            "rgba(255,255,255,.075) 0 1px, transparent 1px 7px)"
+            "rgba(36,28,18,.05) 0 1px, transparent 1px 7px)"
         ),
-        glow="5px 5px 0 rgba(0,0,0,.8)",
+        glow="3px 3px 0 rgba(36,28,18,.16)",
     ),
     "arcade": Theme(
         key="arcade",
         name="Arcade",
-        tagline="Cabinet art, louder neon",
-        panel="#22102F", text="#F5E9FF", dim="#B294D4",
-        primary="#FF2D78", alt="#22F0FF", border="#4A2166",
+        tagline="Cabinet art, daylight neon",
+        panel="#FFF6FB", text="#2B1233", dim="#8C6FA3",
+        primary="#E01E68", alt="#0EA5B7", border="#E7B9D6",
         radius="2px",
         heading_font='"Futura", "Futura PT", "Century Gothic", "Avenir Next", ' + SANS,
         heading_caps="uppercase", heading_track=".11em", heading_weight="700",
         panel_texture=(
-            "repeating-linear-gradient(to bottom, rgba(255,255,255,.05) 0 1px, "
+            "repeating-linear-gradient(to bottom, rgba(43,18,51,.05) 0 1px, "
             "transparent 1px 3px), "
-            "radial-gradient(ellipse 100% 55% at 50% 0%, rgba(34,240,255,.16), transparent 70%)"
+            "radial-gradient(ellipse 100% 55% at 50% 0%, rgba(14,165,183,.12), transparent 70%)"
         ),
-        glow="0 0 10px rgba(255,45,120,.7), 0 0 26px rgba(34,240,255,.28)",
-        border_top="#FF2D78", border_bottom="#22F0FF",
-        warn="#FFEA00",
+        glow="0 2px 14px rgba(224,30,104,.18)",
+        border_top="#FF2D78", border_bottom="#0EA5B7",
+        warn="#B8860B",
+        button_text="#FFFFFF",  # dark text on this magenta clears only 3.7:1
     ),
     "techtree": Theme(
         key="techtree",
         name="Tech Tree",
-        tagline="Ember on deep pine",
-        panel="#0C1A16", text="#EAFBF3", dim="#79A296",
-        primary="#FF8C1A", alt="#3FE0C4", border="#1F3A31",
+        tagline="Ember on sunlit pine",
+        panel="#F2FAF5", text="#12241D", dim="#5F8B7C",
+        primary="#DC670A", alt="#0E8F73", border="#CDE7DA",
         radius="3px",
         heading_caps="uppercase", heading_track=".05em", heading_weight="800",
         panel_texture=(
             "radial-gradient(ellipse 150% 100% at 50% -20%, "
-            "rgba(63,224,196,.20), transparent 60%)"
+            "rgba(14,143,115,.12), transparent 60%)"
         ),
-        glow="0 0 20px rgba(255,140,26,.5)",
+        glow="0 2px 14px rgba(217,102,10,.16)",
     ),
     "highvis": Theme(
         key="highvis",
         name="High-Vis",
-        tagline="Rally truck, chevron on every card",
-        panel="#1B1C21", text="#F7F7F2", dim="#9C9FA6",
-        primary="#FF6A28", alt="#FFDE5C", border="#33363D",
+        tagline="Rally truck, daylight chevron",
+        panel="#FFFFFF", text="#1B1C21", dim="#6B6E76",
+        primary="#E25A0F", alt="#A6821A", border="#E3E1DA",
         radius="2px",
         heading_font='"Avenir Next Condensed", "HelveticaNeue-CondensedBold", '
                      '"Arial Narrow", ' + SANS,
         heading_caps="uppercase", heading_track=".03em", heading_weight="800",
         panel_texture=(
-            "repeating-linear-gradient(135deg, rgba(255,222,92,.07) 0 10px, "
+            "repeating-linear-gradient(135deg, rgba(217,86,14,.06) 0 10px, "
             "transparent 10px 28px)"
         ),
-        glow="0 0 16px rgba(255,106,40,.55)",
+        glow="0 2px 10px rgba(217,86,14,.14)",
         top_bar="repeating-linear-gradient(135deg, var(--c-primary) 0 6px, var(--c-alt) 6px 12px)",
     ),
     "blueprint": Theme(
         key="blueprint",
         name="Blueprint",
-        tagline="Drafting grid, per panel",
-        panel="#082140", text="#E7F3FC", dim="#7FA8C7",
-        primary="#FF3B2E", alt="#5CC4F5", border="#1C5F8F",
+        tagline="Diazo print, drafting grid",
+        panel="#F2F8FC", text="#0B2A44", dim="#5C87A8",
+        primary="#C93326", alt="#1C7FB8", border="#BFDCEE",
         radius="0px",
         heading_caps="uppercase", heading_track=".08em", heading_weight="700",
         panel_texture=(
-            "repeating-linear-gradient(to right, rgba(92,196,245,.14) 0 1px, "
+            "repeating-linear-gradient(to right, rgba(28,127,184,.14) 0 1px, "
             "transparent 1px 22px), "
-            "repeating-linear-gradient(to bottom, rgba(92,196,245,.14) 0 1px, "
+            "repeating-linear-gradient(to bottom, rgba(28,127,184,.14) 0 1px, "
             "transparent 1px 22px)"
         ),
-        glow="0 0 16px rgba(255,59,46,.45)",
-        good="#4FC3A1", warn="#F2B441",
+        glow="0 2px 10px rgba(201,51,38,.12)",
+        good="#2E8F73", warn="#B0791E",
+        button_text="#FFFFFF",  # dark text on this red clears only 2.8:1
     ),
 }
 
@@ -201,6 +212,7 @@ def css(theme: Theme) -> str:
   --c-panel-texture: {t.panel_texture};
   --c-heading-stroke: {t.heading_stroke};
   --c-heading-fill: {t.heading_fill};
+  --c-button-text: {t.button_text};
   --c-good: {t.good};
   --c-warn: {t.warn};
   --c-bad: {t.bad};
@@ -315,14 +327,24 @@ def css(theme: Theme) -> str:
 
 /* Dataframes render to a canvas, so their cells are out of CSS's reach and
    follow the base theme in config.toml instead. Framing the wrapper is all
-   that can be done here — which is why every shipped theme is dark. */
+   that can be done here — which is why config.toml's base is kept light, in
+   step with these five. */
 [data-testid="stDataFrame"] {{
   border: 1px solid var(--c-border);
   border-radius: var(--c-radius);
   box-shadow: var(--c-glow);
 }}
 
-/* --- buttons --------------------------------------------------------- */
+/* --- buttons ---------------------------------------------------------
+   Primary buttons print in `--c-button-text`, not `--c-panel` -- panel is a
+   light surface colour on every theme here, and light-on-bright-primary would
+   be close to unreadable (this used to be `var(--c-panel)`, back when panel
+   meant "dark" under the old backdrop). `--c-button-text` defaults to the
+   theme's own dark `text`, which clears WCAG AA (4.5:1) against most of these
+   primaries -- Arcade and Blueprint are the two whose primary isn't light
+   enough for that, so those two override it to white instead. See the
+   `button_text` field on `Theme` for why that's the fix and not a lighter
+   primary. */
 [data-testid="stBaseButton-secondary"] {{
   background: var(--c-panel);
   color: var(--c-text);
@@ -336,7 +358,7 @@ def css(theme: Theme) -> str:
 [data-testid="stBaseButton-primary"],
 [data-testid="stBaseButton-primaryFormSubmit"] {{
   background: var(--c-primary);
-  color: var(--c-panel);
+  color: var(--c-button-text);
   border: 1px solid var(--c-primary);
   border-radius: var(--c-radius);
   box-shadow: var(--c-glow);
@@ -344,8 +366,8 @@ def css(theme: Theme) -> str:
 }}
 [data-testid="stBaseButton-primary"]:hover,
 [data-testid="stBaseButton-primaryFormSubmit"]:hover {{
-  filter: brightness(1.12);
-  color: var(--c-panel);
+  filter: brightness(1.06);
+  color: var(--c-button-text);
 }}
 [data-testid="stBaseButton-secondaryFormSubmit"] {{
   background: var(--c-panel);

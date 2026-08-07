@@ -448,17 +448,20 @@ gets him to open it without asking, and it has no effect on what you see when yo
 unlock. Neither of you can break the other's — change one, the other is untouched.
 
 **The page itself never changes colour — only what sits on it does.** The
-background and the sidebar are the same near-black in all five; what a theme
-actually repaints is the containers — the expanders lessons open into, the
+background and the sidebar are the same warm, bright off-white in all five; what
+a theme actually repaints is the containers — the expanders lessons open into, the
 warning banners, the little tiles showing his hours and skill counts. That split
 is deliberate: five backgrounds fighting for attention would be exhausting to read
 for an hour, but five distinct ways of framing the same content is just decor.
 
-All five are dark. That's a real constraint, not an oversight: Streamlit reads its
-base colours once at startup, so the parts of the page a live picker can't repaint
-— the inside of a date picker, a text box, a dropdown menu — always show through in
-whatever base the app launched with. Keeping that base dark means it never clashes
-with whichever of the five is showing on top of it.
+All five are light. That's a change from Compass's first color pass, which shipped
+dark: Streamlit reads its base colours once at startup, so the parts of the page a
+live picker can't repaint — the inside of a date picker, a text box, a dropdown
+menu, the compliance page's table — always show through in whatever base the app
+launched with, which has to match the five themes on top of it or a table will
+render dark against a light page. Since that base can't change without an app
+restart, it isn't something the picker can do live — it's set once, for everyone,
+in `.streamlit/config.toml`.
 
 **If the sidebar looks cut off** — the mode control or the Look picker missing
 below the nav links — it's a short browser window, not a missing feature. The

@@ -8,18 +8,19 @@ gatherUsageStats = false
 # see compass/theme.py, which repaints the app's surfaces at runtime instead.
 #
 # What this section is for is everything the injected CSS can't reach: the insides
-# of dropdown popovers, date pickers and scrollbars. Those are baked into
-# Streamlit's generated classes. Keeping the base on a neutral dark means they
-# already look right underneath whichever theme is showing, which is also why all
-# four shipped themes are dark. A light theme would need this file changed and the
-# app relaunched.
+# of dropdown popovers, date pickers, scrollbars, and the compliance dataframe
+# (rendered to a canvas, not DOM). Kept in step with compass/theme.py's five
+# themes -- light, as of the redesign that moved all five off a dark backdrop --
+# so those native surfaces already look right underneath whichever theme is
+# showing. Values match BACKDROP_BG/BACKDROP_SIDE in theme.py. Changing this file
+# needs an app relaunch; it is not something the runtime picker can do.
 [theme]
-base = "dark"
-backgroundColor = "#0B0E11"
-secondaryBackgroundColor = "#151A1F"
-textColor = "#E6EBE8"
-primaryColor = "#FF7A18"
-borderColor = "#242C31"
+base = "light"
+backgroundColor = "#FBF7EE"
+secondaryBackgroundColor = "#F3ECDA"
+textColor = "#1C1A16"
+primaryColor = "#D9622B"
+borderColor = "#E4DFD4"
 baseRadius = "small"
 font = "-apple-system, BlinkMacSystemFont, Segoe UI, system-ui, sans-serif"
 codeFont = "SF Mono, Menlo, Consolas, monospace"

@@ -9,11 +9,55 @@ stray brace in an f-string ships a broken stylesheet with no error anywhere.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 
 from compass import theme
 from compass.storage.db import Database
+
+CONFIG_TOML = Path(__file__).resolve().parent.parent / ".streamlit" / "config.toml"
+
+
+def _luminance(hex_color: str) -> float:
+    """Rough perceived brightness, 0 (black) to 1 (white). Good enough to tell
+    "light backdrop" from "dark backdrop" without needing exact colours."""
+    r, g, b = (int(hex_color[i : i + 2], 16) / 255 for i in (1, 3, 5))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _wcag_luminance(hex_color: str) -> float:
+    """Real (gamma-corrected) relative luminance, for a real WCAG contrast
+    ratio -- unlike `_luminance`, which is only precise enough to tell "light"
+    from "dark", not to certify a 4.5:1 claim."""
+    def channel(c: float) -> float:
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = (int(hex_color[i : i + 2], 16) / 255 for i in (1, 3, 5))
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+
+
+def _contrast_ratio(c1: str, c2: str) -> float:
+    l1, l2 = _wcag_luminance(c1), _wcag_luminance(c2)
+    lighter, darker = max(l1, l2), min(l1, l2)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def _resolve_button_text(t: theme.Theme) -> str:
+    return t.text if t.button_text == "var(--c-text)" else t.button_text
+
+
+def _config_toml_value(key: str) -> str:
+    """Pull one `key = "value"` out of config.toml without a TOML parser.
+
+    Deliberately not `tomllib` -- that's Python 3.11+ only, and `run.sh`
+    supports 3.10. The file's `[theme]` section is a flat list of quoted
+    scalars, simple enough that a regex is the right amount of machinery.
+    """
+    text = CONFIG_TOML.read_text()
+    match = re.search(rf'^{re.escape(key)}\s*=\s*"([^"]*)"', text, re.MULTILINE)
+    assert match, f"{key} not found in {CONFIG_TOML}"
+    return match.group(1)
 
 
 @pytest.fixture()
@@ -90,10 +134,17 @@ def test_container_mechanics_are_present_for_every_theme():
 
 
 def test_arcades_two_tone_border_is_wired_to_its_own_colours():
+    """Genuinely two-tone -- top and bottom differ from each other and from the
+    plain border -- not necessarily identical to `primary`/`alt`, which are
+    deepened separately for text-on-button contrast on a light panel."""
     t = theme.THEMES["arcade"]
     css = theme.css(t)
-    assert f"--c-border-top: {t.primary};" in css
-    assert f"--c-border-bottom: {t.alt};" in css
+    assert t.border_top and t.border_bottom
+    assert t.border_top != t.border_bottom
+    assert t.border_top != t.border
+    assert t.border_bottom != t.border
+    assert f"--c-border-top: {t.border_top};" in css
+    assert f"--c-border-bottom: {t.border_bottom};" in css
 
 
 def test_highvis_is_the_only_theme_with_a_real_top_bar():
@@ -151,3 +202,51 @@ def test_parent_and_student_keys_are_distinct(db):
 
 def test_an_unset_choice_falls_back_to_the_default(db):
     assert theme.get(db.get_setting(theme.STUDENT_KEY)).key == theme.DEFAULT_THEME
+
+
+# --- the light-backdrop redesign ----------------------------------------------
+
+
+def test_the_backdrop_is_actually_light_not_just_a_different_dark():
+    """Regression for the point of this redesign: a bright ground, not a
+    recolour of the previous near-black one."""
+    assert _luminance(theme.BACKDROP_BG) > 0.85
+    assert _luminance(theme.BACKDROP_SIDE) > 0.8
+
+
+def test_every_panel_is_light_too():
+    """The containers, not just the backdrop -- a dark card floating on a
+    light page would look like a mistake, not a design."""
+    for key, t in theme.THEMES.items():
+        assert _luminance(t.panel) > 0.85, key
+
+
+def test_primary_buttons_use_dark_text_not_the_light_panel_colour():
+    """Regression: the button rule used to print `color: var(--c-panel)`,
+    which was safe when panel meant "dark" under the old backdrop. Panel is a
+    light surface colour on every theme here, so light-on-bright-primary text
+    would be close to unreadable -- the fix is printing in `--c-button-text`
+    instead, defaulting to `--c-text`."""
+    css = theme.css(theme.THEMES[theme.DEFAULT_THEME])
+    block = css.split('[data-testid="stBaseButton-primary"],', 1)[1].split("}")[0]
+    assert "color: var(--c-button-text);" in block
+    assert "var(--c-panel)" not in block
+
+
+def test_every_primary_button_clears_wcag_aa_contrast():
+    """Not "looks fine" -- an actual 4.5:1 check. Two themes (Arcade, Blueprint)
+    needed white button text rather than the default dark `text`; this pins
+    that every theme's actual pairing clears the bar, not just the ones that
+    happened to already pass with the default."""
+    for key, t in theme.THEMES.items():
+        ratio = _contrast_ratio(_resolve_button_text(t), t.primary)
+        assert ratio >= 4.5, f"{key}: {ratio:.2f}:1"
+
+
+def test_config_toml_base_theme_matches_the_backdrop():
+    """compass/theme.py's own docstring claims config.toml is kept in step with
+    these five -- this is the thing that would silently stop being true if one
+    file changed without the other."""
+    assert _config_toml_value("base") == "light"
+    assert _config_toml_value("backgroundColor").upper() == theme.BACKDROP_BG.upper()
+    assert _config_toml_value("secondaryBackgroundColor").upper() == theme.BACKDROP_SIDE.upper()

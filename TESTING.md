@@ -65,9 +65,16 @@ Prove the thing runs before testing what it does.
 
 - [ ] **The page background never actually changes**
   Flip between all five themes on any page.
-  *Pass: the background and the sidebar stay the exact same near-black throughout — only
-  the cards, tiles, and banners on top of it change colour. If the page itself shifts
-  colour when you switch themes, that's a bug — the backdrop is supposed to be fixed.*
+  *Pass: the background and the sidebar stay the exact same warm off-white throughout —
+  only the cards, tiles, and banners on top of it change colour. If the page itself
+  shifts colour when you switch themes, that's a bug — the backdrop is supposed to be
+  fixed.*
+
+- [ ] **Primary buttons are readable on every theme**
+  Look at "Generate lesson" (or any primary button) on all five themes.
+  *Pass: the button text is clearly legible against its background on every theme —
+  white text on Arcade and Blueprint, dark text on the other three. If any button's
+  text nearly disappears into its background, that's a real accessibility bug.*
 
 - [ ] **The sidebar scrolls on a short window**
   Shrink the browser window's height until the sidebar's content is clearly taller than

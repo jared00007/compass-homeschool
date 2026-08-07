@@ -268,7 +268,7 @@ compass/
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
   theme.py                   the five themes and the CSS that applies one
-tests/                       223 tests, no API key required
+tests/                       228 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 ```
 
@@ -331,9 +331,28 @@ rather than fighting them:
   the cells themselves follow `config.toml`'s base theme.
 - **Popovers, date pickers, and text inputs partly follow the config base too.**
   Reachable surface gets repainted; the rest falls back to whatever base
-  `config.toml` set at launch. This is why `config.toml`'s base is a neutral dark
-  and all five shipped themes are dark — a light theme would need the config base
-  changed and the app relaunched, which a runtime picker cannot do.
+  `config.toml` set at launch. This is why `config.toml`'s base is kept in step
+  with `theme.py`'s backdrop constants — a runtime picker can't change this file,
+  so it has to already agree, and a mismatch here would show up as a canvas
+  dataframe rendering dark against a light page around it.
+
+**All five themes moved off a dark backdrop to a light one.** `BACKDROP_BG`/
+`BACKDROP_SIDE` and every theme's `panel` went from near-black to a warm,
+bright off-white — `config.toml`'s `base` moved from `"dark"` to `"light"` in
+the same change, so the canvas dataframe stays in step rather than reading as
+a leftover dark tile. The one thing this broke, and had to be fixed
+deliberately rather than by eye: the primary-button rule used to print button
+text in `--c-panel`, which was a safe pairing back when panel meant "dark" —
+button text on a bright primary background was effectively dark-on-bright
+either way. With panel now light on every theme, that rule would have printed
+near-white text on a bright accent colour, close to unreadable. The fix is a
+new `--c-button-text` token, defaulting to the theme's own dark `text`; a
+WCAG contrast check (not eyeballing) found two themes where the default still
+fails against their own `primary` — Arcade's magenta clears only 3.7:1 with
+dark text, Blueprint's red only 2.8:1 — so those two override `button_text` to
+white instead of lightening `primary` itself, which is also the page's accent
+and heading colour elsewhere. All five clear 4.5:1 (AA), pinned by test rather
+than left to whoever next changes a colour to notice.
 
 One regression worth naming: an early build painted every `st.metric` value in
 the theme's accent colour, which made the compliance page read as a wall of
@@ -535,7 +554,7 @@ student view, a plain countdown to the first day of school.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 223 tests, ~5s, no API key needed
+python -m pytest tests/ -q      # 228 tests, ~5s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the
