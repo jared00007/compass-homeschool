@@ -307,6 +307,39 @@ you know it.
 
 st.divider()
 
+# --- resources -----------------------------------------------------------------
+
+st.subheader("Resources")
+st.caption(
+    "Official Washington state references — not maintained by Compass, so open "
+    "them directly for anything that needs to be current."
+)
+resource_columns = st.columns(2)
+with resource_columns[0]:
+    st.link_button(
+        "📕 OSPI Pink Book",
+        "https://ospi.k12.wa.us/sites/default/files/2023-08/pinkbook.pdf",
+        use_container_width=True,
+    )
+    st.caption(
+        "\"Washington State's Laws Regulating Home-Based Instruction\" — OSPI's own "
+        "guide to homeschool law: declaring intent, recordkeeping, and the annual "
+        "assessment requirement."
+    )
+with resource_columns[1]:
+    st.link_button(
+        "📋 SBE Home-Based Instruction FAQs",
+        "https://sbe.wa.gov/faqs/211",
+        use_container_width=True,
+    )
+    st.caption(
+        "State Board of Education FAQ on the annual assessment requirement "
+        "specifically — a standardized test or a certificated person's written "
+        "evaluation."
+    )
+
+st.divider()
+
 # --- backups -----------------------------------------------------------------
 
 st.subheader("Backups")

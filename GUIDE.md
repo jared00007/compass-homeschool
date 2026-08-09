@@ -180,6 +180,13 @@ countdown for next year — it only clears once you actually mark it filed.
 Also on the Home page, for both of you: a plain countdown to the first day of school,
 based on the same school-year-start date used everywhere else in Compass.
 
+**Compliance → Resources** links to the two official state references this section
+draws from: OSPI's own guide to home-based instruction law (the "Pink Book"), and the
+State Board of Education's FAQ on the annual assessment requirement — a standardized
+test or a certificated person's written evaluation. Compass doesn't maintain either;
+they're there so you can check the source directly rather than take the app's word
+for it.
+
 ---
 
 ## Math mastery is the gate
