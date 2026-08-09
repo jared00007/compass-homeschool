@@ -8,9 +8,10 @@ from functools import partial
 import streamlit as st
 
 from compass import config
+from compass.agents.framework import GeneratedLesson, TopicProposal
 from compass.export import lesson_to_docx, suggested_filename
 from compass.subjects import SUBJECT_KEYS, label
-from compass.ui import page_setup, parent_only
+from compass.ui import log_lesson_form, page_setup, parent_only
 
 db, student = page_setup("Activity Log", icon="🗂️")
 
@@ -155,6 +156,31 @@ with lessons_tab:
                 key=f"docx_{lesson['id']}",
             )
             if lesson["status"] == "planned":
-                if st.button("Mark skipped", key=f"skip_{lesson['id']}"):
+                st.divider()
+                generated = GeneratedLesson(
+                    lesson_id=lesson["id"],
+                    proposal=TopicProposal(
+                        topic=lesson["topic"],
+                        rationale=lesson["rationale"],
+                        strategy=lesson["strategy"],
+                    ),
+                    payload=lesson["payload"],
+                    warnings=[],
+                )
+                tier = (
+                    config.TIER_LIFE_SKILLS
+                    if lesson["agent"] == "life_skills"
+                    else config.TIER_CORE
+                )
+                log_lesson_form(
+                    db,
+                    student,
+                    generated,
+                    source=lesson["agent"],
+                    primary_subject=lesson["subject"],
+                    key_prefix=f"activitylog_{lesson['id']}",
+                    tier=tier,
+                )
+                if st.button("Mark skipped instead", key=f"skip_{lesson['id']}"):
                     db.set_lesson_status(lesson["id"], "skipped")
                     st.rerun()

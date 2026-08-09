@@ -545,6 +545,19 @@ pass silently.
 A skipped lesson (`status: "skipped"`) is excluded from "current" outright — there's
 no reason to hand him a lesson the parent already called off.
 
+**Closing the loop this surfaced:** before this, the only place to actually log a
+lesson's hours was `log_lesson_form` inside `generate_and_log` — which only renders
+from that page's Streamlit session state, so it was reachable exactly once, in the
+same session where the lesson was generated. Reload the page, come back tomorrow, or
+just be the parent checking what he marked done, and there was no way to log it at
+all short of the disconnected "Log something manually" form. Activity Log →
+`lessons_tab` now reconstructs a `GeneratedLesson` from the DB row (`topic`,
+`rationale`, `strategy`, and `subject` are already columns on `lessons`, so this is
+just re-assembly, not new data) and renders the same `log_lesson_form` for any
+`status == "planned"` lesson, life_skills plans included — tier picked as
+`TIER_LIFE_SKILLS` vs `TIER_CORE` off `lesson["agent"]`. Same durability fix as the
+Word-doc download button: DB-backed instead of session-state-backed.
+
 ## Printing a lesson
 
 There are two places to get a lesson as a `.docx` (`compass/export.py`):

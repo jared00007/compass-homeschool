@@ -448,7 +448,10 @@ so he can still reopen and reread one if he wants — it just isn't sitting ther
 by default once he's finished it. This is his own signal, separate from you
 logging the hours: it doesn't touch anything on the compliance side, and a
 lesson he's marked done still shows up in Activity Log as not-yet-logged until
-you actually log it.
+you actually log it — and Activity Log's **Generated lessons** tab is where you
+actually do that: open the lesson, the same "Log this as completed" form you'd
+see right after generating one is right there, whether he marked it done
+yesterday or three weeks ago.
 
 **What only you see:** assessments and answer keys (including the quiz's — an
 expander on your side shows every question with the correct choice marked),
