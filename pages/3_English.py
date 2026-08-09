@@ -13,6 +13,7 @@ from compass.ui import (
     is_parent,
     page_setup,
     render_proposal,
+    render_vocab_match,
     render_vocab_review,
     student_lesson_view,
 )
@@ -35,7 +36,16 @@ if not is_parent():
     student_lesson_view(db, student, "english", "English")
     st.divider()
     st.subheader("🔤 Words to review")
-    render_vocab_review(db, student)
+    mode = st.radio(
+        "How do you want to review?",
+        ["Flashcards", "Match"],
+        horizontal=True,
+        key="vocab_review_mode",
+    )
+    if mode == "Flashcards":
+        render_vocab_review(db, student)
+    else:
+        render_vocab_match(db, student)
     st.stop()
 
 plan_tab, books_tab, vocab_tab = st.tabs(["Plan a lesson", "Books", "Vocabulary"])

@@ -7,6 +7,7 @@ reusable if the UI is ever replaced.
 
 from __future__ import annotations
 
+import random
 import sqlite3
 from datetime import date
 from functools import partial
@@ -794,6 +795,100 @@ def render_vocab_review(db: Database, student: dict[str, Any]) -> None:
                     db.record_vocabulary_review(entry["id"], correct=False)
                     st.session_state.pop(reveal_key, None)
                     st.rerun()
+
+
+VOCAB_MATCH_ROUND_SIZE = 6
+
+
+def render_vocab_match(db: Database, student: dict[str, Any]) -> None:
+    """A second, game-style review mode: click a word, then click its
+    definition from a shuffled list, a round of a few words at a time.
+
+    Definitions are visible up front here on purpose -- that's what makes it
+    a *matching* game rather than a second flashcard mode, and it's a
+    genuinely different, easier kind of memory (recognizing a definition
+    among a few options versus recalling one from nothing). Scored the same
+    way regardless: a word matched on its first guess counts as "knew it," a
+    word that took a wrong guess before landing right counts as "missed it"
+    -- same db.record_vocabulary_review() the flashcard flow and the
+    parent-facing Vocabulary tab already call, so which mode he picks
+    doesn't change what the Leitner schedule means.
+
+    Round state (which words are in play, the two shuffles, what's resolved)
+    lives in st.session_state -- but never the words/definitions themselves,
+    those are re-read from `due` fresh every render, so a word reviewed
+    elsewhere mid-round (flashcards in another tab) can't go stale here.
+    """
+    due = db.vocabulary_due(student["id"], limit=25)
+    if not due:
+        st.success("Nothing due for review today.")
+        return
+
+    by_id = {entry["id"]: entry for entry in due}
+    pool_ids = set(by_id)
+    state = st.session_state.setdefault("vocab_match", {})
+    round_ids = state.get("round_ids", [])
+    resolved = state.get("resolved", set())
+    remaining = [i for i in round_ids if i not in resolved]
+
+    if not remaining or any(i not in pool_ids for i in round_ids):
+        round_ids = [entry["id"] for entry in due[:VOCAB_MATCH_ROUND_SIZE]]
+        word_order = round_ids[:]
+        def_order = round_ids[:]
+        random.shuffle(word_order)
+        random.shuffle(def_order)
+        state.clear()
+        state.update(
+            round_ids=round_ids,
+            word_order=word_order,
+            def_order=def_order,
+            selected=None,
+            resolved=set(),
+            missed=set(),
+        )
+        resolved = state["resolved"]
+
+    st.caption(f"Click a word, then its definition. {len(due)} word(s) due in total.")
+
+    columns = st.columns(2)
+    with columns[0]:
+        st.markdown("**Words**")
+        for word_id in state["word_order"]:
+            if word_id in resolved:
+                continue
+            selected = state["selected"] == word_id
+            if st.button(
+                by_id[word_id]["word"],
+                key=f"match_word_{word_id}",
+                type="primary" if selected else "secondary",
+                use_container_width=True,
+            ):
+                state["selected"] = word_id
+                st.rerun()
+
+    with columns[1]:
+        st.markdown("**Definitions**")
+        for def_id in state["def_order"]:
+            if def_id in resolved:
+                continue
+            if st.button(
+                by_id[def_id]["definition"],
+                key=f"match_def_{def_id}",
+                use_container_width=True,
+            ):
+                picked = state["selected"]
+                if picked is None:
+                    st.toast("Pick a word first.")
+                elif picked == def_id:
+                    db.record_vocabulary_review(picked, correct=picked not in state["missed"])
+                    resolved.add(picked)
+                    state["selected"] = None
+                    st.toast("✅ Match!")
+                else:
+                    state["missed"].add(picked)
+                    state["selected"] = None
+                    st.toast("❌ Not quite — try again.")
+                st.rerun()
 
 
 def api_status_banner() -> bool:

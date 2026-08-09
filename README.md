@@ -268,7 +268,7 @@ compass/
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
   theme.py                   the five themes and the CSS that applies one
-tests/                       263 tests, no API key required
+tests/                       269 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 ```
 
@@ -619,6 +619,43 @@ trusts his self-report (`student_done_on`, the togglable life-skills checkbox) r
 than gating it behind the parent, even though nothing here auto-verifies a recalled
 definition the way the multiple-choice quiz can auto-verify a chosen answer.
 
+### A second review mode: matching, as a game
+
+Suggested mid-conversation as a "what about" — a click-word-then-click-definition
+matching game (`render_vocab_match()`) alongside the flashcard flow, picked via a
+`st.radio` on the English page. **Deliberately additive, not a replacement**: matching
+tests *recognizing* a definition among a few visible options, which is measurably
+easier than the flashcard flow's *recall* (produce the definition from nothing) —
+recall is specifically what spaced repetition is built around, so swapping it out
+everywhere would make review more fun and less effective. As an optional second mode
+it costs nothing and gives him a lighter way through a big batch of due words.
+
+**Scored to mean the same thing regardless of which mode he picks:** a word matched
+on the first guess counts as "knew it"; a word that took a wrong guess before landing
+right counts as "missed it" — same `db.record_vocabulary_review()` both modes and the
+parent-facing tab all call, so the Leitner schedule doesn't care which mode produced
+the result.
+
+Rounds of `VOCAB_MATCH_ROUND_SIZE` (6) words at a time, not the full due list at once
+— useful with a big backlog, but mostly because two columns of 25 buttons apiece
+would be unreadable. Round state (which words are in play, the two independent
+shuffles, what's resolved, what's had a wrong guess) lives in
+`st.session_state["vocab_match"]`, but the word and definition *text* is always
+re-read from a fresh `db.vocabulary_due()` call rather than cached in that state —
+so a word reviewed elsewhere mid-round (flashcards in another tab) can't go stale on
+this board; the round-refresh check simply notices it's no longer due and reshuffles
+around it. Finishing a round rolls straight into the next batch of due words with no
+intermediate screen, since by the time the last word in a round resolves, the
+`vocabulary_due()` re-query on the very next render already excludes it — a "round
+complete" message would have nothing to render in front of.
+
+Verified interactively end-to-end with Playwright against a running instance:
+selecting a word highlights it, an intentionally wrong guess clears the selection
+without removing either button, and finishing correctly on the *second* attempt still
+recorded a miss in the database (box unchanged, `times_missed` incremented) — same
+run also confirmed a genuine first-try match advances the box, matching what the
+tests below assert with a stubbed `st.button`.
+
 ## Printing a lesson
 
 There are two places to get a lesson as a `.docx` (`compass/export.py`):
@@ -723,7 +760,7 @@ student view, a plain countdown to the first day of school.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 263 tests, ~5s, no API key needed
+python -m pytest tests/ -q      # 269 tests, ~5s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the
