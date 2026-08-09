@@ -268,7 +268,7 @@ compass/
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
   theme.py                   the five themes and the CSS that applies one
-tests/                       251 tests, no API key required
+tests/                       258 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 ```
 
@@ -570,6 +570,26 @@ wanted. Within `to_review`, a stable sort (`key=lambda l: 0 if student_done_on e
 most-recent-first order `list_lessons` already returns within each group — those are
 the most time-sensitive, since he's waiting on the parent, not the other way around.
 
+### His "Today" checklist
+
+`render_today_checklist()` in `compass/ui.py`, called from `Home.py`'s student branch
+above "Ready for you" — a small accomplishment list, not a second compliance record.
+Three sources, all his own signals rather than anything parent-logged:
+
+- Lessons with `metadata.student_done_on` equal to today.
+- A quiz result graded today (`metadata.quiz_result.graded_on`), shown inline on its
+  lesson (`quiz 9/10 (90%) 🎯` when he passed) rather than as its own row.
+- Life skills with `completed_on` equal to today — either of you can check that box
+  (`pages/7_Life_Skills.py`'s checklist tab isn't actually parent-gated, despite the
+  page's framing), so this counts either way.
+
+Deliberately **not** built from `db.list_activities()` — that's the parent-logged
+record, which the two features above this one exist specifically to not depend on.
+Basing "what did I do today" on the logged record would reintroduce the exact lag
+(sometimes days) that made the home page keep showing a lesson he'd already finished.
+Returns `False` when there's nothing to show, so `Home.py` only draws the divider
+under it when there's actually something above to divide from.
+
 ## Printing a lesson
 
 There are two places to get a lesson as a `.docx` (`compass/export.py`):
@@ -674,7 +694,7 @@ student view, a plain countdown to the first day of school.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 251 tests, ~5s, no API key needed
+python -m pytest tests/ -q      # 258 tests, ~5s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

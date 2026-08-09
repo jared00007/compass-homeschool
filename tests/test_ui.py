@@ -271,3 +271,92 @@ def test_a_finished_lesson_can_be_reopened_from_past_lessons(monkeypatch, db, st
 
     page = render_student_view(monkeypatch, db, student, selectbox_return=label)
     assert "Solve problems 1-10." in page  # reopened, read-only
+
+
+# --- render_today_checklist: his own accomplishment list, not a compliance one ---
+
+
+def render_today(monkeypatch, db, student):
+    written: list[str] = []
+    monkeypatch.setattr(ui, "st", Recorder(written, {}))
+    shown = ui.render_today_checklist(db, student)
+    return "\n".join(written), shown
+
+
+def test_nothing_done_yet_shows_nothing(monkeypatch, db, student):
+    page, shown = render_today(monkeypatch, db, student)
+    assert shown is False
+    assert page == ""
+
+
+def test_a_lesson_marked_done_today_appears(monkeypatch, db, student):
+    lesson_id = db.save_lesson(
+        student["id"], "math", "math", "topic", "Two-Step Equations", payload=a_lesson()
+    )
+    db.mark_student_done(lesson_id)
+    page, shown = render_today(monkeypatch, db, student)
+    assert shown is True
+    assert "Two-Step Equations" in page
+    assert "Today" in page
+
+
+def test_a_quiz_score_from_today_is_included(monkeypatch, db, student):
+    lesson_id = db.save_lesson(
+        student["id"], "math", "math", "topic", "Two-Step Equations", payload=a_lesson()
+    )
+    db.mark_student_done(lesson_id)
+    db.record_quiz_result(lesson_id, correct=9, total=10, passed=True)
+    page, _ = render_today(monkeypatch, db, student)
+    assert "9/10" in page
+
+
+def test_an_old_quiz_score_is_not_shown_as_todays(monkeypatch, db, student):
+    """record_quiz_result stamps graded_on with today's date, so simulate a
+    stale one by writing the metadata directly rather than faking the clock."""
+    lesson_id = db.save_lesson(
+        student["id"], "math", "math", "topic", "Two-Step Equations", payload=a_lesson()
+    )
+    db.mark_student_done(lesson_id)
+    db.conn.execute(
+        "UPDATE lessons SET metadata = json_set(metadata, '$.quiz_result', json(?)) WHERE id = ?",
+        ('{"correct": 3, "total": 10, "passed": false, "graded_on": "2020-01-01"}', lesson_id),
+    )
+    db.conn.commit()
+    page, _ = render_today(monkeypatch, db, student)
+    assert "3/10" not in page
+
+
+def test_a_life_skill_completed_today_appears(monkeypatch, db, student):
+    skill_id = db.add_life_skill(student["id"], "Change a tire", category="Vehicle")
+    db.set_life_skill_done(skill_id, True)
+    page, shown = render_today(monkeypatch, db, student)
+    assert shown is True
+    assert "Change a tire" in page
+
+
+def test_a_life_skill_completed_earlier_is_not_todays(monkeypatch, db, student):
+    skill_id = db.add_life_skill(student["id"], "Change a tire", category="Vehicle")
+    db.set_life_skill_done(skill_id, True)
+    db.conn.execute(
+        "UPDATE life_skills SET completed_on = ? WHERE id = ?", ("2020-01-01", skill_id)
+    )
+    db.conn.commit()
+    page, shown = render_today(monkeypatch, db, student)
+    assert shown is False
+    assert "Change a tire" not in page
+
+
+def test_a_lesson_marked_done_on_a_prior_day_is_not_todays(monkeypatch, db, student):
+    lesson_id = db.save_lesson(
+        student["id"], "math", "math", "topic", "Two-Step Equations", payload=a_lesson()
+    )
+    db.mark_student_done(lesson_id)
+    db.conn.execute(
+        "UPDATE lessons SET metadata = json_set(metadata, '$.student_done_on', '2020-01-01') "
+        "WHERE id = ?",
+        (lesson_id,),
+    )
+    db.conn.commit()
+    page, shown = render_today(monkeypatch, db, student)
+    assert shown is False
+    assert "Two-Step Equations" not in page

@@ -442,6 +442,13 @@ materials, a suggested video when there is one, and the quiz at the end — plus
 his reading progress, vocabulary review, and his own Tier 3 topics. Enough to
 do the work without you narrating it.
 
+**His home page leads with a "✅ Today" list** — everything he's checked off
+today, in one place: lessons he's marked done, quiz scores, life skills either
+of you ticked off. A quick, fun sense of "here's what I got through today"
+before the list of what's still ahead. It's built entirely from his own
+actions, so it shows up the moment he finishes something — it doesn't wait on
+you logging anything.
+
 **✅ I'm done for today.** A button under his current lesson. Clicking it clears
 that lesson off his screen and drops it into a **Past lessons** picker below,
 so he can still reopen and reread one if he wants — it just isn't sitting there

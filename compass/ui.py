@@ -707,6 +707,54 @@ def student_lesson_view(
             )
 
 
+SUBJECT_ICONS = {"math": "📐", "science": "🔬", "english": "📖", "history": "🏛️"}
+
+
+def render_today_checklist(db: Database, student: dict[str, Any]) -> bool:
+    """His own "what I did today" list -- a fun accomplishment checklist, not
+    a compliance record. Built entirely from his own signals (student_done_on,
+    a quiz result graded today, a life skill either of you checked off today)
+    so it never depends on the parent having logged anything yet -- that gap
+    was the exact thing that made "current lesson" confusing before.
+
+    Returns whether anything was actually shown, so a caller can fall back to
+    something else when the day hasn't started yet.
+    """
+    today = date.today().isoformat()
+
+    done_today = [
+        lesson
+        for lesson in db.list_lessons(student["id"], limit=25)
+        if (lesson.get("metadata") or {}).get("student_done_on") == today
+    ]
+    skills_today = [
+        skill
+        for skill in db.list_life_skills(student["id"])
+        if skill["completed_on"] == today
+    ]
+
+    if not done_today and not skills_today:
+        return False
+
+    st.subheader(f"✅ Today ({len(done_today) + len(skills_today)})")
+    st.caption("Nice work — here's what you've knocked out today.")
+
+    for lesson in done_today:
+        icon = SUBJECT_ICONS.get(lesson["agent"], "📘")
+        quiz_result = (lesson.get("metadata") or {}).get("quiz_result") or {}
+        extra = ""
+        if quiz_result.get("graded_on") == today and quiz_result.get("total"):
+            pct = round(100 * quiz_result["correct"] / quiz_result["total"])
+            trophy = " 🎯" if quiz_result.get("passed") else ""
+            extra = f" — quiz {quiz_result['correct']}/{quiz_result['total']} ({pct}%){trophy}"
+        st.markdown(f"- {icon} **{lesson['title']}**{extra}")
+
+    for skill in skills_today:
+        st.markdown(f"- 🛠️ **{skill['title']}**")
+
+    return True
+
+
 def api_status_banner() -> bool:
     from compass.agents import api_available
 

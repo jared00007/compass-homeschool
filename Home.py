@@ -15,6 +15,7 @@ from compass.ui import (
     render_declaration_banner,
     render_lesson,
     render_school_start_countdown,
+    render_today_checklist,
 )
 
 db, student = page_setup("Home", icon="🧭")
@@ -27,6 +28,9 @@ if not is_parent():
     st.title(f"Hi {student['name'].split()[0]} 👋")
     st.caption("Here's what's set up for you. Open a subject in the sidebar for the details.")
     render_school_start_countdown(db)
+
+    if render_today_checklist(db, student):
+        st.divider()
 
     # Life-skill plans live in the same table but are written *to the parent* —
     # "demonstrate once, then hand him the jack and stay quiet" is not his to read.
