@@ -268,7 +268,7 @@ compass/
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
   theme.py                   the five themes and the CSS that applies one
-tests/                       243 tests, no API key required
+tests/                       244 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 ```
 
@@ -522,20 +522,52 @@ is a family policy setting, the same category as the Tier 3 guideline percent.
 
 ## Printing a lesson
 
-Every generated lesson gets a **Download as Word doc** button (`compass/export.py`,
-wired into the shared `generate_and_log` loop in `compass/ui.py`) right next to the
-on-screen render. It produces one `.docx` containing everything the parent view shows
-— activities, materials, assessment, mastery criteria, the quiz answer key, subject
+There are two places to get a lesson as a `.docx` (`compass/export.py`):
+
+1. **Right after generating one** — a **Download as Word doc** button sits next to
+   the on-screen render in the shared `generate_and_log` loop (`compass/ui.py`). This
+   only exists for the lesson currently held in that page's session state, so it's
+   gone the moment you navigate away or reload — Streamlit session state doesn't
+   survive either.
+2. **Activity Log → Generated lessons** (`pages/8_Activity_Log.py`) — every lesson
+   ever generated, loaded from the database rather than session state, each with its
+   own download button. This is the durable one: it's there whether the lesson was
+   generated this session or three weeks ago.
+
+Both produce the same `.docx`, containing everything the parent view shows —
+activities, materials, assessment, mastery criteria, the quiz answer key, subject
 credits — because reading an assessment off a laptop screen while scoring a paper
 worksheet is exactly the friction this exists to remove.
 
-This is deliberately a parent-only export: it's reachable only through
-`generate_and_log`, which every Tier 1 page gates behind `is_parent()` before it's
-ever called, so nothing in `export.py` re-checks who's asking — same trust boundary
-as the on-screen assessment it mirrors, not a new one. `python-docx` is a pure-Python
-dependency (its one transitive dependency, `lxml`, ships prebuilt wheels for
-macOS/Windows/Linux), so this doesn't add anything to the "needs a terminal and a
-build toolchain" side of the ledger the launcher scripts are built to avoid.
+Both are deliberately parent-only exports: `generate_and_log` and every Tier 1 page
+gate their caller behind `is_parent()`, and the Activity Log page gates its entire
+body behind `parent_only()` at the top, so nothing in `export.py` re-checks who's
+asking — same trust boundary as the on-screen assessment it mirrors, not a new one.
+
+**The `data` passed to `st.download_button` is a callable (`functools.partial`), not
+already-built bytes.** The Activity Log page can list up to 50 lessons at once, and
+every widget interaction anywhere on that page triggers a full Streamlit rerun —
+building all 50 `.docx` files (~50ms each) on every keystroke elsewhere on the page
+would be real, needless lag. A callable defers that work until the specific button is
+actually clicked. This is why `requirements.txt`'s streamlit floor is `>=1.52.0`
+rather than the previous `>=1.40.0` — that's the version deferred `data` callables
+shipped in, and the app has no other reason to require anything newer.
+
+`python-docx` is a pure-Python dependency (its one transitive dependency, `lxml`,
+ships prebuilt wheels for macOS/Windows/Linux), so this doesn't add anything to the
+"needs a terminal and a build toolchain" side of the ledger the launcher scripts are
+built to avoid.
+
+### The launcher bug this surfaced
+
+Adding `python-docx` exposed a real bug in `run.sh`/`run.bat`: dependency install was
+gated on `import streamlit, anthropic` succeeding, so a machine with an existing
+`.venv` from before this change never got the new package — `ModuleNotFoundError` on
+launch. That check would have silently skipped *any* dependency added after someone's
+first setup, not just this one. Fixed by always running
+`pip install -r requirements.txt` on every launch rather than guessing from two
+hardcoded package names; already-satisfied installs are fast, so there's no real cost
+to just asking every time.
 
 ## Writing for a 13-year-old
 
@@ -591,7 +623,7 @@ student view, a plain countdown to the first day of school.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 243 tests, ~5s, no API key needed
+python -m pytest tests/ -q      # 244 tests, ~5s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

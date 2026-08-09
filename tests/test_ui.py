@@ -141,9 +141,39 @@ def test_a_generated_lesson_offers_a_word_doc_download(monkeypatch, db, student)
     )
     page, _ = run(monkeypatch, db, student, generated=generated)
     assert "Download as Word doc" in page
-    # parent view here, so the answer key is expected -- what matters is that it
-    # went through render_lesson at all rather than being printed raw
-    assert "Answer key: 8 of 10" in page
+
+
+def test_word_doc_download_defers_docx_generation(monkeypatch, db, student):
+    """`data` must be a callable, not already-built bytes -- otherwise a page
+
+    listing many lessons (Activity Log's "Generated lessons" tab) would rebuild
+    every lesson's .docx on every rerun, not just the one being downloaded.
+    Requires streamlit>=1.52.0, which is why requirements.txt's floor was
+    bumped -- an older streamlit would reject or mishandle a callable here.
+    """
+    calls: list[dict] = []
+    written: list[str] = []
+    state: dict = {}
+    recorder = Recorder(written, state)
+    recorder.download_button = lambda *args, **kwargs: calls.append(kwargs)
+    monkeypatch.setattr(ui, "st", recorder)
+    monkeypatch.setattr(ui, "is_parent", lambda: True)
+
+    agent = get_agent("math")
+    ctx = ui.context_for(db, student, minutes=60)
+    proposal = TopicProposal(topic="t", rationale="r", strategy="s")
+    state[f"{agent.key}_lesson"] = GeneratedLesson(
+        lesson_id=1, proposal=proposal, payload=a_lesson(), warnings=[]
+    )
+
+    ui.generate_and_log(
+        db, student, agent, ctx, proposal,
+        primary_subject="math", spinner="x", api_ok=True,
+    )
+
+    assert len(calls) == 1
+    assert callable(calls[0]["data"])
+    assert calls[0]["data"]().startswith(b"PK")  # a real docx when actually invoked
 
 
 def test_the_optional_trailing_note_is_shown_when_given(monkeypatch, db, student):

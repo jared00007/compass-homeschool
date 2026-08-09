@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from functools import partial
 
 import streamlit as st
 
 from compass import config
+from compass.export import lesson_to_docx, suggested_filename
 from compass.subjects import SUBJECT_KEYS, label
 from compass.ui import page_setup, parent_only
 
@@ -142,6 +144,13 @@ with lessons_tab:
                     "Credit: "
                     + " · ".join(f"{label(c['subject'])} {c['minutes']}m" for c in credits)
                 )
+            st.download_button(
+                "📄 Download as Word doc",
+                data=partial(lesson_to_docx, lesson["payload"]),
+                file_name=suggested_filename(lesson["payload"]),
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key=f"docx_{lesson['id']}",
+            )
             if lesson["status"] == "planned":
                 if st.button("Mark skipped", key=f"skip_{lesson['id']}"):
                     db.set_lesson_status(lesson["id"], "skipped")

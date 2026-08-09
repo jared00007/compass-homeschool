@@ -1,4 +1,7 @@
+# streamlit floor is 1.52.0, not the older 1.40.0: that's when st.download_button
+# started accepting a callable for `data`, which the lesson-export download
+# buttons rely on to avoid building every lesson's .docx eagerly on every rerun.
 anthropic>=0.116.0
-streamlit>=1.40.0
+streamlit>=1.52.0
 pandas>=2.0.0
 python-docx>=1.1.0

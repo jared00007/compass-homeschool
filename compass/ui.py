@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import date
+from functools import partial
 from typing import Any
 
 import streamlit as st
@@ -272,7 +273,7 @@ def generate_and_log(
     render_lesson(generated.payload)
     st.download_button(
         "📄 Download as Word doc",
-        data=lesson_to_docx(generated.payload),
+        data=partial(lesson_to_docx, generated.payload),
         file_name=suggested_filename(generated.payload),
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         key=f"{agent.key}_docx_download",

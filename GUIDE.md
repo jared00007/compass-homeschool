@@ -440,12 +440,14 @@ expander on your side shows every question with the correct choice marked),
 mastery criteria, parent notes, subject credits, lesson generation, the
 compliance record, costs, and backups.
 
-**📄 Download as Word doc.** Right below every generated lesson, on your side
-only. Grading an assessment off a laptop screen is awkward — a printed page
-isn't. The file has everything your screen does: activities, materials,
-assessment, mastery criteria, the quiz answer key, subject credits. It opens
-in Word, Pages, or Google Docs, so it's yours to trim or reformat before you
-print it.
+**📄 Download as Word doc.** Grading an assessment off a laptop screen is
+awkward — a printed page isn't. Two places to get one, both on your side only:
+right below a lesson you just generated (gone once you leave that page — it's
+tied to your browser session), or in **Activity Log → Generated lessons**,
+which has one for every lesson ever generated and survives closing the app.
+The file has everything your screen does: activities, materials, assessment,
+mastery criteria, the quiz answer key, subject credits. It opens in Word,
+Pages, or Google Docs, so it's yours to trim or reformat before you print it.
 
 Every new browser session starts in student view, because he opens the app far
 more often than you do. Unlock with the PIN from the sidebar when you need the
