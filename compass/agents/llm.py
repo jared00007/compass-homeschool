@@ -50,7 +50,11 @@ LESSON_SCHEMA: dict[str, Any] = _object(
         "topic": {"type": "string", "description": "The topic taught, restated."},
         "overview": {
             "type": "string",
-            "description": "Two or three sentences for the parent: what this covers and why now.",
+            "description": (
+                "Two or three sentences setting up what this covers and why now. He "
+                "reads this himself, same as the activities -- see the system prompt's "
+                "writing-for-a-13-year-old rules, not a parent-facing summary."
+            ),
         },
         "learning_objectives": {
             "type": "array",

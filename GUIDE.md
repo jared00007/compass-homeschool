@@ -252,6 +252,20 @@ touched? Is any agent consistently over-claiming? Fix now, not in March.
 
 ## What to watch for
 
+### Reading level
+
+Everything he actually reads on screen — the overview at the top of a lesson, the
+learning objectives, every activity's instructions, the materials list, the quiz — is
+written for a 13-year-old on purpose: short sentences, plain words, second person,
+casual rather than textbook. `assessment` and `parent_notes` are the opposite of that,
+written to you as the adult reading them.
+
+Read a generated lesson as if you were him, not as the parent approving it. If it
+still reads like something written to satisfy a curriculum reviewer — long sentences,
+formal vocabulary, no personality — that's worth flagging. The agents are instructed
+to lean on what he's told the app he's into for examples where it genuinely fits, so a
+lesson that never touches his interests at all is also worth a second look.
+
 ### Credit inflation
 
 The single thing most worth your scepticism. When a science lesson claims 20 minutes of

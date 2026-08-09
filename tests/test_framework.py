@@ -430,6 +430,39 @@ def test_normalize_fills_in_quiz_for_a_payload_that_never_had_one(db, student):
     assert payload["quiz"] == []
 
 
+def test_prompt_tells_the_model_to_write_for_a_13_year_old(db, student):
+    agent = get_agent("math")
+    prompt = agent.build_system_prompt(ctx_for(db, student))
+    assert "Writing for a 13-year-old" in prompt
+    assert "Short sentences, one idea each" in prompt
+
+
+def test_prompt_no_longer_claims_overview_is_parent_only(db, student):
+    """Regression: overview is rendered to the student too (compass/ui.py's
+    render_lesson has no `if parent:` guard on it), so the prompt must not
+    tell the model to write it in a parent register."""
+    agent = get_agent("math")
+    prompt = agent.build_system_prompt(ctx_for(db, student))
+    assert "Write `parent_notes` and `overview` to the parent" not in prompt
+    assert "for the parent: what this covers" not in prompt.lower()
+
+
+def test_prompt_still_reserves_assessment_and_parent_notes_for_the_parent(db, student):
+    agent = get_agent("math")
+    prompt = agent.build_system_prompt(ctx_for(db, student))
+    assert "`assessment`, `parent_notes`, and every `subject_credits" in prompt
+
+
+def test_student_facing_writing_guidance_references_his_interests(db, student):
+    student = dict(student)
+    student["interests"] = "skateboarding and video games"
+    agent = get_agent("math")
+    ctx = StudentContext(db=db, student_id=student["id"], student=student)
+    prompt = agent.build_system_prompt(ctx)
+    section = prompt.split("## Writing for a 13-year-old", 1)[1]
+    assert "skateboarding and video games" in section
+
+
 def test_prompt_describes_the_self_graded_quiz(db, student):
     agent = get_agent("math")
     prompt = agent.build_system_prompt(ctx_for(db, student))

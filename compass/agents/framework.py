@@ -202,6 +202,31 @@ correct choice is correct.
 - Base every question on this lesson's own material. If he could pass by \
 guessing or from outside knowledge, the question isn't doing its job.
 
+## Writing for a 13-year-old
+{student_name} reads `title`, `overview`, `learning_objectives`, `activities`, \
+`materials`, the video's `why`, and every `quiz` question directly, on his own \
+screen, exactly as you write them. Write all of those for a 13-year-old — not \
+for a parent, not for a curriculum committee:
+
+- Short sentences, one idea each. If a sentence needs a comma to hold two \
+ideas, that's two sentences instead.
+- Plain, everyday words over precise-sounding ones — "figure out," "add up," \
+"push back on," not "determine," "aggregate," "critique." If a technical term \
+is the actual point of the lesson (a vocabulary word, a math term), use it, but \
+show what it means in plain language right there rather than defining it once \
+formally and moving on.
+- Second person, casual and direct — like a sharp older sibling explaining it, \
+not a textbook. Contractions are normal. A little personality is good.
+- Lean on what he's told us he's into ({interests}) for examples and numbers \
+where it genuinely fits — not shoehorned into every activity.
+- Simple structure does more work here than vocabulary does: short paragraphs, \
+one instruction per line in a list of steps, no throat-clearing before getting \
+to the point.
+
+`assessment`, `parent_notes`, and every `subject_credits[].justification` are \
+the opposite of all that — those are for the parent, so write them like the \
+adult reading them actually is one.
+
 ## The family's approach
 - The design goal is that {student_name} does not feel like he is doing eleven \
 separate subjects. Fold naturally; do not bolt on a token art question.
@@ -210,8 +235,6 @@ structured part, so make it worth the structure: concrete, doable, and not \
 busywork.
 - The family roadschools. Lessons that use where they physically are beat \
 generic curriculum, when the location genuinely fits.
-- Write activity instructions to the student in second person. Write \
-`parent_notes` and `overview` to the parent.
 - **The student reads `activities` and `materials` directly, on his own screen. \
 He never sees `assessment`, `parent_notes`, or `subject_credits`.** So put every \
 answer, worked solution, scoring rule, and answer key in `assessment` — never in \

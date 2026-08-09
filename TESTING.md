@@ -369,8 +369,11 @@ The tests only you can run. Slow down here — this decides whether you trust it
   *Pass: you'd teach them roughly as written. If they read like filler, that's the finding that matters most.*
 
 - [ ] **Pitched right for him**
-  Consider vocabulary, reading level, assumed scaffolding.
-  *Pass: stretching but not defeating; not written down to him.*
+  Read the `overview`, `learning_objectives`, and activity instructions of a generated
+  lesson as if you were him, not as the parent reviewing it.
+  *Pass: short, plain sentences, second person, casual — not textbook prose. Stretching
+  but not defeating; not written down to him either. If it reads like something written
+  for you to approve rather than for him to read, that's the finding.*
 
 - [ ] ⚠ **CRITICAL — Credit justifications are honest**
   For each secondary credit, find the activity it names. Does it produce a real artifact?

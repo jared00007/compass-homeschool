@@ -268,7 +268,7 @@ compass/
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
   theme.py                   the five themes and the CSS that applies one
-tests/                       228 tests, no API key required
+tests/                       232 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 ```
 
@@ -520,6 +520,26 @@ grade and show a score without a side effect — a real check with no mechanism 
 it yet, rather than force-fitting one. The pass bar (`quiz_pass_percent`, default 80)
 is a family policy setting, the same category as the Tier 3 guideline percent.
 
+## Writing for a 13-year-old
+
+The prompt splits student-facing content from parent-facing content structurally
+(`compass/ui.py`'s `render_lesson` gates `assessment`, `parent_notes`, and
+`subject_credits` behind `if parent:`; everything else renders unconditionally), but
+until this pass it never told the model *how* to write for the audience that split
+implies. `title`, `overview`, `learning_objectives`, `activities`, `materials`, the
+video's `why`, and every `quiz` question are all rendered to the student exactly as
+written, so `BASE_SYSTEM_PROMPT`'s new "Writing for a 13-year-old" section asks for
+short sentences, plain words over precise-sounding ones, second person, and a casual,
+direct voice — and reuses `{interests}` a second time in the prompt so examples can
+draw on what he's actually into, not just topic selection.
+
+**Fixed alongside it:** the schema and prompt both used to describe `overview` as
+written *for the parent* ("Two or three sentences for the parent: what this covers and
+why now"), which was simply wrong — `render_lesson` has never gated `overview` behind
+`if parent:`, so it was reaching the student the whole time in an adult register with
+nothing asking it not to be. That's now corrected in both the JSON schema description
+and the prompt, pinned by a regression test that fails if the old phrasing comes back.
+
 ## Declaration of Intent and school-year countdowns
 
 Washington also requires a once-a-year filing with the local school district (RCW
@@ -554,7 +574,7 @@ student view, a plain countdown to the first day of school.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 228 tests, ~5s, no API key needed
+python -m pytest tests/ -q      # 232 tests, ~5s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the
