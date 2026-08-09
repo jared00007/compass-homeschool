@@ -268,7 +268,7 @@ compass/
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
   theme.py                   the five themes and the CSS that applies one
-tests/                       232 tests, no API key required
+tests/                       243 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 ```
 
@@ -520,6 +520,23 @@ grade and show a score without a side effect — a real check with no mechanism 
 it yet, rather than force-fitting one. The pass bar (`quiz_pass_percent`, default 80)
 is a family policy setting, the same category as the Tier 3 guideline percent.
 
+## Printing a lesson
+
+Every generated lesson gets a **Download as Word doc** button (`compass/export.py`,
+wired into the shared `generate_and_log` loop in `compass/ui.py`) right next to the
+on-screen render. It produces one `.docx` containing everything the parent view shows
+— activities, materials, assessment, mastery criteria, the quiz answer key, subject
+credits — because reading an assessment off a laptop screen while scoring a paper
+worksheet is exactly the friction this exists to remove.
+
+This is deliberately a parent-only export: it's reachable only through
+`generate_and_log`, which every Tier 1 page gates behind `is_parent()` before it's
+ever called, so nothing in `export.py` re-checks who's asking — same trust boundary
+as the on-screen assessment it mirrors, not a new one. `python-docx` is a pure-Python
+dependency (its one transitive dependency, `lxml`, ships prebuilt wheels for
+macOS/Windows/Linux), so this doesn't add anything to the "needs a terminal and a
+build toolchain" side of the ledger the launcher scripts are built to avoid.
+
 ## Writing for a 13-year-old
 
 The prompt splits student-facing content from parent-facing content structurally
@@ -574,7 +591,7 @@ student view, a plain countdown to the first day of school.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 232 tests, ~5s, no API key needed
+python -m pytest tests/ -q      # 243 tests, ~5s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

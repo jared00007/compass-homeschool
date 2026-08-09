@@ -128,6 +128,19 @@ def test_the_lesson_is_rendered_through_the_redacting_renderer(monkeypatch, db, 
     page, _ = run(monkeypatch, db, student, generated=generated)
     assert "Two-Step Equations" in page
     assert "Solve problems 1-10." in page
+
+
+def test_a_generated_lesson_offers_a_word_doc_download(monkeypatch, db, student):
+    """generate_and_log only ever runs behind is_parent(), so it's safe for the
+    downloadable doc to include the assessment and answer key too."""
+    generated = GeneratedLesson(
+        lesson_id=1,
+        proposal=TopicProposal(topic="t", rationale="r", strategy="s"),
+        payload=a_lesson(),
+        warnings=[],
+    )
+    page, _ = run(monkeypatch, db, student, generated=generated)
+    assert "Download as Word doc" in page
     # parent view here, so the answer key is expected -- what matters is that it
     # went through render_lesson at all rather than being printed raw
     assert "Answer key: 8 of 10" in page

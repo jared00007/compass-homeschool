@@ -23,6 +23,7 @@ from compass.agents import (
 )
 from compass.agents.quiz import grade, passed as quiz_passes
 from compass.compliance import declaration_status
+from compass.export import lesson_to_docx, suggested_filename
 from compass.school_calendar import next_annual_date
 from compass.storage.db import Database
 
@@ -269,6 +270,13 @@ def generate_and_log(
     for warning in generated.warnings:
         st.caption(f"⚠️ {warning}")
     render_lesson(generated.payload)
+    st.download_button(
+        "📄 Download as Word doc",
+        data=lesson_to_docx(generated.payload),
+        file_name=suggested_filename(generated.payload),
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        key=f"{agent.key}_docx_download",
+    )
     if after_render:
         st.caption(after_render)
     st.divider()
