@@ -31,13 +31,14 @@ if not exist ".venv" (
 )
 call .venv\Scripts\activate.bat
 
-python -c "import streamlit, anthropic" >nul 2>&1
-if errorlevel 1 (
-    echo   Installing dependencies...
-    python -m pip install --quiet --upgrade pip
-    python -m pip install --quiet -r requirements.txt
-    if errorlevel 1 ( echo   [X] Dependency install failed. & pause & exit /b 1 )
-)
+REM Always run this, not just on first setup: gating it on "is streamlit
+REM already importable" meant a machine with an existing .venv silently kept
+REM running without any dependency added after that .venv was first created.
+REM pip with everything already satisfied is fast - no real cost to asking
+REM every time.
+python -m pip install --quiet --upgrade pip
+python -m pip install --quiet -r requirements.txt
+if errorlevel 1 ( echo   [X] Dependency install failed. & pause & exit /b 1 )
 echo   [OK] Dependencies ready
 
 REM Streamlit prompts for an email on first run and blocks waiting for input,
