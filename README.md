@@ -538,9 +538,10 @@ completed) only changes when the parent logs actual hours through `log_lesson_fo
 hours, not credits, not the compliance record. A lesson can be `student_done_on`-set
 and still `status: "planned"` indefinitely if the parent hasn't logged it yet — the
 two states aren't supposed to reconcile, same as the total/per-subject hours split
-elsewhere in this app. Activity Log's "Generated lessons" tab surfaces that gap as a
-small note (`🎓 He marked this done on ... — not logged yet.`) rather than letting it
-pass silently.
+elsewhere in this app. Activity Log's "To review" tab surfaces that gap two ways: a
+small note (`🎓 He marked this done on ... — not logged yet.`) inside the lesson, and
+a `🎓 he's done — needs logging` badge on its collapsed header, sorted to the top of
+the tab — see below.
 
 A skipped lesson (`status: "skipped"`) is excluded from "current" outright — there's
 no reason to hand him a lesson the parent already called off.
@@ -558,6 +559,17 @@ just re-assembly, not new data) and renders the same `log_lesson_form` for any
 `TIER_LIFE_SKILLS` vs `TIER_CORE` off `lesson["agent"]`. Same durability fix as the
 Word-doc download button: DB-backed instead of session-state-backed.
 
+**Then the tab itself got reorganized around that gap**, once it was clear having
+"log a lesson" live in two places (the ephemeral form above, and a tab that mixed
+every lesson ever generated together regardless of status) was the actual source of
+confusion, not just the missing form. `lessons_tab` now filters to `status ==
+"planned"` by default — labeled `To review (N)` right on the tab itself — with a
+`st.checkbox("Also show completed and skipped lessons")` to pull in `history` when
+wanted. Within `to_review`, a stable sort (`key=lambda l: 0 if student_done_on else
+1`) floats lessons he's already marked done to the top without disturbing the
+most-recent-first order `list_lessons` already returns within each group — those are
+the most time-sensitive, since he's waiting on the parent, not the other way around.
+
 ## Printing a lesson
 
 There are two places to get a lesson as a `.docx` (`compass/export.py`):
@@ -567,10 +579,11 @@ There are two places to get a lesson as a `.docx` (`compass/export.py`):
    only exists for the lesson currently held in that page's session state, so it's
    gone the moment you navigate away or reload — Streamlit session state doesn't
    survive either.
-2. **Activity Log → Generated lessons** (`pages/8_Activity_Log.py`) — every lesson
-   ever generated, loaded from the database rather than session state, each with its
-   own download button. This is the durable one: it's there whether the lesson was
-   generated this session or three weeks ago.
+2. **Activity Log → To review** (`pages/8_Activity_Log.py`) — loaded from the
+   database rather than session state, each with its own download button. Shows
+   unlogged lessons by default; tick "Also show completed and skipped lessons" to
+   reach an older, already-logged one. This is the durable one: it's there whether
+   the lesson was generated this session or three weeks ago.
 
 Both produce the same `.docx`, containing everything the parent view shows —
 activities, materials, assessment, mastery criteria, the quiz answer key, subject

@@ -448,7 +448,7 @@ so he can still reopen and reread one if he wants — it just isn't sitting ther
 by default once he's finished it. This is his own signal, separate from you
 logging the hours: it doesn't touch anything on the compliance side, and a
 lesson he's marked done still shows up in Activity Log as not-yet-logged until
-you actually log it — and Activity Log's **Generated lessons** tab is where you
+you actually log it — and Activity Log's **To review** tab is where you
 actually do that: open the lesson, the same "Log this as completed" form you'd
 see right after generating one is right there, whether he marked it done
 yesterday or three weeks ago.
@@ -461,8 +461,9 @@ compliance record, costs, and backups.
 **📄 Download as Word doc.** Grading an assessment off a laptop screen is
 awkward — a printed page isn't. Two places to get one, both on your side only:
 right below a lesson you just generated (gone once you leave that page — it's
-tied to your browser session), or in **Activity Log → Generated lessons**,
-which has one for every lesson ever generated and survives closing the app.
+tied to your browser session), or in **Activity Log → To review** (tick "Also
+show completed and skipped lessons" to reach an older one), which survives
+closing the app.
 The file has everything your screen does: activities, materials, assessment,
 mastery criteria, the quiz answer key, subject credits. It opens in Word,
 Pages, or Google Docs, so it's yours to trim or reformat before you print it.

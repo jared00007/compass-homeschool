@@ -24,7 +24,17 @@ st.caption(
     "automatically; anything else can be logged by hand."
 )
 
-log_tab, add_tab, lessons_tab = st.tabs(["The record", "Log something manually", "Generated lessons"])
+all_lessons = db.list_lessons(student["id"], limit=50)
+to_review = [l for l in all_lessons if l["status"] == "planned"]
+history = [l for l in all_lessons if l["status"] != "planned"]
+# Stable sort: lessons he's already marked done float to the top of "to review"
+# since they're the most time-sensitive -- he's waiting on you, not the other
+# way around. Relative order within each group (most recent first) is preserved.
+to_review.sort(key=lambda l: 0 if (l.get("metadata") or {}).get("student_done_on") else 1)
+
+log_tab, add_tab, lessons_tab = st.tabs(
+    ["The record", "Log something manually", f"To review ({len(to_review)})"]
+)
 
 with log_tab:
     columns = st.columns([1, 1, 2])
@@ -122,15 +132,26 @@ with add_tab:
             st.rerun()
 
 with lessons_tab:
-    st.subheader("Generated lessons")
-    st.caption("Everything the agents have written, whether or not it's been logged yet.")
-    lessons = db.list_lessons(student["id"], limit=50)
-    if not lessons:
+    st.subheader("To review")
+    st.caption(
+        "Lessons nothing has been logged for yet. Lessons he's already marked done as "
+        "finished sort to the top — those are waiting on you."
+    )
+    show_history = st.checkbox("Also show completed and skipped lessons")
+    visible = to_review + history if show_history else to_review
+
+    if not all_lessons:
         st.info("No lessons generated yet.")
-    for lesson in lessons:
-        badge = {"planned": "🕓 planned", "completed": "✅ completed", "skipped": "⏭️ skipped"}[
-            lesson["status"]
-        ]
+    elif not visible:
+        st.success("Nothing waiting on you right now.")
+
+    badge_map = {"planned": "🕓 planned", "completed": "✅ completed", "skipped": "⏭️ skipped"}
+    for lesson in visible:
+        student_done_on = (lesson.get("metadata") or {}).get("student_done_on")
+        if lesson["status"] == "planned" and student_done_on:
+            badge = "🎓 he's done — needs logging"
+        else:
+            badge = badge_map[lesson["status"]]
         with st.expander(f"{badge} · {lesson['created_at'][:10]} · {lesson['title']}"):
             st.caption(
                 f"{lesson['agent']} agent · strategy: {lesson['strategy']} · "
@@ -138,7 +159,6 @@ with lessons_tab:
             )
             if lesson["rationale"]:
                 st.caption(f"Why: {lesson['rationale']}")
-            student_done_on = (lesson.get("metadata") or {}).get("student_done_on")
             if student_done_on and lesson["status"] != "completed":
                 st.caption(f"🎓 He marked this done on {student_done_on} — not logged yet.")
             st.write(lesson["payload"].get("overview", ""))
