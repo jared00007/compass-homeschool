@@ -442,6 +442,13 @@ materials, a suggested video when there is one, and the quiz at the end — plus
 his reading progress, vocabulary review, and his own Tier 3 topics. Enough to
 do the work without you narrating it.
 
+**Vocabulary review, on the English page, is his own flashcard flow** — the word
+first, a **Show definition** button, then he grades himself (knew it / missed
+it). He never sees the definition next to the word before checking himself;
+otherwise the review would test nothing. This feeds the same spaced-repetition
+schedule the parent-facing Vocabulary tab does — that one shows word and
+definition together on purpose, since it's built for you to quiz him out loud.
+
 **His home page leads with a "✅ Today" list** — everything he's checked off
 today, in one place: lessons he's marked done, quiz scores, life skills either
 of you ticked off. A quick, fun sense of "here's what I got through today"

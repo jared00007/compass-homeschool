@@ -13,6 +13,7 @@ from compass.ui import (
     is_parent,
     page_setup,
     render_proposal,
+    render_vocab_review,
     student_lesson_view,
 )
 
@@ -26,8 +27,15 @@ st.caption(
 )
 
 # Student view: his lesson, without the answer key or the admin surface.
+# Bug fixed here: this used to st.stop() before the tabs below were even built,
+# so the "Review them" link on his home page (Words to review) sent him to a
+# page with nothing on it -- there was no student-facing vocabulary review at
+# all, only the parent-facing tab further down, which he never reached.
 if not is_parent():
     student_lesson_view(db, student, "english", "English")
+    st.divider()
+    st.subheader("🔤 Words to review")
+    render_vocab_review(db, student)
     st.stop()
 
 plan_tab, books_tab, vocab_tab = st.tabs(["Plan a lesson", "Books", "Vocabulary"])

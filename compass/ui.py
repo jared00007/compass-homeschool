@@ -755,6 +755,47 @@ def render_today_checklist(db: Database, student: dict[str, Any]) -> bool:
     return True
 
 
+def render_vocab_review(db: Database, student: dict[str, Any]) -> None:
+    """His own flashcard review: word first, self-recall, then he reveals the
+    definition and grades himself.
+
+    The parent-facing Vocabulary tab shows word and definition together on
+    purpose -- it's built for a parent to quiz him out loud and judge the
+    answer. Reusing that same layout here would put the definition right next
+    to the word he's supposed to be recalling, testing nothing. Nothing writes
+    `entry["definition"]` onto the page until after he's clicked to reveal it
+    -- same redaction reasoning `render_quiz` already relies on for the answer
+    key.
+    """
+    due = db.vocabulary_due(student["id"], limit=25)
+    if not due:
+        st.success("Nothing due for review today.")
+        return
+
+    st.caption(f"{len(due)} word(s) due — try to recall it before you check.")
+    for entry in due:
+        reveal_key = f"vocab_reveal_{entry['id']}"
+        with st.container(border=True):
+            st.markdown(f"### {entry['word']}")
+            if not st.session_state.get(reveal_key):
+                if st.button("Show definition", key=f"vocab_show_{entry['id']}"):
+                    st.session_state[reveal_key] = True
+                    st.rerun()
+            else:
+                st.write(entry["definition"])
+                columns = st.columns(2)
+                if columns[0].button(
+                    "✅ I knew it", key=f"vocab_ok_{entry['id']}", type="primary"
+                ):
+                    db.record_vocabulary_review(entry["id"], correct=True)
+                    st.session_state.pop(reveal_key, None)
+                    st.rerun()
+                if columns[1].button("❌ I missed it", key=f"vocab_miss_{entry['id']}"):
+                    db.record_vocabulary_review(entry["id"], correct=False)
+                    st.session_state.pop(reveal_key, None)
+                    st.rerun()
+
+
 def api_status_banner() -> bool:
     from compass.agents import api_available
 

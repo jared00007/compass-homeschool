@@ -268,7 +268,7 @@ compass/
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
   theme.py                   the five themes and the CSS that applies one
-tests/                       258 tests, no API key required
+tests/                       263 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 ```
 
@@ -590,6 +590,35 @@ Basing "what did I do today" on the logged record would reintroduce the exact la
 Returns `False` when there's nothing to show, so `Home.py` only draws the divider
 under it when there's actually something above to divide from.
 
+### His own vocabulary review
+
+Reported directly: Home's "Words to review" always linked to `pages/3_English.py`,
+but the student branch there was `if not is_parent(): student_lesson_view(...);
+st.stop()` — that `st.stop()` runs before the `Vocabulary` tab (or anything else on
+the page) is even built, so the tab holding the actual review flow never existed for
+him. "Review them" landed him on a page with nothing to review on it.
+
+Fixing the routing wasn't enough on its own, though: the existing Vocabulary tab
+shows a word *and* its definition together, with "Knew it / Missed" buttons — built
+for a parent to quiz him out loud and judge the answer. Just unblocking that same
+tab for him would put the definition right next to the word he's supposed to be
+recalling, testing nothing.
+
+`render_vocab_review()` in `compass/ui.py` is a separate, student-facing flow instead:
+word only, a `Show definition` reveal, then he grades himself (`✅ I knew it` / `❌ I
+missed it`), writing to the same `db.record_vocabulary_review()` the parent-facing tab
+already calls. Nothing writes `entry["definition"]` onto the page until after he's
+clicked to reveal it — same redaction reasoning `render_quiz` already relies on for
+its answer key, applied to a second kind of answer this app hands out. Per-word reveal
+state lives in `st.session_state[f"vocab_reveal_{entry['id']}"]`, cleared the moment
+he grades himself, so the next due word starts hidden again.
+
+Self-grading rather than parent-graded was a deliberate call, not the only option —
+discussed with the user first. It's consistent with how the rest of the app already
+trusts his self-report (`student_done_on`, the togglable life-skills checkbox) rather
+than gating it behind the parent, even though nothing here auto-verifies a recalled
+definition the way the multiple-choice quiz can auto-verify a chosen answer.
+
 ## Printing a lesson
 
 There are two places to get a lesson as a `.docx` (`compass/export.py`):
@@ -694,7 +723,7 @@ student view, a plain countdown to the first day of school.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 258 tests, ~5s, no API key needed
+python -m pytest tests/ -q      # 263 tests, ~5s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

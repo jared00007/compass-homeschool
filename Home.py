@@ -77,7 +77,9 @@ if not is_parent():
 
     with columns[1]:
         st.markdown("#### 🔤 Words to review")
-        due = db.vocabulary_due(student["id"])
+        # Same limit render_vocab_review uses, so this count matches what he'll
+        # actually see when he clicks through rather than under- or over-stating it.
+        due = db.vocabulary_due(student["id"], limit=25)
         st.metric("Due today", len(due))
         if due:
             st.page_link("pages/3_English.py", label="Review them", icon="➡️")

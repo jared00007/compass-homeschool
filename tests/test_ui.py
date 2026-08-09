@@ -360,3 +360,83 @@ def test_a_lesson_marked_done_on_a_prior_day_is_not_todays(monkeypatch, db, stud
     page, shown = render_today(monkeypatch, db, student)
     assert shown is False
     assert "Two-Step Equations" not in page
+
+
+# --- render_vocab_review: his own flashcard review, word before definition ---
+
+
+def render_vocab(monkeypatch, db, student, *, state=None, button_pressed=None):
+    written: list[str] = []
+    state = {} if state is None else state
+    recorder = Recorder(written, state)
+    if button_pressed is not None:
+        recorder.button = lambda *args, key=None, **kwargs: key == button_pressed
+    monkeypatch.setattr(ui, "st", recorder)
+    ui.render_vocab_review(db, student)
+    return "\n".join(written), state
+
+
+def test_nothing_due_shows_a_clean_success_message(monkeypatch, db, student):
+    page, _ = render_vocab(monkeypatch, db, student)
+    assert "Nothing due for review today." in page
+
+
+def test_a_due_word_shows_before_reveal_without_its_definition(monkeypatch, db, student):
+    """The whole point: he must not be able to read the definition next to the
+    word he's supposed to be recalling, before he's chosen to check himself."""
+    db.add_vocabulary(student["id"], "ephemeral", "lasting a very short time")
+    db.conn.execute("UPDATE vocabulary SET next_review_on = date('now')")
+    db.conn.commit()
+    page, _ = render_vocab(monkeypatch, db, student)
+    assert "ephemeral" in page
+    assert "lasting a very short time" not in page
+    assert "Show definition" in page
+
+
+def test_revealing_shows_the_definition_and_grading_buttons(monkeypatch, db, student):
+    db.add_vocabulary(student["id"], "ephemeral", "lasting a very short time")
+    db.conn.execute("UPDATE vocabulary SET next_review_on = date('now')")
+    db.conn.commit()
+    vocab_id = db.list_vocabulary(student["id"])[0]["id"]
+    page, _ = render_vocab(monkeypatch, db, student, state={f"vocab_reveal_{vocab_id}": True})
+    assert "lasting a very short time" in page
+    assert "I knew it" in page
+    assert "I missed it" in page
+
+
+def test_marking_knew_it_records_correct_and_clears_the_reveal(monkeypatch, db, student):
+    db.add_vocabulary(student["id"], "ephemeral", "lasting a very short time")
+    db.conn.execute("UPDATE vocabulary SET next_review_on = date('now')")
+    db.conn.commit()
+    vocab_id = db.list_vocabulary(student["id"])[0]["id"]
+    reveal_key = f"vocab_reveal_{vocab_id}"
+
+    _, state = render_vocab(
+        monkeypatch, db, student,
+        state={reveal_key: True},
+        button_pressed=f"vocab_ok_{vocab_id}",
+    )
+
+    entry = db.list_vocabulary(student["id"])[0]
+    assert entry["box"] == 2  # advanced from box 1
+    assert entry["times_correct"] == 1
+    assert reveal_key not in state
+
+
+def test_marking_missed_it_resets_the_box_and_clears_the_reveal(monkeypatch, db, student):
+    db.add_vocabulary(student["id"], "ephemeral", "lasting a very short time")
+    db.conn.execute("UPDATE vocabulary SET next_review_on = date('now'), box = 4")
+    db.conn.commit()
+    vocab_id = db.list_vocabulary(student["id"])[0]["id"]
+    reveal_key = f"vocab_reveal_{vocab_id}"
+
+    _, state = render_vocab(
+        monkeypatch, db, student,
+        state={reveal_key: True},
+        button_pressed=f"vocab_miss_{vocab_id}",
+    )
+
+    entry = db.list_vocabulary(student["id"])[0]
+    assert entry["box"] == 1  # dropped back down
+    assert entry["times_missed"] == 1
+    assert reveal_key not in state
