@@ -646,34 +646,65 @@ def render_quiz(
 def student_lesson_view(
     db: Database, student: dict[str, Any], agent_key: str, subject_label: str
 ) -> None:
-    """What the student sees on a subject page: his work, and nothing else."""
-    lessons = db.list_lessons(student["id"], agent=agent_key, limit=5)
-    planned = [l for l in lessons if l["status"] == "planned"]
-    current = planned[0] if planned else (lessons[0] if lessons else None)
+    """What the student sees on a subject page: his work, and nothing else.
+
+    "Done" here is his own signal (`metadata.student_done_on`), not the
+    parent's `status` -- logging hours is a separate act the parent still
+    controls. Marking a lesson done just moves it from "current" to a
+    "Past lessons" list he can still reopen; it never touches hours, credits,
+    or the compliance record.
+    """
+    lessons = db.list_lessons(student["id"], agent=agent_key, limit=10)
+    todo = [
+        l for l in lessons
+        if l["status"] != "skipped" and not (l.get("metadata") or {}).get("student_done_on")
+    ]
+    done = [l for l in lessons if (l.get("metadata") or {}).get("student_done_on")]
+    current = todo[0] if todo else None
 
     if current is None:
-        st.info(
-            f"No {subject_label} lesson has been set up yet. Ask your parent to plan one."
+        if done:
+            st.success("Nothing left to do for now — nice work. Look back below if you want.")
+        else:
+            st.info(
+                f"No {subject_label} lesson has been set up yet. Ask your parent to plan one."
+            )
+    else:
+        if current["status"] == "completed":
+            st.caption("This one's already marked done — here it is again.")
+        render_lesson(current["payload"], for_parent=False)
+        render_quiz(
+            db,
+            student,
+            current["id"],
+            current.get("metadata") or {},
+            current["payload"].get("quiz") or [],
         )
-        return
+        if st.button("✅ I'm done for today", key=f"student_done_{current['id']}", type="primary"):
+            db.mark_student_done(current["id"])
+            st.rerun()
 
-    if current["status"] == "completed":
-        st.caption("This one's already marked done — here it is again.")
-    render_lesson(current["payload"], for_parent=False)
-    render_quiz(
-        db,
-        student,
-        current["id"],
-        current.get("metadata") or {},
-        current["payload"].get("quiz") or [],
-    )
-
-    older = [l for l in lessons if l["id"] != current["id"]]
-    if older:
-        with st.expander(f"Earlier {subject_label} lessons ({len(older)})"):
-            for lesson in older:
-                st.markdown(f"**{lesson['created_at'][:10]} — {lesson['title']}**")
-                st.caption(lesson["payload"].get("overview", ""))
+    if done:
+        st.divider()
+        st.subheader("Past lessons")
+        labels = [f"{l['created_at'][:10]} — {l['title']}" for l in done]
+        choice = st.selectbox(
+            "Look back at a finished lesson",
+            labels,
+            index=None,
+            placeholder="Pick one to reopen",
+            key=f"past_lesson_pick_{agent_key}",
+        )
+        if choice is not None:
+            selected = done[labels.index(choice)]
+            render_lesson(selected["payload"], for_parent=False)
+            render_quiz(
+                db,
+                student,
+                selected["id"],
+                selected.get("metadata") or {},
+                selected["payload"].get("quiz") or [],
+            )
 
 
 def api_status_banner() -> bool:

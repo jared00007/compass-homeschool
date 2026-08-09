@@ -476,6 +476,20 @@ class Database:
         self.conn.execute("UPDATE lessons SET status = ? WHERE id = ?", (status, lesson_id))
         self.conn.commit()
 
+    def mark_student_done(self, lesson_id: int) -> None:
+        """The student's own "I'm done for today" signal.
+
+        Deliberately separate from `status`, which only changes when the parent
+        logs actual hours: this only controls what he sees as current versus
+        past, and never touches hours, credits, or the compliance record.
+        """
+        self.conn.execute(
+            "UPDATE lessons SET metadata = json_set(metadata, '$.student_done_on', ?) "
+            "WHERE id = ?",
+            (date.today().isoformat(), lesson_id),
+        )
+        self.conn.commit()
+
     def record_quiz_result(self, lesson_id: int, correct: int, total: int, passed: bool) -> None:
         """Stash the graded score into the lesson's metadata, alongside the
         strategy metadata already stored there (skill_id, era, and so on)."""

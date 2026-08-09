@@ -209,3 +209,65 @@ def test_the_session_key_is_per_agent(monkeypatch, db, student):
     assert len(keys) == 4
     # and it matches the keys the pages used before consolidation
     assert keys == {"math_lesson", "science_lesson", "english_lesson", "history_lesson"}
+
+
+# --- student_lesson_view: his own "I'm done" signal, separate from `status` ---
+
+
+def render_student_view(monkeypatch, db, student, *, agent_key="math", selectbox_return=None):
+    written: list[str] = []
+    recorder = Recorder(written, {})
+    recorder.selectbox = lambda *args, **kwargs: selectbox_return
+    monkeypatch.setattr(ui, "st", recorder)
+    ui.student_lesson_view(db, student, agent_key, agent_key)
+    return "\n".join(written)
+
+
+def test_student_view_with_no_lessons_shows_setup_prompt(monkeypatch, db, student):
+    page = render_student_view(monkeypatch, db, student)
+    assert "No math lesson has been set up yet" in page
+
+
+def test_student_view_shows_current_lesson_and_a_done_button(monkeypatch, db, student):
+    db.save_lesson(student["id"], "math", "math", "topic", "Two-Step Equations", payload=a_lesson())
+    page = render_student_view(monkeypatch, db, student)
+    assert "Two-Step Equations" in page
+    assert "Solve problems 1-10." in page
+    assert "I'm done for today" in page
+
+
+def test_marking_done_moves_a_lesson_out_of_current(monkeypatch, db, student):
+    """This is the whole feature: his own signal, not the parent's `status`,
+    controls what he sees as current -- and it's separate from hour logging."""
+    lesson_id = db.save_lesson(
+        student["id"], "math", "math", "topic", "Two-Step Equations", payload=a_lesson()
+    )
+    db.mark_student_done(lesson_id)
+    assert db.get_lesson(lesson_id)["status"] == "planned"  # unaffected by his click
+
+    page = render_student_view(monkeypatch, db, student)
+    assert "Nothing left to do" in page
+    assert "I'm done for today" not in page
+    assert "Two-Step Equations" not in page  # not dumped into the page unprompted
+
+
+def test_skipped_lessons_never_show_as_his_current_lesson(monkeypatch, db, student):
+    lesson_id = db.save_lesson(
+        student["id"], "math", "math", "topic", "Two-Step Equations", payload=a_lesson()
+    )
+    db.set_lesson_status(lesson_id, "skipped")
+    page = render_student_view(monkeypatch, db, student)
+    assert "Two-Step Equations" not in page
+    assert "No math lesson has been set up yet" in page
+
+
+def test_a_finished_lesson_can_be_reopened_from_past_lessons(monkeypatch, db, student):
+    lesson_id = db.save_lesson(
+        student["id"], "math", "math", "topic", "Two-Step Equations", payload=a_lesson()
+    )
+    db.mark_student_done(lesson_id)
+    lesson = db.get_lesson(lesson_id)
+    label = f"{lesson['created_at'][:10]} — {lesson['title']}"
+
+    page = render_student_view(monkeypatch, db, student, selectbox_return=label)
+    assert "Solve problems 1-10." in page  # reopened, read-only

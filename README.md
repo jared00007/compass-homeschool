@@ -268,7 +268,7 @@ compass/
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
   theme.py                   the five themes and the CSS that applies one
-tests/                       244 tests, no API key required
+tests/                       251 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 ```
 
@@ -520,6 +520,31 @@ grade and show a score without a side effect — a real check with no mechanism 
 it yet, rather than force-fitting one. The pass bar (`quiz_pass_percent`, default 80)
 is a family policy setting, the same category as the Tier 3 guideline percent.
 
+## The student's own "I'm done for today"
+
+`student_lesson_view()` in `compass/ui.py` shows exactly one "current" lesson per
+subject and a button: **✅ I'm done for today**. Clicking it calls
+`db.mark_student_done()`, which stamps `metadata.student_done_on` (via the same
+`json_set` pattern `record_quiz_result` already used — no schema migration needed,
+since `metadata` is already a JSON column). The lesson then drops out of "current"
+and into a **Past lessons** picker below it — a selectbox, not a list of expanders,
+because `render_lesson` already opens its own expanders for activities and video, and
+Streamlit doesn't allow nesting one expander inside another.
+
+**This is deliberately a second, separate signal from `status`.** `status` (planned →
+completed) only changes when the parent logs actual hours through `log_lesson_form`
+— that's the compliance-relevant fact, tied to real minutes and subject credits.
+`student_done_on` is just "he says he's finished," and touches nothing else: not
+hours, not credits, not the compliance record. A lesson can be `student_done_on`-set
+and still `status: "planned"` indefinitely if the parent hasn't logged it yet — the
+two states aren't supposed to reconcile, same as the total/per-subject hours split
+elsewhere in this app. Activity Log's "Generated lessons" tab surfaces that gap as a
+small note (`🎓 He marked this done on ... — not logged yet.`) rather than letting it
+pass silently.
+
+A skipped lesson (`status: "skipped"`) is excluded from "current" outright — there's
+no reason to hand him a lesson the parent already called off.
+
 ## Printing a lesson
 
 There are two places to get a lesson as a `.docx` (`compass/export.py`):
@@ -623,7 +648,7 @@ student view, a plain countdown to the first day of school.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 244 tests, ~5s, no API key needed
+python -m pytest tests/ -q      # 251 tests, ~5s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

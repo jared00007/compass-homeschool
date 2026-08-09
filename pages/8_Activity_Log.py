@@ -137,6 +137,9 @@ with lessons_tab:
             )
             if lesson["rationale"]:
                 st.caption(f"Why: {lesson['rationale']}")
+            student_done_on = (lesson.get("metadata") or {}).get("student_done_on")
+            if student_done_on and lesson["status"] != "completed":
+                st.caption(f"🎓 He marked this done on {student_done_on} — not logged yet.")
             st.write(lesson["payload"].get("overview", ""))
             credits = lesson["payload"].get("subject_credits") or []
             if credits:

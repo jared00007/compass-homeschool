@@ -80,6 +80,29 @@ def test_logging_a_lesson_marks_it_completed(db, student):
     assert db.get_lesson(lesson_id)["status"] == "completed"
 
 
+def test_mark_student_done_stamps_metadata_without_touching_status(db, student):
+    lesson_id = db.save_lesson(
+        student["id"], "math", "math", "topic", "title", payload={"a": 1}
+    )
+    db.mark_student_done(lesson_id)
+    lesson = db.get_lesson(lesson_id)
+    assert lesson["metadata"]["student_done_on"] == date.today().isoformat()
+    assert lesson["status"] == "planned"  # the parent's hour-logging status, untouched
+
+
+def test_mark_student_done_preserves_other_metadata(db, student):
+    """It must not clobber skill_id or other strategy metadata already stored
+    there -- json_set only touches the one key it's given."""
+    lesson_id = db.save_lesson(
+        student["id"], "math", "math", "topic", "title",
+        payload={"a": 1}, metadata={"skill_id": "two_step_equations"},
+    )
+    db.mark_student_done(lesson_id)
+    lesson = db.get_lesson(lesson_id)
+    assert lesson["metadata"]["skill_id"] == "two_step_equations"
+    assert lesson["metadata"]["student_done_on"] == date.today().isoformat()
+
+
 def test_zero_minute_activity_is_rejected(db, student):
     with pytest.raises(ValueError):
         db.log_activity(

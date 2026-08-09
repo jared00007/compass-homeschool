@@ -442,6 +442,14 @@ materials, a suggested video when there is one, and the quiz at the end — plus
 his reading progress, vocabulary review, and his own Tier 3 topics. Enough to
 do the work without you narrating it.
 
+**✅ I'm done for today.** A button under his current lesson. Clicking it clears
+that lesson off his screen and drops it into a **Past lessons** picker below,
+so he can still reopen and reread one if he wants — it just isn't sitting there
+by default once he's finished it. This is his own signal, separate from you
+logging the hours: it doesn't touch anything on the compliance side, and a
+lesson he's marked done still shows up in Activity Log as not-yet-logged until
+you actually log it.
+
 **What only you see:** assessments and answer keys (including the quiz's — an
 expander on your side shows every question with the correct choice marked),
 mastery criteria, parent notes, subject credits, lesson generation, the
