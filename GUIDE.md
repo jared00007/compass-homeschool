@@ -5,6 +5,10 @@ for during the test month before school starts.
 
 *8th grade · age 13 · Washington state · ~10 minute read*
 
+There's also a formatted, easier-to-read version of this guide:
+<https://claude.ai/code/artifact/6a18ce6e-810c-423b-a350-639525208f2b>. This file is
+the same content, offline, in plain Markdown.
+
 ---
 
 ## The one idea to hold on to

@@ -3,9 +3,9 @@
 Everything to verify before the school year starts, in the order that finds problems
 soonest. Total API cost if you run every test: **about $2**.
 
-There's an interactive version of this checklist that saves your progress as you go —
-see the link in the project notes. This file is the same content, offline, with
-Markdown checkboxes you can tick in any editor.
+There's an interactive version of this checklist that saves your progress as you go:
+<https://claude.ai/code/artifact/3cca995a-36ab-4c91-93ae-1cd25830a952>. This file is
+the same content, offline, with Markdown checkboxes you can tick in any editor.
 
 **Items marked ⚠ CRITICAL** are ones where being wrong costs you the year rather than
 an afternoon.
