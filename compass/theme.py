@@ -318,11 +318,45 @@ def css(theme: Theme) -> str:
    weight and tabular figures carry the emphasis instead.
 
    The inner <p> has to be named explicitly: the blanket `.stApp p` rule above
-   is equally specific and comes first, so inheritance alone loses. */
+   is equally specific and comes first, so inheritance alone loses.
+
+   The white-space/overflow lines exist because Streamlit renders every metric
+   value with `truncate: true` baked into the widget itself (Metric.*.js),
+   which clips anything that doesn't fit the column to an ellipsis --
+   "1.2 / 1..." instead of "1.2 / 1000". Four metrics per row (several pages
+   here do that) leaves each one only a few hundred pixels wide, so this isn't
+   an edge case, it's the normal width. The truncation is CSS on the value's
+   own wrapper rather than something this app's Python controls, so the only
+   place to defeat it is here: force it to wrap instead of clip. A number
+   wrapping onto two lines still reads; a swallowed number does not. */
 [data-testid="stMetricValue"], [data-testid="stMetricValue"] p {{
   color: var(--c-text);
   font-family: var(--c-mono);
   font-variant-numeric: tabular-nums;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: unset !important;
+  overflow-wrap: break-word;
+}}
+
+/* Same clipping, same fix, for the little delta line under a metric
+   ("+12 vs pace") -- it gets `truncate: true` from the same widget. */
+[data-testid="stMetricDelta"], [data-testid="stMetricDelta"] p {{
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: unset !important;
+  overflow-wrap: break-word;
+}}
+
+/* And the metric's own label ("Subjects with instruction") -- same widget,
+   same `truncate: true`, same fix. Deliberately not applied to the shared
+   stWidgetLabel selector above: ordinary widget labels (text inputs, selects)
+   don't get Streamlit's truncate behavior, so they don't need it. */
+[data-testid="stMetricLabel"], [data-testid="stMetricLabel"] p {{
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: unset !important;
+  overflow-wrap: break-word;
 }}
 
 /* Dataframes render to a canvas, so their cells are out of CSS's reach and
