@@ -126,7 +126,7 @@ rows = [
     }
     for s in report.subjects
 ]
-st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
 chart = pd.DataFrame(
     {"Subject": [s.label for s in report.subjects], "Hours": [s.hours for s in report.subjects]}
@@ -153,7 +153,7 @@ with left:
         }
         for tier in config.TIERS
     ]
-    st.dataframe(pd.DataFrame(tier_rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(tier_rows), width="stretch", hide_index=True)
 
 with right:
     st.subheader("Tier 3 — his choice")
@@ -212,7 +212,7 @@ else:
                     for entry in cost.by_agent
                 ]
             ),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -319,7 +319,7 @@ with resource_columns[0]:
     st.link_button(
         "📕 OSPI Pink Book",
         "https://ospi.k12.wa.us/sites/default/files/2023-08/pinkbook.pdf",
-        use_container_width=True,
+        width="stretch",
     )
     st.caption(
         "\"Washington State's Laws Regulating Home-Based Instruction\" — OSPI's own "
@@ -330,7 +330,7 @@ with resource_columns[1]:
     st.link_button(
         "📋 SBE Home-Based Instruction FAQs",
         "https://sbe.wa.gov/faqs/211",
-        use_container_width=True,
+        width="stretch",
     )
     st.caption(
         "State Board of Education FAQ on the annual assessment requirement "

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import random
 import sqlite3
+import time
 from datetime import date
 from functools import partial
 from typing import Any
@@ -175,7 +176,7 @@ def _mode_control(db: Database) -> None:
 
     if is_parent():
         st.caption("🔓 **Parent view**")
-        if st.button("Switch to student view", use_container_width=True):
+        if st.button("Switch to student view", width="stretch"):
             st.session_state["parent_unlocked"] = False
             st.rerun()
         with st.expander("Change or remove the PIN"):
@@ -201,7 +202,7 @@ def _mode_control(db: Database) -> None:
     st.caption("🎒 **Student view**")
     with st.expander("Parent unlock"):
         pin = st.text_input("PIN", type="password", key="pin_unlock")
-        if st.button("Unlock", use_container_width=True):
+        if st.button("Unlock", width="stretch"):
             if auth.verify(db, pin):
                 st.session_state["parent_unlocked"] = True
                 st.rerun()
@@ -807,7 +808,7 @@ def render_vocab_review(db: Database, student: dict[str, Any]) -> None:
                 "👀 Show definition",
                 key=f"vocab_show_{entry['id']}",
                 type="primary",
-                use_container_width=True,
+                width="stretch",
             ):
                 st.session_state[reveal_key] = True
                 st.rerun()
@@ -818,7 +819,7 @@ def render_vocab_review(db: Database, student: dict[str, Any]) -> None:
                 "✅ I knew it",
                 key=f"vocab_ok_{entry['id']}",
                 type="primary",
-                use_container_width=True,
+                width="stretch",
             ):
                 db.record_vocabulary_review(entry["id"], correct=True)
                 st.session_state.pop(reveal_key, None)
@@ -833,7 +834,7 @@ def render_vocab_review(db: Database, student: dict[str, Any]) -> None:
                     st.toast(f"{random.choice(VOCAB_STREAK_HYPE)} 🔥 {new_streak} in a row")
                 st.rerun()
             if columns[1].button(
-                "❌ I missed it", key=f"vocab_miss_{entry['id']}", use_container_width=True
+                "❌ I missed it", key=f"vocab_miss_{entry['id']}", width="stretch"
             ):
                 db.record_vocabulary_review(entry["id"], correct=False)
                 st.session_state.pop(reveal_key, None)
@@ -847,31 +848,40 @@ VOCAB_MATCH_ROUND_SIZE = 6
 
 
 def render_vocab_match(db: Database, student: dict[str, Any]) -> None:
-    """A second, game-style review mode: click a word, then click its
-    definition from a shuffled list, a round of a few words at a time.
+    """A second, game-style review mode: Memory Match. One shuffled grid of
+    face-down tiles -- half words, half their definitions -- flip two at a
+    time looking for pairs. The classic matching-card game, with vocab
+    instead of pictures.
 
-    Definitions are visible up front here on purpose -- that's what makes it
-    a *matching* game rather than a second flashcard mode, and it's a
-    genuinely different, easier kind of memory (recognizing a definition
-    among a few options versus recalling one from nothing). Scored the same
-    way regardless: a word matched on its first guess counts as "knew it," a
-    word that took a wrong guess before landing right counts as "missed it"
-    -- same db.record_vocabulary_review() the flashcard flow and the
-    parent-facing Vocabulary tab already call, so which mode he picks
-    doesn't change what the Leitner schedule means.
+    Scoring is deliberately NOT the same rule the old two-column Match (and
+    the flashcard flow) use. There, a wrong guess meant picking the wrong
+    definition for a word he'd already chosen -- a real vocabulary mix-up.
+    Here, a mismatch is mostly spatial memory noise ("I forgot where I'd
+    already seen that one"), not a sign he doesn't know the word. So
+    `db.record_vocabulary_review()` is only ever called once a pair is
+    actually found, always `correct=True` -- finding it at all, however many
+    tries the board took, still means he recognized the pairing once he saw
+    both halves together. The session *streak* stays strict on purpose, for
+    the game feel: it only rewards a pair found on the very first flip of
+    those two tiles, and breaks the instant a mismatch happens -- same
+    "shares its counters with Flashcards, breaks immediately on a miss" rule
+    the rest of vocab review already follows.
 
-    Shares its streak/reviewed/best-streak counters with render_vocab_review
-    (the same session_state keys) -- switching between Flashcards and Match
-    mid-session carries his momentum instead of resetting it, since both
-    modes are just different lenses on the same review work. A wrong guess
-    breaks the streak the moment it happens, not when the word eventually
-    gets matched -- the number on screen should never lag behind reality.
+    A round clears VOCAB_MATCH_ROUND_SIZE pairs before the next batch of due
+    words shuffles in. Round state (tile order, what's flipped, what's
+    matched, when this round started) lives in st.session_state; word and
+    definition *text* is always re-read fresh from `due`, never cached,
+    same reasoning as before -- a word reviewed elsewhere mid-round can't
+    go stale on this board.
 
-    Round state (which words are in play, the two shuffles, what's resolved,
-    what's had a wrong guess) lives in st.session_state -- but never the
-    words/definitions themselves, those are re-read from `due` fresh every
-    render, so a word reviewed elsewhere mid-round (flashcards in another
-    tab) can't go stale here.
+    The timer is wall-clock (`time.time()` at round start vs. now), refreshed
+    on every click -- not a literal live-ticking clock. Streamlit reruns the
+    whole script per interaction; a real per-second tick would need a
+    background loop that blocks the rest of the app while it runs, which
+    this project has consistently avoided elsewhere. Clearing a round faster
+    than the standing record updates `vocab_best_round_seconds` in
+    `settings` -- a genuine record that persists across days, not just a
+    number that resets when the tab closes.
     """
     due = db.vocabulary_due(student["id"], limit=25)
     streak = st.session_state.setdefault("vocab_streak", 0)
@@ -890,88 +900,81 @@ def render_vocab_match(db: Database, student: dict[str, Any]) -> None:
     pool_ids = set(by_id)
     state = st.session_state.setdefault("vocab_match", {})
     round_ids = state.get("round_ids", [])
-    resolved = state.get("resolved", set())
-    remaining = [i for i in round_ids if i not in resolved]
+    matched: set[int] = state.get("matched", set())
+    unmatched_in_round = [i for i in round_ids if i not in matched]
 
-    if not remaining or any(i not in pool_ids for i in round_ids):
+    if not unmatched_in_round or any(i not in pool_ids for i in round_ids):
         round_ids = [entry["id"] for entry in due[:VOCAB_MATCH_ROUND_SIZE]]
-        word_order = round_ids[:]
-        def_order = round_ids[:]
-        random.shuffle(word_order)
-        random.shuffle(def_order)
+        tiles = [{"vocab_id": vid, "kind": kind} for vid in round_ids for kind in ("word", "def")]
+        random.shuffle(tiles)
         state.clear()
-        state.update(
-            round_ids=round_ids,
-            word_order=word_order,
-            def_order=def_order,
-            selected=None,
-            resolved=set(),
-            missed=set(),
-        )
-        resolved = state["resolved"]
+        state.update(round_ids=round_ids, tiles=tiles, flipped=[], matched=set(), start_time=time.time())
+        matched = state["matched"]
 
-    metrics = st.columns(3)
+    elapsed = time.time() - state["start_time"]
+    metrics = st.columns(4)
     metrics[0].metric("🔥 Streak", streak)
     metrics[1].metric("✅ Reviewed", reviewed)
     metrics[2].metric("Left today", len(due))
+    metrics[3].metric("⏱️ This round", f"{int(elapsed // 60)}:{int(elapsed % 60):02d}")
 
-    st.caption("Click a word, then its definition.")
+    pairs_done = sum(1 for vid in round_ids if vid in matched)
+    st.progress(pairs_done / len(round_ids), text=f"Round progress — {pairs_done} / {len(round_ids)} pairs found")
 
-    columns = st.columns(2)
-    with columns[0]:
-        st.markdown("**🅰️ Words**")
-        for word_id in state["word_order"]:
-            if word_id in resolved:
-                continue
-            selected = state["selected"] == word_id
-            if st.button(
-                by_id[word_id]["word"],
-                key=f"match_word_{word_id}",
-                type="primary" if selected else "secondary",
-                use_container_width=True,
-            ):
-                state["selected"] = word_id
-                st.rerun()
+    best_raw = db.get_setting("vocab_best_round_seconds")
+    if best_raw:
+        best_seconds = float(best_raw)
+        st.caption(f"🏆 Best round: {int(best_seconds // 60)}:{int(best_seconds % 60):02d}")
 
-    with columns[1]:
-        st.markdown("**📖 Definitions**")
-        for def_id in state["def_order"]:
-            if def_id in resolved:
-                continue
-            if st.button(
-                by_id[def_id]["definition"],
-                key=f"match_def_{def_id}",
-                use_container_width=True,
-            ):
-                picked = state["selected"]
-                if picked is None:
-                    st.toast("Pick a word first.")
-                elif picked == def_id:
-                    clean = picked not in state["missed"]
-                    db.record_vocabulary_review(picked, correct=clean)
-                    resolved.add(picked)
-                    state["selected"] = None
+    flipped: list[int] = state["flipped"]
+    mismatch_pending = len(flipped) == 2
+    if mismatch_pending:
+        st.warning("Not a match — remember where they were!")
+        if st.button("Continue", key="vocab_match_continue", type="primary"):
+            state["flipped"] = []
+            st.rerun()
+
+    tiles = state["tiles"]
+    columns = st.columns(4)
+    for index, tile in enumerate(tiles):
+        column = columns[index % 4]
+        vocab_id = tile["vocab_id"]
+        label = by_id[vocab_id]["word"] if tile["kind"] == "word" else by_id[vocab_id]["definition"]
+
+        if vocab_id in matched:
+            column.button(f"✅ {label}", key=f"mem_{index}", disabled=True, width="stretch")
+        elif index in flipped:
+            column.button(label, key=f"mem_{index}", disabled=True, width="stretch")
+        elif column.button(
+            "❓", key=f"mem_{index}", disabled=mismatch_pending, width="stretch"
+        ):
+            flipped.append(index)
+            if len(flipped) == 2:
+                first, second = tiles[flipped[0]], tiles[flipped[1]]
+                if first["vocab_id"] == second["vocab_id"]:
+                    db.record_vocabulary_review(first["vocab_id"], correct=True)
+                    matched.add(first["vocab_id"])
+                    state["flipped"] = []
+                    new_streak = streak + 1
+                    st.session_state["vocab_streak"] = new_streak
+                    st.session_state["vocab_best_streak"] = max(best_streak, new_streak)
                     st.session_state["vocab_reviewed_count"] = reviewed + 1
-                    round_done = len(resolved) == len(state["round_ids"])
-                    if clean:
-                        new_streak = streak + 1
-                        st.session_state["vocab_streak"] = new_streak
-                        st.session_state["vocab_best_streak"] = max(best_streak, new_streak)
-                        if round_done:
-                            st.toast("🎉 Round complete!")
-                        elif new_streak >= VOCAB_STREAK_ON_FIRE:
-                            st.balloons()
-                            st.toast(f"🚀 {new_streak} in a row — you're on fire!")
-                        else:
-                            st.toast(f"{random.choice(VOCAB_STREAK_HYPE)} 🔥 {new_streak} in a row")
+                    if len(matched) == len(round_ids):
+                        round_seconds = time.time() - state["start_time"]
+                        if not best_raw or round_seconds < float(best_raw):
+                            db.set_setting("vocab_best_round_seconds", str(round_seconds))
+                            st.toast("🏆 New record round!")
+                        st.balloons()
+                        st.toast("🎉 Round complete!")
+                    elif new_streak >= VOCAB_STREAK_ON_FIRE:
+                        st.balloons()
+                        st.toast(f"🚀 {new_streak} in a row — you're on fire!")
                     else:
-                        st.toast("🎉 Round complete!" if round_done else "✅ Got it that time!")
+                        st.toast(f"{random.choice(VOCAB_STREAK_HYPE)} 🔥 {new_streak} in a row")
                 else:
-                    state["missed"].add(picked)
-                    state["selected"] = None
                     st.session_state["vocab_streak"] = 0
-                    st.toast("❌ Not quite — try again.")
-                st.rerun()
+                    st.toast("❌ Not a match")
+            st.rerun()
 
 
 def api_status_banner() -> bool:

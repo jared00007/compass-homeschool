@@ -38,7 +38,7 @@ if not is_parent():
     st.subheader("🔤 Words to review")
     mode = st.radio(
         "How do you want to review?",
-        ["Flashcards", "Match"],
+        ["Flashcards", "Memory Match"],
         horizontal=True,
         key="vocab_review_mode",
     )

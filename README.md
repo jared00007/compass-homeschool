@@ -268,7 +268,7 @@ compass/
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
   theme.py                   the five themes and the CSS that applies one
-tests/                       277 tests, no API key required
+tests/                       276 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 ```
 
@@ -644,61 +644,74 @@ card each time without an explicit index, and drove a full four-word deck to
 completion to see the actual balloons-plus-summary screen fire, not just trust that
 the code path existed.
 
-### A second review mode: matching, as a game
+### A second review mode: Memory Match
 
-Suggested mid-conversation as a "what about" — a click-word-then-click-definition
-matching game (`render_vocab_match()`) alongside the flashcard flow, picked via a
-`st.radio` on the English page. **Deliberately additive, not a replacement**: matching
-tests *recognizing* a definition among a few visible options, which is measurably
-easier than the flashcard flow's *recall* (produce the definition from nothing) —
-recall is specifically what spaced repetition is built around, so swapping it out
-everywhere would make review more fun and less effective. As an optional second mode
-it costs nothing and gives him a lighter way through a big batch of due words.
+Started as a click-word-then-click-definition two-column mode, suggested mid-conversation
+as a "what about," then rebuilt twice more on direct feedback ("boring... make it fun" —
+twice) into what's actually there now: **Memory Match**, the classic face-down
+card-pairing game, with vocab instead of pictures. Before touching code, three rough
+mockups (a two-column card reskin, an arcade HUD layer, and this memory-grid concept)
+were built as a standalone clickable HTML preview and shown to the user first — Memory
+Match plus the HUD idea is what got picked.
 
-**Scored to mean the same thing regardless of which mode he picks:** a word matched
-on the first guess counts as "knew it"; a word that took a wrong guess before landing
-right counts as "missed it" — same `db.record_vocabulary_review()` both modes and the
-parent-facing tab all call, so the Leitner schedule doesn't care which mode produced
-the result.
+**The mechanic.** `render_vocab_match()` deals `VOCAB_MATCH_ROUND_SIZE` (6) due words as
+a shuffled grid of `2 × 6` face-down tiles — one word tile and one definition tile per
+word, `random.shuffle`d together so position carries no information about which is
+which. Click a tile to flip it; click a second and the two get compared. A match locks
+both tiles in immediately (no pause needed — there's nothing left to read once you
+already know it's right) and moves straight to the next flip. A mismatch is different on
+purpose: both tiles stay face-up and an explicit **Continue** button
+(`key="vocab_match_continue"`) is the only way to clear them, rather than auto-hiding on
+a timer or on the next click. Streamlit reruns the whole script on every interaction —
+there's no way to "wait 800ms then hide" the way client-side JS could — so a deliberate
+button is what stands in for that pause, and it also means he actually gets to read what
+the mismatched pair was before it disappears, which matters for a memory game
+specifically.
 
-Rounds of `VOCAB_MATCH_ROUND_SIZE` (6) words at a time, not the full due list at once
-— useful with a big backlog, but mostly because two columns of 25 buttons apiece
-would be unreadable. Round state (which words are in play, the two independent
-shuffles, what's resolved, what's had a wrong guess) lives in
-`st.session_state["vocab_match"]`, but the word and definition *text* is always
-re-read from a fresh `db.vocabulary_due()` call rather than cached in that state —
-so a word reviewed elsewhere mid-round (flashcards in another tab) can't go stale on
-this board; the round-refresh check simply notices it's no longer due and reshuffles
-around it.
+**Scoring diverges from the flashcard flow on purpose, not by oversight.** The old
+two-column mode's "wrong guess" meant picking the wrong definition for a word he'd
+already chosen — a real vocabulary mix-up, so it recorded a miss. A memory-grid mismatch
+is different in kind: mostly "I forgot where I'd already seen that tile," not "I don't
+know this word." So `db.record_vocabulary_review()` is only ever called once a pair is
+actually *found*, and always `correct=True` — however many tries the board took,
+finding it still means he recognized the pairing the moment he saw both halves
+together. The session **streak** stays strict regardless, for the game feel: it only
+rewards a pair found on the very first flip of those two tiles, and it breaks the
+instant a mismatch happens rather than waiting for the eventual correct match — same
+"the number on screen shouldn't lag behind reality" reasoning as the flashcard streak.
+It shares `vocab_streak` / `vocab_best_streak` / `vocab_reviewed_count` with
+`render_vocab_review()` too, so switching between Flashcards and Memory Match
+mid-session carries momentum forward instead of resetting it.
 
-Verified interactively end-to-end with Playwright against a running instance:
-selecting a word highlights it, an intentionally wrong guess clears the selection
-without removing either button, and finishing correctly on the *second* attempt still
-recorded a miss in the database (box unchanged, `times_missed` incremented) — same
-run also confirmed a genuine first-try match advances the box, matching what the
-tests below assert with a stubbed `st.button`.
+**The Arcade HUD, the other half of what got picked.** A ⏱️ live-feeling round timer,
+computed as wall-clock `time.time()` at round start versus now and refreshed on every
+click rather than truly ticking every second — a real per-second tick would need a
+background loop, which would block the rest of the app while it ran, the same pattern
+this project has avoided everywhere else. An `st.progress()` bar tracks real round
+completion (pairs found / pairs in the round) rather than the decorative auto-animating
+bar the concept mockup used. Clearing a round faster than the standing record writes
+`vocab_best_round_seconds` into `settings` — a genuine best that persists across days,
+shown as `🏆 Best round: M:SS` once one exists, not just a number that resets when the
+tab closes.
 
-**"Boring" again, on request, and this time made to share the fun with Flashcards
-rather than invent a parallel set of counters.** `render_vocab_match()` now reads and
-writes the *same* `vocab_streak` / `vocab_best_streak` / `vocab_reviewed_count`
-session keys `render_vocab_review()` does, so switching modes mid-session carries his
-momentum forward instead of resetting it — both are just different lenses on the same
-review work, and now they visibly agree on how that session is going. One real
-behavioral difference from the flashcard streak, deliberate: **a wrong guess resets
-`vocab_streak` the instant it happens**, not deferred to whenever that word
-eventually gets matched — the number on screen would otherwise sit stale while he's
-mid-mistake. Landing the last word of a round now gets its own `🎉 Round complete!`
-toast (checked before the streak-length check, so it wins over the "on fire" toast
-when both would otherwise apply on the same click), and running out the whole day's
-`due` list lands on the exact same balloons-plus-summary screen the flashcard flow
-uses — literally the same code path, since both check `if not due: ... reviewed ...`
-against the same counters.
+Verified interactively against a running instance, not just read back from the code: a
+deliberate mismatch (two word tiles, guaranteed not to match) left both revealed with a
+"Not a match" warning and a working Continue button; a single-word round (so any two
+clicks are guaranteed to pair) confirmed the match lit up, both the round-complete and
+the whole-day-complete balloons fired together, and the database showed `box` advanced
+with `times_correct: 1` — plus a `vocab_best_round_seconds` record actually written.
+A follow-up run also confirmed the scoring divergence directly: forcing a mismatch first
+and *then* finding the real pair still recorded `correct=True`, `times_missed: 0`.
 
-Verified this pass the same way as the first one: watched the streak metric climb
-through two clean matches, confirmed a deliberately wrong guess zeroed it out
-immediately rather than after the eventual correct match, and drove a three-word deck
-to completion to see the `🎉 Round complete!` toast fire into the very next render's
-balloons-and-summary screen, not just trust the two code paths lined up on paper.
+**Also found along the way, unrelated to Memory Match itself but caught while testing
+it in a real browser:** the installed Streamlit's `use_container_width` argument logs a
+deprecation warning whose own stated removal date (2025-12-31) had already passed
+relative to this session. Since `requirements.txt` pins no upper bound on `streamlit`,
+a future `pip install` could land on a version where the old argument is a hard error,
+not a warning. Migrated all 13 call sites across `compass/ui.py` and
+`pages/5_Compliance.py` to `width="stretch"` (confirmed against the installed version's
+own docstring, not guessed) rather than leaving it as a ticking time bomb for whoever's
+machine happens to `pip install` next.
 
 ## Printing a lesson
 
@@ -804,7 +817,7 @@ student view, a plain countdown to the first day of school.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 277 tests, ~5s, no API key needed
+python -m pytest tests/ -q      # 276 tests, ~5s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the
