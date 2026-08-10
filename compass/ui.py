@@ -770,98 +770,164 @@ LIFE_SKILL_DEFAULT_ICON = "🎖️"  # any category a parent types in beyond the
 # Fixed to Comic Book's palette on purpose, independent of whichever app theme
 # is active -- picked as its own thing for the badge case, not derived from
 # `compass.theme`. If that choice changes, this is the one place to edit.
+#
+# The earned/locked button skins are two *static* rules keyed off a suffix
+# baked into each badge's own container `key` (`..._earned` / `..._locked`)
+# rather than one generated <style> block per skill -- Streamlit turns a
+# container `key` into a `st-key-<key>` class token, and `[class*=...]`
+# lets one shared stylesheet match on that token's substring instead of
+# emitting N nearly-identical blocks.
 _BADGE_CASE_CSS = """
 <style>
-.cp-badgecase {
+.cp-bc-tallybar {
+  font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+  font-size: 15px; color: #241C12;
+  border-bottom: 2px solid #241C12;
+  padding-bottom: 10px; margin-bottom: 6px;
+}
+.cp-bc-tallybar .cp-bc-tally {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px; color: #8A7A5E;
+}
+div[class*="st-key-ls_badge_"][class*="_earned"] button {
+  border-radius: 999px !important;
+  border: 2px solid #F2B705 !important;
+  background: #FFF6D9 !important;
+  color: #241C12 !important;
+  font-weight: 600 !important;
+}
+div[class*="st-key-ls_badge_"][class*="_earned"] button:hover {
+  border-color: #d9a300 !important;
+}
+div[class*="st-key-ls_badge_"][class*="_locked"] button {
+  border-radius: 999px !important;
+  border: 2px solid #D8CDB0 !important;
+  background: #F5F0DE !important;
+  color: #8A7A5E !important;
+  filter: grayscale(0.5);
+}
+.cp-mission {
   border-radius: 3px;
-  padding: 28px;
+  padding: 18px 22px;
   background-color: #FFFBF0;
   background-image: repeating-radial-gradient(circle at 100% 0%, rgba(36,28,18,.05) 0 1px, transparent 1px 7px);
   border: 1px solid #E63946;
   box-shadow: 3px 3px 0 rgba(36,28,18,.12);
-  margin-bottom: 1.2rem;
+  margin: 6px 0 16px;
 }
-.cp-bc-head {
-  display: flex; align-items: baseline; justify-content: space-between;
-  border-bottom: 2px solid #241C12; padding-bottom: 12px; margin-bottom: 4px;
-}
-.cp-bc-head h3 { font-size: 19px; margin: 0; color: #241C12; }
-.cp-bc-tally {
+.cp-mission-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.cp-mission-head h4 { margin: 0; font-size: 17px; color: #241C12; }
+.cp-mission-status {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 13px; color: #8A7A5E;
+  font-size: 11.5px; color: #8A7A5E; white-space: nowrap;
 }
-.cp-bc-sash { margin-top: 20px; }
-.cp-bc-sash h4 {
-  font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em;
-  color: #8A7A5E; margin: 0 0 12px;
+.cp-mission-section { margin-top: 10px; }
+.cp-mission-section strong {
+  font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #8A7A5E;
 }
-.cp-bc-row { display: flex; gap: 18px; flex-wrap: wrap; }
-.cp-bc-badge { width: 96px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; }
-.cp-bc-medal {
-  width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-  font-size: 23px; position: relative; border: 3px solid #F2B705;
-  background: radial-gradient(circle at 32% 28%, #f7d666, #F2B705 72%);
-  box-shadow: 0 2px 0 rgba(0,0,0,.18), inset 0 0 0 3px rgba(255,255,255,.35);
-}
-.cp-bc-medal::after {
-  content: ""; position: absolute; left: 50%; bottom: -12px; width: 18px; height: 16px;
-  transform: translateX(-50%); background: #2F63E0;
-  clip-path: polygon(0 0, 100% 0, 100% 70%, 50% 100%, 0 70%);
-}
-.cp-bc-badge.locked .cp-bc-medal {
-  border-color: #D8CDB0; background: #F5F0DE; box-shadow: inset 0 0 0 3px rgba(255,255,255,.5);
-}
-.cp-bc-badge.locked .cp-bc-medal::after { background: #D8CDB0; }
-.cp-bc-badge.locked .cp-bc-medal span { opacity: .45; filter: grayscale(1); }
-.cp-bc-label { font-size: 11.5px; line-height: 1.3; color: #241C12; }
-.cp-bc-badge.locked .cp-bc-label { color: #8A7A5E; }
-.cp-bc-status {
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 9.5px; color: #F2B705; letter-spacing: .04em;
-}
-.cp-bc-badge.locked .cp-bc-status { color: #D8CDB0; }
+.cp-mission-section p { margin: 6px 0 0; color: #241C12; line-height: 1.5; }
 </style>
 """
 
 
-def render_life_skill_badges(skills: list[dict[str, Any]]) -> None:
-    """A trophy shelf over the checklist below -- one medal per skill, grouped
-    by category, brass for earned and grey cloth for not-yet.
+def render_life_skill_badges(
+    db: Database, skills: list[dict[str, Any]], can_edit: bool
+) -> None:
+    """The checklist itself -- not a summary over it. Every skill is a pill
+    badge, brass and full-color once earned, grey cloth until then. Clicking
+    one opens its mission below: the description, any resources you've added,
+    and the one button that actually changes `completed_on`.
 
-    Read-only by design: this only reflects `completed_on`, it never sets it.
-    A click here marking a real skill done with no chance to reconsider would
-    be a worse interaction than the checkbox it would replace, so the
-    checklist stays the one place completion actually changes.
+    `can_edit` gates the resources/description editor and the remove button
+    -- both management actions, same tier as *Add a skill*. Marking a skill
+    done is deliberately not gated: the old checkbox let either of you check
+    one off, and this keeps that same parity rather than quietly taking it
+    away from him.
     """
     if not skills:
         return
+
+    st.markdown(_BADGE_CASE_CSS, unsafe_allow_html=True)
 
     by_category: dict[str, list[dict[str, Any]]] = {}
     for skill in skills:
         by_category.setdefault(skill["category"], []).append(skill)
     done = sum(1 for s in skills if s["completed_on"])
-
-    parts = [_BADGE_CASE_CSS, '<div class="cp-badgecase">']
-    parts.append(
-        f'<div class="cp-bc-head"><h3>🎖️ Badge case</h3>'
-        f'<span class="cp-bc-tally">{done} / {len(skills)} earned</span></div>'
+    st.markdown(
+        f'<div class="cp-bc-tallybar">🎖️ Badge case &mdash; '
+        f'<span class="cp-bc-tally">{done} / {len(skills)} earned</span></div>',
+        unsafe_allow_html=True,
     )
+
+    open_id = st.session_state.get("ls_open_skill")
+
     for category, items in by_category.items():
         icon = LIFE_SKILL_CATEGORY_ICONS.get(category, LIFE_SKILL_DEFAULT_ICON)
-        parts.append(f'<div class="cp-bc-sash"><h4>{html.escape(category)}</h4><div class="cp-bc-row">')
-        for skill in items:
-            locked = "" if skill["completed_on"] else " locked"
-            status = "EARNED" if skill["completed_on"] else "locked"
-            parts.append(
-                f'<div class="cp-bc-badge{locked}">'
-                f'<div class="cp-bc-medal"><span>{icon}</span></div>'
-                f'<div class="cp-bc-label">{html.escape(skill["title"])}</div>'
-                f'<div class="cp-bc-status">{status}</div>'
-                f"</div>"
-            )
-        parts.append("</div></div>")
-    parts.append("</div>")
-    st.markdown("".join(parts), unsafe_allow_html=True)
+        complete = sum(1 for i in items if i["completed_on"])
+        st.subheader(f"{category} — {complete}/{len(items)}")
+
+        columns = st.columns(len(items))
+        for index, skill in enumerate(items):
+            state = "earned" if skill["completed_on"] else "locked"
+            with columns[index], st.container(key=f"ls_badge_{skill['id']}_{state}"):
+                clicked = st.button(
+                    f"{icon}  {skill['title']}", key=f"ls_toggle_{skill['id']}", width="stretch"
+                )
+            if clicked:
+                st.session_state["ls_open_skill"] = None if open_id == skill["id"] else skill["id"]
+                st.rerun()
+
+        open_skill = next((s for s in items if s["id"] == open_id), None)
+        if open_skill is not None:
+            _render_life_skill_mission(db, open_skill, can_edit)
+
+
+def _render_life_skill_mission(db: Database, skill: dict[str, Any], can_edit: bool) -> None:
+    earned = bool(skill["completed_on"])
+    mission = (
+        f'<div class="cp-mission"><div class="cp-mission-head">'
+        f'<h4>{html.escape(skill["title"])}</h4>'
+        f'<span class="cp-mission-status">{"✅ EARNED " + skill["completed_on"] if earned else "🔒 locked"}</span>'
+        f"</div>"
+        f'<div class="cp-mission-section"><strong>🗒️ The mission</strong>'
+        f'<p>{html.escape(skill["description"]) if skill["description"] else "No mission notes yet."}</p>'
+        f"</div></div>"
+    )
+    st.markdown(mission, unsafe_allow_html=True)
+
+    if skill["resources"]:
+        st.markdown("**🔗 Helpful resources**")
+        st.markdown(skill["resources"])
+    elif can_edit:
+        st.caption("No resources yet — add some below.")
+
+    if st.button(
+        "↩️ Mark not done" if earned else "✅ Mark complete", key=f"ls_done_{skill['id']}"
+    ):
+        db.set_life_skill_done(skill["id"], not earned)
+        st.rerun()
+
+    if can_edit:
+        with st.expander("✏️ Edit mission & resources"):
+            with st.form(f"ls_edit_{skill['id']}"):
+                new_description = st.text_area(
+                    "The mission (what does 'done' look like?)",
+                    value=skill["description"],
+                    height=90,
+                )
+                new_resources = st.text_area(
+                    "Helpful resources (markdown, e.g. one link per line)",
+                    value=skill["resources"],
+                    height=90,
+                    placeholder="- [How to check tire pressure](https://example.com)",
+                )
+                if st.form_submit_button("Save"):
+                    db.set_life_skill_content(skill["id"], new_description, new_resources)
+                    st.rerun()
+            if st.button("🗑️ Remove this skill", key=f"ls_remove_{skill['id']}"):
+                db.delete_life_skill(skill["id"])
+                st.session_state["ls_open_skill"] = None
+                st.rerun()
 
 
 VOCAB_STREAK_HYPE = ["Nice!", "Boom!", "Nailed it!", "You got it!", "Crushed it!", "Sweet!"]

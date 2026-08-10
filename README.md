@@ -268,7 +268,7 @@ compass/
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
   theme.py                   the five themes and the CSS that applies one
-tests/                       280 tests, no API key required
+tests/                       294 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 ```
 
@@ -615,7 +615,7 @@ he grades himself, so the next due word starts hidden again.
 
 Self-grading rather than parent-graded was a deliberate call, not the only option —
 discussed with the user first. It's consistent with how the rest of the app already
-trusts his self-report (`student_done_on`, the togglable life-skills checkbox) rather
+trusts his self-report (`student_done_on`, the badge case's "Mark complete" button) rather
 than gating it behind the parent, even though nothing here auto-verifies a recalled
 definition the way the multiple-choice quiz can auto-verify a chosen answer.
 
@@ -825,7 +825,7 @@ student view, a plain countdown to the first day of school.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 280 tests, ~5s, no API key needed
+python -m pytest tests/ -q      # 294 tests, ~9s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

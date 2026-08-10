@@ -46,13 +46,6 @@ if not skills:
         st.success(f"Added {count} starter skills.")
         st.rerun()
 
-done = [s for s in skills if s["completed_on"]]
-if skills:
-    columns = st.columns(3)
-    columns[0].metric("Skills complete", f"{len(done)} / {len(skills)}")
-    columns[1].metric("Categories", len({s["category"] for s in skills}))
-    columns[2].progress(len(done) / len(skills), text="Overall")
-
 if is_parent():
     checklist_tab, plan_tab, log_tab, manage_tab = st.tabs(
         ["Checklist", "Plan a session", "Log time", "Add a skill"]
@@ -62,31 +55,7 @@ else:
     plan_tab = log_tab = manage_tab = None
 
 with checklist_tab:
-    render_life_skill_badges(skills)
-
-    by_category: dict[str, list[dict]] = {}
-    for skill in skills:
-        by_category.setdefault(skill["category"], []).append(skill)
-
-    for category, items in by_category.items():
-        complete = sum(1 for i in items if i["completed_on"])
-        st.subheader(f"{category} — {complete}/{len(items)}")
-        for skill in items:
-            columns = st.columns([5, 1]) if is_parent() else [st.container()]
-            checked = columns[0].checkbox(
-                skill["title"],
-                value=bool(skill["completed_on"]),
-                key=f"skill_{skill['id']}",
-                help=skill["description"] or None,
-            )
-            if checked != bool(skill["completed_on"]):
-                db.set_life_skill_done(skill["id"], checked)
-                st.rerun()
-            if skill["completed_on"]:
-                columns[0].caption(f"Completed {skill['completed_on']}")
-            if len(columns) > 1 and columns[1].button("Remove", key=f"del_skill_{skill['id']}"):
-                db.delete_life_skill(skill["id"])
-                st.rerun()
+    render_life_skill_badges(db, skills, can_edit=is_parent())
 
 if plan_tab is not None:
   with plan_tab:
@@ -249,6 +218,11 @@ if manage_tab is not None:
             format_func=label,
         )
         description = st.text_area("What does 'done' look like?", height=80)
+        resources = st.text_area(
+            "Helpful resources (optional, markdown)",
+            height=80,
+            placeholder="- [How to check tire pressure](https://example.com)",
+        )
         if st.form_submit_button("Add skill", type="primary") and title.strip():
             db.add_life_skill(
                 student["id"],
@@ -256,6 +230,7 @@ if manage_tab is not None:
                 category.strip() or "General",
                 description.strip(),
                 credit_subject,
+                resources.strip(),
             )
             st.rerun()
 

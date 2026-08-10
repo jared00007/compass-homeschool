@@ -192,6 +192,7 @@ CREATE TABLE IF NOT EXISTS life_skills (
     category     TEXT NOT NULL DEFAULT 'General',
     title        TEXT NOT NULL,
     description  TEXT NOT NULL DEFAULT '',
+    resources    TEXT NOT NULL DEFAULT '',  -- markdown, parent-entered -- never agent-picked
     credit_subject TEXT NOT NULL DEFAULT 'occupational_education',
     completed_on TEXT,
     notes        TEXT NOT NULL DEFAULT '',

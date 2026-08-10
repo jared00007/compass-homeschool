@@ -50,11 +50,20 @@ class Database:
 
     def migrate(self) -> None:
         self.conn.executescript(SCHEMA_PATH.read_text())
+        # `CREATE TABLE IF NOT EXISTS` above only covers a table's first-ever
+        # creation -- a family's existing life_skills table predates the
+        # `resources` column, so it needs adding here instead.
+        self._ensure_column("life_skills", "resources", "TEXT NOT NULL DEFAULT ''")
         for key, value in config.DEFAULT_SETTINGS.items():
             self.conn.execute(
                 "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value)
             )
         self.conn.commit()
+
+    def _ensure_column(self, table: str, column: str, ddl: str) -> None:
+        existing = {row["name"] for row in self.conn.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
 
     # -- settings -------------------------------------------------------------
 
@@ -673,11 +682,13 @@ class Database:
         category: str = "General",
         description: str = "",
         credit_subject: str = "occupational_education",
+        resources: str = "",
     ) -> int:
         cur = self.conn.execute(
             "INSERT INTO life_skills "
-            "(student_id, title, category, description, credit_subject) VALUES (?, ?, ?, ?, ?)",
-            (student_id, title, category, description, credit_subject),
+            "(student_id, title, category, description, credit_subject, resources) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (student_id, title, category, description, credit_subject, resources),
         )
         self.conn.commit()
         return int(cur.lastrowid)
@@ -692,37 +703,94 @@ class Database:
         )
         self.conn.commit()
 
+    def set_life_skill_content(self, skill_id: int, description: str, resources: str) -> None:
+        self.conn.execute(
+            "UPDATE life_skills SET description = ?, resources = ? WHERE id = ?",
+            (description, resources, skill_id),
+        )
+        self.conn.commit()
+
     def delete_life_skill(self, skill_id: int) -> None:
         self.conn.execute("DELETE FROM life_skills WHERE id = ?", (skill_id,))
         self.conn.commit()
 
     def seed_life_skills(self, student_id: int) -> int:
-        """Seed the starter checklist described in the design doc, once."""
+        """Seed the starter checklist described in the design doc, once.
+
+        Missions are written, not agent-generated -- plain, casual, kid-facing,
+        matching how Tier 1 lesson content is written. Resources are left
+        blank on purpose: Compass doesn't hand a minor external links it
+        can't vouch for. That field is parent-entered, from the badge itself.
+        """
         existing = self.list_life_skills(student_id)
         if existing:
             return 0
-        starter: Sequence[tuple[str, str, str]] = (
-            ("Money", "Build and follow a monthly budget", "occupational_education"),
-            ("Money", "Open and reconcile a bank account", "occupational_education"),
-            ("Money", "Understand a paycheck: gross, net, withholding", "occupational_education"),
-            ("Cooking", "Plan and cook a full meal for the family", "health"),
-            ("Cooking", "Read nutrition labels and plan a balanced week", "health"),
-            ("Cooking", "Kitchen safety and safe food handling", "health"),
-            ("Vehicle", "Check and top off oil, coolant, washer fluid", "occupational_education"),
-            ("Vehicle", "Check tire pressure and change a tire", "occupational_education"),
-            ("Vehicle", "Jump-start a vehicle safely", "occupational_education"),
-            ("Communication", "Write a clear, polite email to an adult", "language"),
-            ("Communication", "Make a phone call to schedule an appointment", "language"),
-            ("Communication", "Introduce yourself and shake hands", "health"),
-            ("Home", "Do laundry start to finish", "occupational_education"),
-            ("Home", "Basic first aid and when to call for help", "health"),
-            ("Home", "Read a map and navigate without GPS", "social_studies"),
+        starter: Sequence[tuple[str, str, str, str]] = (
+            ("Money", "Build and follow a monthly budget", "occupational_education",
+             "Figure out what money's coming in and what's going out, then make a "
+             "simple plan so you don't run out before the month does. Set some "
+             "categories, guess your spending, then check back and see how close "
+             "you got."),
+            ("Money", "Open and reconcile a bank account", "occupational_education",
+             "You'll open a real account (a parent's on it too) and learn to check "
+             "it against your own math -- what you think you have vs. what the "
+             "bank says you have. Catching the difference is the actual skill."),
+            ("Money", "Understand a paycheck: gross, net, withholding", "occupational_education",
+             "A paycheck has two numbers that matter: what you earned and what you "
+             "actually get to keep. Work through a sample stub and figure out "
+             "where the rest of it goes."),
+            ("Cooking", "Plan and cook a full meal for the family", "health",
+             "Pick a meal, shop for it (or use what's in the kitchen), and cook "
+             "the whole thing start to finish -- timing included, so everything's "
+             "ready at the same time."),
+            ("Cooking", "Read nutrition labels and plan a balanced week", "health",
+             "Nutrition labels look like a wall of numbers until you know which "
+             "three or four actually matter. Use them to plan a week of meals "
+             "that aren't just convenient -- that are actually decent for you."),
+            ("Cooking", "Kitchen safety and safe food handling", "health",
+             "The stuff that keeps you from getting sick or hurt: washing hands "
+             "right, not cross-contaminating raw meat, knowing when food's gone "
+             "bad, and using a knife without losing a finger."),
+            ("Vehicle", "Check and top off oil, coolant, washer fluid", "occupational_education",
+             "The three fluids you should check before anyone tells you your car's "
+             "in trouble. Takes ten minutes and can save you a much worse day "
+             "later."),
+            ("Vehicle", "Check tire pressure and change a tire", "occupational_education",
+             "Two skills in one: reading a tire gauge so you know when a tire's "
+             "actually low, and swapping one out on the side of the road if you "
+             "have to."),
+            ("Vehicle", "Jump-start a vehicle safely", "occupational_education",
+             "A dead battery isn't a big deal if you know which cable goes where, "
+             "and in what order. Get it wrong and you can actually fry something "
+             "-- that's why the order matters."),
+            ("Communication", "Write a clear, polite email to an adult", "language",
+             "Emails to teachers, coaches, or businesses have their own rules -- "
+             "not too casual, not stiff either, and always saying exactly what "
+             "you need in the first two lines."),
+            ("Communication", "Make a phone call to schedule an appointment", "language",
+             "An actual phone call, not a text. Practice saying who you are, what "
+             "you need, and getting a real time booked -- without freezing up."),
+            ("Communication", "Introduce yourself and shake hands", "health",
+             "Look someone in the eye, say your name clearly, and shake hands "
+             "like you mean it. Small thing, but it's the first impression every "
+             "single time."),
+            ("Home", "Do laundry start to finish", "occupational_education",
+             "Sorting, washing, drying, folding -- the whole loop, no help. "
+             "Including not turning anyone's white shirt pink."),
+            ("Home", "Basic first aid and when to call for help", "health",
+             "Cuts, burns, sprains -- what you can handle yourself, and where "
+             "the line is where you stop and call 911 or a parent instead."),
+            ("Home", "Read a map and navigate without GPS", "social_studies",
+             "Your phone dies, or you're somewhere with no signal -- can you "
+             "still get where you're going with an actual map? That's the whole "
+             "skill."),
         )
-        for order, (category, title, subject) in enumerate(starter):
+        for order, (category, title, subject, description) in enumerate(starter):
             self.conn.execute(
                 "INSERT INTO life_skills "
-                "(student_id, category, title, credit_subject, sort_order) VALUES (?, ?, ?, ?, ?)",
-                (student_id, category, title, subject, order),
+                "(student_id, category, title, credit_subject, description, sort_order) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (student_id, category, title, subject, description, order),
             )
         self.conn.commit()
         return len(starter)

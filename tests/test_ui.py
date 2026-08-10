@@ -756,42 +756,154 @@ def test_matching_one_word_does_not_reset_the_rest_of_the_round(monkeypatch, db,
     assert set(state["vocab_match"]["round_ids"]) == original_round_ids
 
 
-# --- render_life_skill_badges: a trophy shelf, read-only over the real checklist ---
+# --- render_life_skill_badges: the checklist itself, click-to-expand missions ---
 
 
-def render_badges(monkeypatch, skills):
+def render_badges(monkeypatch, db, skills, *, can_edit=True, state=None, button_pressed=None):
     written: list[str] = []
-    monkeypatch.setattr(ui, "st", Recorder(written, {}))
-    ui.render_life_skill_badges(skills)
-    return "\n".join(written)
+    state = {} if state is None else state
+    recorder = Recorder(written, state)
+    if button_pressed is not None:
+        recorder.button = button_stub(written, button_pressed)
+    monkeypatch.setattr(ui, "st", recorder)
+    ui.render_life_skill_badges(db, skills, can_edit)
+    return "\n".join(written), state
 
 
-def test_no_skills_renders_nothing(monkeypatch):
-    assert render_badges(monkeypatch, []) == ""
+def test_no_skills_renders_nothing(monkeypatch, db):
+    page, _ = render_badges(monkeypatch, db, [])
+    assert page == ""
 
 
-def test_earned_and_locked_skills_are_labeled(monkeypatch, db, student):
+def test_badges_show_the_tally_and_every_category(monkeypatch, db, student):
     db.seed_life_skills(student["id"])
     skills = db.list_life_skills(student["id"])
     earned = next(s for s in skills if s["title"] == "Do laundry start to finish")
     db.set_life_skill_done(earned["id"], True)
 
-    page = render_badges(monkeypatch, db.list_life_skills(student["id"]))
-    assert "1 / 15" in page
-    assert "Do laundry start to finish" in page
-    assert "Home" in page
+    page, _ = render_badges(monkeypatch, db, db.list_life_skills(student["id"]))
+    assert "1 / 15 earned" in page
     assert "Money" in page
+    assert "Cooking" in page
+    assert "Vehicle" in page
+    assert "Communication" in page
+    assert "Home" in page
+    # All three items per category render, not just the first two -- pins the
+    # switch from `zip(columns, items)` (silently drops past 2 under the test
+    # harness's fixed-length column iterator) to index-based access.
+    assert "Basic first aid and when to call for help" in page
+
+
+def test_clicking_a_badge_opens_its_mission(monkeypatch, db, student):
+    db.seed_life_skills(student["id"])
+    skills = db.list_life_skills(student["id"])
+    budget = next(s for s in skills if s["title"] == "Build and follow a monthly budget")
+
+    _, state = render_badges(monkeypatch, db, skills, button_pressed=f"ls_toggle_{budget['id']}")
+    assert state["ls_open_skill"] == budget["id"]
+
+    # The click's own render pass still shows pre-click state under the test
+    # harness (st.rerun() is a no-op there) -- a follow-up render is the repaint.
+    page, _ = render_badges(monkeypatch, db, skills, state=state)
+    assert "Figure out what money" in page
+    assert "No resources yet" in page
+
+
+def test_clicking_an_open_badge_again_closes_it(monkeypatch, db, student):
+    db.seed_life_skills(student["id"])
+    skills = db.list_life_skills(student["id"])
+    budget = next(s for s in skills if s["title"] == "Build and follow a monthly budget")
+
+    _, state = render_badges(
+        monkeypatch, db, skills,
+        state={"ls_open_skill": budget["id"]},
+        button_pressed=f"ls_toggle_{budget['id']}",
+    )
+    assert state["ls_open_skill"] is None
+
+
+def test_mark_complete_flips_the_skill_and_the_button_reverses(monkeypatch, db, student):
+    db.seed_life_skills(student["id"])
+    skills = db.list_life_skills(student["id"])
+    budget = next(s for s in skills if s["title"] == "Build and follow a monthly budget")
+    state = {"ls_open_skill": budget["id"]}
+
+    render_badges(monkeypatch, db, skills, state=state, button_pressed=f"ls_done_{budget['id']}")
+    updated = next(s for s in db.list_life_skills(student["id"]) if s["id"] == budget["id"])
+    assert updated["completed_on"] is not None
+
+    page, _ = render_badges(monkeypatch, db, db.list_life_skills(student["id"]), state=state)
+    assert "↩️ Mark not done" in page
+    assert "✅ EARNED" in page
+
+
+def test_resources_render_as_markdown_when_present(monkeypatch, db, student):
+    skill_id = db.add_life_skill(
+        student["id"], "Sew a button", "Sewing", "Thread it and knot it.",
+        resources="- [Tutorial](https://example.com)",
+    )
+    skills = db.list_life_skills(student["id"])
+    page, _ = render_badges(monkeypatch, db, skills, state={"ls_open_skill": skill_id})
+    assert "[Tutorial](https://example.com)" in page
+    assert "No resources yet" not in page
 
 
 def test_a_custom_category_falls_back_to_the_default_icon(monkeypatch, db, student):
     db.add_life_skill(student["id"], "Learn to sew a button", "Sewing")
-    page = render_badges(monkeypatch, db.list_life_skills(student["id"]))
+    page, _ = render_badges(monkeypatch, db, db.list_life_skills(student["id"]))
     assert "Sewing" in page
     assert ui.LIFE_SKILL_DEFAULT_ICON in page
 
 
-def test_a_skill_title_with_html_is_escaped(monkeypatch, db, student):
-    db.add_life_skill(student["id"], "<script>alert(1)</script>", "General")
-    page = render_badges(monkeypatch, db.list_life_skills(student["id"]))
-    assert "<script>" not in page
-    assert "&lt;script&gt;" in page
+def test_a_skill_title_and_description_are_escaped(monkeypatch, db, student):
+    """The mission panel renders via `unsafe_allow_html=True`, so a title or
+    description containing markup must come out escaped there -- unlike the
+    badge button itself, whose label is inherently plain text regardless of
+    escaping (Streamlit widget labels don't execute HTML), so this checks the
+    one spot where it actually matters rather than the whole page's text."""
+    skill_id = db.add_life_skill(
+        student["id"], "<script>alert(1)</script>", "General", "<b>bold</b> mission"
+    )
+    skills = db.list_life_skills(student["id"])
+    page, _ = render_badges(monkeypatch, db, skills, state={"ls_open_skill": skill_id})
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in page
+    assert "&lt;b&gt;bold&lt;/b&gt; mission" in page
+
+
+def test_students_do_not_see_edit_or_remove_controls(monkeypatch, db, student):
+    db.seed_life_skills(student["id"])
+    skills = db.list_life_skills(student["id"])
+    budget = next(s for s in skills if s["title"] == "Build and follow a monthly budget")
+
+    page, _ = render_badges(
+        monkeypatch, db, skills, can_edit=False, state={"ls_open_skill": budget["id"]}
+    )
+    assert "Edit mission" not in page
+    assert "Remove this skill" not in page
+
+
+def test_parents_see_edit_and_remove_controls(monkeypatch, db, student):
+    db.seed_life_skills(student["id"])
+    skills = db.list_life_skills(student["id"])
+    budget = next(s for s in skills if s["title"] == "Build and follow a monthly budget")
+
+    page, _ = render_badges(
+        monkeypatch, db, skills, can_edit=True, state={"ls_open_skill": budget["id"]}
+    )
+    assert "Edit mission" in page
+    assert "Remove this skill" in page
+
+
+def test_removing_a_skill_clears_the_open_state(monkeypatch, db, student):
+    db.seed_life_skills(student["id"])
+    skills = db.list_life_skills(student["id"])
+    budget = next(s for s in skills if s["title"] == "Build and follow a monthly budget")
+    state = {"ls_open_skill": budget["id"]}
+
+    render_badges(
+        monkeypatch, db, skills, can_edit=True, state=state,
+        button_pressed=f"ls_remove_{budget['id']}",
+    )
+    assert state["ls_open_skill"] is None
+    remaining_titles = {s["title"] for s in db.list_life_skills(student["id"])}
+    assert "Build and follow a monthly budget" not in remaining_titles

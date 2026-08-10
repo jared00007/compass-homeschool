@@ -102,6 +102,15 @@ Nothing is discarded because you went somewhere new.
 
 ## Life skills: you choose, it plans
 
+The checklist itself is a badge case, not a list of checkboxes — brass medals for
+skills he's earned, grey ones for what's left. Click a badge and it opens into its
+"mission": a plain-language description of what the skill actually involves, any
+resource links you've added, and the button that marks it done. Editing the mission
+text and adding resources is parent-only, same tier as adding or removing a skill
+entirely — Compass writes the starter checklist's fifteen missions itself, but never
+picks or links external resources on its own; those are yours to add, one skill at a
+time, from inside the badge.
+
 There is no agent picking his next life skill, and there won't be. The four core
 agents exist because each answers something you genuinely can't answer off the top of
 your head — what he isn't ready for in a 50-skill chain, which era he's covered least,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import date, timedelta
 
 import pytest
@@ -172,6 +173,55 @@ def test_life_skills_seed_only_once(db, student):
     second = db.seed_life_skills(student["id"])
     assert first > 0
     assert second == 0
+
+
+def test_life_skills_are_seeded_with_real_mission_text(db, student):
+    """Every starter skill ships with a written mission, not a blank field --
+    the badge case has nothing to show otherwise."""
+    db.seed_life_skills(student["id"])
+    skills = db.list_life_skills(student["id"])
+    assert len(skills) == 15
+    assert all(s["description"] for s in skills)
+    assert all(s["resources"] == "" for s in skills)  # never agent- or Claude-picked
+
+
+def test_set_life_skill_content_updates_description_and_resources(db, student):
+    skill_id = db.add_life_skill(student["id"], "Change a tire", category="Vehicle")
+    db.set_life_skill_content(skill_id, "Swap the spare, star-pattern torque.", "- [Guide](https://example.com)")
+    skill = next(s for s in db.list_life_skills(student["id"]) if s["id"] == skill_id)
+    assert skill["description"] == "Swap the spare, star-pattern torque."
+    assert skill["resources"] == "- [Guide](https://example.com)"
+
+
+def test_a_database_created_before_the_resources_column_gets_migrated(tmp_path):
+    """`resources` shipped after some real databases already existed. Since
+    `CREATE TABLE IF NOT EXISTS` only ever fires on a table's first creation,
+    an existing life_skills table needs the column added out-of-band -- this
+    pins that `migrate()` does it instead of silently leaving old databases
+    without the column the badge editor writes to."""
+    path = tmp_path / "pre_resources.db"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE life_skills ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL, "
+        "category TEXT NOT NULL DEFAULT 'General', title TEXT NOT NULL, "
+        "description TEXT NOT NULL DEFAULT '', "
+        "credit_subject TEXT NOT NULL DEFAULT 'occupational_education', "
+        "completed_on TEXT, notes TEXT NOT NULL DEFAULT '', "
+        "sort_order INTEGER NOT NULL DEFAULT 0, "
+        "created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+    )
+    conn.execute("INSERT INTO life_skills (student_id, title) VALUES (1, 'Old skill')")
+    conn.commit()
+    conn.close()
+
+    migrated = Database(path)
+    try:
+        skill = migrated.conn.execute("SELECT * FROM life_skills").fetchone()
+        assert skill["resources"] == ""
+        migrated.set_life_skill_content(skill["id"], "desc", "- link")
+    finally:
+        migrated.close()
 
 
 def test_unexplored_web_nodes_prefer_the_current_location(db, student):
