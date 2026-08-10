@@ -268,7 +268,7 @@ compass/
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
   theme.py                   the five themes and the CSS that applies one
-tests/                       269 tests, no API key required
+tests/                       273 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 ```
 
@@ -619,6 +619,31 @@ trusts his self-report (`student_done_on`, the togglable life-skills checkbox) r
 than gating it behind the parent, even though nothing here auto-verifies a recalled
 definition the way the multiple-choice quiz can auto-verify a chosen answer.
 
+**Made "much funner" on request** — the original version rendered every due word as
+its own bordered box, all stacked on the page at once (up to 25 of them), each
+independently revealable. Functional, but a wall of near-identical boxes to scroll
+through is exactly what reads as boring. Rebuilt around one card at a time instead:
+the current card is always `due[0]` — there's no index to keep in sync, since a
+graded word's `next_review_on` moves into the future and it simply drops out of
+`due` on the next render, so `due[0]` is naturally the next card. Three metrics
+above the card (`🔥 Streak`, `✅ Reviewed`, `Left today`) turn it into a session with
+visible momentum rather than an open-ended list. A correct answer plays a toast
+picked from `VOCAB_STREAK_HYPE` ("Boom!", "Crushed it!", ...) below `VOCAB_STREAK_ON_FIRE`
+(5) and `st.balloons()` at or above it; a miss resets the streak (but not
+`vocab_best_streak` — a bad answer doesn't erase what he'd already earned this
+session) with a low-key "you'll get it next time" rather than anything that reads as
+scolding. Clearing the whole due list gets its own `st.balloons()` payoff screen
+instead of the same flat "Nothing due" message a session that never opened the page
+would see. None of this touches scoring or the Leitner schedule — `vocab_streak`,
+`vocab_best_streak`, and `vocab_reviewed_count` are purely session-local, never
+written to the database.
+
+Verified interactively against a running instance: watched the streak metric climb
+through three correct answers, confirmed the deck correctly advanced to the next
+card each time without an explicit index, and drove a full four-word deck to
+completion to see the actual balloons-plus-summary screen fire, not just trust that
+the code path existed.
+
 ### A second review mode: matching, as a game
 
 Suggested mid-conversation as a "what about" — a click-word-then-click-definition
@@ -760,7 +785,7 @@ student view, a plain countdown to the first day of school.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 269 tests, ~5s, no API key needed
+python -m pytest tests/ -q      # 273 tests, ~5s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

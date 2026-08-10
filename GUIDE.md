@@ -443,16 +443,20 @@ his reading progress, vocabulary review, and his own Tier 3 topics. Enough to
 do the work without you narrating it.
 
 **Vocabulary review, on the English page, is his own — two ways to do it.**
-**Flashcards**: the word first, a **Show definition** button, then he grades
-himself (knew it / missed it). He never sees the definition next to the word
-before checking himself; otherwise the review would test nothing. **Match**:
-a lighter, game-style option — click a word, then click its definition from a
-shuffled list of a few at a time. Both feed the same spaced-repetition
-schedule, and score the same way (a wrong guess before getting it right still
-counts as missed, even in Match), so which one he picks on a given day is
-just his preference, not a different standard. The parent-facing Vocabulary
-tab is separate from both — it shows word and definition together on purpose,
-built for you to quiz him out loud.
+**Flashcards**: one word on screen at a time, a **Show definition** button,
+then he grades himself (knew it / missed it) — a deck to work through, not a
+wall of boxes to scroll. A streak counter tracks his run of correct answers
+for the session (🔥), balloons show up at a 5-streak or when he clears the
+whole day's list, and a miss resets the streak but keeps his best one for
+the session — it's meant to feel like a little game, not a chore. He never
+sees the definition next to the word before checking himself; otherwise the
+review would test nothing. **Match**: a lighter, game-style option — click a
+word, then click its definition from a shuffled list of a few at a time.
+Both feed the same spaced-repetition schedule, and score the same way (a
+wrong guess before getting it right still counts as missed, in either mode),
+so which one he picks on a given day is just his preference, not a different
+standard. The parent-facing Vocabulary tab is separate from both — it shows
+word and definition together on purpose, built for you to quiz him out loud.
 
 **His home page leads with a "✅ Today" list** — everything he's checked off
 today, in one place: lessons he's marked done, quiz scores, life skills either

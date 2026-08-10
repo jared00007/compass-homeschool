@@ -442,6 +442,65 @@ def test_marking_missed_it_resets_the_box_and_clears_the_reveal(monkeypatch, db,
     assert reveal_key not in state
 
 
+def test_only_one_card_shows_even_with_several_words_due(monkeypatch, db, student):
+    """A deck to work through one at a time, not a wall of identical boxes."""
+    db.add_vocabulary(student["id"], "ephemeral", "lasting a very short time")
+    db.add_vocabulary(student["id"], "ubiquitous", "present everywhere")
+    db.conn.execute("UPDATE vocabulary SET next_review_on = date('now')")
+    db.conn.commit()
+    due = db.vocabulary_due(student["id"])
+    first, second = due[0], due[1]
+
+    page, _ = render_vocab(monkeypatch, db, student)
+    assert first["word"] in page
+    assert second["word"] not in page
+
+
+def test_a_correct_answer_builds_the_streak(monkeypatch, db, student):
+    db.add_vocabulary(student["id"], "ephemeral", "lasting a very short time")
+    db.conn.execute("UPDATE vocabulary SET next_review_on = date('now')")
+    db.conn.commit()
+    vocab_id = db.list_vocabulary(student["id"])[0]["id"]
+    reveal_key = f"vocab_reveal_{vocab_id}"
+
+    _, state = render_vocab(
+        monkeypatch, db, student,
+        state={reveal_key: True, "vocab_streak": 2},
+        button_pressed=f"vocab_ok_{vocab_id}",
+    )
+    assert state["vocab_streak"] == 3
+    assert state["vocab_best_streak"] == 3
+    assert state["vocab_reviewed_count"] == 1
+
+
+def test_a_missed_answer_resets_the_streak_but_keeps_the_best(monkeypatch, db, student):
+    db.add_vocabulary(student["id"], "ephemeral", "lasting a very short time")
+    db.conn.execute("UPDATE vocabulary SET next_review_on = date('now')")
+    db.conn.commit()
+    vocab_id = db.list_vocabulary(student["id"])[0]["id"]
+    reveal_key = f"vocab_reveal_{vocab_id}"
+
+    _, state = render_vocab(
+        monkeypatch, db, student,
+        state={reveal_key: True, "vocab_streak": 4, "vocab_best_streak": 4},
+        button_pressed=f"vocab_miss_{vocab_id}",
+    )
+    assert state["vocab_streak"] == 0
+    assert state["vocab_best_streak"] == 4  # a miss doesn't erase what he'd already earned
+    assert state["vocab_reviewed_count"] == 1
+
+
+def test_finishing_the_due_list_celebrates_instead_of_the_plain_empty_state(
+    monkeypatch, db, student
+):
+    page, _ = render_vocab(
+        monkeypatch, db, student,
+        state={"vocab_reviewed_count": 3, "vocab_best_streak": 2},
+    )
+    assert "All caught up" in page
+    assert "Nothing due for review today." not in page
+
+
 # --- render_vocab_match: the game-style alternative to flashcards -----------
 
 

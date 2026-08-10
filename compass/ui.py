@@ -756,9 +756,14 @@ def render_today_checklist(db: Database, student: dict[str, Any]) -> bool:
     return True
 
 
+VOCAB_STREAK_HYPE = ["Nice!", "Boom!", "Nailed it!", "You got it!", "Crushed it!", "Sweet!"]
+VOCAB_STREAK_ON_FIRE = 5  # streak length that earns balloons, not just a toast
+
+
 def render_vocab_review(db: Database, student: dict[str, Any]) -> None:
     """His own flashcard review: word first, self-recall, then he reveals the
-    definition and grades himself.
+    definition and grades himself. One word on screen at a time, not a long
+    scroll of identical boxes -- a deck to work through, not a list to read.
 
     The parent-facing Vocabulary tab shows word and definition together on
     purpose -- it's built for a parent to quiz him out loud and judge the
@@ -767,34 +772,75 @@ def render_vocab_review(db: Database, student: dict[str, Any]) -> None:
     `entry["definition"]` onto the page until after he's clicked to reveal it
     -- same redaction reasoning `render_quiz` already relies on for the answer
     key.
+
+    A session streak (consecutive correct, no db write -- purely for fun) is
+    tracked in st.session_state so a good run feels like one, and resets the
+    moment he misses one. There's no index into `due`: the current card is
+    always `due[0]`, so once it's graded and its next_review_on moves into
+    the future, it drops out of `due` on its own and the next render's
+    `due[0]` is simply the next card -- no bookkeeping to keep in sync.
     """
     due = db.vocabulary_due(student["id"], limit=25)
+    streak = st.session_state.setdefault("vocab_streak", 0)
+    best_streak = st.session_state.setdefault("vocab_best_streak", 0)
+    reviewed = st.session_state.setdefault("vocab_reviewed_count", 0)
+
     if not due:
-        st.success("Nothing due for review today.")
+        if reviewed:
+            st.success(f"🎉 All caught up! {reviewed} word(s) reviewed, best streak {best_streak}.")
+            st.balloons()
+        else:
+            st.success("Nothing due for review today.")
         return
 
-    st.caption(f"{len(due)} word(s) due — try to recall it before you check.")
-    for entry in due:
-        reveal_key = f"vocab_reveal_{entry['id']}"
-        with st.container(border=True):
-            st.markdown(f"### {entry['word']}")
-            if not st.session_state.get(reveal_key):
-                if st.button("Show definition", key=f"vocab_show_{entry['id']}"):
-                    st.session_state[reveal_key] = True
-                    st.rerun()
-            else:
-                st.write(entry["definition"])
-                columns = st.columns(2)
-                if columns[0].button(
-                    "✅ I knew it", key=f"vocab_ok_{entry['id']}", type="primary"
-                ):
-                    db.record_vocabulary_review(entry["id"], correct=True)
-                    st.session_state.pop(reveal_key, None)
-                    st.rerun()
-                if columns[1].button("❌ I missed it", key=f"vocab_miss_{entry['id']}"):
-                    db.record_vocabulary_review(entry["id"], correct=False)
-                    st.session_state.pop(reveal_key, None)
-                    st.rerun()
+    metrics = st.columns(3)
+    metrics[0].metric("🔥 Streak", streak)
+    metrics[1].metric("✅ Reviewed", reviewed)
+    metrics[2].metric("Left today", len(due))
+
+    entry = due[0]
+    reveal_key = f"vocab_reveal_{entry['id']}"
+    with st.container(border=True):
+        st.markdown(f"# {entry['word']}")
+        if not st.session_state.get(reveal_key):
+            if st.button(
+                "👀 Show definition",
+                key=f"vocab_show_{entry['id']}",
+                type="primary",
+                use_container_width=True,
+            ):
+                st.session_state[reveal_key] = True
+                st.rerun()
+        else:
+            st.write(entry["definition"])
+            columns = st.columns(2)
+            if columns[0].button(
+                "✅ I knew it",
+                key=f"vocab_ok_{entry['id']}",
+                type="primary",
+                use_container_width=True,
+            ):
+                db.record_vocabulary_review(entry["id"], correct=True)
+                st.session_state.pop(reveal_key, None)
+                new_streak = streak + 1
+                st.session_state["vocab_streak"] = new_streak
+                st.session_state["vocab_best_streak"] = max(best_streak, new_streak)
+                st.session_state["vocab_reviewed_count"] = reviewed + 1
+                if new_streak >= VOCAB_STREAK_ON_FIRE:
+                    st.balloons()
+                    st.toast(f"🚀 {new_streak} in a row — you're on fire!")
+                else:
+                    st.toast(f"{random.choice(VOCAB_STREAK_HYPE)} 🔥 {new_streak} in a row")
+                st.rerun()
+            if columns[1].button(
+                "❌ I missed it", key=f"vocab_miss_{entry['id']}", use_container_width=True
+            ):
+                db.record_vocabulary_review(entry["id"], correct=False)
+                st.session_state.pop(reveal_key, None)
+                st.session_state["vocab_streak"] = 0
+                st.session_state["vocab_reviewed_count"] = reviewed + 1
+                st.toast("No worries — you'll get it next time.")
+                st.rerun()
 
 
 VOCAB_MATCH_ROUND_SIZE = 6
