@@ -450,23 +450,21 @@ for the session (🔥), balloons show up at a 5-streak or when he clears the
 whole day's list, and a miss resets the streak but keeps his best one for
 the session — it's meant to feel like a little game, not a chore. He never
 sees the definition next to the word before checking himself; otherwise the
-review would test nothing. **Memory Match**: an actual game — a shuffled
-grid of face-down tiles, half words and half their definitions. Flip two
-looking for a pair; a match locks in right away, a miss shows a "Not a
-match" note and waits for him to hit **Continue** before flipping back, so
-he actually gets a beat to remember what was where. A live-feeling round
-timer and a real fill-progress bar sit above the board, and clearing a
-round faster than his best gets its own 🏆 record that sticks around
-across days, not just for the session. It shares the same streak and
-reviewed-count as Flashcards, so switching between the two mid-session
-doesn't reset his momentum. One real difference in how the two score a
-miss: Flashcards and the parent-facing tab treat a wrong guess as "he
-didn't know it." Memory Match doesn't — a mismatched pair there is usually
-just "forgot where that tile was," not a real vocabulary gap, so it only
-ever records a review once he actually finds the pair, and always as a
-win. The parent-facing Vocabulary tab is separate from all of this — it
-shows word and definition together on purpose, built for you to quiz him
-out loud.
+review would test nothing. **Trading Cards**: a lighter, game-style option
+— click a word, then click its definition from a shuffled list. (This
+briefly went through a Memory Match version — a face-down tile grid you
+flip pairs from — but a matched pair there vanished the instant it
+resolved, so there was nothing to actually see or remember it by. Back to
+cards, everything visible the whole time.) A live-feeling round timer and a
+real fill-progress bar sit above the board, and clearing a round faster
+than his best gets its own 🏆 record that sticks around across days, not
+just for the session. It shares the same streak and reviewed-count as
+Flashcards, so switching between the two mid-session doesn't reset his
+momentum, and it scores a wrong guess the same way Flashcards does — a
+guess that needed a second try still counts as "missed it" once he gets
+there. The parent-facing Vocabulary tab is separate from both — it shows
+word and definition together on purpose, built for you to quiz him out
+loud.
 
 **His home page leads with a "✅ Today" list** — everything he's checked off
 today, in one place: lessons he's marked done, quiz scores, life skills either

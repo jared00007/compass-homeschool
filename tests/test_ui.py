@@ -517,7 +517,7 @@ def test_finishing_the_due_list_celebrates_instead_of_the_plain_empty_state(
     assert "Nothing due for review today." not in page
 
 
-# --- render_vocab_match: Memory Match, the game-style alternative --------
+# --- render_vocab_match: Trading Cards, the game-style alternative --------
 
 
 def render_match(monkeypatch, db, student, *, state=None, button_pressed=None):
@@ -535,31 +535,24 @@ def vocab_by_id(db, student_id, vocab_id):
     return next(w for w in db.list_vocabulary(student_id) if w["id"] == vocab_id)
 
 
-def tile_key(state, vocab_id, kind):
-    """The button key for the (word or def) tile belonging to one vocab word,
-    wherever the shuffle happened to put it this round."""
-    tiles = state["vocab_match"]["tiles"]
-    index = next(i for i, t in enumerate(tiles) if t["vocab_id"] == vocab_id and t["kind"] == kind)
-    return f"mem_{index}"
-
-
 def test_match_no_due_words_shows_success(monkeypatch, db, student):
     page, _ = render_match(monkeypatch, db, student)
     assert "Nothing due for review today." in page
 
 
-def test_match_starts_every_tile_face_down(monkeypatch, db, student):
-    """Nothing is visible until flipped -- this is a memory game, not a list."""
+def test_match_shows_words_and_definitions_upfront(monkeypatch, db, student):
+    """Unlike flashcards, seeing every definition at once is the point -- and
+    unlike Memory Match, nothing here ever has to vanish to make the game
+    work, since there's no board position to remember."""
     db.add_vocabulary(student["id"], "ephemeral", "lasting a very short time")
     db.conn.execute("UPDATE vocabulary SET next_review_on = date('now')")
     db.conn.commit()
     page, _ = render_match(monkeypatch, db, student)
-    assert "ephemeral" not in page
-    assert "lasting a very short time" not in page
-    assert "❓" in page
+    assert "ephemeral" in page
+    assert "lasting a very short time" in page
 
 
-def test_a_fresh_round_deals_two_tiles_per_due_word(monkeypatch, db, student):
+def test_a_fresh_call_initializes_a_round_from_due_words(monkeypatch, db, student):
     db.add_vocabulary(student["id"], "ephemeral", "lasting a very short time")
     db.add_vocabulary(student["id"], "ubiquitous", "present everywhere")
     db.conn.execute("UPDATE vocabulary SET next_review_on = date('now')")
@@ -567,135 +560,76 @@ def test_a_fresh_round_deals_two_tiles_per_due_word(monkeypatch, db, student):
     ids = {w["id"] for w in db.list_vocabulary(student["id"])}
 
     _, state = render_match(monkeypatch, db, student)
-    tiles = state["vocab_match"]["tiles"]
-    assert len(tiles) == 2 * len(ids)
-    assert {t["vocab_id"] for t in tiles} == ids
-    for vocab_id in ids:
-        kinds = {t["kind"] for t in tiles if t["vocab_id"] == vocab_id}
-        assert kinds == {"word", "def"}
+    match_state = state["vocab_match"]
+    assert set(match_state["round_ids"]) == ids
+    assert set(match_state["word_order"]) == ids
+    assert set(match_state["def_order"]) == ids
+    assert "start_time" in match_state  # the round timer's clock
 
 
-def test_flipping_one_tile_reveals_only_that_tile(monkeypatch, db, student):
+def test_clicking_a_word_selects_it(monkeypatch, db, student):
     db.add_vocabulary(student["id"], "ephemeral", "lasting a very short time")
-    db.add_vocabulary(student["id"], "ubiquitous", "present everywhere")
     db.conn.execute("UPDATE vocabulary SET next_review_on = date('now')")
     db.conn.commit()
-    eph_id = next(w["id"] for w in db.list_vocabulary(student["id"]) if w["word"] == "ephemeral")
+    vocab_id = db.list_vocabulary(student["id"])[0]["id"]
 
-    _, state = render_match(monkeypatch, db, student)
-    key = tile_key(state, eph_id, "word")
-    # The click's own render pass still paints the tile's pre-click "❓" label --
-    # a button widget draws its label before Streamlit knows whether it was
-    # clicked. A real click triggers an immediate st.rerun() that repaints from
-    # the new state; the passive render below stands in for that repaint.
-    _, state = render_match(monkeypatch, db, student, state=state, button_pressed=key)
-    page, state = render_match(monkeypatch, db, student, state=state)
-
-    assert "ephemeral" in page
-    assert "ubiquitous" not in page
-    assert state["vocab_match"]["flipped"] == [int(key.removeprefix("mem_"))]
+    _, state = render_match(monkeypatch, db, student, button_pressed=f"match_word_{vocab_id}")
+    assert state["vocab_match"]["selected"] == vocab_id
 
 
-def test_matching_a_pair_on_the_first_flip_records_correct_and_builds_streak(
+def test_matching_the_right_definition_on_the_first_try_records_correct(
     monkeypatch, db, student
 ):
     db.add_vocabulary(student["id"], "ephemeral", "lasting a very short time")
+    db.add_vocabulary(student["id"], "ubiquitous", "present everywhere")
     db.conn.execute("UPDATE vocabulary SET next_review_on = date('now')")
     db.conn.commit()
-    eph_id = db.list_vocabulary(student["id"])[0]["id"]
+    eph_id = next(
+        w["id"] for w in db.list_vocabulary(student["id"]) if w["word"] == "ephemeral"
+    )
 
-    _, state = render_match(monkeypatch, db, student, state={"vocab_streak": 2, "vocab_best_streak": 2})
-    word_key = tile_key(state, eph_id, "word")
-    _, state = render_match(monkeypatch, db, student, state=state, button_pressed=word_key)
-    def_key = tile_key(state, eph_id, "def")
-    page, state = render_match(monkeypatch, db, student, state=state, button_pressed=def_key)
+    _, state = render_match(monkeypatch, db, student, button_pressed=f"match_word_{eph_id}")
+    _, state = render_match(
+        monkeypatch, db, student, state=state, button_pressed=f"match_def_{eph_id}"
+    )
 
-    assert eph_id in state["vocab_match"]["matched"]
-    assert state["vocab_match"]["flipped"] == []
-    assert state["vocab_streak"] == 3
-    assert state["vocab_best_streak"] == 3
-    assert state["vocab_reviewed_count"] == 1
+    assert eph_id in state["vocab_match"]["resolved"]
+    assert state["vocab_match"]["selected"] is None
     entry = vocab_by_id(db, student["id"], eph_id)
     assert entry["box"] == 2
     assert entry["times_correct"] == 1
-    assert "🎉 Round complete!" in page  # only word due this round, so this was also the last pair
 
 
-def test_a_mismatch_resets_the_streak_and_waits_for_continue(monkeypatch, db, student):
+def test_a_wrong_guess_then_the_right_one_still_counts_as_missed(monkeypatch, db, student):
+    """The scoring rule: only a first-try match counts as "knew it." A word
+    that needed a wrong guess before landing right still records a miss --
+    same as if he'd needed to see the flashcard's definition to get there."""
     db.add_vocabulary(student["id"], "ephemeral", "lasting a very short time")
     db.add_vocabulary(student["id"], "ubiquitous", "present everywhere")
     db.conn.execute("UPDATE vocabulary SET next_review_on = date('now')")
     db.conn.commit()
     words = {w["word"]: w["id"] for w in db.list_vocabulary(student["id"])}
+    eph_id, ubi_id = words["ephemeral"], words["ubiquitous"]
+
+    _, state = render_match(monkeypatch, db, student, button_pressed=f"match_word_{eph_id}")
+    _, state = render_match(
+        monkeypatch, db, student, state=state, button_pressed=f"match_def_{ubi_id}"
+    )
+    assert eph_id in state["vocab_match"]["missed"]
+    assert eph_id not in state["vocab_match"]["resolved"]
+    assert state["vocab_match"]["selected"] is None
 
     _, state = render_match(
-        monkeypatch, db, student, state={"vocab_streak": 4, "vocab_best_streak": 4}
+        monkeypatch, db, student, state=state, button_pressed=f"match_word_{eph_id}"
     )
-    word_key = tile_key(state, words["ephemeral"], "word")
-    _, state = render_match(monkeypatch, db, student, state=state, button_pressed=word_key)
-    other_def_key = tile_key(state, words["ubiquitous"], "def")
-    _, state = render_match(monkeypatch, db, student, state=state, button_pressed=other_def_key)
-
-    assert len(state["vocab_match"]["flipped"]) == 2  # both stay revealed, awaiting Continue
-    assert words["ephemeral"] not in state["vocab_match"]["matched"]
-    assert state["vocab_streak"] == 0
-    assert state["vocab_best_streak"] == 4  # a miss doesn't erase what he'd already earned
-
-    page, state = render_match(monkeypatch, db, student, state=state)  # the resulting repaint
-    assert "Continue" in page
-
-    page, state = render_match(
-        monkeypatch, db, student, state=state, button_pressed="vocab_match_continue"
-    )
-    assert state["vocab_match"]["flipped"] == []
-
-
-def test_a_pair_found_after_a_mismatch_still_records_correct(monkeypatch, db, student):
-    """The real behavioral difference from the old two-column Match: a wrong
-    flip here is board-position noise, not a vocabulary mix-up, so finding
-    the pair afterward still counts as "knew it" once it's actually found."""
-    db.add_vocabulary(student["id"], "ephemeral", "lasting a very short time")
-    db.add_vocabulary(student["id"], "ubiquitous", "present everywhere")
-    db.conn.execute("UPDATE vocabulary SET next_review_on = date('now')")
-    db.conn.commit()
-    words = {w["word"]: w["id"] for w in db.list_vocabulary(student["id"])}
-    eph_id = words["ephemeral"]
-
-    _, state = render_match(monkeypatch, db, student)
-    word_key = tile_key(state, eph_id, "word")
-    _, state = render_match(monkeypatch, db, student, state=state, button_pressed=word_key)
-    other_def_key = tile_key(state, words["ubiquitous"], "def")
-    _, state = render_match(monkeypatch, db, student, state=state, button_pressed=other_def_key)
     _, state = render_match(
-        monkeypatch, db, student, state=state, button_pressed="vocab_match_continue"
+        monkeypatch, db, student, state=state, button_pressed=f"match_def_{eph_id}"
     )
-
-    # Now actually find ephemeral's real pair.
-    word_key = tile_key(state, eph_id, "word")
-    _, state = render_match(monkeypatch, db, student, state=state, button_pressed=word_key)
-    def_key = tile_key(state, eph_id, "def")
-    _, state = render_match(monkeypatch, db, student, state=state, button_pressed=def_key)
 
     entry = vocab_by_id(db, student["id"], eph_id)
-    assert entry["box"] == 2  # advanced, not reset -- this was recorded correct
-    assert entry["times_correct"] == 1
-    assert entry["times_missed"] == 0
-
-
-def test_finishing_a_round_persists_a_best_time(monkeypatch, db, student):
-    db.add_vocabulary(student["id"], "ephemeral", "lasting a very short time")
-    db.conn.execute("UPDATE vocabulary SET next_review_on = date('now')")
-    db.conn.commit()
-    eph_id = db.list_vocabulary(student["id"])[0]["id"]
-    assert db.get_setting("vocab_best_round_seconds") is None
-
-    _, state = render_match(monkeypatch, db, student)
-    word_key = tile_key(state, eph_id, "word")
-    _, state = render_match(monkeypatch, db, student, state=state, button_pressed=word_key)
-    def_key = tile_key(state, eph_id, "def")
-    render_match(monkeypatch, db, student, state=state, button_pressed=def_key)
-
-    assert db.get_setting("vocab_best_round_seconds") is not None
+    assert entry["box"] == 1
+    assert entry["times_missed"] == 1
+    assert entry["times_correct"] == 0
 
 
 def test_match_no_due_words_but_a_session_already_happened_celebrates(monkeypatch, db, student):
@@ -707,3 +641,117 @@ def test_match_no_due_words_but_a_session_already_happened_celebrates(monkeypatc
     )
     assert "All caught up" in page
     assert "Nothing due for review today." not in page
+
+
+def test_a_clean_match_builds_the_shared_streak(monkeypatch, db, student):
+    db.add_vocabulary(student["id"], "ephemeral", "lasting a very short time")
+    db.conn.execute("UPDATE vocabulary SET next_review_on = date('now')")
+    db.conn.commit()
+    vocab_id = db.list_vocabulary(student["id"])[0]["id"]
+
+    _, state = render_match(
+        monkeypatch, db, student,
+        state={"vocab_streak": 2, "vocab_best_streak": 2},
+        button_pressed=f"match_word_{vocab_id}",
+    )
+    _, state = render_match(
+        monkeypatch, db, student, state=state, button_pressed=f"match_def_{vocab_id}"
+    )
+
+    assert state["vocab_streak"] == 3
+    assert state["vocab_best_streak"] == 3
+    assert state["vocab_reviewed_count"] == 1
+
+
+def test_a_wrong_guess_resets_the_shared_streak_immediately(monkeypatch, db, student):
+    """The streak breaks the moment the wrong guess happens, not only once the
+    word eventually gets matched -- the number on screen shouldn't lag."""
+    db.add_vocabulary(student["id"], "ephemeral", "lasting a very short time")
+    db.add_vocabulary(student["id"], "ubiquitous", "present everywhere")
+    db.conn.execute("UPDATE vocabulary SET next_review_on = date('now')")
+    db.conn.commit()
+    words = {w["word"]: w["id"] for w in db.list_vocabulary(student["id"])}
+    eph_id, ubi_id = words["ephemeral"], words["ubiquitous"]
+
+    _, state = render_match(
+        monkeypatch, db, student,
+        state={"vocab_streak": 4, "vocab_best_streak": 4},
+        button_pressed=f"match_word_{eph_id}",
+    )
+    _, state = render_match(
+        monkeypatch, db, student, state=state, button_pressed=f"match_def_{ubi_id}"
+    )
+    assert state["vocab_streak"] == 0
+    assert state["vocab_best_streak"] == 4  # not erased by the miss
+
+
+def test_finishing_a_round_shows_its_own_celebration_toast(monkeypatch, db, student):
+    db.add_vocabulary(student["id"], "ephemeral", "lasting a very short time")
+    db.conn.execute("UPDATE vocabulary SET next_review_on = date('now')")
+    db.conn.commit()
+    vocab_id = db.list_vocabulary(student["id"])[0]["id"]
+
+    _, state = render_match(monkeypatch, db, student, button_pressed=f"match_word_{vocab_id}")
+    page, _ = render_match(
+        monkeypatch, db, student, state=state, button_pressed=f"match_def_{vocab_id}"
+    )
+    assert "Round complete" in page
+
+
+def test_finishing_a_round_persists_a_best_time(monkeypatch, db, student):
+    db.add_vocabulary(student["id"], "ephemeral", "lasting a very short time")
+    db.conn.execute("UPDATE vocabulary SET next_review_on = date('now')")
+    db.conn.commit()
+    vocab_id = db.list_vocabulary(student["id"])[0]["id"]
+    assert db.get_setting("vocab_best_round_seconds") is None
+
+    _, state = render_match(monkeypatch, db, student, button_pressed=f"match_word_{vocab_id}")
+    render_match(monkeypatch, db, student, state=state, button_pressed=f"match_def_{vocab_id}")
+
+    assert db.get_setting("vocab_best_round_seconds") is not None
+
+
+def test_the_hud_shows_streak_reviewed_left_and_a_timer(monkeypatch, db, student):
+    """`st.progress`'s round-progress text is a keyword arg (`text=`), which
+    the Recorder stub -- like real st.progress calls elsewhere in this app --
+    doesn't capture, only positional string args; the four metrics are the
+    part of the HUD worth pinning here."""
+    db.add_vocabulary(student["id"], "ephemeral", "lasting a very short time")
+    db.conn.execute("UPDATE vocabulary SET next_review_on = date('now')")
+    db.conn.commit()
+    page, _ = render_match(monkeypatch, db, student)
+    assert "Streak" in page
+    assert "Reviewed" in page
+    assert "Left today" in page
+    assert "This round" in page
+
+
+def test_matching_one_word_does_not_reset_the_rest_of_the_round(monkeypatch, db, student):
+    """Regression: a matched word drops out of `due` immediately (its
+    next_review_on moves into the future), which used to be indistinguishable
+    from "reviewed elsewhere" staleness and silently restarted the whole
+    round on the very next render -- the progress bar and pairs-found count
+    could never accumulate past one."""
+    db.add_vocabulary(student["id"], "ephemeral", "lasting a very short time")
+    db.add_vocabulary(student["id"], "ubiquitous", "present everywhere")
+    db.add_vocabulary(student["id"], "meticulous", "very careful and precise")
+    db.conn.execute("UPDATE vocabulary SET next_review_on = date('now')")
+    db.conn.commit()
+    words = {w["word"]: w["id"] for w in db.list_vocabulary(student["id"])}
+
+    _, state = render_match(
+        monkeypatch, db, student, button_pressed=f"match_word_{words['meticulous']}"
+    )
+    original_round_ids = set(state["vocab_match"]["round_ids"])
+    _, state = render_match(
+        monkeypatch, db, student, state=state, button_pressed=f"match_def_{words['meticulous']}"
+    )
+
+    assert set(state["vocab_match"]["round_ids"]) == original_round_ids
+    assert state["vocab_match"]["resolved"] == {words["meticulous"]}
+
+    # A follow-up render with no click -- the resulting repaint -- must still
+    # show the accumulated round, not a freshly reinitialized one.
+    _, state = render_match(monkeypatch, db, student, state=state)
+    assert set(state["vocab_match"]["round_ids"]) == original_round_ids
+    assert state["vocab_match"]["resolved"] == {words["meticulous"]}

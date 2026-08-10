@@ -268,7 +268,7 @@ compass/
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
   theme.py                   the five themes and the CSS that applies one
-tests/                       276 tests, no API key required
+tests/                       280 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 ```
 
@@ -644,74 +644,82 @@ card each time without an explicit index, and drove a full four-word deck to
 completion to see the actual balloons-plus-summary screen fire, not just trust that
 the code path existed.
 
-### A second review mode: Memory Match
+### A second review mode: Trading Cards (by way of Memory Match)
 
-Started as a click-word-then-click-definition two-column mode, suggested mid-conversation
-as a "what about," then rebuilt twice more on direct feedback ("boring... make it fun" —
-twice) into what's actually there now: **Memory Match**, the classic face-down
-card-pairing game, with vocab instead of pictures. Before touching code, three rough
-mockups (a two-column card reskin, an arcade HUD layer, and this memory-grid concept)
-were built as a standalone clickable HTML preview and shown to the user first — Memory
-Match plus the HUD idea is what got picked.
+This mode has been through three builds. Started as a click-word-then-click-definition
+two-column mode, suggested mid-conversation as a "what about." Rebuilt on "boring...
+make it fun" into a session-streak-and-balloons version of the same two-column mechanic.
+Rebuilt again, more drastically, into **Memory Match** — a face-down tile grid, the
+classic card-pairing game — after three rough concept mockups (a two-column card reskin,
+an arcade HUD layer, this memory-grid concept) were shown as a standalone clickable HTML
+preview and Memory Match plus the HUD idea is what got picked. Then reverted back to the
+two-column mechanic entirely — this time explicitly styled as **Trading Cards**, the
+concept that had originally lost the vote — on direct feedback: "it doesn't let the
+student see the match. it just goes away immediately." A face-down memory game is
+supposed to make you work to remember what's where; a *matched* pair disappearing the
+instant it resolves gives nothing to actually see or remember it by, which undercut the
+whole premise rather than being a minor rough edge.
 
-**The mechanic.** `render_vocab_match()` deals `VOCAB_MATCH_ROUND_SIZE` (6) due words as
-a shuffled grid of `2 × 6` face-down tiles — one word tile and one definition tile per
-word, `random.shuffle`d together so position carries no information about which is
-which. Click a tile to flip it; click a second and the two get compared. A match locks
-both tiles in immediately (no pause needed — there's nothing left to read once you
-already know it's right) and moves straight to the next flip. A mismatch is different on
-purpose: both tiles stay face-up and an explicit **Continue** button
-(`key="vocab_match_continue"`) is the only way to clear them, rather than auto-hiding on
-a timer or on the next click. Streamlit reruns the whole script on every interaction —
-there's no way to "wait 800ms then hide" the way client-side JS could — so a deliberate
-button is what stands in for that pause, and it also means he actually gets to read what
-the mismatched pair was before it disappears, which matters for a memory game
-specifically.
+**The mechanic, restored.** `render_vocab_match()` shows two columns — shuffled words on
+the left, shuffled definitions on the right, all visible at once, nothing face-down.
+Click a word to select it, click a definition to check it. A correct match stays
+resolved and drops out of the active list, same as it always did; a wrong guess clears
+the selection and lets him try again. Nothing here ever has to vanish to make the game
+work, because there's no board position to remember — that's the actual, structural
+difference from Memory Match, not just a styling change.
 
-**Scoring diverges from the flashcard flow on purpose, not by oversight.** The old
-two-column mode's "wrong guess" meant picking the wrong definition for a word he'd
-already chosen — a real vocabulary mix-up, so it recorded a miss. A memory-grid mismatch
-is different in kind: mostly "I forgot where I'd already seen that tile," not "I don't
-know this word." So `db.record_vocabulary_review()` is only ever called once a pair is
-actually *found*, and always `correct=True` — however many tries the board took,
-finding it still means he recognized the pairing the moment he saw both halves
-together. The session **streak** stays strict regardless, for the game feel: it only
-rewards a pair found on the very first flip of those two tiles, and it breaks the
-instant a mismatch happens rather than waiting for the eventual correct match — same
-"the number on screen shouldn't lag behind reality" reasoning as the flashcard streak.
-It shares `vocab_streak` / `vocab_best_streak` / `vocab_reviewed_count` with
-`render_vocab_review()` too, so switching between Flashcards and Memory Match
-mid-session carries momentum forward instead of resetting it.
+**Scoring matches the flashcard flow exactly, restored along with the mechanic.** A word
+matched on the first guess counts as "knew it"; a word that took a wrong guess first
+still counts as "missed it" once it's eventually matched — same
+`db.record_vocabulary_review()` semantics the flashcard flow and the parent-facing tab
+use. (Memory Match's build had a deliberately different rule here — a mismatch there was
+mostly spatial-memory noise, not a real vocabulary gap, so it only ever recorded a win.
+That divergence doesn't apply anymore since Memory Match itself is gone; Trading Cards
+never needed it in the first place.) The session **streak** still shares
+`vocab_streak` / `vocab_best_streak` / `vocab_reviewed_count` with `render_vocab_review()`,
+so switching between Flashcards and Trading Cards mid-session carries momentum forward,
+and it still breaks the instant a wrong guess happens rather than waiting for the
+eventual correct match.
 
-**The Arcade HUD, the other half of what got picked.** A ⏱️ live-feeling round timer,
-computed as wall-clock `time.time()` at round start versus now and refreshed on every
-click rather than truly ticking every second — a real per-second tick would need a
-background loop, which would block the rest of the app while it ran, the same pattern
-this project has avoided everywhere else. An `st.progress()` bar tracks real round
-completion (pairs found / pairs in the round) rather than the decorative auto-animating
-bar the concept mockup used. Clearing a round faster than the standing record writes
-`vocab_best_round_seconds` into `settings` — a genuine best that persists across days,
-shown as `🏆 Best round: M:SS` once one exists, not just a number that resets when the
-tab closes.
+**The Arcade HUD survived the revert, on purpose.** The round timer, the `st.progress()`
+completion bar, and the persisted `vocab_best_round_seconds` personal record were liked
+independently of Memory Match's mechanic, so dropping the tile-grid didn't mean dropping
+those — they're layered on Trading Cards' rounds exactly the way they were on Memory
+Match's.
 
-Verified interactively against a running instance, not just read back from the code: a
-deliberate mismatch (two word tiles, guaranteed not to match) left both revealed with a
-"Not a match" warning and a working Continue button; a single-word round (so any two
-clicks are guaranteed to pair) confirmed the match lit up, both the round-complete and
-the whole-day-complete balloons fired together, and the database showed `box` advanced
-with `times_correct: 1` — plus a `vocab_best_round_seconds` record actually written.
-A follow-up run also confirmed the scoring divergence directly: forcing a mismatch first
-and *then* finding the real pair still recorded `correct=True`, `times_missed: 0`.
+**A real regression surfaced by testing this properly rather than trusting the ported
+code.** The round-freshness check that decides "should this round reshuffle" compared
+every word in `round_ids` against the current `due` pool — but a word he'd *just*
+matched drops out of `due` immediately (`record_vocabulary_review` moves its
+`next_review_on` into the future), which that check couldn't distinguish from "this word
+was reviewed somewhere else and the round has gone stale." The practical effect: every
+single match silently restarted the whole round on the very next render, so
+`vocab_match`'s `resolved` set could never hold more than one word at a time and the
+progress bar could never show more than "0 / N" or "1 / N." Caught by actually clicking
+through a full multi-word round in a real browser and watching the progress bar fail to
+accumulate, not by reading the code. Fixed by checking only the *unresolved* remainder of
+the round against the due pool, rather than the round's original full membership —
+a word he already matched doesn't need to still be "due" for the round to still be
+valid. Pinned with `test_matching_one_word_does_not_reset_the_rest_of_the_round`.
 
-**Also found along the way, unrelated to Memory Match itself but caught while testing
-it in a real browser:** the installed Streamlit's `use_container_width` argument logs a
+Verified interactively against a running instance both times: the first build's
+mismatch/Continue flow and correct-scoring path both checked out with Playwright before
+the "goes away immediately" complaint arrived; after the revert, a full three-word round
+was played through in the browser specifically to watch the progress bar actually
+accumulate (2 / 3, not resetting to 0 / 2) before calling the regression fixed, plus
+confirmed final DB state (`box` advanced on all three words) and a genuine
+`vocab_best_round_seconds` record written.
+
+**Also found along the way, unrelated to this feature but caught while testing it in a
+real browser:** the installed Streamlit's `use_container_width` argument logs a
 deprecation warning whose own stated removal date (2025-12-31) had already passed
 relative to this session. Since `requirements.txt` pins no upper bound on `streamlit`,
 a future `pip install` could land on a version where the old argument is a hard error,
 not a warning. Migrated all 13 call sites across `compass/ui.py` and
 `pages/5_Compliance.py` to `width="stretch"` (confirmed against the installed version's
 own docstring, not guessed) rather than leaving it as a ticking time bomb for whoever's
-machine happens to `pip install` next.
+machine happens to `pip install` next. This survived the mechanic revert since it was
+never specific to Memory Match.
 
 ## Printing a lesson
 
@@ -817,7 +825,7 @@ student view, a plain countdown to the first day of school.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 276 tests, ~5s, no API key needed
+python -m pytest tests/ -q      # 280 tests, ~5s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the
