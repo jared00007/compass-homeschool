@@ -948,6 +948,16 @@ def test_catalog_manager_shows_the_unlock_tally_and_locked_entries(monkeypatch, 
     assert "Lock down your privacy settings" in page
 
 
+def test_catalog_manager_rows_show_the_full_mission_materials_and_subject(monkeypatch, db, student):
+    """Deeper than a bare title + checkbox -- a parent should be able to
+    decide whether to unlock something without leaving this page."""
+    db.seed_life_skills(student["id"])
+    page = render_catalog_manager(monkeypatch, db, db.list_life_skills(student["id"]))
+    assert "Figure out what money's coming in" in page
+    assert "pencil and paper" in page
+    assert "Credits toward Occupational Education" in page
+
+
 def test_unlocking_a_skill_flips_it_active(monkeypatch, db, student):
     db.seed_life_skills(student["id"])
     skills = db.list_life_skills(student["id"])

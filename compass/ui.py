@@ -898,10 +898,12 @@ def render_life_skill_cards(db: Database, skills: list[dict[str, Any]], can_edit
 
 
 def render_life_skill_catalog_manager(db: Database, skills: list[dict[str, Any]]) -> None:
-    """The pace control: every catalog skill, active or not, one checkbox
-    each. Plain and utilitarian on purpose -- this is a parent's management
-    view, not the kid-facing card grid, so it doesn't need the Neon Pop
-    treatment the checklist itself has.
+    """The pace control: every catalog skill, active or not, one row each,
+    title and status collapsed by default -- open a row for the full mission,
+    materials, and credit subject before deciding whether to unlock it.
+    Plain and utilitarian on purpose -- this is a parent's management view,
+    not the kid-facing card grid, so it doesn't need the Neon Pop treatment
+    the checklist itself has.
 
     An already-earned skill's checkbox still reflects and controls `active`,
     even though the checklist shows it either way (see the `active OR
@@ -918,18 +920,22 @@ def render_life_skill_catalog_manager(db: Database, skills: list[dict[str, Any]]
     for category, items in by_category.items():
         st.subheader(category)
         for skill in items:
-            columns = st.columns([5, 1])
-            columns[0].markdown(f"**{skill['title']}**")
-            if skill["description"]:
-                columns[0].caption(skill["description"])
-            if skill["completed_on"]:
-                columns[0].caption(f"✅ Earned {skill['completed_on']}")
-            active = columns[1].checkbox(
-                "Unlocked", value=bool(skill["active"]), key=f"ls_active_{skill['id']}"
-            )
-            if active != bool(skill["active"]):
-                db.set_life_skill_active(skill["id"], active)
-                st.rerun()
+            status = "✅ earned" if skill["completed_on"] else ("🔓 unlocked" if skill["active"] else "🔒 locked")
+            with st.expander(f"{skill['title']} — {status}"):
+                columns = st.columns([5, 1])
+                if skill["description"]:
+                    columns[0].markdown(f"**The mission:** {skill['description']}")
+                if skill["materials"]:
+                    columns[0].caption(f"You'll need: {skill['materials']}")
+                columns[0].caption(f"Credits toward {subjects.label(skill['credit_subject'])}")
+                if skill["completed_on"]:
+                    columns[0].caption(f"✅ Earned {skill['completed_on']}")
+                active = columns[1].checkbox(
+                    "Unlocked", value=bool(skill["active"]), key=f"ls_active_{skill['id']}"
+                )
+                if active != bool(skill["active"]):
+                    db.set_life_skill_active(skill["id"], active)
+                    st.rerun()
 
 
 VOCAB_STREAK_HYPE = ["Nice!", "Boom!", "Nailed it!", "You got it!", "Crushed it!", "Sweet!"]
