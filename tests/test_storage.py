@@ -175,31 +175,23 @@ def test_life_skills_seed_only_once(db, student):
     assert second == 0
 
 
-def test_life_skills_are_seeded_with_real_mission_text(db, student):
-    """Every starter skill ships with a written mission, not a blank field --
-    the badge case has nothing to show otherwise."""
+def test_life_skills_are_seeded_with_real_mission_and_materials_text(db, student):
+    """Every starter skill ships with a written mission and a "you'll need"
+    list, not blank fields -- the card has nothing to show otherwise."""
     db.seed_life_skills(student["id"])
     skills = db.list_life_skills(student["id"])
     assert len(skills) == 15
     assert all(s["description"] for s in skills)
-    assert all(s["resources"] == "" for s in skills)  # never agent- or Claude-picked
+    assert all(s["materials"] for s in skills)
 
 
-def test_set_life_skill_content_updates_description_and_resources(db, student):
-    skill_id = db.add_life_skill(student["id"], "Change a tire", category="Vehicle")
-    db.set_life_skill_content(skill_id, "Swap the spare, star-pattern torque.", "- [Guide](https://example.com)")
-    skill = next(s for s in db.list_life_skills(student["id"]) if s["id"] == skill_id)
-    assert skill["description"] == "Swap the spare, star-pattern torque."
-    assert skill["resources"] == "- [Guide](https://example.com)"
-
-
-def test_a_database_created_before_the_resources_column_gets_migrated(tmp_path):
-    """`resources` shipped after some real databases already existed. Since
+def test_a_database_created_before_the_materials_column_gets_migrated(tmp_path):
+    """`materials` shipped after some real databases already existed. Since
     `CREATE TABLE IF NOT EXISTS` only ever fires on a table's first creation,
     an existing life_skills table needs the column added out-of-band -- this
     pins that `migrate()` does it instead of silently leaving old databases
-    without the column the badge editor writes to."""
-    path = tmp_path / "pre_resources.db"
+    without the column the card's "you'll need" line reads from."""
+    path = tmp_path / "pre_materials.db"
     conn = sqlite3.connect(path)
     conn.execute(
         "CREATE TABLE life_skills ("
@@ -218,8 +210,8 @@ def test_a_database_created_before_the_resources_column_gets_migrated(tmp_path):
     migrated = Database(path)
     try:
         skill = migrated.conn.execute("SELECT * FROM life_skills").fetchone()
-        assert skill["resources"] == ""
-        migrated.set_life_skill_content(skill["id"], "desc", "- link")
+        assert skill["materials"] == ""
+        migrated.set_life_skill_done(skill["id"], True)
     finally:
         migrated.close()
 

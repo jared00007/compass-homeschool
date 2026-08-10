@@ -24,7 +24,7 @@ from compass.ui import (
     is_parent,
     log_lesson_form,
     page_setup,
-    render_life_skill_badges,
+    render_life_skill_cards,
     render_life_skill_plan,
 )
 
@@ -55,7 +55,7 @@ else:
     plan_tab = log_tab = manage_tab = None
 
 with checklist_tab:
-    render_life_skill_badges(db, skills, can_edit=is_parent())
+    render_life_skill_cards(db, skills, can_edit=is_parent())
 
 if plan_tab is not None:
   with plan_tab:
@@ -217,11 +217,9 @@ if manage_tab is not None:
             index=SUBJECT_KEYS.index("occupational_education"),
             format_func=label,
         )
-        description = st.text_area("What does 'done' look like?", height=80)
-        resources = st.text_area(
-            "Helpful resources (optional, markdown)",
-            height=80,
-            placeholder="- [How to check tire pressure](https://example.com)",
+        description = st.text_area("The story — what is this, and what does 'done' look like?", height=80)
+        materials = st.text_input(
+            "What you'll need (optional)", placeholder="e.g. a recipe, a grocery run, 90 minutes"
         )
         if st.form_submit_button("Add skill", type="primary") and title.strip():
             db.add_life_skill(
@@ -230,7 +228,7 @@ if manage_tab is not None:
                 category.strip() or "General",
                 description.strip(),
                 credit_subject,
-                resources.strip(),
+                materials.strip(),
             )
             st.rerun()
 

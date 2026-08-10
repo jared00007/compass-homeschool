@@ -756,32 +756,47 @@ def test_matching_one_word_does_not_reset_the_rest_of_the_round(monkeypatch, db,
     assert set(state["vocab_match"]["round_ids"]) == original_round_ids
 
 
-# --- render_life_skill_badges: the checklist itself, click-to-expand missions ---
+# --- render_life_skill_cards: always-visible cards, a checkbox is the only action ---
 
 
-def render_badges(monkeypatch, db, skills, *, can_edit=True, state=None, button_pressed=None):
+def checkbox_stub(written: list[str], key_pressed: str):
+    """A `st.checkbox` override that flips just the targeted checkbox and
+    otherwise echoes back whatever `value` it was given -- mirrors
+    `button_stub`'s reasoning, but for a value-carrying widget rather than
+    a fire-once one."""
+
+    def stub(*args, value=False, key=None, **kwargs):
+        for arg in args:
+            if isinstance(arg, str):
+                written.append(arg)
+        return (not value) if key == key_pressed else value
+
+    return stub
+
+
+def render_cards(monkeypatch, db, skills, *, can_edit=True, button_pressed=None, checkbox_pressed=None):
     written: list[str] = []
-    state = {} if state is None else state
-    recorder = Recorder(written, state)
+    recorder = Recorder(written, {})
     if button_pressed is not None:
         recorder.button = button_stub(written, button_pressed)
+    if checkbox_pressed is not None:
+        recorder.checkbox = checkbox_stub(written, checkbox_pressed)
     monkeypatch.setattr(ui, "st", recorder)
-    ui.render_life_skill_badges(db, skills, can_edit)
-    return "\n".join(written), state
+    ui.render_life_skill_cards(db, skills, can_edit)
+    return "\n".join(written)
 
 
 def test_no_skills_renders_nothing(monkeypatch, db):
-    page, _ = render_badges(monkeypatch, db, [])
-    assert page == ""
+    assert render_cards(monkeypatch, db, []) == ""
 
 
-def test_badges_show_the_tally_and_every_category(monkeypatch, db, student):
+def test_cards_show_the_tally_and_every_category(monkeypatch, db, student):
     db.seed_life_skills(student["id"])
     skills = db.list_life_skills(student["id"])
     earned = next(s for s in skills if s["title"] == "Do laundry start to finish")
     db.set_life_skill_done(earned["id"], True)
 
-    page, _ = render_badges(monkeypatch, db, db.list_life_skills(student["id"]))
+    page = render_cards(monkeypatch, db, db.list_life_skills(student["id"]))
     assert "1 / 15 earned" in page
     assert "Money" in page
     assert "Cooking" in page
@@ -794,116 +809,101 @@ def test_badges_show_the_tally_and_every_category(monkeypatch, db, student):
     assert "Basic first aid and when to call for help" in page
 
 
-def test_clicking_a_badge_opens_its_mission(monkeypatch, db, student):
+def test_the_story_and_materials_show_without_any_click(monkeypatch, db, student):
+    """The whole point of the rebuild: nothing is click-to-reveal anymore."""
+    db.seed_life_skills(student["id"])
+    skills = db.list_life_skills(student["id"])
+    page = render_cards(monkeypatch, db, skills)
+    assert "Figure out what money" in page  # apostrophe HTML-escapes past this point
+    assert "pencil and paper" in page
+
+
+def test_checking_the_box_marks_the_skill_done(monkeypatch, db, student):
     db.seed_life_skills(student["id"])
     skills = db.list_life_skills(student["id"])
     budget = next(s for s in skills if s["title"] == "Build and follow a monthly budget")
 
-    _, state = render_badges(monkeypatch, db, skills, button_pressed=f"ls_toggle_{budget['id']}")
-    assert state["ls_open_skill"] == budget["id"]
-
-    # The click's own render pass still shows pre-click state under the test
-    # harness (st.rerun() is a no-op there) -- a follow-up render is the repaint.
-    page, _ = render_badges(monkeypatch, db, skills, state=state)
-    assert "Figure out what money" in page
-    assert "No resources yet" in page
-
-
-def test_clicking_an_open_badge_again_closes_it(monkeypatch, db, student):
-    db.seed_life_skills(student["id"])
-    skills = db.list_life_skills(student["id"])
-    budget = next(s for s in skills if s["title"] == "Build and follow a monthly budget")
-
-    _, state = render_badges(
-        monkeypatch, db, skills,
-        state={"ls_open_skill": budget["id"]},
-        button_pressed=f"ls_toggle_{budget['id']}",
-    )
-    assert state["ls_open_skill"] is None
-
-
-def test_mark_complete_flips_the_skill_and_the_button_reverses(monkeypatch, db, student):
-    db.seed_life_skills(student["id"])
-    skills = db.list_life_skills(student["id"])
-    budget = next(s for s in skills if s["title"] == "Build and follow a monthly budget")
-    state = {"ls_open_skill": budget["id"]}
-
-    render_badges(monkeypatch, db, skills, state=state, button_pressed=f"ls_done_{budget['id']}")
+    render_cards(monkeypatch, db, skills, checkbox_pressed=f"ls_done_{budget['id']}")
     updated = next(s for s in db.list_life_skills(student["id"]) if s["id"] == budget["id"])
     assert updated["completed_on"] is not None
 
-    page, _ = render_badges(monkeypatch, db, db.list_life_skills(student["id"]), state=state)
-    assert "↩️ Mark not done" in page
-    assert "✅ EARNED" in page
 
-
-def test_resources_render_as_markdown_when_present(monkeypatch, db, student):
-    skill_id = db.add_life_skill(
-        student["id"], "Sew a button", "Sewing", "Thread it and knot it.",
-        resources="- [Tutorial](https://example.com)",
-    )
+def test_unchecking_an_earned_skill_marks_it_not_done(monkeypatch, db, student):
+    db.seed_life_skills(student["id"])
     skills = db.list_life_skills(student["id"])
-    page, _ = render_badges(monkeypatch, db, skills, state={"ls_open_skill": skill_id})
-    assert "[Tutorial](https://example.com)" in page
-    assert "No resources yet" not in page
+    budget = next(s for s in skills if s["title"] == "Build and follow a monthly budget")
+    db.set_life_skill_done(budget["id"], True)
+
+    render_cards(
+        monkeypatch, db, db.list_life_skills(student["id"]),
+        checkbox_pressed=f"ls_done_{budget['id']}",
+    )
+    updated = next(s for s in db.list_life_skills(student["id"]) if s["id"] == budget["id"])
+    assert updated["completed_on"] is None
+
+
+def test_materials_only_show_when_present(monkeypatch, db, student):
+    skill_id = db.add_life_skill(student["id"], "Sew a button", "Sewing", "Thread it and knot it.")
+    page = render_cards(monkeypatch, db, db.list_life_skills(student["id"]))
+    assert "You'll need" not in page
+
+    db.delete_life_skill(skill_id)
+    db.add_life_skill(
+        student["id"], "Sew a button", "Sewing", "Thread it and knot it.",
+        materials="needle, thread, a button",
+    )
+    page = render_cards(monkeypatch, db, db.list_life_skills(student["id"]))
+    assert "You'll need" in page
+    assert "needle, thread, a button" in page
 
 
 def test_a_custom_category_falls_back_to_the_default_icon(monkeypatch, db, student):
     db.add_life_skill(student["id"], "Learn to sew a button", "Sewing")
-    page, _ = render_badges(monkeypatch, db, db.list_life_skills(student["id"]))
+    page = render_cards(monkeypatch, db, db.list_life_skills(student["id"]))
     assert "Sewing" in page
     assert ui.LIFE_SKILL_DEFAULT_ICON in page
 
 
 def test_a_skill_title_and_description_are_escaped(monkeypatch, db, student):
-    """The mission panel renders via `unsafe_allow_html=True`, so a title or
-    description containing markup must come out escaped there -- unlike the
-    badge button itself, whose label is inherently plain text regardless of
-    escaping (Streamlit widget labels don't execute HTML), so this checks the
-    one spot where it actually matters rather than the whole page's text."""
-    skill_id = db.add_life_skill(
-        student["id"], "<script>alert(1)</script>", "General", "<b>bold</b> mission"
-    )
-    skills = db.list_life_skills(student["id"])
-    page, _ = render_badges(monkeypatch, db, skills, state={"ls_open_skill": skill_id})
+    """The card renders via `unsafe_allow_html=True`, so a title or
+    description containing markup must come out escaped -- unlike the
+    checkbox's own label, which is inherently plain text regardless of
+    escaping (Streamlit widget labels don't execute HTML)."""
+    db.add_life_skill(student["id"], "<script>alert(1)</script>", "General", "<b>bold</b> mission")
+    page = render_cards(monkeypatch, db, db.list_life_skills(student["id"]))
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in page
     assert "&lt;b&gt;bold&lt;/b&gt; mission" in page
 
 
-def test_students_do_not_see_edit_or_remove_controls(monkeypatch, db, student):
+def test_students_do_not_see_the_remove_control(monkeypatch, db, student):
+    db.seed_life_skills(student["id"])
+    page = render_cards(monkeypatch, db, db.list_life_skills(student["id"]), can_edit=False)
+    assert "🗑️ Remove" not in page
+
+
+def test_parents_see_the_remove_control(monkeypatch, db, student):
+    db.seed_life_skills(student["id"])
+    page = render_cards(monkeypatch, db, db.list_life_skills(student["id"]), can_edit=True)
+    assert "🗑️ Remove" in page
+
+
+def test_removing_a_skill_deletes_it(monkeypatch, db, student):
     db.seed_life_skills(student["id"])
     skills = db.list_life_skills(student["id"])
     budget = next(s for s in skills if s["title"] == "Build and follow a monthly budget")
 
-    page, _ = render_badges(
-        monkeypatch, db, skills, can_edit=False, state={"ls_open_skill": budget["id"]}
-    )
-    assert "Edit mission" not in page
-    assert "Remove this skill" not in page
-
-
-def test_parents_see_edit_and_remove_controls(monkeypatch, db, student):
-    db.seed_life_skills(student["id"])
-    skills = db.list_life_skills(student["id"])
-    budget = next(s for s in skills if s["title"] == "Build and follow a monthly budget")
-
-    page, _ = render_badges(
-        monkeypatch, db, skills, can_edit=True, state={"ls_open_skill": budget["id"]}
-    )
-    assert "Edit mission" in page
-    assert "Remove this skill" in page
-
-
-def test_removing_a_skill_clears_the_open_state(monkeypatch, db, student):
-    db.seed_life_skills(student["id"])
-    skills = db.list_life_skills(student["id"])
-    budget = next(s for s in skills if s["title"] == "Build and follow a monthly budget")
-    state = {"ls_open_skill": budget["id"]}
-
-    render_badges(
-        monkeypatch, db, skills, can_edit=True, state=state,
-        button_pressed=f"ls_remove_{budget['id']}",
-    )
-    assert state["ls_open_skill"] is None
+    render_cards(monkeypatch, db, skills, can_edit=True, button_pressed=f"ls_remove_{budget['id']}")
     remaining_titles = {s["title"] for s in db.list_life_skills(student["id"])}
     assert "Build and follow a monthly budget" not in remaining_titles
+
+
+def test_a_student_cannot_remove_a_skill_even_if_the_button_key_matched(monkeypatch, db, student):
+    """`can_edit=False` must mean the remove button is never even called, not
+    just hidden -- this pins that the button call itself is skipped."""
+    db.seed_life_skills(student["id"])
+    skills = db.list_life_skills(student["id"])
+    budget = next(s for s in skills if s["title"] == "Build and follow a monthly budget")
+
+    render_cards(monkeypatch, db, skills, can_edit=False, button_pressed=f"ls_remove_{budget['id']}")
+    remaining_titles = {s["title"] for s in db.list_life_skills(student["id"])}
+    assert "Build and follow a monthly budget" in remaining_titles

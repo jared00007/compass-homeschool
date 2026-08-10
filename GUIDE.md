@@ -102,14 +102,14 @@ Nothing is discarded because you went somewhere new.
 
 ## Life skills: you choose, it plans
 
-The checklist itself is a badge case, not a list of checkboxes — brass medals for
-skills he's earned, grey ones for what's left. Click a badge and it opens into its
-"mission": a plain-language description of what the skill actually involves, any
-resource links you've added, and the button that marks it done. Editing the mission
-text and adding resources is parent-only, same tier as adding or removing a skill
-entirely — Compass writes the starter checklist's fifteen missions itself, but never
-picks or links external resources on its own; those are yours to add, one skill at a
-time, from inside the badge.
+The checklist itself is a grid of cards, not a list of checkboxes. Every card always
+shows its own story — a plain-language description of what the skill actually
+involves, and a short "you'll need" line — with nothing hidden behind a click. Check
+the box on a card and it turns gold, with a wax-seal medal stamped in the corner.
+Removing a skill is parent-only, same tier as adding one; checking a card done is
+open to both of you, same as the checkbox it replaced. Compass writes the starter
+checklist's fifteen stories and materials lists itself — for anything you add
+yourself, the "what you'll need" line is a plain text field on the *Add a skill* form.
 
 There is no agent picking his next life skill, and there won't be. The four core
 agents exist because each answers something you genuinely can't answer off the top of

@@ -615,7 +615,7 @@ he grades himself, so the next due word starts hidden again.
 
 Self-grading rather than parent-graded was a deliberate call, not the only option —
 discussed with the user first. It's consistent with how the rest of the app already
-trusts his self-report (`student_done_on`, the badge case's "Mark complete" button) rather
+trusts his self-report (`student_done_on`, the life-skill card's own checkbox) rather
 than gating it behind the parent, even though nothing here auto-verifies a recalled
 definition the way the multiple-choice quiz can auto-verify a chosen answer.
 

@@ -766,168 +766,127 @@ LIFE_SKILL_CATEGORY_ICONS = {
     "Home": "🏠",
 }
 LIFE_SKILL_DEFAULT_ICON = "🎖️"  # any category a parent types in beyond the starter five
+LIFE_SKILL_CARDS_PER_ROW = 3
 
-# Fixed to Comic Book's palette on purpose, independent of whichever app theme
-# is active -- picked as its own thing for the badge case, not derived from
-# `compass.theme`. If that choice changes, this is the one place to edit.
-#
-# The earned/locked button skins are two *static* rules keyed off a suffix
-# baked into each badge's own container `key` (`..._earned` / `..._locked`)
-# rather than one generated <style> block per skill -- Streamlit turns a
-# container `key` into a `st-key-<key>` class token, and `[class*=...]`
-# lets one shared stylesheet match on that token's substring instead of
-# emitting N nearly-identical blocks.
-_BADGE_CASE_CSS = """
+# "Neon Pop" -- picked by name after a live preview of four skins, fixed on
+# purpose rather than derived from `compass.theme`. The story is always on
+# the card; nothing here is click-to-reveal. A checkbox is the only thing
+# that changes `completed_on`, and only the checked state changes how a card
+# looks -- brought in via two *static* rules keyed off a suffix baked into
+# each card's own container `key` (`..._earned` / `..._locked`) rather than
+# one generated <style> block per skill, the same technique the old badge
+# case used: a container `key` becomes a `st-key-<key>` class token, and
+# `[class*=...]` matches on that token's substring.
+_LIFE_SKILL_CARD_CSS = """
 <style>
-.cp-bc-tallybar {
-  font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
-  font-size: 15px; color: #241C12;
-  border-bottom: 2px solid #241C12;
-  padding-bottom: 10px; margin-bottom: 6px;
+.cp-ls-tallybar {
+  font-weight: 800; font-size: 15px; color: #2B1233;
+  border-bottom: 2px solid #FF2D9B; padding-bottom: 10px; margin-bottom: 10px;
 }
-.cp-bc-tallybar .cp-bc-tally {
+.cp-ls-tallybar .cp-ls-tally {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 13px; color: #8A7A5E;
+  font-size: 13px; color: #9C7FB3; font-weight: 400;
 }
-div[class*="st-key-ls_badge_"][class*="_earned"] button {
-  border-radius: 999px !important;
-  border: 2px solid #F2B705 !important;
-  background: #FFF6D9 !important;
-  color: #241C12 !important;
-  font-weight: 600 !important;
+div[class*="st-key-ls_card_"][class*="_locked"],
+div[class*="st-key-ls_card_"][class*="_earned"] {
+  border-radius: 14px !important;
+  border: 2px solid #F0DCEA !important;
+  padding: 14px 16px 8px !important;
+  background: #FFFFFF !important;
+  position: relative;
+  margin-bottom: 16px;
 }
-div[class*="st-key-ls_badge_"][class*="_earned"] button:hover {
-  border-color: #d9a300 !important;
+div[class*="st-key-ls_card_"][class*="_earned"] {
+  border-color: #FF2D9B !important;
+  background: linear-gradient(135deg, #FFF0FA, #F0FFFC 100%) !important;
+  box-shadow: 0 4px 18px rgba(255, 45, 155, .16);
 }
-div[class*="st-key-ls_badge_"][class*="_locked"] button {
-  border-radius: 999px !important;
-  border: 2px solid #D8CDB0 !important;
-  background: #F5F0DE !important;
-  color: #8A7A5E !important;
-  filter: grayscale(0.5);
+.cp-ls-seal {
+  display: none; position: absolute; top: -16px; right: 14px; width: 52px; height: 52px;
+  border-radius: 50%; align-items: center; justify-content: center; font-size: 19px;
+  background: radial-gradient(circle at 32% 28%, #6BFFEA, #00D9C0 75%);
+  border: 3px solid #FF2D9B;
+  box-shadow: 0 0 16px rgba(255, 45, 155, .45);
+  transform: rotate(12deg);
 }
-.cp-mission {
-  border-radius: 3px;
-  padding: 18px 22px;
-  background-color: #FFFBF0;
-  background-image: repeating-radial-gradient(circle at 100% 0%, rgba(36,28,18,.05) 0 1px, transparent 1px 7px);
-  border: 1px solid #E63946;
-  box-shadow: 3px 3px 0 rgba(36,28,18,.12);
-  margin: 6px 0 16px;
+div[class*="st-key-ls_card_"][class*="_earned"] .cp-ls-seal { display: flex; }
+.cp-ls-title { font-weight: 800; font-size: 14.5px; color: #2B1233; padding-right: 34px; line-height: 1.3; }
+.cp-ls-cat {
+  font-size: 10.5px; color: #FF2D9B; text-transform: uppercase; letter-spacing: .1em;
+  margin: 3px 0 8px; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
-.cp-mission-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.cp-mission-head h4 { margin: 0; font-size: 17px; color: #241C12; }
-.cp-mission-status {
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 11.5px; color: #8A7A5E; white-space: nowrap;
-}
-.cp-mission-section { margin-top: 10px; }
-.cp-mission-section strong {
-  font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #8A7A5E;
-}
-.cp-mission-section p { margin: 6px 0 0; color: #241C12; line-height: 1.5; }
+.cp-ls-story { font-size: 12.5px; line-height: 1.5; color: #2B1233; opacity: .92; margin: 0 0 8px; }
+.cp-ls-needs { font-size: 11.5px; color: #9C7FB3; margin-bottom: 2px; }
+.cp-ls-needs b { color: #2B1233; }
+div[class*="st-key-ls_card_"] input[type="checkbox"] { accent-color: #FF2D9B; }
+div[class*="st-key-ls_card_"] [data-testid="stWidgetLabel"] p { font-weight: 700; font-size: 12.5px; }
 </style>
 """
 
 
-def render_life_skill_badges(
-    db: Database, skills: list[dict[str, Any]], can_edit: bool
-) -> None:
-    """The checklist itself -- not a summary over it. Every skill is a pill
-    badge, brass and full-color once earned, grey cloth until then. Clicking
-    one opens its mission below: the description, any resources you've added,
-    and the one button that actually changes `completed_on`.
+def render_life_skill_cards(db: Database, skills: list[dict[str, Any]], can_edit: bool) -> None:
+    """The checklist itself -- a grid of cards, one per skill, grouped by
+    category. Every card always shows its own story: what the skill is and
+    what it takes to finish. A checkbox is the only thing that changes
+    `completed_on`; check it and the card itself turns gold, no separate
+    view to open first.
 
-    `can_edit` gates the resources/description editor and the remove button
-    -- both management actions, same tier as *Add a skill*. Marking a skill
-    done is deliberately not gated: the old checkbox let either of you check
-    one off, and this keeps that same parity rather than quietly taking it
-    away from him.
+    `can_edit` gates the remove button -- a management action, same tier as
+    *Add a skill*. Marking a skill done is deliberately not gated: the
+    original checkbox let either of you check one off, and this keeps that
+    same parity rather than quietly taking it away from him.
     """
     if not skills:
         return
 
-    st.markdown(_BADGE_CASE_CSS, unsafe_allow_html=True)
+    st.markdown(_LIFE_SKILL_CARD_CSS, unsafe_allow_html=True)
 
     by_category: dict[str, list[dict[str, Any]]] = {}
     for skill in skills:
         by_category.setdefault(skill["category"], []).append(skill)
     done = sum(1 for s in skills if s["completed_on"])
     st.markdown(
-        f'<div class="cp-bc-tallybar">🎖️ Badge case &mdash; '
-        f'<span class="cp-bc-tally">{done} / {len(skills)} earned</span></div>',
+        f'<div class="cp-ls-tallybar">🥇 <span class="cp-ls-tally">{done} / {len(skills)} earned</span></div>',
         unsafe_allow_html=True,
     )
-
-    open_id = st.session_state.get("ls_open_skill")
 
     for category, items in by_category.items():
         icon = LIFE_SKILL_CATEGORY_ICONS.get(category, LIFE_SKILL_DEFAULT_ICON)
         complete = sum(1 for i in items if i["completed_on"])
         st.subheader(f"{category} — {complete}/{len(items)}")
 
-        columns = st.columns(len(items))
-        for index, skill in enumerate(items):
-            state = "earned" if skill["completed_on"] else "locked"
-            with columns[index], st.container(key=f"ls_badge_{skill['id']}_{state}"):
-                clicked = st.button(
-                    f"{icon}  {skill['title']}", key=f"ls_toggle_{skill['id']}", width="stretch"
-                )
-            if clicked:
-                st.session_state["ls_open_skill"] = None if open_id == skill["id"] else skill["id"]
-                st.rerun()
-
-        open_skill = next((s for s in items if s["id"] == open_id), None)
-        if open_skill is not None:
-            _render_life_skill_mission(db, open_skill, can_edit)
-
-
-def _render_life_skill_mission(db: Database, skill: dict[str, Any], can_edit: bool) -> None:
-    earned = bool(skill["completed_on"])
-    mission = (
-        f'<div class="cp-mission"><div class="cp-mission-head">'
-        f'<h4>{html.escape(skill["title"])}</h4>'
-        f'<span class="cp-mission-status">{"✅ EARNED " + skill["completed_on"] if earned else "🔒 locked"}</span>'
-        f"</div>"
-        f'<div class="cp-mission-section"><strong>🗒️ The mission</strong>'
-        f'<p>{html.escape(skill["description"]) if skill["description"] else "No mission notes yet."}</p>'
-        f"</div></div>"
-    )
-    st.markdown(mission, unsafe_allow_html=True)
-
-    if skill["resources"]:
-        st.markdown("**🔗 Helpful resources**")
-        st.markdown(skill["resources"])
-    elif can_edit:
-        st.caption("No resources yet — add some below.")
-
-    if st.button(
-        "↩️ Mark not done" if earned else "✅ Mark complete", key=f"ls_done_{skill['id']}"
-    ):
-        db.set_life_skill_done(skill["id"], not earned)
-        st.rerun()
-
-    if can_edit:
-        with st.expander("✏️ Edit mission & resources"):
-            with st.form(f"ls_edit_{skill['id']}"):
-                new_description = st.text_area(
-                    "The mission (what does 'done' look like?)",
-                    value=skill["description"],
-                    height=90,
-                )
-                new_resources = st.text_area(
-                    "Helpful resources (markdown, e.g. one link per line)",
-                    value=skill["resources"],
-                    height=90,
-                    placeholder="- [How to check tire pressure](https://example.com)",
-                )
-                if st.form_submit_button("Save"):
-                    db.set_life_skill_content(skill["id"], new_description, new_resources)
-                    st.rerun()
-            if st.button("🗑️ Remove this skill", key=f"ls_remove_{skill['id']}"):
-                db.delete_life_skill(skill["id"])
-                st.session_state["ls_open_skill"] = None
-                st.rerun()
+        for row_start in range(0, len(items), LIFE_SKILL_CARDS_PER_ROW):
+            row = items[row_start : row_start + LIFE_SKILL_CARDS_PER_ROW]
+            columns = st.columns(LIFE_SKILL_CARDS_PER_ROW)
+            for index, skill in enumerate(row):
+                earned = bool(skill["completed_on"])
+                state = "earned" if earned else "locked"
+                with columns[index], st.container(key=f"ls_card_{skill['id']}_{state}"):
+                    story = html.escape(skill["description"]) if skill["description"] else "No mission notes yet."
+                    needs = (
+                        f'<div class="cp-ls-needs"><b>You\'ll need:</b> {html.escape(skill["materials"])}</div>'
+                        if skill["materials"]
+                        else ""
+                    )
+                    st.markdown(
+                        f'<div class="cp-ls-seal">{icon}</div>'
+                        f'<div class="cp-ls-title">{html.escape(skill["title"])}</div>'
+                        f'<div class="cp-ls-cat">{html.escape(category)}</div>'
+                        f'<div class="cp-ls-story">{story}</div>'
+                        f"{needs}",
+                        unsafe_allow_html=True,
+                    )
+                    checked = st.checkbox(
+                        f"Earned {skill['completed_on']}" if earned else "Mark done",
+                        value=earned,
+                        key=f"ls_done_{skill['id']}",
+                    )
+                    if checked != earned:
+                        db.set_life_skill_done(skill["id"], checked)
+                        st.rerun()
+                    if can_edit and st.button("🗑️ Remove", key=f"ls_remove_{skill['id']}"):
+                        db.delete_life_skill(skill["id"])
+                        st.rerun()
 
 
 VOCAB_STREAK_HYPE = ["Nice!", "Boom!", "Nailed it!", "You got it!", "Crushed it!", "Sweet!"]
