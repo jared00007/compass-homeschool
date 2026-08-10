@@ -268,7 +268,7 @@ compass/
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
   theme.py                   the five themes and the CSS that applies one
-tests/                       273 tests, no API key required
+tests/                       277 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 ```
 
@@ -669,10 +669,7 @@ shuffles, what's resolved, what's had a wrong guess) lives in
 re-read from a fresh `db.vocabulary_due()` call rather than cached in that state —
 so a word reviewed elsewhere mid-round (flashcards in another tab) can't go stale on
 this board; the round-refresh check simply notices it's no longer due and reshuffles
-around it. Finishing a round rolls straight into the next batch of due words with no
-intermediate screen, since by the time the last word in a round resolves, the
-`vocabulary_due()` re-query on the very next render already excludes it — a "round
-complete" message would have nothing to render in front of.
+around it.
 
 Verified interactively end-to-end with Playwright against a running instance:
 selecting a word highlights it, an intentionally wrong guess clears the selection
@@ -680,6 +677,28 @@ without removing either button, and finishing correctly on the *second* attempt 
 recorded a miss in the database (box unchanged, `times_missed` incremented) — same
 run also confirmed a genuine first-try match advances the box, matching what the
 tests below assert with a stubbed `st.button`.
+
+**"Boring" again, on request, and this time made to share the fun with Flashcards
+rather than invent a parallel set of counters.** `render_vocab_match()` now reads and
+writes the *same* `vocab_streak` / `vocab_best_streak` / `vocab_reviewed_count`
+session keys `render_vocab_review()` does, so switching modes mid-session carries his
+momentum forward instead of resetting it — both are just different lenses on the same
+review work, and now they visibly agree on how that session is going. One real
+behavioral difference from the flashcard streak, deliberate: **a wrong guess resets
+`vocab_streak` the instant it happens**, not deferred to whenever that word
+eventually gets matched — the number on screen would otherwise sit stale while he's
+mid-mistake. Landing the last word of a round now gets its own `🎉 Round complete!`
+toast (checked before the streak-length check, so it wins over the "on fire" toast
+when both would otherwise apply on the same click), and running out the whole day's
+`due` list lands on the exact same balloons-plus-summary screen the flashcard flow
+uses — literally the same code path, since both check `if not due: ... reviewed ...`
+against the same counters.
+
+Verified this pass the same way as the first one: watched the streak metric climb
+through two clean matches, confirmed a deliberately wrong guess zeroed it out
+immediately rather than after the eventual correct match, and drove a three-word deck
+to completion to see the `🎉 Round complete!` toast fire into the very next render's
+balloons-and-summary screen, not just trust the two code paths lined up on paper.
 
 ## Printing a lesson
 
@@ -785,7 +804,7 @@ student view, a plain countdown to the first day of school.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 273 tests, ~5s, no API key needed
+python -m pytest tests/ -q      # 277 tests, ~5s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

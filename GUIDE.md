@@ -451,12 +451,17 @@ whole day's list, and a miss resets the streak but keeps his best one for
 the session — it's meant to feel like a little game, not a chore. He never
 sees the definition next to the word before checking himself; otherwise the
 review would test nothing. **Match**: a lighter, game-style option — click a
-word, then click its definition from a shuffled list of a few at a time.
-Both feed the same spaced-repetition schedule, and score the same way (a
-wrong guess before getting it right still counts as missed, in either mode),
-so which one he picks on a given day is just his preference, not a different
-standard. The parent-facing Vocabulary tab is separate from both — it shows
-word and definition together on purpose, built for you to quiz him out loud.
+word, then click its definition from a shuffled list of a few at a time,
+with the same streak, reviewed count, and balloons as Flashcards (they
+share one running score, so switching modes mid-session doesn't reset his
+streak), plus its own little "Round complete!" moment when he clears a
+batch. Both feed the same spaced-repetition schedule, and score the same
+way (a wrong guess before getting it right still counts as missed, in
+either mode — in Match, the streak breaks the instant he guesses wrong,
+not only once that word's eventually matched), so which one he picks on a
+given day is just his preference, not a different standard. The
+parent-facing Vocabulary tab is separate from both — it shows word and
+definition together on purpose, built for you to quiz him out loud.
 
 **His home page leads with a "✅ Today" list** — everything he's checked off
 today, in one place: lessons he's marked done, quiz scores, life skills either

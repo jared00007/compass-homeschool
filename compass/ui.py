@@ -860,14 +860,30 @@ def render_vocab_match(db: Database, student: dict[str, Any]) -> None:
     parent-facing Vocabulary tab already call, so which mode he picks
     doesn't change what the Leitner schedule means.
 
-    Round state (which words are in play, the two shuffles, what's resolved)
-    lives in st.session_state -- but never the words/definitions themselves,
-    those are re-read from `due` fresh every render, so a word reviewed
-    elsewhere mid-round (flashcards in another tab) can't go stale here.
+    Shares its streak/reviewed/best-streak counters with render_vocab_review
+    (the same session_state keys) -- switching between Flashcards and Match
+    mid-session carries his momentum instead of resetting it, since both
+    modes are just different lenses on the same review work. A wrong guess
+    breaks the streak the moment it happens, not when the word eventually
+    gets matched -- the number on screen should never lag behind reality.
+
+    Round state (which words are in play, the two shuffles, what's resolved,
+    what's had a wrong guess) lives in st.session_state -- but never the
+    words/definitions themselves, those are re-read from `due` fresh every
+    render, so a word reviewed elsewhere mid-round (flashcards in another
+    tab) can't go stale here.
     """
     due = db.vocabulary_due(student["id"], limit=25)
+    streak = st.session_state.setdefault("vocab_streak", 0)
+    best_streak = st.session_state.setdefault("vocab_best_streak", 0)
+    reviewed = st.session_state.setdefault("vocab_reviewed_count", 0)
+
     if not due:
-        st.success("Nothing due for review today.")
+        if reviewed:
+            st.success(f"🎉 All caught up! {reviewed} word(s) reviewed, best streak {best_streak}.")
+            st.balloons()
+        else:
+            st.success("Nothing due for review today.")
         return
 
     by_id = {entry["id"]: entry for entry in due}
@@ -894,11 +910,16 @@ def render_vocab_match(db: Database, student: dict[str, Any]) -> None:
         )
         resolved = state["resolved"]
 
-    st.caption(f"Click a word, then its definition. {len(due)} word(s) due in total.")
+    metrics = st.columns(3)
+    metrics[0].metric("🔥 Streak", streak)
+    metrics[1].metric("✅ Reviewed", reviewed)
+    metrics[2].metric("Left today", len(due))
+
+    st.caption("Click a word, then its definition.")
 
     columns = st.columns(2)
     with columns[0]:
-        st.markdown("**Words**")
+        st.markdown("**🅰️ Words**")
         for word_id in state["word_order"]:
             if word_id in resolved:
                 continue
@@ -913,7 +934,7 @@ def render_vocab_match(db: Database, student: dict[str, Any]) -> None:
                 st.rerun()
 
     with columns[1]:
-        st.markdown("**Definitions**")
+        st.markdown("**📖 Definitions**")
         for def_id in state["def_order"]:
             if def_id in resolved:
                 continue
@@ -926,13 +947,29 @@ def render_vocab_match(db: Database, student: dict[str, Any]) -> None:
                 if picked is None:
                     st.toast("Pick a word first.")
                 elif picked == def_id:
-                    db.record_vocabulary_review(picked, correct=picked not in state["missed"])
+                    clean = picked not in state["missed"]
+                    db.record_vocabulary_review(picked, correct=clean)
                     resolved.add(picked)
                     state["selected"] = None
-                    st.toast("✅ Match!")
+                    st.session_state["vocab_reviewed_count"] = reviewed + 1
+                    round_done = len(resolved) == len(state["round_ids"])
+                    if clean:
+                        new_streak = streak + 1
+                        st.session_state["vocab_streak"] = new_streak
+                        st.session_state["vocab_best_streak"] = max(best_streak, new_streak)
+                        if round_done:
+                            st.toast("🎉 Round complete!")
+                        elif new_streak >= VOCAB_STREAK_ON_FIRE:
+                            st.balloons()
+                            st.toast(f"🚀 {new_streak} in a row — you're on fire!")
+                        else:
+                            st.toast(f"{random.choice(VOCAB_STREAK_HYPE)} 🔥 {new_streak} in a row")
+                    else:
+                        st.toast("🎉 Round complete!" if round_done else "✅ Got it that time!")
                 else:
                     state["missed"].add(picked)
                     state["selected"] = None
+                    st.session_state["vocab_streak"] = 0
                     st.toast("❌ Not quite — try again.")
                 st.rerun()
 
