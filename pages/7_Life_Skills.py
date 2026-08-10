@@ -72,7 +72,7 @@ with checklist_tab:
         complete = sum(1 for i in items if i["completed_on"])
         st.subheader(f"{category} — {complete}/{len(items)}")
         for skill in items:
-            columns = st.columns([5, 1])
+            columns = st.columns([5, 1]) if is_parent() else [st.container()]
             checked = columns[0].checkbox(
                 skill["title"],
                 value=bool(skill["completed_on"]),
@@ -84,7 +84,7 @@ with checklist_tab:
                 st.rerun()
             if skill["completed_on"]:
                 columns[0].caption(f"Completed {skill['completed_on']}")
-            if columns[1].button("Remove", key=f"del_skill_{skill['id']}"):
+            if len(columns) > 1 and columns[1].button("Remove", key=f"del_skill_{skill['id']}"):
                 db.delete_life_skill(skill["id"])
                 st.rerun()
 
