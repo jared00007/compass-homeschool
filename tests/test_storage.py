@@ -8,7 +8,7 @@ from datetime import date, timedelta
 import pytest
 
 from compass import config
-from compass.storage.db import Database
+from compass.storage.db import LIFE_SKILL_CATALOG, Database
 
 
 @pytest.fixture()
@@ -176,13 +176,32 @@ def test_life_skills_seed_only_once(db, student):
 
 
 def test_life_skills_are_seeded_with_real_mission_and_materials_text(db, student):
-    """Every starter skill ships with a written mission and a "you'll need"
+    """Every catalog skill ships with a written mission and a "you'll need"
     list, not blank fields -- the card has nothing to show otherwise."""
     db.seed_life_skills(student["id"])
     skills = db.list_life_skills(student["id"])
-    assert len(skills) == 15
+    assert len(skills) == 28
     assert all(s["description"] for s in skills)
     assert all(s["materials"] for s in skills)
+
+
+def test_the_original_fifteen_seed_active_and_the_rest_locked(db, student):
+    """A brand-new checklist shouldn't dump a year's worth of content on the
+    student at once, but shouldn't start empty either -- the original
+    fifteen unlock immediately, the rest wait for a parent to release them."""
+    db.seed_life_skills(student["id"])
+    skills = db.list_life_skills(student["id"])
+    assert sum(1 for s in skills if s["active"]) == 15
+    assert sum(1 for s in skills if not s["active"]) == 13
+
+
+def test_set_life_skill_active_toggles_visibility_without_touching_completion(db, student):
+    skill_id = db.add_life_skill(student["id"], "Sew a button", "Sewing")
+    db.set_life_skill_done(skill_id, True)
+    db.set_life_skill_active(skill_id, False)
+    skill = next(s for s in db.list_life_skills(student["id"]) if s["id"] == skill_id)
+    assert skill["active"] == 0
+    assert skill["completed_on"] is not None
 
 
 def test_a_database_created_before_the_materials_column_gets_migrated(tmp_path):
@@ -233,6 +252,34 @@ def test_a_checklist_seeded_before_mission_text_existed_gets_backfilled(db, stud
     skill = db.list_life_skills(student["id"])[0]
     assert skill["description"].startswith("Figure out what money")
     assert "pencil and paper" in skill["materials"]
+
+
+def test_a_checklist_seeded_before_the_catalog_grew_gets_topped_up(db, student):
+    """A family that already ran `seed_life_skills` before the master catalog
+    grew past the original fifteen would otherwise never see the thirteen
+    later additions, active or not -- `seed_life_skills` only fires once."""
+    db.seed_life_skills(student["id"])
+    # Simulate a pre-expansion checklist: drop everything not in the original 15
+    # (the catalog's first 15 entries, active by default).
+    original_titles = tuple(title for _, title, *_, active in LIFE_SKILL_CATALOG if active)
+    placeholders = ",".join("?" for _ in original_titles)
+    db.conn.execute(
+        f"DELETE FROM life_skills WHERE student_id = ? AND title NOT IN ({placeholders})",
+        (student["id"], *original_titles),
+    )
+    db.conn.commit()
+    assert len(db.list_life_skills(student["id"])) == 15
+
+    db._backfill_life_skill_catalog()
+
+    skills = db.list_life_skills(student["id"])
+    assert len(skills) == 28
+    new_arrival = next(s for s in skills if s["title"] == "Lock down your privacy settings")
+    assert new_arrival["active"] == 0
+    # The 15 that were already there keep whatever state they had -- the
+    # backfill only ever inserts what's missing, never touches existing rows.
+    original = next(s for s in skills if s["title"] == "Do laundry start to finish")
+    assert original["active"] == 1
 
 
 def test_backfill_never_overwrites_a_parents_own_edit(db, student):

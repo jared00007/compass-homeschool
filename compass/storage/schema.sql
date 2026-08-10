@@ -193,6 +193,7 @@ CREATE TABLE IF NOT EXISTS life_skills (
     title        TEXT NOT NULL,
     description  TEXT NOT NULL DEFAULT '',
     materials    TEXT NOT NULL DEFAULT '',  -- what it takes to finish -- "You'll need:" on the card
+    active       INTEGER NOT NULL DEFAULT 1,  -- unlocked for the student view; parent-controlled
     credit_subject TEXT NOT NULL DEFAULT 'occupational_education',
     completed_on TEXT,
     notes        TEXT NOT NULL DEFAULT '',

@@ -779,8 +779,12 @@ def render_cards(monkeypatch, db, skills, *, can_edit=True, button_pressed=None,
     recorder = Recorder(written, {})
     if button_pressed is not None:
         recorder.button = button_stub(written, button_pressed)
-    if checkbox_pressed is not None:
-        recorder.checkbox = checkbox_stub(written, checkbox_pressed)
+    # Always stubbed, even with nothing pressed: the Recorder's own generic
+    # fallback returns itself (falsy, but not a real bool) rather than
+    # echoing back `value`, which made every unstubbed checkbox compare
+    # unequal to an already-True `earned` and silently fire
+    # `set_life_skill_done(id, <Recorder object>)` on every render.
+    recorder.checkbox = checkbox_stub(written, checkbox_pressed)
     monkeypatch.setattr(ui, "st", recorder)
     ui.render_life_skill_cards(db, skills, can_edit)
     return "\n".join(written)
@@ -790,6 +794,21 @@ def test_no_skills_renders_nothing(monkeypatch, db):
     assert render_cards(monkeypatch, db, []) == ""
 
 
+def test_inactive_skills_are_hidden_but_earned_ones_stay_even_if_relocked(monkeypatch, db, student):
+    db.seed_life_skills(student["id"])
+    skills = db.list_life_skills(student["id"])
+    locked = next(s for s in skills if s["title"] == "Lock down your privacy settings")
+    assert locked["active"] == 0
+
+    page = render_cards(monkeypatch, db, db.list_life_skills(student["id"]))
+    assert "Lock down your privacy" not in page
+
+    db.set_life_skill_done(locked["id"], True)
+    db.set_life_skill_active(locked["id"], False)  # earned, then re-locked
+    page = render_cards(monkeypatch, db, db.list_life_skills(student["id"]))
+    assert "Lock down your privacy" in page
+
+
 def test_cards_show_the_tally_and_every_category(monkeypatch, db, student):
     db.seed_life_skills(student["id"])
     skills = db.list_life_skills(student["id"])
@@ -797,7 +816,7 @@ def test_cards_show_the_tally_and_every_category(monkeypatch, db, student):
     db.set_life_skill_done(earned["id"], True)
 
     page = render_cards(monkeypatch, db, db.list_life_skills(student["id"]))
-    assert "1 / 15 earned" in page
+    assert "1 / 15 earned" in page  # only the 15 active-by-default catalog entries are visible
     assert "Money" in page
     assert "Cooking" in page
     assert "Vehicle" in page
@@ -907,3 +926,45 @@ def test_a_student_cannot_remove_a_skill_even_if_the_button_key_matched(monkeypa
     render_cards(monkeypatch, db, skills, can_edit=False, button_pressed=f"ls_remove_{budget['id']}")
     remaining_titles = {s["title"] for s in db.list_life_skills(student["id"])}
     assert "Build and follow a monthly budget" in remaining_titles
+
+
+# --- render_life_skill_catalog_manager: the pace control, parent-only ---
+
+
+def render_catalog_manager(monkeypatch, db, skills, *, checkbox_pressed=None):
+    written: list[str] = []
+    recorder = Recorder(written, {})
+    recorder.checkbox = checkbox_stub(written, checkbox_pressed)  # see render_cards for why always
+    monkeypatch.setattr(ui, "st", recorder)
+    ui.render_life_skill_catalog_manager(db, skills)
+    return "\n".join(written)
+
+
+def test_catalog_manager_shows_the_unlock_tally_and_locked_entries(monkeypatch, db, student):
+    db.seed_life_skills(student["id"])
+    page = render_catalog_manager(monkeypatch, db, db.list_life_skills(student["id"]))
+    assert "15 / 28 unlocked" in page
+    assert "Digital Life" in page
+    assert "Lock down your privacy settings" in page
+
+
+def test_unlocking_a_skill_flips_it_active(monkeypatch, db, student):
+    db.seed_life_skills(student["id"])
+    skills = db.list_life_skills(student["id"])
+    locked = next(s for s in skills if s["title"] == "Lock down your privacy settings")
+    assert locked["active"] == 0
+
+    render_catalog_manager(monkeypatch, db, skills, checkbox_pressed=f"ls_active_{locked['id']}")
+    updated = next(s for s in db.list_life_skills(student["id"]) if s["id"] == locked["id"])
+    assert updated["active"] == 1
+
+
+def test_relocking_an_active_skill_flips_it_back(monkeypatch, db, student):
+    db.seed_life_skills(student["id"])
+    skills = db.list_life_skills(student["id"])
+    budget = next(s for s in skills if s["title"] == "Build and follow a monthly budget")
+    assert budget["active"] == 1
+
+    render_catalog_manager(monkeypatch, db, skills, checkbox_pressed=f"ls_active_{budget['id']}")
+    updated = next(s for s in db.list_life_skills(student["id"]) if s["id"] == budget["id"])
+    assert updated["active"] == 0

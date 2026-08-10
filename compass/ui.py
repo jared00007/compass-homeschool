@@ -831,11 +831,19 @@ def render_life_skill_cards(db: Database, skills: list[dict[str, Any]], can_edit
     `completed_on`; check it and the card itself turns gold, no separate
     view to open first.
 
+    Takes the *full* catalog, not a pre-filtered list -- visibility is this
+    function's own rule, not every caller's to remember: a skill shows only
+    if it's `active` (unlocked from *Master list*) or already `completed_on`.
+    An earned skill stays visible even if a parent re-locks it later; taking
+    away an already-shown badge is a worse experience than an inactive skill
+    just never appearing yet.
+
     `can_edit` gates the remove button -- a management action, same tier as
     *Add a skill*. Marking a skill done is deliberately not gated: the
     original checkbox let either of you check one off, and this keeps that
     same parity rather than quietly taking it away from him.
     """
+    skills = [s for s in skills if s["active"] or s["completed_on"]]
     if not skills:
         return
 
@@ -887,6 +895,41 @@ def render_life_skill_cards(db: Database, skills: list[dict[str, Any]], can_edit
                     if can_edit and st.button("🗑️ Remove", key=f"ls_remove_{skill['id']}"):
                         db.delete_life_skill(skill["id"])
                         st.rerun()
+
+
+def render_life_skill_catalog_manager(db: Database, skills: list[dict[str, Any]]) -> None:
+    """The pace control: every catalog skill, active or not, one checkbox
+    each. Plain and utilitarian on purpose -- this is a parent's management
+    view, not the kid-facing card grid, so it doesn't need the Neon Pop
+    treatment the checklist itself has.
+
+    An already-earned skill's checkbox still reflects and controls `active`,
+    even though the checklist shows it either way (see the `active OR
+    completed_on` filter at the call site) -- re-locking a finished skill
+    just stops it counting toward "what's next," it never hides the badge.
+    """
+    by_category: dict[str, list[dict[str, Any]]] = {}
+    for skill in skills:
+        by_category.setdefault(skill["category"], []).append(skill)
+
+    unlocked = sum(1 for s in skills if s["active"])
+    st.caption(f"{unlocked} / {len(skills)} unlocked")
+
+    for category, items in by_category.items():
+        st.subheader(category)
+        for skill in items:
+            columns = st.columns([5, 1])
+            columns[0].markdown(f"**{skill['title']}**")
+            if skill["description"]:
+                columns[0].caption(skill["description"])
+            if skill["completed_on"]:
+                columns[0].caption(f"✅ Earned {skill['completed_on']}")
+            active = columns[1].checkbox(
+                "Unlocked", value=bool(skill["active"]), key=f"ls_active_{skill['id']}"
+            )
+            if active != bool(skill["active"]):
+                db.set_life_skill_active(skill["id"], active)
+                st.rerun()
 
 
 VOCAB_STREAK_HYPE = ["Nice!", "Boom!", "Nailed it!", "You got it!", "Crushed it!", "Sweet!"]

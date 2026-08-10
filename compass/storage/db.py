@@ -18,89 +18,154 @@ from compass import config
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
-# The starter life-skills checklist: (category, title, credit_subject, description,
-# materials). Written, not agent-generated -- plain, casual, kid-facing, matching
-# how Tier 1 lesson content is written. `materials` is the short "what you'll need"
-# list the card shows under the story.
+# The full life-skills master catalog: (category, title, credit_subject,
+# description, materials, active). Written, not agent-generated -- plain,
+# casual, kid-facing, matching how Tier 1 lesson content is written.
+# `materials` is the short "what you'll need" list the card shows under the
+# story. `active` is only a *default* for a brand-new checklist -- the
+# original 15 start unlocked so a fresh family isn't staring at an empty
+# page, the rest start locked so a year's worth of content doesn't land on
+# the student all at once. A parent can flip either one anytime.
 #
 # Lives at module level (rather than inline in `seed_life_skills`) so
-# `_backfill_life_skill_content` can share the same source of truth -- a family
-# whose checklist was seeded before this text existed (or before `materials`
-# existed) needs the same content, not a second copy of it that can drift.
-STARTER_LIFE_SKILLS: Sequence[tuple[str, str, str, str, str]] = (
+# `_backfill_life_skill_content`/`_backfill_life_skill_catalog` can share the
+# same source of truth -- a checklist seeded before this text (or before the
+# catalog grew) needs the same content, not a second copy that can drift.
+LIFE_SKILL_CATALOG: Sequence[tuple[str, str, str, str, str, bool]] = (
     ("Money", "Build and follow a monthly budget", "occupational_education",
      "Figure out what money's coming in and what's going out, then make a "
      "simple plan so you don't run out before the month does. Set some "
      "categories, guess your spending, then check back and see how close "
      "you got.",
-     "pencil and paper (or a spreadsheet), one real month of numbers"),
+     "pencil and paper (or a spreadsheet), one real month of numbers", True),
     ("Money", "Open and reconcile a bank account", "occupational_education",
      "You'll open a real account (a parent's on it too) and learn to check "
      "it against your own math -- what you think you have vs. what the "
      "bank says you have. Catching the difference is the actual skill.",
-     "a parent, ID, ~$20 to open with"),
+     "a parent, ID, ~$20 to open with", True),
     ("Money", "Understand a paycheck: gross, net, withholding", "occupational_education",
      "A paycheck has two numbers that matter: what you earned and what you "
      "actually get to keep. Work through a sample stub and figure out "
      "where the rest of it goes.",
-     "a sample pay stub, a calculator"),
+     "a sample pay stub, a calculator", True),
     ("Cooking", "Plan and cook a full meal for the family", "health",
      "Pick a meal, shop for it (or use what's in the kitchen), and cook "
      "the whole thing start to finish -- timing included, so everything's "
      "ready at the same time.",
-     "a recipe, a grocery run, about 90 minutes"),
+     "a recipe, a grocery run, about 90 minutes", True),
     ("Cooking", "Read nutrition labels and plan a balanced week", "health",
      "Nutrition labels look like a wall of numbers until you know which "
      "three or four actually matter. Use them to plan a week of meals "
      "that aren't just convenient -- that are actually decent for you.",
-     "a few labels from the pantry, a week's meal list"),
+     "a few labels from the pantry, a week's meal list", True),
     ("Cooking", "Kitchen safety and safe food handling", "health",
      "The stuff that keeps you from getting sick or hurt: washing hands "
      "right, not cross-contaminating raw meat, knowing when food's gone "
      "bad, and using a knife without losing a finger.",
-     "a kitchen, a parent watching once"),
+     "a kitchen, a parent watching once", True),
     ("Vehicle", "Check and top off oil, coolant, washer fluid", "occupational_education",
      "The three fluids you should check before anyone tells you your car's "
      "in trouble. Takes ten minutes and can save you a much worse day "
      "later.",
-     "the owner's manual, 10 minutes, the car"),
+     "the owner's manual, 10 minutes, the car", True),
     ("Vehicle", "Check tire pressure and change a tire", "occupational_education",
      "Two skills in one: reading a tire gauge so you know when a tire's "
      "actually low, and swapping one out on the side of the road if you "
      "have to.",
-     "a tire gauge, the spare, the jack and lug wrench"),
+     "a tire gauge, the spare, the jack and lug wrench", True),
     ("Vehicle", "Jump-start a vehicle safely", "occupational_education",
      "A dead battery isn't a big deal if you know which cable goes where, "
      "and in what order. Get it wrong and you can actually fry something "
      "-- that's why the order matters.",
-     "jumper cables, a second running car"),
+     "jumper cables, a second running car", True),
     ("Communication", "Write a clear, polite email to an adult", "language",
      "Emails to teachers, coaches, or businesses have their own rules -- "
      "not too casual, not stiff either, and always saying exactly what "
      "you need in the first two lines.",
-     "a real email to send, 15 minutes"),
+     "a real email to send, 15 minutes", True),
     ("Communication", "Make a phone call to schedule an appointment", "language",
      "An actual phone call, not a text. Practice saying who you are, what "
      "you need, and getting a real time booked -- without freezing up.",
-     "a real place to call, your calendar"),
+     "a real place to call, your calendar", True),
     ("Communication", "Introduce yourself and shake hands", "health",
      "Look someone in the eye, say your name clearly, and shake hands "
      "like you mean it. Small thing, but it's the first impression every "
      "single time.",
-     "a person to practice on"),
+     "a person to practice on", True),
     ("Home", "Do laundry start to finish", "occupational_education",
      "Sorting, washing, drying, folding -- the whole loop, no help. "
      "Including not turning anyone's white shirt pink.",
-     "a full hamper, the washer and dryer"),
+     "a full hamper, the washer and dryer", True),
     ("Home", "Basic first aid and when to call for help", "health",
      "Cuts, burns, sprains -- what you can handle yourself, and where "
      "the line is where you stop and call 911 or a parent instead.",
-     "a first aid kit"),
+     "a first aid kit", True),
     ("Home", "Read a map and navigate without GPS", "social_studies",
      "Your phone dies, or you're somewhere with no signal -- can you "
      "still get where you're going with an actual map? That's the whole "
      "skill.",
-     "a paper map or atlas, a real trip to plan"),
+     "a paper map or atlas, a real trip to plan", True),
+    # -- unlocked later, at the parent's pace --------------------------------
+    ("Money", "Compare prices and figure out the better deal", "occupational_education",
+     "Bigger isn't always cheaper. Check the unit price (price per ounce, "
+     "per item) so you can actually tell which one's the better deal, not "
+     "just which one looks like it.",
+     "a store receipt or two products to compare", False),
+    ("Money", "Understand credit, debit, and what interest costs you", "occupational_education",
+     "The difference between spending money you have and money you're "
+     "borrowing, and why a credit card that isn't paid off costs you extra "
+     "every month it sits there.",
+     "a sample statement or two", False),
+    ("Cooking", "Grocery shop on a set budget", "health",
+     "Given a list and a dollar amount, get everything on it without going "
+     "over. Real math, done in a real store, under real pressure.",
+     "a grocery list, a set budget, a store trip", False),
+    ("Cooking", "Use the oven and stovetop safely without supervision", "health",
+     "Preheating, timers, not walking away from something on the burner, "
+     "and what to do if something starts smoking. The stuff that turns "
+     "'can microwave a burrito' into 'can actually cook.'",
+     "the kitchen, something simple to bake or saute", False),
+    ("Vehicle", "Read the dashboard warning lights", "occupational_education",
+     "Which lights mean 'pull over now,' which mean 'get it looked at this "
+     "week,' and which are just a reminder. Guessing wrong in either "
+     "direction is expensive.",
+     "the owner's manual (has a full light key), the car", False),
+    ("Vehicle", "Fill the tank and check tire tread", "occupational_education",
+     "Pumping your own gas, and a fast way to tell if a tire's actually "
+     "worn out (the penny test) instead of just eyeballing it.",
+     "a car needing gas, a penny", False),
+    ("Communication", "Handle a disagreement without it becoming a fight", "health",
+     "Say what's actually bothering you without yelling, and actually "
+     "listen to the other side before responding. Harder than it sounds, "
+     "and worth practicing on purpose.",
+     "a real (small) disagreement to work through", False),
+    ("Communication", "Explain something you know to someone who doesn't", "language",
+     "Pick something you're actually good at and teach it to someone in "
+     "five minutes, out loud, without notes. Shows whether you really "
+     "understand it or just recognize it.",
+     "a topic you know well, a listener", False),
+    ("Home", "Basic repairs: tighten, patch, and use the right tool", "occupational_education",
+     "A wobbly hinge, a loose screw, a small hole in drywall -- the stuff "
+     "that doesn't need a professional, just a screwdriver and knowing "
+     "which one.",
+     "a screwdriver set, whatever around the house actually needs fixing", False),
+    ("Home", "Sew a button and patch a small tear", "occupational_education",
+     "The two most common clothing repairs, both doable by hand in under "
+     "ten minutes once you know the moves.",
+     "needle, thread, a button or torn item", False),
+    ("Digital Life", "Lock down your privacy settings", "occupational_education",
+     "Go through what's actually public on your accounts vs. what you "
+     "think is private, and fix the gap. Most of it defaults to more open "
+     "than people realize.",
+     "your actual accounts, a parent to check the settings with", False),
+    ("Digital Life", "Spot a scam or phishing attempt", "occupational_education",
+     "The red flags in a fake text, email, or DM asking for money, a "
+     "password, or a click -- and what to do instead of clicking.",
+     "a few real examples (a parent likely has some)", False),
+    ("Digital Life", "Manage your own passwords safely", "occupational_education",
+     "Not reusing the same password everywhere, and using a password "
+     "manager instead of memorizing (or writing down) two dozen of them.",
+     "your accounts, a password manager app", False),
 )
 
 # Leitner intervals in days, indexed by box number (1-5).
@@ -137,9 +202,11 @@ class Database:
         self.conn.executescript(SCHEMA_PATH.read_text())
         # `CREATE TABLE IF NOT EXISTS` above only covers a table's first-ever
         # creation -- a family's existing life_skills table predates the
-        # `materials` column, so it needs adding here instead.
+        # `materials`/`active` columns, so they need adding here instead.
         self._ensure_column("life_skills", "materials", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column("life_skills", "active", "INTEGER NOT NULL DEFAULT 1")
         self._backfill_life_skill_content()
+        self._backfill_life_skill_catalog()
         for key, value in config.DEFAULT_SETTINGS.items():
             self.conn.execute(
                 "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value)
@@ -152,12 +219,12 @@ class Database:
             self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
 
     def _backfill_life_skill_content(self) -> None:
-        """Fill in `description`/`materials` for starter skills seeded before
+        """Fill in `description`/`materials` for catalog skills seeded before
         that text existed -- `seed_life_skills` only ever runs once per
         student, so a checklist seeded in an earlier build stays blank
         forever otherwise. Matched by exact title, and only when the field is
         still blank, so a parent's own edit is never overwritten."""
-        for _, title, _, description, materials in STARTER_LIFE_SKILLS:
+        for _, title, _, description, materials, _ in LIFE_SKILL_CATALOG:
             self.conn.execute(
                 "UPDATE life_skills SET description = ? "
                 "WHERE title = ? AND description = ''",
@@ -168,6 +235,36 @@ class Database:
                 "WHERE title = ? AND materials = ''",
                 (materials, title),
             )
+
+    def _backfill_life_skill_catalog(self) -> None:
+        """Top up an already-seeded checklist with any catalog entries it's
+        missing -- `seed_life_skills` only fires once per student, so a
+        family that seeded before the catalog grew (the 13 "unlocked later"
+        entries) would otherwise never see them at all, active or not.
+        New entries always land inactive, regardless of their catalog
+        default, since a parent who already curated their active set didn't
+        ask for anything new to suddenly appear on the student's page."""
+        for row in self.conn.execute("SELECT id FROM students"):
+            student_id = row["id"]
+            existing_titles = {
+                r["title"]
+                for r in self.conn.execute(
+                    "SELECT title FROM life_skills WHERE student_id = ?", (student_id,)
+                )
+            }
+            if not existing_titles:
+                continue  # never seeded at all -- seed_life_skills handles that path
+            for order, (category, title, subject, description, materials, _) in enumerate(
+                LIFE_SKILL_CATALOG
+            ):
+                if title in existing_titles:
+                    continue
+                self.conn.execute(
+                    "INSERT INTO life_skills "
+                    "(student_id, category, title, credit_subject, description, "
+                    "materials, active, sort_order) VALUES (?, ?, ?, ?, ?, ?, 0, ?)",
+                    (student_id, category, title, subject, description, materials, order),
+                )
 
     # -- settings -------------------------------------------------------------
 
@@ -807,24 +904,38 @@ class Database:
         )
         self.conn.commit()
 
+    def set_life_skill_active(self, skill_id: int, active: bool) -> None:
+        """Unlocks or hides a catalog skill from the student view. Never
+        touches `completed_on` -- an already-earned skill stays visible to
+        him regardless (see the `active OR completed_on` filter at the call
+        site), so this only ever affects what's still ahead of him."""
+        self.conn.execute(
+            "UPDATE life_skills SET active = ? WHERE id = ?", (int(active), skill_id)
+        )
+        self.conn.commit()
+
     def delete_life_skill(self, skill_id: int) -> None:
         self.conn.execute("DELETE FROM life_skills WHERE id = ?", (skill_id,))
         self.conn.commit()
 
     def seed_life_skills(self, student_id: int) -> int:
-        """Seed the starter checklist described in the design doc, once."""
+        """Seed the full master catalog, once. Whether a skill starts
+        unlocked is the catalog's own `active` default -- see
+        `LIFE_SKILL_CATALOG`."""
         existing = self.list_life_skills(student_id)
         if existing:
             return 0
-        for order, (category, title, subject, description, materials) in enumerate(STARTER_LIFE_SKILLS):
+        for order, (category, title, subject, description, materials, active) in enumerate(
+            LIFE_SKILL_CATALOG
+        ):
             self.conn.execute(
                 "INSERT INTO life_skills "
-                "(student_id, category, title, credit_subject, description, materials, sort_order) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (student_id, category, title, subject, description, materials, order),
+                "(student_id, category, title, credit_subject, description, materials, "
+                "active, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (student_id, category, title, subject, description, materials, int(active), order),
             )
         self.conn.commit()
-        return len(STARTER_LIFE_SKILLS)
+        return len(LIFE_SKILL_CATALOG)
 
     # -- Declaration of Intent (WA RCW 28A.200.010) ---------------------------
 

@@ -25,6 +25,7 @@ from compass.ui import (
     log_lesson_form,
     page_setup,
     render_life_skill_cards,
+    render_life_skill_catalog_manager,
     render_life_skill_plan,
 )
 
@@ -33,8 +34,8 @@ db, student = page_setup("Life Skills", icon="🛠️")
 st.title("🛠️ Core Life Skills")
 st.caption(
     "Budgeting, cooking, vehicle basics, communication. **You** decide what he learns "
-    "here — there's no agent picking the next skill. Once you've picked one, Compass "
-    "will write you a plan for teaching it."
+    "here — there's no agent picking the next skill. The checklist unlocks gradually: "
+    "*Master list* is where you release more, at whatever pace fits the year."
 )
 
 skills = db.list_life_skills(student["id"])
@@ -43,16 +44,16 @@ if not skills:
     st.info("No checklist yet.")
     if st.button("Seed the starter checklist", type="primary"):
         count = db.seed_life_skills(student["id"])
-        st.success(f"Added {count} starter skills.")
+        st.success(f"Added {count} skills to the master list — 15 unlocked to start.")
         st.rerun()
 
 if is_parent():
-    checklist_tab, plan_tab, log_tab, manage_tab = st.tabs(
-        ["Checklist", "Plan a session", "Log time", "Add a skill"]
+    checklist_tab, plan_tab, log_tab, master_tab, manage_tab = st.tabs(
+        ["Checklist", "Plan a session", "Log time", "Master list", "Add a skill"]
     )
 else:
     checklist_tab = st.container()
-    plan_tab = log_tab = manage_tab = None
+    plan_tab = log_tab = master_tab = manage_tab = None
 
 with checklist_tab:
     render_life_skill_cards(db, skills, can_edit=is_parent())
@@ -204,6 +205,18 @@ if log_tab is not None:
                     db.set_life_skill_done(skill["id"], True, note)
                 st.success("Logged.")
                 st.rerun()
+
+if master_tab is not None:
+  with master_tab:
+    st.caption(
+        "Everything Compass knows how to show him, unlocked or not. Turn one on and it "
+        "shows up on the checklist immediately — nothing here picks for you, this is "
+        "purely the pace control."
+    )
+    if not skills:
+        st.info("Seed or add a skill first — there's nothing to manage yet.")
+    else:
+        render_life_skill_catalog_manager(db, skills)
 
 if manage_tab is not None:
   with manage_tab:
