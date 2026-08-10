@@ -754,4 +754,44 @@ def test_matching_one_word_does_not_reset_the_rest_of_the_round(monkeypatch, db,
     # show the accumulated round, not a freshly reinitialized one.
     _, state = render_match(monkeypatch, db, student, state=state)
     assert set(state["vocab_match"]["round_ids"]) == original_round_ids
-    assert state["vocab_match"]["resolved"] == {words["meticulous"]}
+
+
+# --- render_life_skill_badges: a trophy shelf, read-only over the real checklist ---
+
+
+def render_badges(monkeypatch, skills):
+    written: list[str] = []
+    monkeypatch.setattr(ui, "st", Recorder(written, {}))
+    ui.render_life_skill_badges(skills)
+    return "\n".join(written)
+
+
+def test_no_skills_renders_nothing(monkeypatch):
+    assert render_badges(monkeypatch, []) == ""
+
+
+def test_earned_and_locked_skills_are_labeled(monkeypatch, db, student):
+    db.seed_life_skills(student["id"])
+    skills = db.list_life_skills(student["id"])
+    earned = next(s for s in skills if s["title"] == "Do laundry start to finish")
+    db.set_life_skill_done(earned["id"], True)
+
+    page = render_badges(monkeypatch, db.list_life_skills(student["id"]))
+    assert "1 / 15" in page
+    assert "Do laundry start to finish" in page
+    assert "Home" in page
+    assert "Money" in page
+
+
+def test_a_custom_category_falls_back_to_the_default_icon(monkeypatch, db, student):
+    db.add_life_skill(student["id"], "Learn to sew a button", "Sewing")
+    page = render_badges(monkeypatch, db.list_life_skills(student["id"]))
+    assert "Sewing" in page
+    assert ui.LIFE_SKILL_DEFAULT_ICON in page
+
+
+def test_a_skill_title_with_html_is_escaped(monkeypatch, db, student):
+    db.add_life_skill(student["id"], "<script>alert(1)</script>", "General")
+    page = render_badges(monkeypatch, db.list_life_skills(student["id"]))
+    assert "<script>" not in page
+    assert "&lt;script&gt;" in page

@@ -24,6 +24,7 @@ from compass.ui import (
     is_parent,
     log_lesson_form,
     page_setup,
+    render_life_skill_badges,
     render_life_skill_plan,
 )
 
@@ -61,6 +62,8 @@ else:
     plan_tab = log_tab = manage_tab = None
 
 with checklist_tab:
+    render_life_skill_badges(skills)
+
     by_category: dict[str, list[dict]] = {}
     for skill in skills:
         by_category.setdefault(skill["category"], []).append(skill)
