@@ -942,9 +942,12 @@ def render_catalog_manager(monkeypatch, db, skills, *, checkbox_pressed=None):
 
 def test_catalog_manager_shows_the_unlock_tally_and_locked_entries(monkeypatch, db, student):
     db.seed_life_skills(student["id"])
-    page = render_catalog_manager(monkeypatch, db, db.list_life_skills(student["id"]))
-    assert "15 / 28 unlocked" in page
+    skills = db.list_life_skills(student["id"])
+    page = render_catalog_manager(monkeypatch, db, skills)
+    assert f"15 / {len(skills)} unlocked" in page
     assert "Digital Life" in page
+    assert "Health & Safety" in page
+    assert "Work & Career" in page
     assert "Lock down your privacy settings" in page
 
 

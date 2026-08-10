@@ -109,20 +109,25 @@ the box on a card and it turns gold, with a wax-seal medal stamped in the corner
 Removing a skill is parent-only, same tier as adding one; checking a card done is
 open to both of you, same as the checkbox it replaced.
 
-Compass ships a 28-skill master catalog with real mission text already written, not
+Compass ships a 155-skill master catalog with real mission text already written, not
 just the fifteen that show up on day one — **Life Skills → Master list** is where you
 release the rest, whenever you want, at whatever pace fits the year. A fresh checklist
-starts with fifteen unlocked so it isn't empty on day one; the other thirteen (a
-second wave across the same five categories, plus a new *Digital Life* one — privacy
-settings, spotting a scam, password habits) sit locked until you flip them on. This
-exists because a static fifteen-item list turned out to be thin for a full school
-year — a motivated kid can clear it in a few weeks, and the page goes quiet after
-that unless someone remembers to add more by hand. The catalog is still not agentic:
-nothing here decides *when* to unlock a skill or picks one for you, it's a plain
-on/off switch per skill, same spirit as everything else on this page. Locking a skill
-back up never hides it if he's already earned it — the badge stays, only "what's
-still ahead of him" changes. For anything you add yourself outside the catalog, the
-"what you'll need" line is a plain text field on the *Add a skill* form.
+starts with fifteen unlocked so it isn't empty on day one; the other 140 sit locked
+until you flip them on, spread across thirteen categories — the original five (Money,
+Cooking, Vehicle, Communication, Home) each deepened to a dozen-plus entries, plus
+eight new ones: Digital Life, Health & Safety, Time & Organization, Work & Career,
+Civic & Legal, Outdoor & Wilderness, Social & Etiquette, and Yard & Home Maintenance.
+Each Master list row collapses to a title and a lock/unlock status; open one for the
+full mission, the "you'll need" materials, and which subject it credits, before
+deciding whether to unlock it. This exists because a static fifteen-item list turned
+out to be thin for a full school year — a motivated kid can clear it in a few weeks,
+and the page goes quiet after that unless someone remembers to add more by hand. The
+catalog is still not agentic: nothing here decides *when* to unlock a skill or picks
+one for you, it's a plain on/off switch per skill, same spirit as everything else on
+this page. Locking a skill back up never hides it if he's already earned it — the
+badge stays, only "what's still ahead of him" changes. For anything you add yourself
+outside the catalog, the "what you'll need" line is a plain text field on the *Add a
+skill* form.
 
 There is no agent picking his next life skill, and there won't be. The four core
 agents exist because each answers something you genuinely can't answer off the top of

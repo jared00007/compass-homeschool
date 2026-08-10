@@ -180,7 +180,7 @@ def test_life_skills_are_seeded_with_real_mission_and_materials_text(db, student
     list, not blank fields -- the card has nothing to show otherwise."""
     db.seed_life_skills(student["id"])
     skills = db.list_life_skills(student["id"])
-    assert len(skills) == 28
+    assert len(skills) >= 150
     assert all(s["description"] for s in skills)
     assert all(s["materials"] for s in skills)
 
@@ -192,7 +192,7 @@ def test_the_original_fifteen_seed_active_and_the_rest_locked(db, student):
     db.seed_life_skills(student["id"])
     skills = db.list_life_skills(student["id"])
     assert sum(1 for s in skills if s["active"]) == 15
-    assert sum(1 for s in skills if not s["active"]) == 13
+    assert sum(1 for s in skills if not s["active"]) == len(skills) - 15
 
 
 def test_set_life_skill_active_toggles_visibility_without_touching_completion(db, student):
@@ -256,8 +256,8 @@ def test_a_checklist_seeded_before_mission_text_existed_gets_backfilled(db, stud
 
 def test_a_checklist_seeded_before_the_catalog_grew_gets_topped_up(db, student):
     """A family that already ran `seed_life_skills` before the master catalog
-    grew past the original fifteen would otherwise never see the thirteen
-    later additions, active or not -- `seed_life_skills` only fires once."""
+    grew past the original fifteen would otherwise never see the later
+    additions, active or not -- `seed_life_skills` only fires once."""
     db.seed_life_skills(student["id"])
     # Simulate a pre-expansion checklist: drop everything not in the original 15
     # (the catalog's first 15 entries, active by default).
@@ -273,7 +273,7 @@ def test_a_checklist_seeded_before_the_catalog_grew_gets_topped_up(db, student):
     db._backfill_life_skill_catalog()
 
     skills = db.list_life_skills(student["id"])
-    assert len(skills) == 28
+    assert len(skills) == len(LIFE_SKILL_CATALOG)
     new_arrival = next(s for s in skills if s["title"] == "Lock down your privacy settings")
     assert new_arrival["active"] == 0
     # The 15 that were already there keep whatever state they had -- the

@@ -166,6 +166,568 @@ LIFE_SKILL_CATALOG: Sequence[tuple[str, str, str, str, str, bool]] = (
      "Not reusing the same password everywhere, and using a password "
      "manager instead of memorizing (or writing down) two dozen of them.",
      "your accounts, a password manager app", False),
+    # -- the rest of the catalog: 150+ total, so a full school year has
+    # somewhere to go. All locked by default -- same reasoning as above.
+    ("Money", "Set a savings goal and actually hit it", "occupational_education",
+     "Pick something real you want, figure out how much it costs, and save "
+     "toward it in chunks instead of just wishing for it. The tracking is "
+     "the skill, not the wanting.",
+     "a savings goal, a place to track progress (jar, app, spreadsheet)", False),
+    ("Money", "Split a bill fairly", "occupational_education",
+     "Figure out who owes what when a group buys something together -- "
+     "tip, tax, and uneven orders included. Doing it in your head, not "
+     "just hoping it works out.",
+     "a real receipt, a calculator", False),
+    ("Money", "Understand taxes on a paycheck", "occupational_education",
+     "Where federal, state, and payroll tax actually go, and why your "
+     "first paycheck is smaller than you expected.",
+     "a sample pay stub", False),
+    ("Money", "Negotiate a price", "occupational_education",
+     "Ask for a better price on something real -- a yard sale item, a "
+     "used bike, a phone repair -- and actually go through with it "
+     "instead of just paying the sticker price.",
+     "something real to negotiate on", False),
+    ("Money", "Spot a bad financial deal", "occupational_education",
+     "Payday loans, 'buy now pay later,' extended warranties -- the "
+     "offers that sound convenient but cost way more than they're worth "
+     "once you do the math.",
+     "a real ad or offer to break down", False),
+    ("Money", "Read a receipt and catch a mistake", "occupational_education",
+     "Check a real receipt against what you actually bought. Overcharges "
+     "and double-scans happen more than you'd think, and nobody catches "
+     "them if you don't look.",
+     "a store receipt", False),
+    ("Money", "Understand insurance basics", "occupational_education",
+     "What a deductible and a premium actually are, using a real example "
+     "-- car, health, or renters insurance, whichever's easiest to get a "
+     "sample of.",
+     "a sample insurance policy or quote", False),
+    ("Money", "Keep savings separate from spending money", "occupational_education",
+     "Keep 'money I'm saving' physically apart from 'money I might "
+     "spend' so it doesn't quietly disappear. The separation is the "
+     "whole trick.",
+     "a second account or a labeled envelope/jar", False),
+    ("Money", "Understand what a subscription actually costs over a year", "occupational_education",
+     "Add up what a $10/month app really costs across 12 months, and "
+     "decide honestly whether it's worth it once you see the real "
+     "number.",
+     "a list of your own or the family's subscriptions", False),
+    ("Money", "Donate or give away something thoughtfully", "occupational_education",
+     "Pick a cause or a person, decide how much time or money makes "
+     "sense, and actually follow through -- giving well is its own "
+     "skill, not just an impulse.",
+     "something to give, somewhere to give it", False),
+    ("Cooking", "Bake something from scratch", "health",
+     "No box mix -- measure your own flour, sugar, and leavening, and "
+     "get the ratios right. Baking punishes guessing more than cooking "
+     "does.",
+     "a from-scratch recipe, real baking ingredients", False),
+    ("Cooking", "Cook for a dietary restriction", "health",
+     "Make a full meal that's actually gluten-free, vegetarian, or "
+     "allergy-safe for someone real -- not just skipping the obvious "
+     "thing, but knowing what else has it hidden in it.",
+     "a recipe, someone with a real restriction to cook for", False),
+    ("Cooking", "Use a knife correctly for real prep", "health",
+     "The claw grip, a rocking chop, and enough control to dice an "
+     "onion without a single close call.",
+     "a chef's knife, a cutting board, an onion or two", False),
+    ("Cooking", "Meal prep for the week", "health",
+     "Cook multiple servings in one session and portion them out, so "
+     "the rest of the week doesn't depend on cooking from scratch every "
+     "night.",
+     "a recipe that scales, containers", False),
+    ("Cooking", "Grill something safely", "health",
+     "Light it, control the heat, and cook meat to an actual safe "
+     "temperature instead of guessing by how it looks.",
+     "a grill, a meat thermometer, something to grill", False),
+    ("Cooking", "Make a proper cup of something hot", "health",
+     "Coffee, tea, or hot chocolate done right instead of however's "
+     "fastest -- ratios, temperature, and timing all actually matter.",
+     "coffee/tea, a kettle or maker", False),
+    ("Cooking", "Understand food expiration vs. 'best by'", "health",
+     "Which dates actually mean 'don't eat this' and which just mean "
+     "'not at its best' -- so the fridge doesn't get emptied over "
+     "nothing, or kept full of something risky.",
+     "a few items from your own fridge/pantry", False),
+    ("Cooking", "Host a small meal for guests", "health",
+     "Plan the menu, time it so everything's ready together, and "
+     "actually serve people -- the hosting part is as much a skill as "
+     "the cooking.",
+     "a menu, real guests (even just family)", False),
+    ("Cooking", "Preserve or store food properly", "health",
+     "Freezing, proper fridge storage, or a simple canning/pickling "
+     "project -- keeping food good longer instead of tossing it.",
+     "food to preserve, containers or jars", False),
+    ("Cooking", "Cook a meal on a camp stove or over a fire", "health",
+     "No kitchen -- just a burner or open flame, and a meal that "
+     "actually works with that limitation.",
+     "a camp stove or fire pit, simple ingredients", False),
+    ("Vehicle", "Parallel park", "occupational_education",
+     "The maneuver everyone claims to hate because nobody actually "
+     "practices it. Cones or real spots, doesn't matter -- just get it "
+     "consistent.",
+     "a car, a space to practice (cones optional)", False),
+    ("Vehicle", "Understand your car insurance and what it covers", "occupational_education",
+     "What's actually covered if something goes wrong, what your "
+     "deductible means in a real dollar amount, and who to call first.",
+     "the family's insurance card/policy", False),
+    ("Vehicle", "Know what to do after a minor accident", "occupational_education",
+     "The actual steps -- safety first, information exchange, photos, "
+     "who you call -- worked through before you ever need them for "
+     "real.",
+     "nothing but a walkthrough of the steps", False),
+    ("Vehicle", "Wash and detail a car properly", "occupational_education",
+     "Not just a quick hose-down -- actually getting it clean, inside "
+     "and out, without leaving swirl marks or missing the wheels.",
+     "soap, sponge/mitt, a hose or car wash", False),
+    ("Vehicle", "Understand basic dashboard maintenance reminders", "occupational_education",
+     "Oil change intervals, mileage-based service, and how to actually "
+     "track when the next one's due instead of waiting for something "
+     "to break.",
+     "the car's manual or maintenance record", False),
+    ("Vehicle", "Load and secure cargo safely", "occupational_education",
+     "Tie down or properly load something in a trunk or truck bed so "
+     "it doesn't shift, fall out, or become a hazard at speed.",
+     "cargo to move, straps or rope", False),
+    ("Vehicle", "Drive safely in bad weather", "occupational_education",
+     "What actually changes about how you drive in rain, snow, or ice "
+     "-- following distance, braking, and when to just not go.",
+     "the conversation, and real practice when conditions allow, with a parent", False),
+    ("Vehicle", "Understand what 'totaled' means and basic car value", "occupational_education",
+     "How an insurance company decides a car isn't worth fixing, and "
+     "roughly how to tell what a car's actually worth before buying or "
+     "selling one.",
+     "a real listing or two to look at values", False),
+    ("Communication", "Write a resume", "language",
+     "Even with no job history yet -- school, volunteering, and life "
+     "skills earned right here all count. The format and honesty both "
+     "matter.",
+     "a computer, a list of your own experience", False),
+    ("Communication", "Handle a job interview", "language",
+     "Answer real questions out loud, without reading off notes, for "
+     "something you'd actually apply for.",
+     "a parent or adult to run a practice interview", False),
+    ("Communication", "Give constructive feedback without being harsh", "language",
+     "Tell someone something isn't working without making them feel "
+     "attacked -- specific, kind, and actually useful instead of vague "
+     "or brutal.",
+     "a real situation to give feedback on", False),
+    ("Communication", "Apologize for real, not just say sorry", "health",
+     "Own what you actually did, without an excuse attached, and mean "
+     "it. The difference between a real apology and a reflex is "
+     "obvious to everyone but the person saying it.",
+     "a real moment when it's needed", False),
+    ("Communication", "Ask for help when you actually need it", "health",
+     "Say out loud that you're stuck, specifically, instead of quietly "
+     "struggling or pretending you've got it. Harder than it sounds "
+     "for a lot of people.",
+     "a real situation where you're stuck", False),
+    ("Communication", "Speak up in a group without waiting to be asked", "language",
+     "Say your actual opinion in a group setting -- family, class, "
+     "team -- instead of just going along with whatever's already "
+     "been said.",
+     "a real group conversation", False),
+    ("Communication", "Write a thank-you note", "language",
+     "A real one, specific to what you're thanking someone for, not a "
+     "generic line. Handwritten if you can manage it.",
+     "paper and a pen, a real reason to write one", False),
+    ("Communication", "De-escalate a tense conversation", "health",
+     "Notice when a conversation is heating up and actually bring the "
+     "temperature down instead of adding to it.",
+     "nothing but the moment it's needed", False),
+    ("Home", "Deep clean a room start to finish", "occupational_education",
+     "Not a quick tidy -- actually clean, including the parts nobody "
+     "checks: baseboards, under furniture, behind doors.",
+     "cleaning supplies, a room that needs it", False),
+    ("Home", "Plan and pack for a trip", "occupational_education",
+     "Make a real packing list for a real trip and actually stick to "
+     "it -- nothing forgotten, nothing overpacked.",
+     "a real trip to pack for", False),
+    ("Home", "Organize a closet or drawer system that actually holds", "occupational_education",
+     "Not a one-time cleanup -- a system that's still working a month "
+     "later, because the setup made it easy to keep up.",
+     "a closet or drawer, storage bins if needed", False),
+    ("Home", "Take care of a pet's full needs for a week", "occupational_education",
+     "Feeding, walking, cleanup, and attention, solo, for a real week "
+     "-- not just the fun parts.",
+     "a real pet (family's or a neighbor's), a full week", False),
+    ("Home", "Water and care for houseplants or a garden bed", "occupational_education",
+     "Keep something alive on purpose for a season -- knowing how much "
+     "water and light it actually needs, not guessing.",
+     "a plant or garden bed", False),
+    ("Home", "Set up and troubleshoot a piece of home tech", "occupational_education",
+     "A new WiFi router, smart device, or streaming setup -- installed "
+     "and working, including fixing it when it doesn't connect the "
+     "first time.",
+     "a real device to set up", False),
+    ("Home", "Change a light fixture or fix a simple electrical issue", "occupational_education",
+     "Swap a light fixture, replace an outlet cover, or reset a "
+     "breaker -- the safe, simple stuff that doesn't need an "
+     "electrician, with power off first.",
+     "a screwdriver, a parent supervising, power off at the breaker", False),
+    ("Home", "Plan and cook for a family gathering or holiday", "occupational_education",
+     "Take real ownership of one dish or the whole meal for an actual "
+     "gathering, including the planning and timing, not just the "
+     "cooking.",
+     "a real gathering to cook for", False),
+    ("Home", "Keep a home maintenance calendar", "occupational_education",
+     "Track the stuff that needs doing on a schedule -- furnace "
+     "filters, smoke detector batteries, gutter cleaning -- so it's "
+     "not forgotten until something breaks.",
+     "a calendar or planner, the house's actual maintenance needs", False),
+    ("Home", "Move furniture safely without hurting yourself or the floor", "occupational_education",
+     "Proper lifting technique, and actually protecting the floor -- "
+     "sliders, blankets, or just enough people to carry it right.",
+     "furniture to move, a second person if it's heavy", False),
+    ("Digital Life", "Back up your important files and photos", "occupational_education",
+     "Actually have a second copy somewhere -- cloud or external drive "
+     "-- so losing a phone or laptop doesn't mean losing everything on "
+     "it.",
+     "your device, a cloud account or external drive", False),
+    ("Digital Life", "Understand what you're agreeing to before you click accept", "occupational_education",
+     "Skim a real terms-of-service or permissions request and "
+     "understand roughly what it's actually asking for, instead of "
+     "clicking through blind.",
+     "a real app install or account signup", False),
+    ("Digital Life", "Manage screen time on purpose, not by accident", "occupational_education",
+     "Set your own limits on something and actually stick to them for "
+     "a week, instead of just noticing afterward how much time went "
+     "by.",
+     "a phone or app with screen-time tracking", False),
+    ("Digital Life", "Build something simple with code", "occupational_education",
+     "A basic website, a small script, or a simple game -- something "
+     "that actually runs, built from real instructions, not just "
+     "copy-pasted.",
+     "a computer, a beginner coding tutorial", False),
+    ("Digital Life", "Understand how your data gets used online", "occupational_education",
+     "What a company actually does with your searches, location, and "
+     "purchase history -- and why 'free' apps aren't really free.",
+     "a real app's privacy policy or settings page", False),
+    ("Digital Life", "Manage a group chat or online community respectfully", "occupational_education",
+     "Handle a disagreement, a rule-breaker, or just normal group "
+     "dynamics in a chat or server without it turning into a mess.",
+     "a real group chat you're part of", False),
+    ("Digital Life", "Evaluate whether an online source is trustworthy", "occupational_education",
+     "Check who wrote something, why, and whether it's backed by "
+     "anything real before believing or sharing it.",
+     "a real article or post to check", False),
+    ("Digital Life", "Set healthy boundaries with people online", "occupational_education",
+     "Block, mute, or walk away from something online the same way "
+     "you'd leave an uncomfortable conversation in person -- and know "
+     "it's okay to.",
+     "the judgment call, when it's needed", False),
+    ("Digital Life", "Understand your digital footprint", "occupational_education",
+     "Search your own name and see what's actually out there, then "
+     "think about what a stranger -- or a future employer -- would "
+     "find.",
+     "a device with internet access", False),
+    ("Health & Safety", "Learn CPR and choking response", "health",
+     "Real hands-on practice, not just watching a video -- what to "
+     "actually do in the first minute before help arrives.",
+     "a CPR class or certified instructor (many are free/cheap locally)", False),
+    ("Health & Safety", "Build a home emergency kit", "health",
+     "Water, food, flashlight, first aid, radio -- put together for "
+     "real, checked and restocked, not just a vague plan in your head.",
+     "a bin, the supply list, a shopping trip", False),
+    ("Health & Safety", "Know your family's emergency meeting plan", "health",
+     "Where to go and who to call if you're separated during an "
+     "emergency -- fire, earthquake, or just a bad day gone sideways.",
+     "a conversation with the family, written down somewhere", False),
+    ("Health & Safety", "Understand your own allergies and how to manage them", "health",
+     "What you're actually allergic to, what happens if exposed, and "
+     "what to do about it -- including carrying and using an EpiPen if "
+     "that applies to you.",
+     "your actual medical info, an EpiPen if prescribed", False),
+    ("Health & Safety", "Practice fire safety and know two ways out of every room", "health",
+     "Actually walk it -- two real exits from your bedroom, and a plan "
+     "for what happens if the main one's blocked.",
+     "your own house, a walkthrough", False),
+    ("Health & Safety", "Learn to swim well enough to be safe in open water", "health",
+     "Not just float -- tread water, swim a real distance, and know "
+     "your own limits in a lake, river, or ocean.",
+     "access to a pool, lake, or swim lessons", False),
+    ("Health & Safety", "Understand basic mental health warning signs -- in yourself and others", "health",
+     "What actually counts as 'this isn't just a bad day' -- and who "
+     "to tell if you notice it in yourself or a friend.",
+     "the conversation, ideally with a parent or counselor", False),
+    ("Health & Safety", "Get a full night's sleep on purpose for a week", "health",
+     "Track it and actually protect it -- a real bedtime, no scrolling "
+     "in bed, and notice what changes when you're not running on six "
+     "hours.",
+     "a way to track sleep (app or notebook)", False),
+    ("Health & Safety", "Learn safe sun and heat exposure habits", "health",
+     "Sunscreen that actually works, hydration, and knowing the real "
+     "signs of heat exhaustion before it's a problem.",
+     "sunscreen, water, a hot day to be smart about", False),
+    ("Health & Safety", "Know how to handle a minor illness without panicking", "health",
+     "A cold, a stomach bug, a fever -- what actually needs a doctor "
+     "and what just needs rest, fluids, and time.",
+     "a thermometer, basic over-the-counter guidance from a parent", False),
+    ("Health & Safety", "Practice situational awareness in public", "health",
+     "Notice exits, notice people, keep your head up instead of "
+     "buried in a phone -- the boring habit that actually matters if "
+     "something goes wrong.",
+     "any public outing", False),
+    ("Health & Safety", "Learn to safely use common household chemicals", "health",
+     "Which cleaning products should never be mixed, how to read a "
+     "warning label, and proper ventilation -- the stuff that turns "
+     "'cleaning' into a hospital visit if ignored.",
+     "household cleaning products, their labels", False),
+    ("Time & Organization", "Keep a calendar you actually check", "occupational_education",
+     "Every commitment, appointment, and deadline in one place -- and "
+     "a real habit of looking at it, not just writing things down and "
+     "forgetting.",
+     "a planner or calendar app", False),
+    ("Time & Organization", "Build a morning routine that actually works", "occupational_education",
+     "Timed, tested, and adjusted until you're consistently out the "
+     "door on time without a last-minute scramble.",
+     "a clock, a week of mornings to test it", False),
+    ("Time & Organization", "Break a big project into a real plan", "occupational_education",
+     "Take something that feels overwhelming and split it into steps "
+     "with actual deadlines, instead of starting the night before it's "
+     "due.",
+     "a real project or assignment", False),
+    ("Time & Organization", "Practice saying no to protect your own time", "occupational_education",
+     "Turn down a request you don't actually have room for, politely "
+     "but clearly, instead of overcommitting and resenting it later.",
+     "a real request to decline", False),
+    ("Time & Organization", "Set and track a personal goal for a month", "occupational_education",
+     "Something measurable, checked weekly, adjusted if it's not "
+     "working -- not just a vague resolution you forget by day three.",
+     "a goal, a way to track it", False),
+    ("Time & Organization", "Declutter and maintain a workspace", "occupational_education",
+     "A desk or study space that's actually set up to help you focus, "
+     "kept that way on purpose, not cleaned once and left to pile up "
+     "again.",
+     "a desk or workspace", False),
+    ("Time & Organization", "Manage multiple deadlines at once without missing one", "occupational_education",
+     "A real week with more than one thing due, tracked and "
+     "prioritized so nothing slips through.",
+     "a real set of overlapping deadlines (school, chores, etc.)", False),
+    ("Time & Organization", "Practice a consistent bedtime routine", "occupational_education",
+     "Wind down the same way most nights -- screens off, same rough "
+     "time -- and notice what it does to how the next day goes.",
+     "a week to test it", False),
+    ("Time & Organization", "Track your own spending or time for two weeks", "occupational_education",
+     "Write down every dollar spent or every hour used for two real "
+     "weeks, then actually look at the pattern -- most people are "
+     "surprised.",
+     "a notebook or app, two weeks", False),
+    ("Time & Organization", "Plan a full free day well", "occupational_education",
+     "A day with nothing scheduled, planned on purpose instead of "
+     "drifting through it -- proof that 'free time' and 'wasted time' "
+     "aren't the same thing.",
+     "one real free day", False),
+    ("Work & Career", "Do a full shift of real work for pay", "occupational_education",
+     "Babysitting, yard work, a real job -- start to finish, showing "
+     "up on time and seeing it through, for actual money.",
+     "a real paid task or job", False),
+    ("Work & Career", "Practice basic workplace etiquette", "occupational_education",
+     "Showing up on time, communicating if you're running late, and "
+     "how to actually talk to a boss or supervisor.",
+     "a real or simulated work setting", False),
+    ("Work & Career", "Explore three different careers seriously", "occupational_education",
+     "Not just 'that sounds cool' -- actual research into what the job "
+     "pays, what it takes to get there, and what a normal day looks "
+     "like.",
+     "internet access, maybe an informational interview", False),
+    ("Work & Career", "Write a cover letter or introduction email for an opportunity", "occupational_education",
+     "A real one, for something you'd actually apply to -- a job, a "
+     "volunteer spot, a program.",
+     "a real opportunity to apply for", False),
+    ("Work & Career", "Understand how to read a job posting", "occupational_education",
+     "What's actually required vs. nice-to-have, and how to tell if a "
+     "posting is legitimate or a scam.",
+     "a few real job postings", False),
+    ("Work & Career", "Learn spreadsheet basics", "occupational_education",
+     "Enter data, use a simple formula, sort a list -- the baseline "
+     "spreadsheet skill almost every job eventually needs.",
+     "a computer with spreadsheet software", False),
+    ("Work & Career", "Practice professional phone and email tone", "occupational_education",
+     "The difference between how you text a friend and how you email "
+     "an employer -- and why mixing them up costs you.",
+     "a real email or call to make", False),
+    ("Work & Career", "Volunteer for a real cause and track the hours", "occupational_education",
+     "Actual volunteer work, logged honestly, for something you care "
+     "about -- not just for the resume line.",
+     "a local volunteer opportunity", False),
+    ("Work & Career", "Learn what an entrepreneur actually does day to day", "occupational_education",
+     "Talk to or research someone who runs their own business -- past "
+     "the highlight reel, into what a normal Tuesday looks like for "
+     "them.",
+     "an interview or solid research", False),
+    ("Work & Career", "Understand your rights as a young worker", "occupational_education",
+     "What hours you're legally allowed to work, what breaks you're "
+     "owed, and who to tell if something's actually wrong.",
+     "internet access (state labor department site)", False),
+    ("Work & Career", "Practice public speaking to a real audience", "occupational_education",
+     "A speech, a presentation, or just standing up and talking to "
+     "more than five people without notes -- fear included.",
+     "a real audience, even a small one", False),
+    ("Work & Career", "Build a simple personal budget tied to a real income", "occupational_education",
+     "Once there's actual money coming in -- allowance, a job, gifts "
+     "-- track it against a real plan instead of spending as it "
+     "arrives.",
+     "real income, a budget tool", False),
+    ("Civic & Legal", "Understand how local government actually works", "social_studies",
+     "Who your mayor, city council, or county officials are, and what "
+     "they actually control versus what's decided at the state or "
+     "federal level.",
+     "internet access, your local government's website", False),
+    ("Civic & Legal", "Attend or watch a real public meeting", "social_studies",
+     "A city council meeting, a school board meeting -- see how "
+     "decisions that affect your actual town get made, in real time.",
+     "a local meeting (many are livestreamed)", False),
+    ("Civic & Legal", "Understand your rights if stopped by police", "social_studies",
+     "What you're required to do, what you're not, and how to stay "
+     "calm and safe through it -- a real, calm conversation, not just "
+     "a Hollywood version.",
+     "a conversation with a parent, maybe a real resource/pamphlet", False),
+    ("Civic & Legal", "Register to vote as soon as you're eligible", "social_studies",
+     "Know the process before you're actually old enough, so it's not "
+     "a scramble the week of an election you care about.",
+     "internet access, your state's voter registration site", False),
+    ("Civic & Legal", "Understand a basic contract before signing anything", "social_studies",
+     "What you're actually agreeing to in a phone plan, a lease, a gym "
+     "membership -- reading past the first page.",
+     "a real sample contract or agreement", False),
+    ("Civic & Legal", "Learn what happens in small claims court", "social_studies",
+     "How a normal person actually resolves a real dispute -- a "
+     "deposit not returned, a bad repair job -- without a lawyer.",
+     "internet access, your local court's info", False),
+    ("Civic & Legal", "Understand jury duty and why it matters", "social_studies",
+     "What it actually is, why it's not something to dodge, and what "
+     "happens if you're called.",
+     "the conversation/research", False),
+    ("Civic & Legal", "Know the basics of your state's driving laws", "social_studies",
+     "Not just how to drive -- what's actually legal: phone use, "
+     "seatbelt law, what a ticket costs and does to insurance.",
+     "your state's driver's handbook", False),
+    ("Civic & Legal", "Understand how a tax return works, even before you file one", "social_studies",
+     "What a W-2 is, roughly what a return means, and why some people "
+     "get money back and others owe -- walked through with real "
+     "numbers.",
+     "a sample W-2 or tax form", False),
+    ("Civic & Legal", "Participate in a community decision or local issue", "social_studies",
+     "Speak at a meeting, sign a real petition, or write to a local "
+     "official about something you actually care about.",
+     "a real local issue", False),
+    ("Outdoor & Wilderness", "Plan and go on a real hike", "occupational_education",
+     "Pick the trail, check the weather, pack the right gear, and "
+     "actually navigate it -- planning included, not just walking.",
+     "a trail, weather check, day pack", False),
+    ("Outdoor & Wilderness", "Set up a tent and camp overnight", "occupational_education",
+     "Pitch it correctly, pack the right gear, and spend a real night "
+     "outside -- not just in the backyard.",
+     "a tent, camping gear, a campsite", False),
+    ("Outdoor & Wilderness", "Build and safely put out a campfire", "occupational_education",
+     "Start one without lighter fluid, keep it controlled, and put it "
+     "out completely -- cold to the touch, not just no visible flame.",
+     "a legal fire pit, wood, water or dirt to douse it", False),
+    ("Outdoor & Wilderness", "Read a trail map and use a compass", "occupational_education",
+     "No phone -- find your way using an actual paper map and compass, "
+     "and know how to get back if you're turned around.",
+     "a paper map, a compass", False),
+    ("Outdoor & Wilderness", "Identify poisonous plants in your area", "health",
+     "Poison ivy/oak, and anything else actually dangerous locally -- "
+     "know it well enough to avoid it on sight.",
+     "a local plant guide", False),
+    ("Outdoor & Wilderness", "Purify water in the outdoors", "health",
+     "Filter or treat water from a natural source well enough to "
+     "actually drink it safely, using a real filter or tablets.",
+     "a water filter or purification tablets, a natural water source", False),
+    ("Outdoor & Wilderness", "Fish or forage responsibly", "occupational_education",
+     "Catch something real (with a license if required) or forage "
+     "something edible you've correctly identified -- know the rules, "
+     "not just the how.",
+     "fishing gear or a foraging guide, local regulations", False),
+    ("Outdoor & Wilderness", "Handle basic outdoor first aid", "health",
+     "A blister, a sprain, a bee sting, out in the field, without a "
+     "fully stocked medicine cabinet nearby.",
+     "a basic outdoor first aid kit", False),
+    ("Outdoor & Wilderness", "Understand weather signs and when to turn back", "health",
+     "Read the sky and conditions well enough to make the call to head "
+     "back before a real problem starts.",
+     "an outdoor trip where conditions are worth watching", False),
+    ("Outdoor & Wilderness", "Leave no trace on a real trip", "occupational_education",
+     "Pack out everything, including what most people leave behind, "
+     "and leave a site exactly like you found it -- or better.",
+     "a real outdoor outing, trash bags", False),
+    ("Social & Etiquette", "Host or co-host a real gathering", "health",
+     "Plan it, invite people, and actually run it -- from a small "
+     "hangout to something bigger, hosting is its own skill.",
+     "a real event to plan", False),
+    ("Social & Etiquette", "Write and send real invitations", "health",
+     "For a real event -- clear on the details, sent with enough "
+     "notice, and actually followed up on.",
+     "an event, a way to send invites", False),
+    ("Social & Etiquette", "Practice good table manners at a real meal", "health",
+     "Not just 'don't chew with your mouth open' -- how to actually "
+     "navigate a sit-down meal, including one that's a little formal.",
+     "a real sit-down meal", False),
+    ("Social & Etiquette", "Be a good guest at someone else's home", "health",
+     "Bring something, help clean up, know when it's time to leave -- "
+     "the unwritten rules that make people want to invite you back.",
+     "a real visit to someone else's home", False),
+    ("Social & Etiquette", "Navigate a disagreement with a friend without losing the friendship", "health",
+     "Say what's actually bothering you, hear them out, and come out "
+     "the other side still friends -- a real, specific conflict, not a "
+     "hypothetical.",
+     "a real disagreement, when one comes up", False),
+    ("Social & Etiquette", "Practice active listening in a real conversation", "health",
+     "Actually listen instead of just waiting for your turn to talk -- "
+     "and prove it by summarizing back what someone said.",
+     "a real conversation partner", False),
+    ("Social & Etiquette", "Handle rejection or disappointment gracefully", "health",
+     "Not getting picked, not getting the answer you wanted -- react "
+     "in a way you'd be fine with someone seeing.",
+     "a real disappointment, when one happens", False),
+    ("Social & Etiquette", "Include someone who's being left out", "health",
+     "Notice it happening in a real group setting and actually do "
+     "something -- not a lecture, just an action.",
+     "a real group setting", False),
+    ("Social & Etiquette", "Practice appropriate humor and know when to dial it back", "health",
+     "Read a room well enough to know when a joke lands and when it "
+     "doesn't -- and adjust in real time.",
+     "a real social setting", False),
+    ("Social & Etiquette", "Navigate a family conflict respectfully", "health",
+     "Disagree with a parent or sibling on something real without it "
+     "becoming a blowout -- state your case, actually listen, find a "
+     "landing spot.",
+     "a real family disagreement, when one comes up", False),
+    ("Yard & Home Maintenance", "Mow a lawn correctly and safely", "occupational_education",
+     "Real technique -- pattern, height, safety around obstacles -- "
+     "not just pushing it around randomly.",
+     "a mower, a lawn", False),
+    ("Yard & Home Maintenance", "Rake and bag leaves or yard debris", "occupational_education",
+     "A full yard, done properly, including where the bags/debris "
+     "actually need to go afterward.",
+     "a rake, bags, a yard", False),
+    ("Yard & Home Maintenance", "Trim hedges or bushes with hand tools", "occupational_education",
+     "Shape something on purpose, safely, without butchering it -- and "
+     "clean up after.",
+     "hand shears, a hedge or bush", False),
+    ("Yard & Home Maintenance", "Clean out gutters", "occupational_education",
+     "Actually clear them, safely, with someone spotting the ladder -- "
+     "a job most people put off until it's a real problem.",
+     "a ladder, gloves, a spotter", False),
+    ("Yard & Home Maintenance", "Pressure wash a surface", "occupational_education",
+     "Driveway, deck, or siding -- done right, without gouging wood or "
+     "blasting mulch out of a bed.",
+     "a pressure washer, the surface", False),
+    ("Yard & Home Maintenance", "Plant something and keep it alive for a season", "occupational_education",
+     "A tree, a garden bed, a few pots -- planted correctly and "
+     "actually tended, not just planted and forgotten.",
+     "plants, soil, tools", False),
+    ("Yard & Home Maintenance", "Shovel snow or handle winter yard prep safely", "occupational_education",
+     "Real technique so it doesn't wreck your back, plus knowing when "
+     "ice makes it not worth doing alone.",
+     "a shovel, snow (seasonal)", False),
+    ("Yard & Home Maintenance", "Do a basic seasonal home walkthrough", "occupational_education",
+     "Check weatherstripping, look for drafts, check the roof and "
+     "foundation from the ground -- catching small problems before "
+     "they're expensive ones.",
+     "a checklist, a walk around the house", False),
 )
 
 # Leitner intervals in days, indexed by box number (1-5).
