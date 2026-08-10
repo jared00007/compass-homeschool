@@ -50,44 +50,10 @@ def page_setup(title: str, icon: str = "🧭") -> tuple[Database, dict[str, Any]
     st.set_page_config(page_title=f"Compass — {title}", page_icon=icon, layout="wide")
     db = get_db()
     student = db.ensure_default_student()
-    # Before anything renders, so the page never flashes the wrong colours.
-    st.markdown(theming.css(current_theme(db)), unsafe_allow_html=True)
+    # Before anything renders, so the page never flashes unstyled.
+    st.markdown(theming.css(), unsafe_allow_html=True)
     _sidebar(db, student)
     return db, student
-
-
-# --- theme -------------------------------------------------------------------
-
-
-def _theme_key(db: Database) -> str:
-    """Which settings key holds the theme for whoever is looking."""
-    return theming.PARENT_KEY if is_parent() else theming.STUDENT_KEY
-
-
-def current_theme(db: Database) -> theming.Theme:
-    return theming.get(db.get_setting(_theme_key(db), theming.DEFAULT_THEME))
-
-
-def _theme_control(db: Database) -> None:
-    """Theme picker. Deliberately not tucked inside an expander — the whole
-    point is that he finds it and changes it himself."""
-    keys = list(theming.THEMES)
-    active = db.get_setting(_theme_key(db), theming.DEFAULT_THEME)
-
-    chosen = st.selectbox(
-        "🎨 Look",
-        keys,
-        index=keys.index(active) if active in keys else 0,
-        format_func=lambda k: theming.THEMES[k].name,
-        key="theme_choice",
-        help="Changes how Compass looks. Your parent's view keeps its own setting."
-        if not is_parent()
-        else "Changes how Compass looks for you. His view keeps its own setting.",
-    )
-    st.caption(theming.THEMES[chosen].tagline)
-    if chosen != active:
-        db.set_setting(_theme_key(db), chosen)
-        st.rerun()
 
 
 # --- parent / student mode ---------------------------------------------------
@@ -113,7 +79,6 @@ def _sidebar(db: Database, student: dict[str, Any]) -> None:
         _profile_control(db, student)
         st.divider()
         _mode_control(db)
-        _theme_control(db)
 
 
 def _profile_control(db: Database, student: dict[str, Any]) -> None:

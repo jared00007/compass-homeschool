@@ -4,16 +4,15 @@ headless = true
 [browser]
 gatherUsageStats = false
 
-# Streamlit reads this file once, at startup, so it cannot be the theme picker —
-# see compass/theme.py, which repaints the app's surfaces at runtime instead.
+# Streamlit reads this file once, at startup, so it can't be where the app's
+# real look lives -- see compass/theme.py, which repaints the app's surfaces at
+# runtime instead (and is the one fixed theme, not a picker).
 #
 # What this section is for is everything the injected CSS can't reach: the insides
 # of dropdown popovers, date pickers, scrollbars, and the compliance dataframe
-# (rendered to a canvas, not DOM). Kept in step with compass/theme.py's five
-# themes -- light, as of the redesign that moved all five off a dark backdrop --
-# so those native surfaces already look right underneath whichever theme is
-# showing. Values match BACKDROP_BG/BACKDROP_SIDE in theme.py. Changing this file
-# needs an app relaunch; it is not something the runtime picker can do.
+# (rendered to a canvas, not DOM). Kept in step with compass/theme.py -- light --
+# so those native surfaces already look right underneath it. Values match
+# BACKDROP_BG/BACKDROP_SIDE in theme.py. Changing this file needs an app relaunch.
 [theme]
 base = "light"
 backgroundColor = "#FBF7EE"

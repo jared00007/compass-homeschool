@@ -267,8 +267,8 @@ compass/
   storage/                   SQLite schema + repository
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
-  theme.py                   the five themes and the CSS that applies one
-tests/                       304 tests, no API key required
+  theme.py                   the one fixed theme and the CSS that applies it
+tests/                       298 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 ```
 
@@ -296,34 +296,38 @@ app open at once without a lock of our own.
 
 ## Theming
 
-Five themes (Comic Book, Arcade, Tech Tree, High-Vis, Blueprint), picked
-independently by parent and student from a sidebar control on every page, stored
-as two settings keys (`theme_parent`, `theme_student`) so neither view can
-override the other's.
+One fixed theme (Comic Book), the same for both roles, everywhere in the app.
+This used to be five swappable themes with a per-person picker in the sidebar —
+retired on request in favor of one consistent look nobody has to think about,
+after previewing all five live and picking Comic Book. `theme.py` kept the same
+`Theme` dataclass and CSS-generation mechanism; what's gone is the `THEMES` dict,
+the settings-backed lookup (`theme_parent`/`theme_student`), and the sidebar
+control. `THEME` is now the whole decision — one module-level instance, no
+lookup.
 
 Streamlit reads `.streamlit/config.toml` once at process start and, as of 1.61,
 declares no CSS custom properties of its own — theme values are baked directly
-into generated class names, so there's no variable layer to hook a runtime picker
-into. `theme.py` works around this by declaring its own custom properties and
-repainting Streamlit's surfaces through `data-testid` selectors, which are the one
-part of Streamlit's DOM that's stable across releases (its own test suite depends
-on them). The stylesheet is injected fresh at the top of `page_setup()`, before
-anything else renders, so a page never flashes the previous theme.
+into generated class names, so there's no variable layer to hook into. `theme.py`
+works around this by declaring its own custom properties and repainting
+Streamlit's surfaces through `data-testid` selectors, which are the one part of
+Streamlit's DOM that's stable across releases (its own test suite depends on
+them). The stylesheet is injected fresh at the top of `page_setup()`, before
+anything else renders, so a page never flashes unstyled.
 
 **The backdrop is structurally fixed, not just visually consistent.** `BACKDROP_BG`
-and `BACKDROP_SIDE` are module-level constants, not fields on `Theme` — no theme
-instance carries its own version to override them with, so `.stApp` and the
-sidebar always render from the same two hex values regardless of which theme is
-active. Every `Theme` field instead targets the *containers*: expanders, alert
-banners, and `st.metric` tiles all share one set of rules (`panel`, `panel_texture`,
-`border`, `glow`), so a theme only has to say what its containers look like once.
-A few themes layer on a signature touch through the same generic mechanism —
-Arcade's two-tone top/bottom border (`border_top`/`border_bottom`), High-Vis's
-hazard-chevron top bar (`top_bar`), Comic Book's inked page-title stroke
-(`heading_stroke`/`heading_fill`) — each expressed as a CSS variable that defaults
-to a no-op for the other four themes, rather than per-theme conditionals in `css()`.
+and `BACKDROP_SIDE` are module-level constants, not fields on `Theme` — `THEME`
+carries no version of its own to override them with, so `.stApp` and the sidebar
+always render from the same two hex values. Every `Theme` field instead targets
+the *containers*: expanders, alert banners, and `st.metric` tiles all share one
+set of rules (`panel`, `panel_texture`, `border`, `glow`), so the theme only has
+to say what its containers look like once. Comic Book's signature touch — the
+inked page-title stroke (`heading_stroke`/`heading_fill`) — goes through the same
+generic mechanism as the other, now-unused fields (`border_top`/`border_bottom`,
+`top_bar`) that the original five themes used for their own signature touches;
+those fields stayed on `Theme` since they're still real CSS-variable plumbing,
+just no-ops for Comic Book's own values.
 
-Two things this approach can't do, and why the shipped themes work around them
+Two things this approach can't do, and why the shipped theme works around them
 rather than fighting them:
 
 - **Anything Streamlit renders to canvas is out of reach.** The compliance
@@ -332,38 +336,25 @@ rather than fighting them:
 - **Popovers, date pickers, and text inputs partly follow the config base too.**
   Reachable surface gets repainted; the rest falls back to whatever base
   `config.toml` set at launch. This is why `config.toml`'s base is kept in step
-  with `theme.py`'s backdrop constants — a runtime picker can't change this file,
+  with `theme.py`'s backdrop constants — the file can't change without a relaunch,
   so it has to already agree, and a mismatch here would show up as a canvas
   dataframe rendering dark against a light page around it.
 
-**All five themes moved off a dark backdrop to a light one.** `BACKDROP_BG`/
-`BACKDROP_SIDE` and every theme's `panel` went from near-black to a warm,
-bright off-white — `config.toml`'s `base` moved from `"dark"` to `"light"` in
-the same change, so the canvas dataframe stays in step rather than reading as
-a leftover dark tile. The one thing this broke, and had to be fixed
-deliberately rather than by eye: the primary-button rule used to print button
-text in `--c-panel`, which was a safe pairing back when panel meant "dark" —
-button text on a bright primary background was effectively dark-on-bright
-either way. With panel now light on every theme, that rule would have printed
-near-white text on a bright accent colour, close to unreadable. The fix is a
-new `--c-button-text` token, defaulting to the theme's own dark `text`; a
-WCAG contrast check (not eyeballing) found two themes where the default still
-fails against their own `primary` — Arcade's magenta clears only 3.7:1 with
-dark text, Blueprint's red only 2.8:1 — so those two override `button_text` to
-white instead of lightening `primary` itself, which is also the page's accent
-and heading colour elsewhere. All five clear 4.5:1 (AA), pinned by test rather
-than left to whoever next changes a colour to notice.
+**The backdrop is light**, and the primary-button text pairing is checked, not
+eyeballed: a `--c-button-text` token defaults to the theme's own dark `text`,
+verified against `primary` with a real WCAG contrast calculation (4.5:1, AA) —
+pinned by test rather than left to whoever next changes a colour to notice.
 
 One regression worth naming: an early build painted every `st.metric` value in
-the theme's accent colour, which made the compliance page read as a wall of
-alarms — `0 / 1000 hours` in Blueprint's red looked like a failure rather than an
-ordinary September Tuesday. Metrics now render in the theme's text colour;
-the accent is reserved for things that actually need the reader's action, kept
-strictly apart from semantic colour (`good`/`warn`/`bad`) so a warning never
-borrows the same hue as "here's your next lesson." Both rules are pinned by test.
-`st.metric` itself did get a container treatment in the round that added the other
-four fields — background, border, texture, and glow, same as an expander — so the
-numbers on Home and Compliance read as distinct tiles rather than bare text.
+the accent colour, which made the compliance page read as a wall of alarms —
+`0 / 1000 hours` in gold looked like a failure rather than an ordinary September
+Tuesday. Metrics now render in the theme's text colour; the accent is reserved
+for things that actually need the reader's action, kept strictly apart from
+semantic colour (`good`/`warn`/`bad`) so a warning never borrows the same hue as
+"here's your next lesson." Both rules are pinned by test. `st.metric` itself gets
+the same container treatment as an expander — background, border, texture, and
+glow — so the numbers on Home and Compliance read as distinct tiles rather than
+bare text.
 
 ---
 
@@ -825,7 +816,7 @@ student view, a plain countdown to the first day of school.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 304 tests, ~9s, no API key needed
+python -m pytest tests/ -q      # 298 tests, ~9s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

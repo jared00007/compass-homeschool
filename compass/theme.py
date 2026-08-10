@@ -1,23 +1,29 @@
-"""The five themes, and the CSS that puts one of them on the page.
+"""Compass's one fixed look, and the CSS that puts it on the page.
 
 Streamlit's own theming lives in `.streamlit/config.toml` and is read once when
-the server starts, so it cannot answer "let him pick his own look" — that needs to
-change per session, per person, without a restart. And there is no variable layer
-to swap: as of 1.61 Streamlit bakes theme values into generated class names and
-declares no CSS custom properties at all.
+the server starts, so it cannot answer "give every container real texture and a
+title stroke" -- there is no variable layer to hook into. As of 1.61 Streamlit
+bakes theme values into generated class names and declares no CSS custom
+properties at all.
 
 So this module does it the other way round. It declares its own custom properties
 on `:root`, then repaints Streamlit's surfaces through them using `data-testid`
 selectors — which are stable across versions because Streamlit's own test suite
 depends on them. Everything the CSS can't reach (the insides of dropdown popovers,
 date pickers, and the compliance dataframe, which renders to a canvas) is covered
-by keeping `config.toml`'s base theme in step with these five — light, to match —
-so those native surfaces already look right underneath whichever theme is showing.
+by keeping `config.toml`'s base theme in step with this one -- light, to match --
+so those native surfaces already look right underneath it.
 
-The backdrop rule: the page ground and the sidebar are fixed, not themed. Color
-lives on the containers -- expanders, alerts, metrics, buttons -- never on the
-page behind them. `BACKDROP_BG`/`BACKDROP_SIDE` are the only place that ground is
-defined, and no `Theme` below carries its own version to override them with.
+This used to be five swappable themes with a per-person picker in the sidebar.
+Retired on request: one consistent look, everywhere, for everyone -- picked after
+previewing all five live and choosing Comic Book. `THEME` is the whole decision;
+there is no lookup, no stored preference, and no picker UI left to remove it from.
+
+The backdrop rule still holds: the page ground and the sidebar are fixed, not
+themed. Color lives on the containers -- expanders, alerts, metrics, buttons --
+never on the page behind them. `BACKDROP_BG`/`BACKDROP_SIDE` are the only place
+that ground is defined, and `THEME` carries no version of its own to override it
+with.
 """
 
 from __future__ import annotations
@@ -29,8 +35,8 @@ from dataclasses import dataclass
 SANS = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif'
 MONO = 'ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace'
 
-# The static backdrop. Fixed across every theme, on purpose -- see module docstring.
-# A warm, bright off-white pair rather than pure white/grey -- chosen, not inherited.
+# The static backdrop. A warm, bright off-white pair rather than pure white/grey
+# -- chosen, not inherited. See module docstring for why this stays fixed.
 BACKDROP_BG = "#FBF7EE"
 BACKDROP_SIDE = "#F3ECDA"
 
@@ -38,8 +44,6 @@ BACKDROP_SIDE = "#F3ECDA"
 @dataclass(frozen=True)
 class Theme:
     key: str
-    name: str
-    tagline: str
 
     panel: str       # cards, expanders, metrics, alerts -- the containers
     text: str
@@ -57,23 +61,18 @@ class Theme:
     heading_weight: str = "700"
     heading_stroke: str = "0px"       # an inked outline behind the page title
     heading_fill: str = "var(--c-text)"  # the page title's own colour, separate
-    # from body text so a theme can make it pop without recoloring every h2-h4
+    # from body text so it can pop without recoloring every h2-h4
     # The primary button prints in this colour over `primary`. Defaults to the
-    # theme's own dark `text` -- but `primary` isn't always light enough for
-    # that to clear WCAG AA (4.5:1); Arcade's magenta and Blueprint's red are
-    # both under 4.5:1 with dark text, so those two override this to white
-    # rather than lightening `primary` itself, which is also the page's accent
-    # and heading colour elsewhere. Checked with a contrast calculator, not by
-    # eye -- "looks fine" and "4.5:1" are not the same claim.
+    # theme's own dark `text` -- checked with a contrast calculator against
+    # `primary`, not by eye, since "looks fine" and "clears WCAG AA" aren't
+    # the same claim.
     button_text: str = "var(--c-text)"
     panel_texture: str = "none"       # a background-image every container gets
     glow: str = "none"
-    # Two-tone container frame (Arcade's marquee edge). None on either side means
-    # "use `border`, plain" -- most themes leave both unset.
+    # Two-tone container frame. None on either side means "use `border`, plain".
     border_top: str | None = None
     border_bottom: str | None = None
-    # A 4px stripe across each container's top edge. Transparent is a no-op;
-    # only High-Vis's chevron uses this for real.
+    # A 4px stripe across each container's top edge. Transparent is a no-op.
     top_bar: str = "transparent"
 
     # Semantic colours. Kept separate from `primary` on purpose — "this needs you"
@@ -84,115 +83,30 @@ class Theme:
     bad: str = "#C43B32"
 
 
-THEMES: dict[str, Theme] = {
-    "comic": Theme(
-        key="comic",
-        name="Comic Book",
-        tagline="Ink outlines, sunlit paper",
-        panel="#FFFBF0", text="#241C12", dim="#8A7A5E",
-        primary="#F2B705", alt="#2F63E0", border="#E63946",
-        radius="3px",
-        heading_font='"Avenir Next", "Helvetica Neue", ' + SANS,
-        heading_caps="uppercase", heading_track=".02em", heading_weight="800",
-        heading_stroke="1.1px", heading_fill="var(--c-primary)",
-        panel_texture=(
-            "repeating-radial-gradient(circle at 100% 0%, "
-            "rgba(36,28,18,.05) 0 1px, transparent 1px 7px)"
-        ),
-        glow="3px 3px 0 rgba(36,28,18,.16)",
+THEME = Theme(
+    key="comic",
+    panel="#FFFBF0", text="#241C12", dim="#8A7A5E",
+    primary="#F2B705", alt="#2F63E0", border="#E63946",
+    radius="3px",
+    heading_font='"Avenir Next", "Helvetica Neue", ' + SANS,
+    heading_caps="uppercase", heading_track=".02em", heading_weight="800",
+    heading_stroke="1.1px", heading_fill="var(--c-primary)",
+    panel_texture=(
+        "repeating-radial-gradient(circle at 100% 0%, "
+        "rgba(36,28,18,.05) 0 1px, transparent 1px 7px)"
     ),
-    "arcade": Theme(
-        key="arcade",
-        name="Arcade",
-        tagline="Cabinet art, daylight neon",
-        panel="#FFF6FB", text="#2B1233", dim="#8C6FA3",
-        primary="#E01E68", alt="#0EA5B7", border="#E7B9D6",
-        radius="2px",
-        heading_font='"Futura", "Futura PT", "Century Gothic", "Avenir Next", ' + SANS,
-        heading_caps="uppercase", heading_track=".11em", heading_weight="700",
-        panel_texture=(
-            "repeating-linear-gradient(to bottom, rgba(43,18,51,.05) 0 1px, "
-            "transparent 1px 3px), "
-            "radial-gradient(ellipse 100% 55% at 50% 0%, rgba(14,165,183,.12), transparent 70%)"
-        ),
-        glow="0 2px 14px rgba(224,30,104,.18)",
-        border_top="#FF2D78", border_bottom="#0EA5B7",
-        warn="#B8860B",
-        button_text="#FFFFFF",  # dark text on this magenta clears only 3.7:1
-    ),
-    "techtree": Theme(
-        key="techtree",
-        name="Tech Tree",
-        tagline="Ember on sunlit pine",
-        panel="#F2FAF5", text="#12241D", dim="#5F8B7C",
-        primary="#DC670A", alt="#0E8F73", border="#CDE7DA",
-        radius="3px",
-        heading_caps="uppercase", heading_track=".05em", heading_weight="800",
-        panel_texture=(
-            "radial-gradient(ellipse 150% 100% at 50% -20%, "
-            "rgba(14,143,115,.12), transparent 60%)"
-        ),
-        glow="0 2px 14px rgba(217,102,10,.16)",
-    ),
-    "highvis": Theme(
-        key="highvis",
-        name="High-Vis",
-        tagline="Rally truck, daylight chevron",
-        panel="#FFFFFF", text="#1B1C21", dim="#6B6E76",
-        primary="#E25A0F", alt="#A6821A", border="#E3E1DA",
-        radius="2px",
-        heading_font='"Avenir Next Condensed", "HelveticaNeue-CondensedBold", '
-                     '"Arial Narrow", ' + SANS,
-        heading_caps="uppercase", heading_track=".03em", heading_weight="800",
-        panel_texture=(
-            "repeating-linear-gradient(135deg, rgba(217,86,14,.06) 0 10px, "
-            "transparent 10px 28px)"
-        ),
-        glow="0 2px 10px rgba(217,86,14,.14)",
-        top_bar="repeating-linear-gradient(135deg, var(--c-primary) 0 6px, var(--c-alt) 6px 12px)",
-    ),
-    "blueprint": Theme(
-        key="blueprint",
-        name="Blueprint",
-        tagline="Diazo print, drafting grid",
-        panel="#F2F8FC", text="#0B2A44", dim="#5C87A8",
-        primary="#C93326", alt="#1C7FB8", border="#BFDCEE",
-        radius="0px",
-        heading_caps="uppercase", heading_track=".08em", heading_weight="700",
-        panel_texture=(
-            "repeating-linear-gradient(to right, rgba(28,127,184,.14) 0 1px, "
-            "transparent 1px 22px), "
-            "repeating-linear-gradient(to bottom, rgba(28,127,184,.14) 0 1px, "
-            "transparent 1px 22px)"
-        ),
-        glow="0 2px 10px rgba(201,51,38,.12)",
-        good="#2E8F73", warn="#B0791E",
-        button_text="#FFFFFF",  # dark text on this red clears only 2.8:1
-    ),
-}
-
-DEFAULT_THEME = "techtree"
-
-#: Settings keys. Parent and student get their own, because the person doing two
-#: hours on the compliance page and the person opening one lesson want different
-#: things, and neither should have to overrule the other.
-STUDENT_KEY = "theme_student"
-PARENT_KEY = "theme_parent"
+    glow="3px 3px 0 rgba(36,28,18,.16)",
+)
 
 
-def get(key: str | None) -> Theme:
-    """Resolve a stored key to a theme, tolerating one that no longer exists."""
-    return THEMES.get(key or "", THEMES[DEFAULT_THEME])
-
-
-def css(theme: Theme) -> str:
-    """The stylesheet that paints Streamlit in this theme.
+def css() -> str:
+    """The stylesheet that paints Streamlit in `THEME`.
 
     Selectors are `data-testid` attributes wherever possible. They are what
     Streamlit's own tests target, which makes them the most stable hook available
     — far more so than the emotion class names, which rehash between releases.
     """
-    t = theme
+    t = THEME
     border_top = t.border_top or t.border
     border_bottom = t.border_bottom or t.border
     return f"""
@@ -222,8 +136,8 @@ def css(theme: Theme) -> str:
 }}
 
 /* --- grounds -----------------------------------------------------------
-   Fixed. Every theme above reads from BACKDROP_BG/BACKDROP_SIDE, never
-   from its own field -- there isn't one to override this with. */
+   Fixed. Reads from BACKDROP_BG/BACKDROP_SIDE, never from a `Theme` field
+   -- there isn't one to override this with. */
 .stApp {{ background: {BACKDROP_BG}; font-family: var(--c-body); }}
 [data-testid="stAppViewContainer"] {{ position: relative; z-index: 1; }}
 [data-testid="stHeader"] {{ background: transparent; }}
@@ -234,10 +148,10 @@ def css(theme: Theme) -> str:
      beats any stylesheet rule regardless of selector specificity -- `!important`
      is the only way a stylesheet wins that fight. Without it, the sidebar simply
      grows to fit its content, and once enough controls stack up (nine nav links,
-     the profile editor, the mode control, the theme picker) that content outgrows
-     a short window with nothing to scroll: not the sidebar, not the page behind
-     it. Confirmed live: a 760px-tall window clipped everything below "Parent
-     view" with no scrollbar reachable by any means, including the mouse wheel. */
+     the profile editor, the mode control) that content outgrows a short window
+     with nothing to scroll: not the sidebar, not the page behind it. Confirmed
+     live: a 760px-tall window clipped everything below "Parent view" with no
+     scrollbar reachable by any means, including the mouse wheel. */
   height: 100vh !important;
   overflow-y: auto !important;
 }}
@@ -257,9 +171,9 @@ def css(theme: Theme) -> str:
   text-transform: {t.heading_caps};
 }}
 /* The page title (st.title -> h1) is the one heading that gets to be loud --
-   an inked stroke and, for Comic Book, the accent as its actual fill colour.
-   Everything smaller (h2-h4: section headers, card titles) stays plain text
-   colour, or a page reads as shouting by the third subheading. */
+   an inked stroke and the accent as its actual fill colour. Everything
+   smaller (h2-h4: section headers, card titles) stays plain text colour, or
+   a page reads as shouting by the third subheading. */
 [data-testid="stHeading"] h1, .stApp h1 {{
   color: var(--c-heading-fill);
   -webkit-text-stroke: var(--c-heading-stroke) #000;
@@ -313,7 +227,7 @@ def css(theme: Theme) -> str:
 /* --- numbers ---------------------------------------------------------
    Deliberately *not* the accent. An early build painted every metric in it,
    which made the compliance page read as a wall of alarms — "0 / 1000 hours"
-   in Blueprint's red looked like a failure rather than a September Tuesday.
+   in the accent colour looked like a failure rather than a September Tuesday.
    The accent means "this is yours to act on"; a figure is just a figure. Size,
    weight and tabular figures carry the emphasis instead.
 
@@ -362,7 +276,7 @@ def css(theme: Theme) -> str:
 /* Dataframes render to a canvas, so their cells are out of CSS's reach and
    follow the base theme in config.toml instead. Framing the wrapper is all
    that can be done here — which is why config.toml's base is kept light, in
-   step with these five. */
+   step with this theme. */
 [data-testid="stDataFrame"] {{
   border: 1px solid var(--c-border);
   border-radius: var(--c-radius);
@@ -371,14 +285,10 @@ def css(theme: Theme) -> str:
 
 /* --- buttons ---------------------------------------------------------
    Primary buttons print in `--c-button-text`, not `--c-panel` -- panel is a
-   light surface colour on every theme here, and light-on-bright-primary would
-   be close to unreadable (this used to be `var(--c-panel)`, back when panel
-   meant "dark" under the old backdrop). `--c-button-text` defaults to the
-   theme's own dark `text`, which clears WCAG AA (4.5:1) against most of these
-   primaries -- Arcade and Blueprint are the two whose primary isn't light
-   enough for that, so those two override it to white instead. See the
-   `button_text` field on `Theme` for why that's the fix and not a lighter
-   primary. */
+   light surface colour, and light-on-bright-primary would be close to
+   unreadable. `--c-button-text` defaults to the theme's own dark `text`,
+   checked against `primary` with a real contrast calculator (4.5:1, not
+   "looks fine"). See the `button_text` field on `Theme`. */
 [data-testid="stBaseButton-secondary"] {{
   background: var(--c-panel);
   color: var(--c-text);

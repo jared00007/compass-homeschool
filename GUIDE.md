@@ -543,31 +543,24 @@ ever see an answer inside an activity, that's a real bug worth reporting.
 
 ## Look
 
-There's a **🎨 Look** picker in the sidebar, below the mode control, on every
-page. Five themes — Comic Book, Arcade, Tech Tree, High-Vis, Blueprint — each a
-genuinely different colour and type treatment, not a recolour of the same layout.
-
-His pick and yours are stored separately. He can make Compass look like whatever
-gets him to open it without asking, and it has no effect on what you see when you
-unlock. Neither of you can break the other's — change one, the other is untouched.
+Compass has one fixed look — Comic Book — the same for both of you, everywhere in
+the app. It used to be five swappable themes with a picker in the sidebar; that's
+gone on request, in favor of one consistent look nobody has to think about.
 
 **The page itself never changes colour — only what sits on it does.** The
-background and the sidebar are the same warm, bright off-white in all five; what
-a theme actually repaints is the containers — the expanders lessons open into, the
-warning banners, the little tiles showing his hours and skill counts. That split
-is deliberate: five backgrounds fighting for attention would be exhausting to read
-for an hour, but five distinct ways of framing the same content is just decor.
+background and the sidebar are a warm, bright off-white; the theme repaints the
+containers on top of it — the expanders lessons open into, the warning banners,
+the little tiles showing his hours and skill counts, all in gold, ink, and a
+red-bordered ink-outline style with a light halftone-dot texture.
 
-All five are light. That's a change from Compass's first color pass, which shipped
-dark: Streamlit reads its base colours once at startup, so the parts of the page a
-live picker can't repaint — the inside of a date picker, a text box, a dropdown
-menu, the compliance page's table — always show through in whatever base the app
-launched with, which has to match the five themes on top of it or a table will
-render dark against a light page. Since that base can't change without an app
-restart, it isn't something the picker can do live — it's set once, for everyone,
-in `.streamlit/config.toml`.
+That base is light for a structural reason, not just to match: Streamlit reads its
+own base colours once at startup, so the parts of the page CSS can't repaint — the
+inside of a date picker, a text box, a dropdown menu, the compliance page's table
+— always show through in whatever base the app launched with. That base is set
+once, for everyone, in `.streamlit/config.toml`, kept in step with the fixed theme
+so a table doesn't render dark against a light page.
 
-**If the sidebar looks cut off** — the mode control or the Look picker missing
-below the nav links — it's a short browser window, not a missing feature. The
-sidebar scrolls independently now; put your mouse over it and scroll to reach
-anything below the fold. A taller window avoids it entirely.
+**If the sidebar looks cut off** — the mode control missing below the nav links —
+it's a short browser window, not a missing feature. The sidebar scrolls
+independently; put your mouse over it and scroll to reach anything below the fold.
+A taller window avoids it entirely.
