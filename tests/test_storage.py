@@ -216,6 +216,35 @@ def test_a_database_created_before_the_materials_column_gets_migrated(tmp_path):
         migrated.close()
 
 
+def test_a_checklist_seeded_before_mission_text_existed_gets_backfilled(db, student):
+    """A checklist seeded in an earlier build (blank description/materials,
+    since `seed_life_skills` only ever inserts once per student) must pick up
+    the real mission text on the next launch rather than showing "No mission
+    notes yet" forever -- reported after exactly that happened live."""
+    db.conn.execute(
+        "INSERT INTO life_skills (student_id, category, title, credit_subject) "
+        "VALUES (?, 'Money', 'Build and follow a monthly budget', 'occupational_education')",
+        (student["id"],),
+    )
+    db.conn.commit()
+
+    db._backfill_life_skill_content()
+
+    skill = db.list_life_skills(student["id"])[0]
+    assert skill["description"].startswith("Figure out what money")
+    assert "pencil and paper" in skill["materials"]
+
+
+def test_backfill_never_overwrites_a_parents_own_edit(db, student):
+    skill_id = db.add_life_skill(
+        student["id"], "Build and follow a monthly budget", "Money",
+        description="Our family's own version of this.",
+    )
+    db._backfill_life_skill_content()
+    skill = next(s for s in db.list_life_skills(student["id"]) if s["id"] == skill_id)
+    assert skill["description"] == "Our family's own version of this."
+
+
 def test_unexplored_web_nodes_prefer_the_current_location(db, student):
     db.add_web_node(student["id"], "science", "desert varnish", location="Moab", depth=2)
     db.add_web_node(student["id"], "science", "salmon runs", location="Hoh River", depth=3)

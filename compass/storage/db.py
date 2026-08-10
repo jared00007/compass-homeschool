@@ -18,6 +18,91 @@ from compass import config
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
+# The starter life-skills checklist: (category, title, credit_subject, description,
+# materials). Written, not agent-generated -- plain, casual, kid-facing, matching
+# how Tier 1 lesson content is written. `materials` is the short "what you'll need"
+# list the card shows under the story.
+#
+# Lives at module level (rather than inline in `seed_life_skills`) so
+# `_backfill_life_skill_content` can share the same source of truth -- a family
+# whose checklist was seeded before this text existed (or before `materials`
+# existed) needs the same content, not a second copy of it that can drift.
+STARTER_LIFE_SKILLS: Sequence[tuple[str, str, str, str, str]] = (
+    ("Money", "Build and follow a monthly budget", "occupational_education",
+     "Figure out what money's coming in and what's going out, then make a "
+     "simple plan so you don't run out before the month does. Set some "
+     "categories, guess your spending, then check back and see how close "
+     "you got.",
+     "pencil and paper (or a spreadsheet), one real month of numbers"),
+    ("Money", "Open and reconcile a bank account", "occupational_education",
+     "You'll open a real account (a parent's on it too) and learn to check "
+     "it against your own math -- what you think you have vs. what the "
+     "bank says you have. Catching the difference is the actual skill.",
+     "a parent, ID, ~$20 to open with"),
+    ("Money", "Understand a paycheck: gross, net, withholding", "occupational_education",
+     "A paycheck has two numbers that matter: what you earned and what you "
+     "actually get to keep. Work through a sample stub and figure out "
+     "where the rest of it goes.",
+     "a sample pay stub, a calculator"),
+    ("Cooking", "Plan and cook a full meal for the family", "health",
+     "Pick a meal, shop for it (or use what's in the kitchen), and cook "
+     "the whole thing start to finish -- timing included, so everything's "
+     "ready at the same time.",
+     "a recipe, a grocery run, about 90 minutes"),
+    ("Cooking", "Read nutrition labels and plan a balanced week", "health",
+     "Nutrition labels look like a wall of numbers until you know which "
+     "three or four actually matter. Use them to plan a week of meals "
+     "that aren't just convenient -- that are actually decent for you.",
+     "a few labels from the pantry, a week's meal list"),
+    ("Cooking", "Kitchen safety and safe food handling", "health",
+     "The stuff that keeps you from getting sick or hurt: washing hands "
+     "right, not cross-contaminating raw meat, knowing when food's gone "
+     "bad, and using a knife without losing a finger.",
+     "a kitchen, a parent watching once"),
+    ("Vehicle", "Check and top off oil, coolant, washer fluid", "occupational_education",
+     "The three fluids you should check before anyone tells you your car's "
+     "in trouble. Takes ten minutes and can save you a much worse day "
+     "later.",
+     "the owner's manual, 10 minutes, the car"),
+    ("Vehicle", "Check tire pressure and change a tire", "occupational_education",
+     "Two skills in one: reading a tire gauge so you know when a tire's "
+     "actually low, and swapping one out on the side of the road if you "
+     "have to.",
+     "a tire gauge, the spare, the jack and lug wrench"),
+    ("Vehicle", "Jump-start a vehicle safely", "occupational_education",
+     "A dead battery isn't a big deal if you know which cable goes where, "
+     "and in what order. Get it wrong and you can actually fry something "
+     "-- that's why the order matters.",
+     "jumper cables, a second running car"),
+    ("Communication", "Write a clear, polite email to an adult", "language",
+     "Emails to teachers, coaches, or businesses have their own rules -- "
+     "not too casual, not stiff either, and always saying exactly what "
+     "you need in the first two lines.",
+     "a real email to send, 15 minutes"),
+    ("Communication", "Make a phone call to schedule an appointment", "language",
+     "An actual phone call, not a text. Practice saying who you are, what "
+     "you need, and getting a real time booked -- without freezing up.",
+     "a real place to call, your calendar"),
+    ("Communication", "Introduce yourself and shake hands", "health",
+     "Look someone in the eye, say your name clearly, and shake hands "
+     "like you mean it. Small thing, but it's the first impression every "
+     "single time.",
+     "a person to practice on"),
+    ("Home", "Do laundry start to finish", "occupational_education",
+     "Sorting, washing, drying, folding -- the whole loop, no help. "
+     "Including not turning anyone's white shirt pink.",
+     "a full hamper, the washer and dryer"),
+    ("Home", "Basic first aid and when to call for help", "health",
+     "Cuts, burns, sprains -- what you can handle yourself, and where "
+     "the line is where you stop and call 911 or a parent instead.",
+     "a first aid kit"),
+    ("Home", "Read a map and navigate without GPS", "social_studies",
+     "Your phone dies, or you're somewhere with no signal -- can you "
+     "still get where you're going with an actual map? That's the whole "
+     "skill.",
+     "a paper map or atlas, a real trip to plan"),
+)
+
 # Leitner intervals in days, indexed by box number (1-5).
 LEITNER_INTERVALS = {1: 1, 2: 3, 3: 7, 4: 16, 5: 35}
 
@@ -54,6 +139,7 @@ class Database:
         # creation -- a family's existing life_skills table predates the
         # `materials` column, so it needs adding here instead.
         self._ensure_column("life_skills", "materials", "TEXT NOT NULL DEFAULT ''")
+        self._backfill_life_skill_content()
         for key, value in config.DEFAULT_SETTINGS.items():
             self.conn.execute(
                 "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value)
@@ -64,6 +150,24 @@ class Database:
         existing = {row["name"] for row in self.conn.execute(f"PRAGMA table_info({table})")}
         if column not in existing:
             self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+
+    def _backfill_life_skill_content(self) -> None:
+        """Fill in `description`/`materials` for starter skills seeded before
+        that text existed -- `seed_life_skills` only ever runs once per
+        student, so a checklist seeded in an earlier build stays blank
+        forever otherwise. Matched by exact title, and only when the field is
+        still blank, so a parent's own edit is never overwritten."""
+        for _, title, _, description, materials in STARTER_LIFE_SKILLS:
+            self.conn.execute(
+                "UPDATE life_skills SET description = ? "
+                "WHERE title = ? AND description = ''",
+                (description, title),
+            )
+            self.conn.execute(
+                "UPDATE life_skills SET materials = ? "
+                "WHERE title = ? AND materials = ''",
+                (materials, title),
+            )
 
     # -- settings -------------------------------------------------------------
 
@@ -708,91 +812,11 @@ class Database:
         self.conn.commit()
 
     def seed_life_skills(self, student_id: int) -> int:
-        """Seed the starter checklist described in the design doc, once.
-
-        Missions are written, not agent-generated -- plain, casual, kid-facing,
-        matching how Tier 1 lesson content is written. `materials` is the short
-        "what you'll need" list the card shows under the story.
-        """
+        """Seed the starter checklist described in the design doc, once."""
         existing = self.list_life_skills(student_id)
         if existing:
             return 0
-        starter: Sequence[tuple[str, str, str, str, str]] = (
-            ("Money", "Build and follow a monthly budget", "occupational_education",
-             "Figure out what money's coming in and what's going out, then make a "
-             "simple plan so you don't run out before the month does. Set some "
-             "categories, guess your spending, then check back and see how close "
-             "you got.",
-             "pencil and paper (or a spreadsheet), one real month of numbers"),
-            ("Money", "Open and reconcile a bank account", "occupational_education",
-             "You'll open a real account (a parent's on it too) and learn to check "
-             "it against your own math -- what you think you have vs. what the "
-             "bank says you have. Catching the difference is the actual skill.",
-             "a parent, ID, ~$20 to open with"),
-            ("Money", "Understand a paycheck: gross, net, withholding", "occupational_education",
-             "A paycheck has two numbers that matter: what you earned and what you "
-             "actually get to keep. Work through a sample stub and figure out "
-             "where the rest of it goes.",
-             "a sample pay stub, a calculator"),
-            ("Cooking", "Plan and cook a full meal for the family", "health",
-             "Pick a meal, shop for it (or use what's in the kitchen), and cook "
-             "the whole thing start to finish -- timing included, so everything's "
-             "ready at the same time.",
-             "a recipe, a grocery run, about 90 minutes"),
-            ("Cooking", "Read nutrition labels and plan a balanced week", "health",
-             "Nutrition labels look like a wall of numbers until you know which "
-             "three or four actually matter. Use them to plan a week of meals "
-             "that aren't just convenient -- that are actually decent for you.",
-             "a few labels from the pantry, a week's meal list"),
-            ("Cooking", "Kitchen safety and safe food handling", "health",
-             "The stuff that keeps you from getting sick or hurt: washing hands "
-             "right, not cross-contaminating raw meat, knowing when food's gone "
-             "bad, and using a knife without losing a finger.",
-             "a kitchen, a parent watching once"),
-            ("Vehicle", "Check and top off oil, coolant, washer fluid", "occupational_education",
-             "The three fluids you should check before anyone tells you your car's "
-             "in trouble. Takes ten minutes and can save you a much worse day "
-             "later.",
-             "the owner's manual, 10 minutes, the car"),
-            ("Vehicle", "Check tire pressure and change a tire", "occupational_education",
-             "Two skills in one: reading a tire gauge so you know when a tire's "
-             "actually low, and swapping one out on the side of the road if you "
-             "have to.",
-             "a tire gauge, the spare, the jack and lug wrench"),
-            ("Vehicle", "Jump-start a vehicle safely", "occupational_education",
-             "A dead battery isn't a big deal if you know which cable goes where, "
-             "and in what order. Get it wrong and you can actually fry something "
-             "-- that's why the order matters.",
-             "jumper cables, a second running car"),
-            ("Communication", "Write a clear, polite email to an adult", "language",
-             "Emails to teachers, coaches, or businesses have their own rules -- "
-             "not too casual, not stiff either, and always saying exactly what "
-             "you need in the first two lines.",
-             "a real email to send, 15 minutes"),
-            ("Communication", "Make a phone call to schedule an appointment", "language",
-             "An actual phone call, not a text. Practice saying who you are, what "
-             "you need, and getting a real time booked -- without freezing up.",
-             "a real place to call, your calendar"),
-            ("Communication", "Introduce yourself and shake hands", "health",
-             "Look someone in the eye, say your name clearly, and shake hands "
-             "like you mean it. Small thing, but it's the first impression every "
-             "single time.",
-             "a person to practice on"),
-            ("Home", "Do laundry start to finish", "occupational_education",
-             "Sorting, washing, drying, folding -- the whole loop, no help. "
-             "Including not turning anyone's white shirt pink.",
-             "a full hamper, the washer and dryer"),
-            ("Home", "Basic first aid and when to call for help", "health",
-             "Cuts, burns, sprains -- what you can handle yourself, and where "
-             "the line is where you stop and call 911 or a parent instead.",
-             "a first aid kit"),
-            ("Home", "Read a map and navigate without GPS", "social_studies",
-             "Your phone dies, or you're somewhere with no signal -- can you "
-             "still get where you're going with an actual map? That's the whole "
-             "skill.",
-             "a paper map or atlas, a real trip to plan"),
-        )
-        for order, (category, title, subject, description, materials) in enumerate(starter):
+        for order, (category, title, subject, description, materials) in enumerate(STARTER_LIFE_SKILLS):
             self.conn.execute(
                 "INSERT INTO life_skills "
                 "(student_id, category, title, credit_subject, description, materials, sort_order) "
@@ -800,7 +824,7 @@ class Database:
                 (student_id, category, title, subject, description, materials, order),
             )
         self.conn.commit()
-        return len(starter)
+        return len(STARTER_LIFE_SKILLS)
 
     # -- Declaration of Intent (WA RCW 28A.200.010) ---------------------------
 
