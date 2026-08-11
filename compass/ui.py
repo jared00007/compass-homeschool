@@ -737,57 +737,60 @@ LIFE_SKILL_CATEGORY_ICONS = {
 LIFE_SKILL_DEFAULT_ICON = "🎖️"  # any category a parent types in beyond the starter five
 LIFE_SKILL_CARDS_PER_ROW = 3
 
-# "Neon Pop" -- picked by name after a live preview of four skins, fixed on
-# purpose rather than derived from `compass.theme`. The story is always on
-# the card; nothing here is click-to-reveal. A checkbox is the only thing
-# that changes `completed_on`, and only the checked state changes how a card
-# looks -- brought in via two *static* rules keyed off a suffix baked into
-# each card's own container `key` (`..._earned` / `..._locked`) rather than
-# one generated <style> block per skill, the same technique the old badge
-# case used: a container `key` becomes a `st-key-<key>` class token, and
-# `[class*=...]` matches on that token's substring.
+# Was "Neon Pop" -- its own fixed pink/teal skin, picked before the app
+# consolidated onto one theme, and never migrated when it did. Now reads
+# from `compass.theme`'s own CSS custom properties (--c-border, --c-primary,
+# etc.) like every other surface, so it stops clashing whenever the theme's
+# palette moves. The story is always on the card; nothing here is
+# click-to-reveal. A checkbox is the only thing that changes `completed_on`,
+# and only the checked state changes how a card looks -- brought in via two
+# *static* rules keyed off a suffix baked into each card's own container
+# `key` (`..._earned` / `..._locked`) rather than one generated <style>
+# block per skill, the same technique the old badge case used: a container
+# `key` becomes a `st-key-<key>` class token, and `[class*=...]` matches on
+# that token's substring.
 _LIFE_SKILL_CARD_CSS = """
 <style>
 .cp-ls-tallybar {
-  font-weight: 800; font-size: 15px; color: #2B1233;
-  border-bottom: 2px solid #FF2D9B; padding-bottom: 10px; margin-bottom: 10px;
+  font-weight: 800; font-size: 15px; color: var(--c-text);
+  border-bottom: 2px solid var(--c-border); padding-bottom: 10px; margin-bottom: 10px;
 }
 .cp-ls-tallybar .cp-ls-tally {
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 13px; color: #9C7FB3; font-weight: 400;
+  font-family: var(--c-mono);
+  font-size: 13px; color: var(--c-dim); font-weight: 400;
 }
 div[class*="st-key-ls_card_"][class*="_locked"],
 div[class*="st-key-ls_card_"][class*="_earned"] {
-  border-radius: 14px !important;
-  border: 2px solid #F0DCEA !important;
+  border-radius: var(--c-radius) !important;
+  border: 1px solid var(--c-border) !important;
   padding: 14px 16px 8px !important;
-  background: #FFFFFF !important;
+  background: var(--c-panel) !important;
+  box-shadow: var(--c-glow);
   position: relative;
   margin-bottom: 16px;
 }
 div[class*="st-key-ls_card_"][class*="_earned"] {
-  border-color: #FF2D9B !important;
-  background: linear-gradient(135deg, #FFF0FA, #F0FFFC 100%) !important;
-  box-shadow: 0 4px 18px rgba(255, 45, 155, .16);
+  border-color: var(--c-primary) !important;
+  box-shadow: 0 4px 18px rgba(242, 183, 5, .25);
 }
 .cp-ls-seal {
   display: none; position: absolute; top: -16px; right: 14px; width: 52px; height: 52px;
   border-radius: 50%; align-items: center; justify-content: center; font-size: 19px;
-  background: radial-gradient(circle at 32% 28%, #6BFFEA, #00D9C0 75%);
-  border: 3px solid #FF2D9B;
-  box-shadow: 0 0 16px rgba(255, 45, 155, .45);
+  background: radial-gradient(circle at 32% 28%, #FFE9A0, var(--c-primary) 75%);
+  border: 3px solid var(--c-primary);
+  box-shadow: 0 0 16px rgba(242, 183, 5, .45);
   transform: rotate(12deg);
 }
 div[class*="st-key-ls_card_"][class*="_earned"] .cp-ls-seal { display: flex; }
-.cp-ls-title { font-weight: 800; font-size: 14.5px; color: #2B1233; padding-right: 34px; line-height: 1.3; }
+.cp-ls-title { font-weight: 800; font-size: 14.5px; color: var(--c-text); padding-right: 34px; line-height: 1.3; }
 .cp-ls-cat {
-  font-size: 10.5px; color: #FF2D9B; text-transform: uppercase; letter-spacing: .1em;
-  margin: 3px 0 8px; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 10.5px; color: var(--c-border); text-transform: uppercase; letter-spacing: .1em;
+  margin: 3px 0 8px; font-family: var(--c-mono);
 }
-.cp-ls-story { font-size: 12.5px; line-height: 1.5; color: #2B1233; opacity: .92; margin: 0 0 8px; }
-.cp-ls-needs { font-size: 11.5px; color: #9C7FB3; margin-bottom: 2px; }
-.cp-ls-needs b { color: #2B1233; }
-div[class*="st-key-ls_card_"] input[type="checkbox"] { accent-color: #FF2D9B; }
+.cp-ls-story { font-size: 12.5px; line-height: 1.5; color: var(--c-text); opacity: .92; margin: 0 0 8px; }
+.cp-ls-needs { font-size: 11.5px; color: var(--c-dim); margin-bottom: 2px; }
+.cp-ls-needs b { color: var(--c-text); }
+div[class*="st-key-ls_card_"] input[type="checkbox"] { accent-color: var(--c-primary); }
 div[class*="st-key-ls_card_"] [data-testid="stWidgetLabel"] p { font-weight: 700; font-size: 12.5px; }
 </style>
 """

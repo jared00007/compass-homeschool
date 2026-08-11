@@ -15,7 +15,7 @@ gatherUsageStats = false
 # BACKDROP_BG/BACKDROP_SIDE in theme.py. Changing this file needs an app relaunch.
 [theme]
 base = "light"
-backgroundColor = "#FBF7EE"
+backgroundColor = "#FBF1D6"
 secondaryBackgroundColor = "#EAF1FC"
 textColor = "#1C1A16"
 primaryColor = "#D9622B"

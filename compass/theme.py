@@ -37,7 +37,7 @@ MONO = 'ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace'
 
 # The static backdrop. A warm, bright off-white pair rather than pure white/grey
 # -- chosen, not inherited. See module docstring for why this stays fixed.
-BACKDROP_BG = "#FBF7EE"
+BACKDROP_BG = "#FBF1D6"
 BACKDROP_SIDE = "#EAF1FC"
 # A faint ink-blue texture on the sidebar only -- same repeating-gradient
 # technique as a theme's own `panel_texture`, echoing the border/nav-accent
