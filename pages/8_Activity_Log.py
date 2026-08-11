@@ -161,6 +161,14 @@ with lessons_tab:
                 st.caption(f"Why: {lesson['rationale']}")
             if student_done_on and lesson["status"] != "completed":
                 st.caption(f"🎓 He marked this done on {student_done_on} — not logged yet.")
+            quiz_result = (lesson.get("metadata") or {}).get("quiz_result")
+            if quiz_result and quiz_result.get("total"):
+                pct = round(100 * quiz_result["correct"] / quiz_result["total"])
+                verdict = "🎯 passed" if quiz_result.get("passed") else "below the pass threshold"
+                st.caption(
+                    f"📝 Quiz: {quiz_result['correct']}/{quiz_result['total']} ({pct}%) — "
+                    f"{verdict}, graded {quiz_result.get('graded_on', '?')}"
+                )
             st.write(lesson["payload"].get("overview", ""))
             credits = lesson["payload"].get("subject_credits") or []
             if credits:

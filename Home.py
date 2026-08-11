@@ -223,6 +223,33 @@ with right:
 
 st.divider()
 
+# --- recent quiz results -------------------------------------------------------
+# Passing a quiz auto-records mastery, but nothing else surfaced that it had even
+# happened -- a parent had no way to see he'd taken and passed one at all, only
+# the skill dropdown on Math's own "Record mastery" tab, if you knew to check it.
+
+st.subheader("Recent quiz results")
+quizzed = [
+    lesson
+    for lesson in db.list_lessons(student["id"], limit=25)
+    if (lesson.get("metadata") or {}).get("quiz_result", {}).get("total")
+]
+quizzed.sort(key=lambda l: l["metadata"]["quiz_result"]["graded_on"], reverse=True)
+if not quizzed:
+    st.caption("No quizzes taken yet.")
+else:
+    for lesson in quizzed[:5]:
+        result = lesson["metadata"]["quiz_result"]
+        pct = round(100 * result["correct"] / result["total"])
+        verdict = "🎯 passed" if result["passed"] else "below the pass threshold"
+        st.markdown(
+            f"**{result['graded_on']}** — {lesson['title']} "
+            f"({lesson['agent'].title()}) — {result['correct']}/{result['total']} "
+            f"({pct}%) — {verdict}"
+        )
+
+st.divider()
+
 # --- recent activity ----------------------------------------------------------
 
 st.subheader("Recently logged")
