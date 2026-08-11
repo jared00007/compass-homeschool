@@ -2,6 +2,10 @@
 feeling pick plus an optional note about anything at all, not just school.
 Fully visible to a parent by design, and told to him plainly on the page --
 never a "private" space he's misled about.
+
+The input card (feeling picker + note + Save) is his to fill in -- a parent
+opening this page gets a read-only look back at what he's said, not a form
+that lets them fill it in for him or overwrite it.
 """
 
 from __future__ import annotations
@@ -12,9 +16,16 @@ from datetime import date
 
 import streamlit as st
 
+from compass import auth
 from compass.ui import is_parent, page_setup
 
 db, student = page_setup("Check-In", icon="💬")
+
+# A parent only gets the read-only browse once a PIN actually separates
+# "parent" from "student" -- families that haven't set one up yet share a
+# single view, and gating the input card on is_parent() alone would have
+# taken away the only way anyone could ever save a check-in.
+browse_only = is_parent() and auth.pin_is_set(db)
 
 FEELINGS: tuple[tuple[str, str], ...] = (
     ("😊", "Good"),
@@ -30,90 +41,110 @@ FEELING_EMOJI = {label: emoji for emoji, label in FEELINGS}
 FEELINGS_PER_ROW = 4
 
 st.title("💬 Check-In")
-st.caption("One tap for how you're doing, and a line if you want to say more.")
-
-st.markdown(
-    """
-    <div style="background:var(--c-panel); border-left:3px solid var(--c-alt);
-         border-radius:var(--c-radius); padding:12px 16px; margin-bottom:20px;
-         font-size:13.5px; box-shadow:var(--c-glow);">
-      👀 <b>Your parents can read what you write here.</b> No secrets, no
-      surprises -- this is a space to check in honestly, not a hidden diary.
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
 
 today = date.today().isoformat()
 todays_entry = db.journal_entry_for_date(student["id"], today)
 
-FEELING_KEY = "checkin_feeling_choice"
-if FEELING_KEY not in st.session_state:
-    st.session_state[FEELING_KEY] = todays_entry["feeling"] if todays_entry else None
+if browse_only:
+    st.caption(f"A look back at how {student['name'].split()[0]}'s been checking in.")
+else:
+    st.caption("One tap for how you're doing, and a line if you want to say more.")
 
-_TODAY_CARD_CSS = """
-<style>
-div[class*="st-key-checkin_today_card"] {
-  border: 1px solid var(--c-border) !important;
-  border-radius: var(--c-radius) !important;
-  background: var(--c-panel) !important;
-  box-shadow: var(--c-glow);
-  padding: 18px !important;
-}
-</style>
-"""
-st.markdown(_TODAY_CARD_CSS, unsafe_allow_html=True)
-
-with st.container(key="checkin_today_card"):
-    st.markdown("**Today — how are you feeling?**")
-    for row_start in range(0, len(FEELINGS), FEELINGS_PER_ROW):
-        row = FEELINGS[row_start : row_start + FEELINGS_PER_ROW]
-        columns = st.columns(FEELINGS_PER_ROW)
-        for column, (emoji, label) in zip(columns, row):
-            selected = st.session_state[FEELING_KEY] == label
-            with column:
-                if st.button(
-                    f"{emoji} {label}",
-                    key=f"feeling_{label}",
-                    type="primary" if selected else "secondary",
-                    width="stretch",
-                ):
-                    st.session_state[FEELING_KEY] = label
-                    st.rerun()
-
-    note = st.text_area(
-        "Want to say more? Anything -- school, friends, home, whatever's on "
-        "your mind. (optional)",
-        value=todays_entry["note"] if todays_entry else "",
-        placeholder="Sometimes it helps just to get it out.",
-        height=90,
-        key="checkin_note",
+    st.markdown(
+        """
+        <div style="background:var(--c-panel); border-left:3px solid var(--c-alt);
+             border-radius:var(--c-radius); padding:12px 16px; margin-bottom:20px;
+             font-size:13.5px; box-shadow:var(--c-glow);">
+          👀 <b>Your parents can read what you write here.</b> No secrets, no
+          surprises -- this is a space to check in honestly, not a hidden diary.
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    save_disabled = st.session_state[FEELING_KEY] is None
-    if st.button("Save today's check-in", type="primary", disabled=save_disabled):
-        try:
-            db.save_journal_entry(
-                student["id"], today, st.session_state[FEELING_KEY], note.strip()
-            )
-        except sqlite3.OperationalError:
-            st.error(
-                "Couldn't save -- the app needs a full restart to pick up this "
-                "update (closing and reopening the terminal/app, not just "
-                "refreshing the browser tab)."
-            )
-        else:
-            st.success("Saved.")
-            st.rerun()
-    if save_disabled:
-        st.caption("⬆️ Pick a feeling above to save today's check-in.")
+    if is_parent():
+        st.caption(
+            "💡 Set a parent PIN (sidebar) to keep this as his own space to fill "
+            "in, and get a read-only look back here instead."
+        )
+
+    FEELING_KEY = "checkin_feeling_choice"
+    if FEELING_KEY not in st.session_state:
+        st.session_state[FEELING_KEY] = todays_entry["feeling"] if todays_entry else None
+
+    _TODAY_CARD_CSS = """
+    <style>
+    div[class*="st-key-checkin_today_card"] {
+      border: 1px solid var(--c-border) !important;
+      border-radius: var(--c-radius) !important;
+      background: var(--c-panel) !important;
+      box-shadow: var(--c-glow);
+      padding: 18px !important;
+    }
+    </style>
+    """
+    st.markdown(_TODAY_CARD_CSS, unsafe_allow_html=True)
+
+    with st.container(key="checkin_today_card"):
+        st.markdown("**Today — how are you feeling?**")
+        for row_start in range(0, len(FEELINGS), FEELINGS_PER_ROW):
+            row = FEELINGS[row_start : row_start + FEELINGS_PER_ROW]
+            columns = st.columns(FEELINGS_PER_ROW)
+            for column, (emoji, label) in zip(columns, row):
+                selected = st.session_state[FEELING_KEY] == label
+                with column:
+                    if st.button(
+                        f"{emoji} {label}",
+                        key=f"feeling_{label}",
+                        type="primary" if selected else "secondary",
+                        width="stretch",
+                    ):
+                        st.session_state[FEELING_KEY] = label
+                        st.rerun()
+
+        note = st.text_area(
+            "Want to say more? Anything -- school, friends, home, whatever's on "
+            "your mind. (optional)",
+            value=todays_entry["note"] if todays_entry else "",
+            placeholder="Sometimes it helps just to get it out.",
+            height=90,
+            key="checkin_note",
+        )
+
+        save_disabled = st.session_state[FEELING_KEY] is None
+        if st.button("Save today's check-in", type="primary", disabled=save_disabled):
+            try:
+                db.save_journal_entry(
+                    student["id"], today, st.session_state[FEELING_KEY], note.strip()
+                )
+            except sqlite3.OperationalError:
+                st.error(
+                    "Couldn't save -- the app needs a full restart to pick up this "
+                    "update (closing and reopening the terminal/app, not just "
+                    "refreshing the browser tab)."
+                )
+            else:
+                # No rerun here on purpose: this same run already reflects the
+                # saved state (buttons/note match what was just written), and an
+                # immediate rerun was wiping this message before it was visible.
+                st.success("Saved.")
+        if save_disabled:
+            st.caption("⬆️ Pick a feeling above to save today's check-in.")
 
 st.divider()
 
-st.subheader("Past check-ins")
-entries = [e for e in db.list_journal_entries(student["id"]) if e["entry_date"] != today]
+st.subheader("Check-in history" if browse_only else "Past check-ins")
+entries = db.list_journal_entries(student["id"])
+if not browse_only:
+    # Today's is already shown live in the card above -- listing it again
+    # below would just be a duplicate of what's already on screen.
+    entries = [e for e in entries if e["entry_date"] != today]
+
 if not entries:
-    st.caption("Nothing yet -- today's will be the first.")
+    if browse_only:
+        st.caption("No check-ins yet.")
+    else:
+        st.caption("Nothing yet -- today's will be the first.")
 else:
     for entry in entries:
         emoji = FEELING_EMOJI.get(entry["feeling"], "💬")
@@ -122,6 +153,7 @@ else:
             if entry["note"]
             else '<span style="color:var(--c-dim);">No note.</span>'
         )
+        date_label = f"Today, {entry['entry_date']}" if entry["entry_date"] == today else entry["entry_date"]
         columns = st.columns([20, 1])
         with columns[0]:
             st.markdown(
@@ -133,7 +165,7 @@ else:
                   <div style="flex:1;">
                     <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px;">
                       <div style="font-weight:800; font-size:14px;">{html.escape(entry["feeling"])}</div>
-                      <div style="font-size:12px; color:var(--c-dim); white-space:nowrap;">{entry["entry_date"]}</div>
+                      <div style="font-size:12px; color:var(--c-dim); white-space:nowrap;">{date_label}</div>
                     </div>
                     <div style="font-size:13.5px; line-height:1.5; color:var(--c-text); margin-top:3px;">
                       {note_html}
