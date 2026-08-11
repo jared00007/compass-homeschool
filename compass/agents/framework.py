@@ -51,7 +51,7 @@ class StudentContext:
 
     @property
     def interests(self) -> str:
-        return self.student.get("interests") or ""
+        return self.db.interests_text(self.student_id)
 
     @property
     def location(self) -> str:

@@ -218,7 +218,7 @@ class LifeSkillPlan:
 
 
 def build_system_prompt(
-    student: dict[str, Any], allowed: tuple[str, ...], minutes: int
+    db: Any, student: dict[str, Any], allowed: tuple[str, ...], minutes: int
 ) -> str:
     primary, *allowed_secondary = allowed
     age = student.get("age")
@@ -226,7 +226,7 @@ def build_system_prompt(
         student_name=student.get("name") or "the student",
         grade=student.get("grade") or "8",
         age_line=f"\n- Age: {age}" if age else "",
-        interests=student.get("interests") or "none recorded yet",
+        interests=db.interests_text(student["id"]) or "none recorded yet",
         primary_subject=subjects.label(primary),
         allowed_secondary=", ".join(subjects.label(s) for s in allowed_secondary),
         minutes=minutes,
@@ -271,7 +271,7 @@ def generate_plan(
     primary = allowed[0]
 
     payload = generate_lesson(
-        system=build_system_prompt(student, allowed, minutes),
+        system=build_system_prompt(db, student, allowed, minutes),
         user_prompt=build_user_prompt(skill, minutes, parent_note, location),
         use_web_search=use_web_search,
         schema=plan_schema(allowed),

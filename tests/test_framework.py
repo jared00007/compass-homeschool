@@ -454,8 +454,7 @@ def test_prompt_still_reserves_assessment_and_parent_notes_for_the_parent(db, st
 
 
 def test_student_facing_writing_guidance_references_his_interests(db, student):
-    student = dict(student)
-    student["interests"] = "skateboarding and video games"
+    db.add_interest(student["id"], "skateboarding and video games")
     agent = get_agent("math")
     ctx = StudentContext(db=db, student_id=student["id"], student=student)
     prompt = agent.build_system_prompt(ctx)

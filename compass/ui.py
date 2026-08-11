@@ -82,38 +82,18 @@ def _sidebar(db: Database, student: dict[str, Any]) -> None:
 
 
 def _profile_control(db: Database, student: dict[str, Any]) -> None:
-    """Edit the student's name, grade, age, and interests.
+    """Point at the dedicated Student Profile page rather than editing here.
 
-    Parent-only: `interests` feeds every agent's system prompt, so this is
-    configuration, not a preference — the same reasoning that keeps Tier 1
-    strategy choices out of student hands.
+    Parent-only: the profile (including interests) feeds every agent's
+    system prompt, so this is configuration, not a preference — the same
+    reasoning that keeps Tier 1 strategy choices out of student hands. Used
+    to be a cramped inline form (a single small textarea for interests);
+    moved to its own page for room to list interests individually instead
+    of hand-editing one run-on blob of text.
     """
     if not is_parent():
         return
-    with st.expander("✏️ Edit his profile"):
-        with st.form("edit_profile"):
-            name = st.text_input("Name", value=student["name"])
-            columns = st.columns(2)
-            grade = columns[0].text_input("Grade", value=student["grade"])
-            age = columns[1].number_input(
-                "Age", min_value=5, max_value=19, value=int(student["age"] or 13)
-            )
-            interests = st.text_area(
-                "Interests he's told us about",
-                value=student.get("interests") or "",
-                height=70,
-                help="Read by every agent when it writes a lesson.",
-            )
-            if st.form_submit_button("Save", type="primary"):
-                db.update_student(
-                    student["id"],
-                    name=name.strip() or "Student",
-                    grade=grade.strip() or "8",
-                    age=int(age),
-                    interests=interests.strip(),
-                )
-                st.success("Saved.")
-                st.rerun()
+    st.page_link("pages/10_Student_Profile.py", label="Edit his profile", icon="✏️")
 
 
 def _mode_control(db: Database) -> None:

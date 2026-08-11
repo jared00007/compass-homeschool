@@ -57,6 +57,22 @@ def test_migrate_carries_old_park_visits_into_travel_entries(db, student):
     assert "park_visits" not in tables
 
 
+def test_migrate_carries_old_interests_string_into_the_list(db, student):
+    """students.interests used to be one free-text blob -- a family with
+    existing text there must not lose it when the column is retired."""
+    db.conn.execute("ALTER TABLE students ADD COLUMN interests TEXT NOT NULL DEFAULT ''")
+    db.conn.execute(
+        "UPDATE students SET interests = ? WHERE id = ?",
+        ("Legos, Minecraft, filmmaking", student["id"]),
+    )
+    db.conn.commit()
+    db.migrate()
+    interests = db.list_interests(student["id"])
+    assert [i["text"] for i in interests] == ["Legos", "Minecraft", "filmmaking"]
+    columns = {row["name"] for row in db.conn.execute("PRAGMA table_info(students)")}
+    assert "interests" not in columns
+
+
 def test_settings_fall_back_to_defaults(db):
     assert db.get_int_setting("annual_hour_target") == config.WA_ANNUAL_HOURS
     db.set_setting("annual_hour_target", "1100")
@@ -410,10 +426,10 @@ def test_unexplored_web_nodes_prefer_the_current_location(db, student):
 
 
 def test_update_student_changes_only_the_named_fields(db, student):
-    db.update_student(student["id"], name="Sam", grade="8", age=13, interests="guitar")
+    db.update_student(student["id"], name="Sam", grade="8", age=13)
     reloaded = db.get_student(student["id"])
     assert reloaded["name"] == "Sam"
-    assert reloaded["interests"] == "guitar"
+    assert reloaded["age"] == 13
 
     db.update_student(student["id"], grade="9")
     reloaded = db.get_student(student["id"])
@@ -421,8 +437,25 @@ def test_update_student_changes_only_the_named_fields(db, student):
     assert reloaded["name"] == "Sam", "an unrelated field must not be reset"
 
 
+def test_add_list_and_delete_interests(db, student):
+    """Each interest is its own row -- add a few, remove one, the rest survive."""
+    first_id = db.add_interest(student["id"], "Legos")
+    db.add_interest(student["id"], "Minecraft")
+    interests = db.list_interests(student["id"])
+    assert [i["text"] for i in interests] == ["Legos", "Minecraft"]
+    assert db.interests_text(student["id"]) == "Legos, Minecraft"
+
+    db.delete_interest(first_id)
+    remaining = db.list_interests(student["id"])
+    assert [i["text"] for i in remaining] == ["Minecraft"]
+
+
+def test_interests_text_is_empty_for_a_student_with_none(db, student):
+    assert db.interests_text(student["id"]) == ""
+
+
 def test_update_student_ignores_unknown_fields(db, student):
-    """The sidebar form only ever sends the four real columns, but the method
+    """The sidebar form only ever sends the three real columns, but the method
     itself should refuse to become a general-purpose SQL injection point."""
     db.update_student(student["id"], name="Sam", is_admin=True, agent="root")
     reloaded = db.get_student(student["id"])

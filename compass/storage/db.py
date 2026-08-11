@@ -770,6 +770,7 @@ class Database:
         self._backfill_life_skill_content()
         self._backfill_life_skill_catalog()
         self._migrate_park_visits_to_travel_entries()
+        self._migrate_interests_string_to_list()
         for key, value in config.DEFAULT_SETTINGS.items():
             self.conn.execute(
                 "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value)
@@ -813,6 +814,30 @@ class Database:
                 ),
             )
         self.conn.execute("DROP TABLE park_visits")
+
+    def _migrate_interests_string_to_list(self) -> None:
+        """`students.interests` used to be one free-text blob typed into a
+        small textarea; carry any existing text into student_interests
+        (split on commas, or kept whole if there weren't any) before the
+        column is retired, so nothing a family already typed in is lost."""
+        existing_columns = {
+            row["name"] for row in self.conn.execute("PRAGMA table_info(students)")
+        }
+        if "interests" not in existing_columns:
+            return
+        for row in _rows(self.conn.execute("SELECT id, interests FROM students")):
+            blob = (row["interests"] or "").strip()
+            for item in blob.split(","):
+                item = item.strip()
+                if item:
+                    self.conn.execute(
+                        "INSERT INTO student_interests (student_id, text) VALUES (?, ?)",
+                        (row["id"], item),
+                    )
+        try:
+            self.conn.execute("ALTER TABLE students DROP COLUMN interests")
+        except sqlite3.OperationalError:
+            pass  # older SQLite without DROP COLUMN support -- harmless if left behind
 
     def _backfill_life_skill_content(self) -> None:
         """Fill in `description`/`materials` for catalog skills seeded before
@@ -893,18 +918,16 @@ class Database:
     def get_student(self, student_id: int) -> dict[str, Any] | None:
         return _row(self.conn.execute("SELECT * FROM students WHERE id = ?", (student_id,)))
 
-    def create_student(
-        self, name: str, grade: str, age: int | None = None, interests: str = ""
-    ) -> int:
+    def create_student(self, name: str, grade: str, age: int | None = None) -> int:
         cur = self.conn.execute(
-            "INSERT INTO students (name, grade, age, interests) VALUES (?, ?, ?, ?)",
-            (name, grade, age, interests),
+            "INSERT INTO students (name, grade, age) VALUES (?, ?, ?)",
+            (name, grade, age),
         )
         self.conn.commit()
         return int(cur.lastrowid)
 
     def update_student(self, student_id: int, **fields: Any) -> None:
-        allowed = {"name", "grade", "age", "interests"}
+        allowed = {"name", "grade", "age"}
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
             return
@@ -922,6 +945,32 @@ class Database:
             return students[0]
         student_id = self.create_student(name="Student", grade="8", age=13)
         return self.get_student(student_id)  # type: ignore[return-value]
+
+    # -- interests --------------------------------------------------------------
+
+    def add_interest(self, student_id: int, text: str) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO student_interests (student_id, text) VALUES (?, ?)",
+            (student_id, text),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def list_interests(self, student_id: int) -> list[dict[str, Any]]:
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM student_interests WHERE student_id = ? ORDER BY id",
+                (student_id,),
+            )
+        )
+
+    def delete_interest(self, interest_id: int) -> None:
+        self.conn.execute("DELETE FROM student_interests WHERE id = ?", (interest_id,))
+        self.conn.commit()
+
+    def interests_text(self, student_id: int) -> str:
+        """Comma-joined interests, for feeding into an agent's system prompt."""
+        return ", ".join(i["text"] for i in self.list_interests(student_id))
 
     # -- math mastery ---------------------------------------------------------
 

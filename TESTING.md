@@ -32,14 +32,15 @@ Prove the thing runs before testing what it does.
   *Pass: no grey `ImportError` box. Streamlit keeps shared code loaded from startup, so
   updating a running app leaves it half-reloaded. Refreshing the browser won't fix it.*
 
-- [ ] **All nine pages open**
-  Click every sidebar item: Home, Math, Science, English, History, Compliance, Choice
-  Topics, Life Skills, Activity Log.
+- [ ] **All eleven pages open**
+  Click every sidebar item: Home, Math, Science, English, History, Choice Topics, Life
+  Skills, Landon's Travels, Activity Log, Compliance, Student Profile.
   *Pass: every page renders, no red error boxes.*
 
 - [ ] **Student details are right**
-  Sidebar → **✏️ Edit his profile**. If it says "Student", correct the name, grade, age,
-  and interests, then Save.
+  Sidebar → **✏️ Edit his profile** → the Student Profile page. If it says "Student",
+  correct the name, grade, and age, and Save; add his real interests one at a time below
+  (each becomes its own removable chip).
   *Pass: sidebar and Home immediately show his real name and grade. The "What each agent
   would plan next" cards on Home pick up his interests too — that's the same field feeding
   every lesson, not just cosmetic.*

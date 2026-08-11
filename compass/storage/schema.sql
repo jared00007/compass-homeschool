@@ -23,9 +23,21 @@ CREATE TABLE IF NOT EXISTS students (
     name              TEXT NOT NULL,
     grade             TEXT NOT NULL,
     age               INTEGER,
-    interests         TEXT NOT NULL DEFAULT '',
     created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- One row per interest, not one free-text blob -- lets the Student Profile
+-- page add/remove them individually instead of hand-editing a comma list in
+-- a cramped textarea. Read by every agent's system prompt (joined back into
+-- a comma-separated string via Database.interests_text).
+CREATE TABLE IF NOT EXISTS student_interests (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    text        TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_student_interests_student ON student_interests (student_id);
 
 -- ---------------------------------------------------------------------------
 -- Math: mastery over the hand-authored prerequisite graph.
