@@ -7,6 +7,7 @@ never a "private" space he's misled about.
 from __future__ import annotations
 
 import html
+import sqlite3
 from datetime import date
 
 import streamlit as st
@@ -89,14 +90,23 @@ with st.container(key="checkin_today_card"):
         key="checkin_note",
     )
 
-    if st.button(
-        "Save today's check-in",
-        type="primary",
-        disabled=st.session_state[FEELING_KEY] is None,
-    ):
-        db.save_journal_entry(student["id"], today, st.session_state[FEELING_KEY], note.strip())
-        st.success("Saved.")
-        st.rerun()
+    save_disabled = st.session_state[FEELING_KEY] is None
+    if st.button("Save today's check-in", type="primary", disabled=save_disabled):
+        try:
+            db.save_journal_entry(
+                student["id"], today, st.session_state[FEELING_KEY], note.strip()
+            )
+        except sqlite3.OperationalError:
+            st.error(
+                "Couldn't save -- the app needs a full restart to pick up this "
+                "update (closing and reopening the terminal/app, not just "
+                "refreshing the browser tab)."
+            )
+        else:
+            st.success("Saved.")
+            st.rerun()
+    if save_disabled:
+        st.caption("⬆️ Pick a feeling above to save today's check-in.")
 
 st.divider()
 
