@@ -122,7 +122,15 @@ with books_tab:
         columns = st.columns([2, 2, 1, 1])
         title = columns[0].text_input("Title")
         author = columns[1].text_input("Author")
-        level = columns[2].text_input("Reading level", placeholder="e.g. 8.4")
+        level = columns[2].text_input(
+            "Reading level",
+            placeholder="e.g. 8.4",
+            help=(
+                "Grade.month, the same scale AR/ATOS book levels use -- 8.4 means "
+                "8th grade, 4th month. Optional, but a precise value here helps the "
+                "agent calibrate vocabulary better than a wide grade range would."
+            ),
+        )
         pages = columns[3].number_input("Pages", min_value=0, max_value=5000, value=0)
         notes = st.text_input("Notes for the agent (optional)")
         if st.form_submit_button("Add book", type="primary") and title.strip():
