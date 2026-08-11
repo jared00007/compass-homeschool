@@ -224,8 +224,10 @@ def build_report(
             "instruction in all eleven."
         )
     if report.tier3_over_cap:
+        student = db.get_student(student_id)
+        tier3 = config.tier_label(config.TIER_CHOICE, student["name"] if student else "the student")
         report.warnings.append(
-            f"Tier 3 (his choice) is {report.tier3_percent}% of logged hours, above the "
+            f"{tier3} is {report.tier3_percent}% of logged hours, above the "
             f"family's {report.tier3_cap_percent}% guideline. These hours still count — "
             "Washington sets no split — but the year is leaning heavily toward electives."
         )

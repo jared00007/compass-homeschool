@@ -61,7 +61,7 @@ with log_tab:
                     f"({activity['minutes']} min){where}"
                 )
                 columns[0].caption(
-                    f"{config.TIER_LABELS.get(activity['tier'], activity['tier'])} · "
+                    f"{config.tier_label(activity['tier'], student['name'])} · "
                     f"source: {activity['source']}"
                 )
                 if activity["description"]:
@@ -90,7 +90,7 @@ with add_tab:
 
         columns = st.columns([1, 1, 2])
         tier = columns[0].selectbox(
-            "Tier", config.TIERS, format_func=lambda t: config.TIER_LABELS[t]
+            "Tier", config.TIERS, format_func=lambda t: config.tier_label(t, student["name"])
         )
         primary = columns[1].selectbox("Primary subject", SUBJECT_KEYS, format_func=label)
         location = columns[2].text_input("Location (optional)")

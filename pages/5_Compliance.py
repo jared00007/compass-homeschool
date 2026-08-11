@@ -143,7 +143,7 @@ with left:
     st.subheader("Hours by tier")
     tier_rows = [
         {
-            "Tier": config.TIER_LABELS[tier],
+            "Tier": config.tier_label(tier, student["name"]),
             "Hours": round(report.minutes_by_tier.get(tier, 0) / 60, 1),
             "Share": (
                 f"{round(100 * report.minutes_by_tier.get(tier, 0) / report.total_minutes)}%"
@@ -156,7 +156,7 @@ with left:
     st.dataframe(pd.DataFrame(tier_rows), width="stretch", hide_index=True)
 
 with right:
-    st.subheader("Tier 3 — his choice")
+    st.subheader(config.tier_label(config.TIER_CHOICE, student["name"]))
     st.metric(
         "Share of logged hours",
         f"{report.tier3_percent:g}%",

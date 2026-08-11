@@ -210,7 +210,9 @@ with right:
     for tier in config.TIERS:
         minutes = report.minutes_by_tier.get(tier, 0)
         if minutes:
-            st.markdown(f"- **{config.TIER_LABELS[tier]}** — {round(minutes / 60, 1):g} hrs")
+            st.markdown(
+                f"- **{config.tier_label(tier, student['name'])}** — {round(minutes / 60, 1):g} hrs"
+            )
     if report.tier3_minutes:
         st.caption(
             f"Tier 3 is {report.tier3_percent:g}% of logged hours "

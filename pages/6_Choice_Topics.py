@@ -16,7 +16,7 @@ from compass.ui import is_parent, page_setup
 
 db, student = page_setup("Choice Topics", icon="⭐")
 
-st.title("⭐ Tier 3 — His Choice")
+st.title(f"⭐ {config.tier_label(config.TIER_CHOICE, student['name'])}")
 st.caption(
     "A running list he curates, with light parent approval. No prerequisite logic, no "
     "agent picking the 'optimal' next step — this is the counterweight to Tier 1's "

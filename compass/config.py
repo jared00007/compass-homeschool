@@ -71,6 +71,14 @@ TIERS = (TIER_CORE, TIER_FOLDED, TIER_CHOICE, TIER_LIFE_SKILLS)
 TIER_LABELS = {
     TIER_CORE: "Tier 1 — Core",
     TIER_FOLDED: "Tier 2 — Folded in",
-    TIER_CHOICE: "Tier 3 — His choice",
+    TIER_CHOICE: "Tier 3 — {name}'s choice",
     TIER_LIFE_SKILLS: "Core life skills",
 }
+
+
+def tier_label(tier: str, student_name: str) -> str:
+    """TIER_LABELS, with Tier 3's `{name}` placeholder filled in. The only
+    label that's ever student-specific -- pulled from the student's own
+    profile field (same one the sidebar already reads), not a hardcoded
+    name, so it can't go stale if that profile is ever edited."""
+    return TIER_LABELS.get(tier, tier).format(name=student_name)
