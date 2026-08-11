@@ -380,6 +380,17 @@ def test_a_checklist_seeded_before_mission_text_existed_gets_backfilled(db, stud
     assert "pencil and paper" in skill["materials"]
 
 
+def test_growing_up_category_exists_locked_by_default_and_credits_health():
+    """A parent picks the pace here more deliberately than anywhere else in
+    the catalog -- nothing in this category should land pre-unlocked."""
+    growing_up = [entry for entry in LIFE_SKILL_CATALOG if entry[0] == "Growing Up"]
+    assert len(growing_up) >= 5
+    for category, title, credit_subject, description, materials, active in growing_up:
+        assert active is False, title
+        assert credit_subject == "health", title
+        assert description and materials
+
+
 def test_a_checklist_seeded_before_the_catalog_grew_gets_topped_up(db, student):
     """A family that already ran `seed_life_skills` before the master catalog
     grew past the original fifteen would otherwise never see the later
@@ -452,6 +463,38 @@ def test_add_list_and_delete_interests(db, student):
 
 def test_interests_text_is_empty_for_a_student_with_none(db, student):
     assert db.interests_text(student["id"]) == ""
+
+
+def test_checking_in_twice_the_same_day_updates_not_duplicates(db, student):
+    db.save_journal_entry(student["id"], "2026-08-11", "Frustrated", "Math was hard.")
+    db.save_journal_entry(student["id"], "2026-08-11", "Calm", "Feeling better now.")
+    entries = db.list_journal_entries(student["id"])
+    assert len(entries) == 1
+    assert entries[0]["feeling"] == "Calm"
+    assert entries[0]["note"] == "Feeling better now."
+
+
+def test_journal_entries_are_most_recent_first(db, student):
+    db.save_journal_entry(student["id"], "2026-08-09", "Good", "")
+    db.save_journal_entry(student["id"], "2026-08-11", "Tired", "")
+    db.save_journal_entry(student["id"], "2026-08-10", "Sad", "")
+    entries = db.list_journal_entries(student["id"])
+    assert [e["entry_date"] for e in entries] == ["2026-08-11", "2026-08-10", "2026-08-09"]
+
+
+def test_journal_entry_for_date_finds_it_or_returns_none(db, student):
+    db.save_journal_entry(student["id"], "2026-08-11", "Angry", "")
+    assert db.journal_entry_for_date(student["id"], "2026-08-11")["feeling"] == "Angry"
+    assert db.journal_entry_for_date(student["id"], "2026-08-01") is None
+
+
+def test_delete_journal_entry_removes_only_that_entry(db, student):
+    remove_id = db.save_journal_entry(student["id"], "2026-08-10", "Good", "")
+    db.save_journal_entry(student["id"], "2026-08-11", "Calm", "")
+    db.delete_journal_entry(remove_id)
+    remaining = db.list_journal_entries(student["id"])
+    assert len(remaining) == 1
+    assert remaining[0]["entry_date"] == "2026-08-11"
 
 
 def test_update_student_ignores_unknown_fields(db, student):

@@ -254,3 +254,24 @@ CREATE TABLE IF NOT EXISTS travel_entries (
 
 CREATE INDEX IF NOT EXISTS idx_travel_entries_student
     ON travel_entries (student_id, state);
+
+-- ---------------------------------------------------------------------------
+-- Check-In -- a daily feelings journal. One entry per day (a second check-in
+-- the same day updates it rather than piling up), a required feeling pick
+-- plus an optional note about anything at all, not just school. Fully
+-- visible to a parent by design -- see pages/7_Check_In.py's own banner,
+-- which tells him that plainly rather than letting him assume privacy.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS journal_entries (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    entry_date  TEXT NOT NULL,
+    feeling     TEXT NOT NULL,
+    note        TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (student_id, entry_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_journal_entries_student
+    ON journal_entries (student_id, entry_date);

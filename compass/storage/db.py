@@ -728,6 +728,43 @@ LIFE_SKILL_CATALOG: Sequence[tuple[str, str, str, str, str, bool]] = (
      "foundation from the ground -- catching small problems before "
      "they're expensive ones.",
      "a checklist, a walk around the house", False),
+    # -- Growing Up: emotional regulation, decision-making, and critical
+    # thinking. All locked by default, same as everything past the starter
+    # 15 -- a parent picks the pace here more deliberately than anywhere
+    # else in the catalog. Credited to health (WA's subject explicitly
+    # covers "mental wellbeing," not just physical).
+    ("Growing Up", "Understand what's changing in your brain right now", "health",
+     "Your brain is still building the part that handles impulse control "
+     "and big emotions -- that's not an excuse, it's just how a "
+     "13-year-old brain actually works. Learn what's really going on and "
+     "why some days feel harder than others for a real reason.",
+     "just you and a parent to talk it through", False),
+    ("Growing Up", "Build your own feelings vocabulary", "health",
+     "Most people only reach for 'fine,' 'mad,' or 'whatever.' Learn more "
+     "precise words for what you're actually feeling -- the more exactly "
+     "you can name it, the easier it is to do something about it.",
+     "a list of feeling words to start from", False),
+    ("Growing Up", "Build your own cool-down plan", "health",
+     "Figure out what it actually feels like right before things get too "
+     "big for you, and build your own specific plan for that exact moment "
+     "-- not a generic breathing exercise, one that's actually yours.",
+     "some quiet time to think it through with a parent", False),
+    ("Growing Up", "The pause before you decide", "health",
+     "A real, usable pause to put between an urge and an action -- what "
+     "to ask yourself in that moment so the next thing you do is a "
+     "decision, not just a reaction.",
+     "a couple of real recent examples to walk through", False),
+    ("Growing Up", "Weigh a decision before you make it", "health",
+     "A simple way to actually think through a choice before making it -- "
+     "what your real options are, what happens after each one, and what "
+     "you actually want here versus what you want right this second.",
+     "a real decision, past or upcoming, to practice on", False),
+    ("Growing Up", "What I did isn't who I am", "health",
+     "A bad choice is a thing that happened, not a life sentence on your "
+     "character. Work through separating the two, so a mistake is "
+     "something to fix and move past instead of something to carry "
+     "around.",
+     "an honest conversation", False),
 )
 
 # Leitner intervals in days, indexed by box number (1-5).
@@ -1560,6 +1597,45 @@ class Database:
 
     def delete_travel_entry(self, entry_id: int) -> None:
         self.conn.execute("DELETE FROM travel_entries WHERE id = ?", (entry_id,))
+        self.conn.commit()
+
+    # -- Check-In (daily feelings journal) -------------------------------------
+
+    def save_journal_entry(
+        self, student_id: int, entry_date: str, feeling: str, note: str = ""
+    ) -> int:
+        """One entry per day -- checking in again the same day updates that
+        day's entry (feeling and note both replaced) rather than adding a
+        second row, so "look back" reads as one entry per day, not a pile."""
+        cur = self.conn.execute(
+            "INSERT INTO journal_entries (student_id, entry_date, feeling, note) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT (student_id, entry_date) "
+            "DO UPDATE SET feeling = excluded.feeling, note = excluded.note",
+            (student_id, entry_date, feeling, note),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def list_journal_entries(self, student_id: int, limit: int = 60) -> list[dict[str, Any]]:
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM journal_entries WHERE student_id = ? "
+                "ORDER BY entry_date DESC LIMIT ?",
+                (student_id, limit),
+            )
+        )
+
+    def journal_entry_for_date(self, student_id: int, entry_date: str) -> dict[str, Any] | None:
+        return _row(
+            self.conn.execute(
+                "SELECT * FROM journal_entries WHERE student_id = ? AND entry_date = ?",
+                (student_id, entry_date),
+            )
+        )
+
+    def delete_journal_entry(self, entry_id: int) -> None:
+        self.conn.execute("DELETE FROM journal_entries WHERE id = ?", (entry_id,))
         self.conn.commit()
 
     # -- Core life skills -----------------------------------------------------

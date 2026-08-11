@@ -93,7 +93,7 @@ def _profile_control(db: Database, student: dict[str, Any]) -> None:
     """
     if not is_parent():
         return
-    st.page_link("pages/10_Student_Profile.py", label="Edit his profile", icon="✏️")
+    st.page_link("pages/11_Student_Profile.py", label="Edit his profile", icon="✏️")
 
 
 def _mode_control(db: Database) -> None:
@@ -755,6 +755,7 @@ LIFE_SKILL_CATEGORY_ICONS = {
     "Vehicle": "🚗",
     "Communication": "💬",
     "Home": "🏠",
+    "Growing Up": "🌱",
 }
 LIFE_SKILL_DEFAULT_ICON = "🎖️"  # any category a parent types in beyond the starter five
 LIFE_SKILL_CARDS_PER_ROW = 3
