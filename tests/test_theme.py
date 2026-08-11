@@ -142,6 +142,26 @@ def test_the_page_title_colour_and_stroke_survive_a_specificity_tie():
     assert "-webkit-text-stroke: var(--c-heading-stroke) #000 !important" in block
 
 
+def test_title_enforcer_script_is_well_formed_and_carries_the_theme():
+    """The JS backstop for when even `!important` in `css()` loses -- confirmed
+    live: a real Streamlit version difference beat a same-specificity,
+    both-`!important` CSS tie. Direct inline-style + `!important`, set via
+    `window.parent` from inside a `components.html()` iframe, is the one
+    mechanism that wins regardless of any CSS ordering quirk, since inline
+    style always outranks every external stylesheet by spec. Only checked
+    for well-formedness and that it carries the real theme values here --
+    the actual DOM effect is a browser-level claim, verified live rather
+    than by a unit test."""
+    script = theme.title_enforcer_script()
+    assert script.count("{") == script.count("}"), "unbalanced braces"
+    assert script.count("(") == script.count(")"), "unbalanced parens"
+    assert theme.THEME.primary in script
+    assert theme.THEME.heading_stroke in script
+    assert "MutationObserver" in script
+    assert "window.parent" in script
+    assert "'important'" in script
+
+
 def test_css_never_paints_metrics_in_the_accent():
     """Regression: every metric in the accent made compliance read as alarms."""
     css = theme.css()

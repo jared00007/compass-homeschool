@@ -99,6 +99,49 @@ THEME = Theme(
 )
 
 
+def title_enforcer_script() -> str:
+    """A backstop for the page title's colour/stroke, for when even `!important`
+    in `css()` isn't enough.
+
+    Confirmed on a real deployment: identical code, but a newer Streamlit
+    release than this was developed against still won a same-specificity,
+    both-`!important` tie against the CSS in `css()` -- something about how
+    that version orders its own generated styles beat ours regardless. CSS
+    alone can't out-argue that; only direct DOM manipulation can, since an
+    element's own inline `style` (especially with `!important`) always wins
+    over every external stylesheet, full stop, by spec.
+
+    `<script>` tags inside `st.markdown(unsafe_allow_html=True)` are inert --
+    confirmed directly, browsers never execute script inserted via
+    `innerHTML`-style rendering, which is how Streamlit renders markdown.
+    `st.components.v1.html()` is the one Streamlit primitive that runs in a
+    same-origin iframe with a real `srcdoc` document, so its script actually
+    executes -- and `window.parent` from inside it reaches back into the
+    real page. A `MutationObserver` keeps it applied across every rerun,
+    since Streamlit replaces the title element's DOM node on each one.
+    """
+    t = THEME
+    return f"""
+<script>
+(function() {{
+  var win = window.parent;
+  function apply() {{
+    var els = win.document.querySelectorAll('[data-testid="stHeading"] h1, .stApp h1');
+    els.forEach(function(el) {{
+      el.style.setProperty('color', '{t.primary}', 'important');
+      el.style.setProperty('-webkit-text-stroke', '{t.heading_stroke} #000', 'important');
+    }});
+  }}
+  apply();
+  if (win.__compassTitleObserver) {{ win.__compassTitleObserver.disconnect(); }}
+  var obs = new MutationObserver(apply);
+  obs.observe(win.document.body, {{childList: true, subtree: true}});
+  win.__compassTitleObserver = obs;
+}})();
+</script>
+"""
+
+
 def css() -> str:
     """The stylesheet that paints Streamlit in `THEME`.
 
