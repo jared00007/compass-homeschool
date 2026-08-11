@@ -245,9 +245,9 @@ would only trip around May, far too late to rebalance.
 
 ```
 Home.py                      Streamlit entry — dashboard
-pages/                       Math, Science, English, History, Compliance,
-                             Choice Topics, Life Skills, Activity Log,
-                             Landon's Travels
+pages/                       Math, Science, English, History, Choice Topics,
+                             Life Skills, Landon's Travels, Activity Log,
+                             Compliance
 compass/
   agents/
     framework.py             LessonAgent, AgentSpec, generation pipeline
@@ -574,7 +574,7 @@ Three sources, all his own signals rather than anything parent-logged:
 - A quiz result graded today (`metadata.quiz_result.graded_on`), shown inline on its
   lesson (`quiz 9/10 (90%) 🎯` when he passed) rather than as its own row.
 - Life skills with `completed_on` equal to today — either of you can check that box
-  (`pages/7_Life_Skills.py`'s checklist tab isn't actually parent-gated, despite the
+  (`pages/6_Life_Skills.py`'s checklist tab isn't actually parent-gated, despite the
   page's framing), so this counts either way.
 
 Deliberately **not** built from `db.list_activities()` — that's the parent-logged
@@ -710,7 +710,7 @@ deprecation warning whose own stated removal date (2025-12-31) had already passe
 relative to this session. Since `requirements.txt` pins no upper bound on `streamlit`,
 a future `pip install` could land on a version where the old argument is a hard error,
 not a warning. Migrated all 13 call sites across `compass/ui.py` and
-`pages/5_Compliance.py` to `width="stretch"` (confirmed against the installed version's
+`pages/9_Compliance.py` to `width="stretch"` (confirmed against the installed version's
 own docstring, not guessed) rather than leaving it as a ticking time bomb for whoever's
 machine happens to `pip install` next. This survived the mechanic revert since it was
 never specific to Memory Match.

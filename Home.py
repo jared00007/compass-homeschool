@@ -96,7 +96,7 @@ if not is_parent():
                 st.markdown(f"- {topic['title']}")
         else:
             st.caption("Nothing yet — add something you want to learn.")
-        st.page_link("pages/6_Choice_Topics.py", label="Add a topic", icon="➡️")
+        st.page_link("pages/5_Choice_Topics.py", label="Add a topic", icon="➡️")
 
     st.stop()
 
@@ -194,7 +194,7 @@ with left:
         icon = "✅" if subject.has_instruction else "⬜"
         last = f" · last taught {subject.last_taught}" if subject.last_taught else ""
         st.markdown(f"{icon} **{subject.label}** — {subject.hours:g} hrs{last}")
-    st.page_link("pages/5_Compliance.py", label="Full compliance dashboard", icon="📋")
+    st.page_link("pages/9_Compliance.py", label="Full compliance dashboard", icon="📋")
 
 with right:
     st.subheader("Math graph")

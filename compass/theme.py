@@ -257,7 +257,11 @@ def css() -> str:
   background: var(--c-top-bar);
 }}
 [data-testid="stExpander"] summary:hover {{ color: var(--c-primary); }}
-[data-testid="stMetric"] {{ padding: .6rem .9rem; }}
+/* A metric with a delta line (pace, gap) is taller than one without --
+   four in a row otherwise reads as three different-height boxes and one
+   short one. Fixed to the with-delta height so every metric row lines up
+   regardless of which cells happen to have a delta this time. */
+[data-testid="stMetric"] {{ padding: .6rem .9rem; min-height: 114px; }}
 
 /* --- numbers ---------------------------------------------------------
    Deliberately *not* the accent. An early build painted every metric in it,
