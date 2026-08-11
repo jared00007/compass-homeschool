@@ -73,3 +73,55 @@ def test_every_catalog_park_projects_somewhere_or_is_a_known_territory():
         placed = parks.project(p.lat, p.lon)
         if placed is None:
             assert p.key in known_outside_insets, f"{p.name} doesn't project anywhere"
+
+
+def test_every_park_has_an_icon():
+    """icon_for always returns something -- the generic fallback for a park
+    that isn't sorted into any terrain bucket, never a crash."""
+    for p in parks.PARKS:
+        icon = parks.icon_for(p.key)
+        assert isinstance(icon, str) and icon
+
+
+def test_render_map_svg_is_well_formed_and_reasonably_sized():
+    """The halftone texture used to be a few thousand hand-placed <circle>
+    elements (~300KB per inset) instead of one tileable <pattern> -- this
+    pins the fix: real markup, but not real bloat."""
+    svg = parks.render_map_svg("conus", {"yellowstone"}, "yellowstone")
+    assert svg.startswith("<svg")
+    assert svg.count("<svg") == svg.count("</svg>") == 1
+    assert "<pattern" in svg
+    assert svg.count("<circle") < 20, "halftone should be a pattern, not thousands of circles"
+    assert len(svg) < 150_000
+
+
+def test_render_map_svg_marks_a_visited_park_differently_from_unvisited():
+    svg_none_visited = parks.render_map_svg("conus", set(), None)
+    svg_yellowstone_visited = parks.render_map_svg("conus", {"yellowstone"}, "yellowstone")
+    assert svg_none_visited != svg_yellowstone_visited
+    assert "visited" in svg_yellowstone_visited
+
+
+def test_cluster_and_place_spreads_close_points_with_leader_lines():
+    """Two parks placed right on top of each other must not silently
+    overlap -- each should get pushed apart and a leader line drawn back to
+    its real spot."""
+    close_points = [
+        (parks.park_by_key("zion"), 100.0, 100.0),
+        (parks.park_by_key("bryce_canyon"), 101.0, 101.0),
+    ]
+    placed, leaders = parks._cluster_and_place(close_points, min_dist=15, spread_radius=20)
+    assert len(placed) == 2
+    assert len(leaders) == 2
+    for _, x, y in placed:
+        assert (x, y) != (100.0, 100.0) or (x, y) != (101.0, 101.0)
+
+
+def test_cluster_and_place_leaves_isolated_points_untouched():
+    far_apart = [
+        (parks.park_by_key("acadia"), 10.0, 10.0),
+        (parks.park_by_key("olympic"), 500.0, 300.0),
+    ]
+    placed, leaders = parks._cluster_and_place(far_apart, min_dist=15, spread_radius=20)
+    assert leaders == []
+    assert {(x, y) for _, x, y in placed} == {(10.0, 10.0), (500.0, 300.0)}

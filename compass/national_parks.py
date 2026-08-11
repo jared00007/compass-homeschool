@@ -141,3 +141,212 @@ def project(lat: float, lon: float) -> tuple[str, float, float] | None:
             y = (box["lat_max"] - lat) / (box["lat_max"] - box["lat_min"]) * box["h"]
             return name, x, y
     return None
+
+
+# --- terrain icons -----------------------------------------------------------
+# Rough categorization for pin variety, not a rigorous taxonomy -- every one
+# of the 63 gets a call, defaulting to the generic tent glyph for anything
+# that doesn't fit cleanly into one bucket.
+
+_TERRAIN: dict[str, frozenset[str]] = {
+    "mountain": frozenset({
+        "denali", "grand_teton", "glacier", "mount_rainier", "north_cascades",
+        "rocky_mountain", "great_smoky_mountains", "shenandoah",
+        "wrangell_st_elias", "katmai", "lake_clark", "kings_canyon", "sequoia",
+        "gates_of_the_arctic", "pinnacles",
+    }),
+    "canyon": frozenset({
+        "zion", "bryce_canyon", "arches", "canyonlands", "capitol_reef",
+        "grand_canyon", "mesa_verde", "black_canyon_of_the_gunnison",
+        "new_river_gorge",
+    }),
+    "volcano": frozenset({
+        "yellowstone", "lassen_volcanic", "hawaii_volcanoes", "haleakala",
+        "crater_lake",
+    }),
+    "water": frozenset({
+        "acadia", "american_samoa", "channel_islands", "biscayne",
+        "dry_tortugas", "everglades", "glacier_bay", "kenai_fjords",
+        "virgin_islands", "isle_royale", "voyageurs", "olympic",
+        "gateway_arch", "indiana_dunes", "hot_springs",
+    }),
+    "cave": frozenset({"mammoth_cave", "carlsbad_caverns", "wind_cave"}),
+    "desert": frozenset({
+        "saguaro", "joshua_tree", "death_valley", "white_sands", "big_bend",
+        "guadalupe_mountains", "great_basin", "great_sand_dunes",
+        "petrified_forest", "kobuk_valley",
+    }),
+    "forest": frozenset({"redwood", "congaree", "cuyahoga_valley"}),
+    "plains": frozenset({"badlands", "theodore_roosevelt"}),
+}
+_TERRAIN_GLYPH: dict[str, str] = {
+    "mountain": "⛰", "canyon": "\U0001FAA8", "volcano": "\U0001F30B",
+    "water": "\U0001F30A", "cave": "\U0001F573", "desert": "\U0001F335",
+    "forest": "\U0001F332", "plains": "\U0001F33E",
+}
+
+
+def icon_for(key: str) -> str:
+    for terrain, keys in _TERRAIN.items():
+        if key in keys:
+            return _TERRAIN_GLYPH[terrain]
+    return "\U0001F3D5"  # generic -- anything not sorted into a bucket above
+
+
+# --- the comic-styled map -----------------------------------------------------
+# A real map-pin marker for every park: a Junior-Ranger-style badge (a small
+# star with the park's terrain icon) for a visited one, a hollow dashed pin
+# outline for the rest. Parks close enough together to collide (Utah's
+# canyon country, Yellowstone/Teton) spread apart around their shared
+# centroid with a thin leader line back to the real coordinate, rather than
+# stacking illegibly on top of each other.
+
+
+def _star_points(cx: float, cy: float, r_out: float, r_in: float, spikes: int = 7) -> str:
+    import math
+    pts = []
+    for i in range(spikes * 2):
+        r = r_out if i % 2 == 0 else r_in
+        angle = math.pi / spikes * i - math.pi / 2
+        pts.append(f"{cx + r * math.cos(angle):.1f},{cy + r * math.sin(angle):.1f}")
+    return " ".join(pts)
+
+
+def _halftone_defs(pattern_id: str, spacing: float = 10, r: float = 1.1) -> str:
+    """A tileable Ben-Day dot pattern, one small <pattern> def that the
+    renderer repeats natively -- the earlier version hand-placed a few
+    thousand individual <circle> elements per inset (~300KB of markup for
+    the continental US alone), which is real payload and DOM weight for
+    pure background texture. A 2-row tile keeps the same staggered-brick
+    look in a few hundred bytes."""
+    row_h = spacing * 0.87
+    return (
+        f'<pattern id="{pattern_id}" width="{spacing}" height="{row_h * 2:.2f}" '
+        'patternUnits="userSpaceOnUse">'
+        f'<circle cx="{spacing / 2:.2f}" cy="{row_h / 2:.2f}" r="{r}" fill="#241C12" opacity="0.16"/>'
+        f'<circle cx="0" cy="{row_h * 1.5:.2f}" r="{r}" fill="#241C12" opacity="0.16"/>'
+        f'<circle cx="{spacing:.2f}" cy="{row_h * 1.5:.2f}" r="{r}" fill="#241C12" opacity="0.16"/>'
+        "</pattern>"
+    )
+
+
+def _pin_path(x: float, y: float, r: float = 7.5) -> tuple[str, float]:
+    """A classic map-pin: circular head tapering to a point exactly at the
+    park's true coordinate. Returns the path and the head's own center y,
+    since the badge/icon draws on top of the head, not the point."""
+    head_cy = y - r * 2.1
+    d = (
+        f"M {x - r:.1f} {head_cy:.1f} "
+        f"A {r:.1f} {r:.1f} 0 1 1 {x + r:.1f} {head_cy:.1f} "
+        f"L {x:.1f} {y:.1f} Z"
+    )
+    return d, head_cy
+
+
+def _marker(park: Park, x: float, y: float, visited: bool, is_newest: bool) -> str:
+    body_d, head_cy = _pin_path(x, y)
+    if not visited:
+        return (
+            f'<path d="{body_d}" fill="#FFFBF0" fill-opacity="0.5" stroke="var(--c-dim)" '
+            f'stroke-width="1.3" stroke-dasharray="2 1.6"><title>{park.name}</title></path>'
+        )
+    badge_color = "#FF5A36" if is_newest else "var(--c-primary)"
+    glow = (
+        f'<circle cx="{x:.1f}" cy="{head_cy:.1f}" r="12" fill="none" stroke="{badge_color}" '
+        f'stroke-width="1.3" opacity="0.5"/>'
+        if is_newest else ""
+    )
+    icon = icon_for(park.key)
+    return (
+        f"{glow}"
+        f'<path d="{body_d}" fill="{badge_color}" stroke="#241C12" stroke-width="1.4">'
+        f"<title>{park.name} -- visited</title></path>"
+        f'<polygon points="{_star_points(x, head_cy, 6.2, 4.2)}" '
+        f'fill="#FFFBF0" stroke="#241C12" stroke-width="0.9"/>'
+        f'<text x="{x:.1f}" y="{head_cy + 2.6:.1f}" font-size="6.5" text-anchor="middle">{icon}</text>'
+    )
+
+
+def _cluster_and_place(
+    points: list[tuple[Park, float, float]], min_dist: float = 15, spread_radius: float = 24
+) -> tuple[list[tuple[Park, float, float]], list[tuple[float, float, float, float]]]:
+    """Greedy clustering: parks within `min_dist` px of each other spread
+    radially around their shared centroid at `spread_radius`, each getting a
+    thin leader line back to its real coordinate. Everything else stays put."""
+    import math
+
+    remaining = list(points)
+    clusters = []
+    while remaining:
+        group = [remaining.pop(0)]
+        i = 0
+        while i < len(remaining):
+            candidate = remaining[i]
+            if any(
+                math.hypot(candidate[1] - m[1], candidate[2] - m[2]) < min_dist for m in group
+            ):
+                group.append(remaining.pop(i))
+            else:
+                i += 1
+        clusters.append(group)
+
+    placed: list[tuple[Park, float, float]] = []
+    leaders: list[tuple[float, float, float, float]] = []
+    for group in clusters:
+        if len(group) == 1:
+            placed.append(group[0])
+            continue
+        cx = sum(m[1] for m in group) / len(group)
+        cy = sum(m[2] for m in group) / len(group)
+        n = len(group)
+        for i, (park, x, y) in enumerate(group):
+            angle = (2 * math.pi / n) * i - math.pi / 2
+            new_x = cx + spread_radius * math.cos(angle)
+            new_y = cy + spread_radius * math.sin(angle)
+            leaders.append((x, y, new_x, new_y))
+            placed.append((park, new_x, new_y))
+    return placed, leaders
+
+
+def render_map_svg(inset_name: str, visited_keys: set[str], newest_key: str | None) -> str:
+    """The full comic-styled <svg> for one inset (conus/alaska/hawaii): the
+    real coastline with an offset chromatic-shadow copy (the mis-registered-
+    print look of an old comic), halftone texture across the landmass, and
+    every park in the inset as a pin marker."""
+    box = _MAP_INSETS[inset_name]
+    path_d = box["path"]
+
+    shadow = f'<path d="{path_d}" transform="translate(4,4)" fill="var(--c-primary)" opacity="0.35"/>'
+    body = f'<path d="{path_d}" fill="#FFFBF0" stroke="#241C12" stroke-width="3" stroke-linejoin="round"/>'
+
+    raw_points = []
+    for p in PARKS:
+        placed = project(p.lat, p.lon)
+        if placed is not None and placed[0] == inset_name:
+            raw_points.append((p, placed[1], placed[2]))
+
+    placed_points, leaders = _cluster_and_place(raw_points)
+    leader_svg = "".join(
+        f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
+        'stroke="#241C12" stroke-width="0.8" opacity="0.45" stroke-dasharray="1.5 1.5"/>'
+        f'<circle cx="{x1:.1f}" cy="{y1:.1f}" r="1.3" fill="#241C12" opacity="0.6"/>'
+        for x1, y1, x2, y2 in leaders
+    )
+    pins_svg = "".join(
+        _marker(p, x, y, p.key in visited_keys, p.key == newest_key)
+        for p, x, y in placed_points
+    )
+
+    pattern_id = f"np-halftone-{inset_name}"
+    clip_id = f"np-clip-{inset_name}"
+    return (
+        f'<svg width="{box["w"]}" height="{box["h"]}" viewBox="0 0 {box["w"]} {box["h"]}">'
+        f"<defs>"
+        f'<clipPath id="{clip_id}"><path d="{path_d}"/></clipPath>'
+        f"{_halftone_defs(pattern_id)}"
+        f"</defs>"
+        f"{shadow}{body}"
+        f'<rect width="{box["w"]}" height="{box["h"]}" fill="url(#{pattern_id})" '
+        f'clip-path="url(#{clip_id})"/>'
+        f"{leader_svg}{pins_svg}</svg>"
+    )
