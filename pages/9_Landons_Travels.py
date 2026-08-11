@@ -86,16 +86,44 @@ with journal_tab:
         "If there wasn't one that trip, just tell the state's story. Past "
         "trips count too -- write up one we've already taken."
     )
+    # The park selector lives outside the form: form widgets only report
+    # their values on submit, but picking a park needs to update the state
+    # dropdown's default *immediately* so Landon can't save a trip whose
+    # state doesn't match its park.
+    PARK_FIELD = "travel_entry_park"
+    if st.session_state.pop("travel_entry_just_saved", False):
+        st.session_state[PARK_FIELD] = None
+
+    park_choice = st.selectbox(
+        "National Park (optional)",
+        [None, *parks.PARKS],
+        format_func=lambda p: "No park this trip" if p is None else f"{p.name} ({p.states})",
+        key=PARK_FIELD,
+        help="Picking a park fills in its state below -- it's still editable "
+        "if this trip was really based somewhere else.",
+    )
+
+    default_state = parks.STATES[0]
+    park_states: list[str] = []
+    if park_choice is not None:
+        park_states = [
+            parks.STATE_ABBR[abbr] for abbr in park_choice.states.split("/") if abbr in parks.STATE_ABBR
+        ]
+        if park_states:
+            default_state = park_states[0]
+    if len(park_states) > 1:
+        st.caption(
+            f"{park_choice.name} spans {', '.join(park_states)} -- defaulted to "
+            f"{default_state} below, change it if this trip was based in one of the others."
+        )
+
     with st.form("add_travel_entry", clear_on_submit=True):
         top_columns = st.columns([2, 1])
-        state_choice = top_columns[0].selectbox("State", parks.STATES)
+        state_choice = top_columns[0].selectbox(
+            "State", parks.STATES, index=parks.STATES.index(default_state)
+        )
         visited_on = top_columns[1].date_input("Date", value=date.today())
 
-        park_choice = st.selectbox(
-            "National Park (optional)",
-            [None, *parks.PARKS],
-            format_func=lambda p: "No park this trip" if p is None else f"{p.name} ({p.states})",
-        )
         title = st.text_input("Title", placeholder="e.g. Glaciers Before They're Gone")
         story = st.text_area("The story", placeholder="What happened on this trip?", height=140)
 
@@ -108,6 +136,7 @@ with journal_tab:
                 story=story.strip(),
                 park_key=park_choice.key if park_choice else None,
             )
+            st.session_state["travel_entry_just_saved"] = True
             st.rerun()
 
     st.divider()
