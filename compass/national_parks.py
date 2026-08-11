@@ -446,6 +446,6 @@ def render_travel_map_svg(
     )
 
     return (
-        f'<svg width="{box["w"]}" height="{box["h"]}" viewBox="0 0 {box["w"]} {box["h"]}">'
+        f'<svg viewBox="0 0 {box["w"]} {box["h"]}" style="width:100%; height:auto; display:block;">'
         f"{states_svg}{leader_svg}{pins_svg}</svg>"
     )
