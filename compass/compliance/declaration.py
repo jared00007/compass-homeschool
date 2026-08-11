@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-from compass.school_calendar import date_in_year
+from compass.school_calendar import date_in_year, days_until
 from compass.storage.db import Database
 
 
@@ -54,6 +54,6 @@ def status(db: Database, student_id: int, on: date | None = None) -> Declaration
     return DeclarationStatus(
         due_on=due_on,
         filed_on=row["filed_on"] if row else None,
-        days_remaining=(due_on - on).days,
+        days_remaining=days_until(due_on, on),
         url=(db.get_setting("declaration_url") or "").strip(),
     )

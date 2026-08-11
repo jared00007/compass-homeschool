@@ -216,8 +216,8 @@ def spiderweb(ctx: StudentContext) -> TopicProposal:
         node = pool[0]
         parent = ""
         if node["parent_id"]:
-            parents = [n for n in ctx.db.web_nodes(ctx.student_id, agent_key) if n["id"] == node["parent_id"]]
-            parent = parents[0]["topic"] if parents else ""
+            parent_node = ctx.db.get_web_node(node["parent_id"])
+            parent = parent_node["topic"] if parent_node else ""
         rationale = (
             f"Unexplored branch off {parent}." if parent else "Unexplored branch in the web."
         )
