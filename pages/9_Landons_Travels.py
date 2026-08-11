@@ -1,7 +1,9 @@
-"""Landon's Travels -- a family travel journal, deliberately standalone for
-now: no hours, no subject credit, nothing touching Compliance or Activity
-Log. Real state borders and National Park pins -- see
-compass/national_parks.py's own docstring for where that data comes from.
+"""Landon's Travels -- a family travel journal. Entries are pure journal by
+default, same as Choice Topics and Life Skills: writing them logs nothing on
+its own, but a parent can log real minutes against a specific entry when it
+was genuine researched work, not just a two-sentence trip recap. Real state
+borders and National Park pins -- see compass/national_parks.py's own
+docstring for where that data comes from.
 """
 
 from __future__ import annotations
@@ -11,6 +13,7 @@ from datetime import date
 
 import streamlit as st
 
+from compass import config
 from compass import national_parks as parks
 from compass import theme as theming
 from compass.ui import is_parent, page_setup
@@ -26,7 +29,8 @@ _MONO_FONT = theming.THEME.mono_font.replace('"', "'")
 st.title("🧭 Landon's Travels")
 st.caption(
     "Every state has a story -- National Parks are part of it, not the "
-    "whole map. A family record, kept separate from the compliance hours."
+    "whole map. Entries are a family record first; a parent can log real "
+    "minutes against one when it was genuine researched writing."
 )
 
 entries = db.list_travel_entries(student["id"])
@@ -185,15 +189,62 @@ with journal_tab:
                 )
                 if is_parent():
                     editing = st.session_state.get("editing_travel_entry") == entry["id"]
-                    button_columns = st.columns([1, 1, 6])
+                    logging_hours = st.session_state.get("logging_travel_entry") == entry["id"]
+                    button_columns = st.columns([1, 1, 1, 5])
                     if button_columns[0].button(
                         "Cancel" if editing else "Edit", key=f"edit_entry_{entry['id']}"
                     ):
                         st.session_state["editing_travel_entry"] = None if editing else entry["id"]
                         st.rerun()
-                    if button_columns[1].button("Remove", key=f"remove_entry_{entry['id']}"):
+                    if button_columns[1].button(
+                        "Cancel" if logging_hours else "Log hours", key=f"log_entry_{entry['id']}"
+                    ):
+                        st.session_state["logging_travel_entry"] = None if logging_hours else entry["id"]
+                        st.rerun()
+                    if button_columns[2].button("Remove", key=f"remove_entry_{entry['id']}"):
                         db.delete_travel_entry(entry["id"])
                         st.rerun()
+
+                    if logging_hours:
+                        with st.form(f"log_travel_entry_{entry['id']}"):
+                            st.caption(
+                                "Splits like the manual Activity Log entry does -- leave a "
+                                "subject at 0 to skip it."
+                            )
+                            log_columns = st.columns(3)
+                            writing_minutes = log_columns[0].number_input(
+                                "Writing minutes", min_value=0, max_value=300, value=30, step=5
+                            )
+                            social_studies_minutes = log_columns[1].number_input(
+                                "Social Studies minutes", min_value=0, max_value=300, value=0, step=5
+                            )
+                            log_date = log_columns[2].date_input(
+                                "Date", value=date.fromisoformat(entry["visited_on"])
+                            )
+                            if st.form_submit_button("Log hours", type="primary"):
+                                credits = {
+                                    k: v
+                                    for k, v in {
+                                        "writing": int(writing_minutes),
+                                        "social_studies": int(social_studies_minutes),
+                                    }.items()
+                                    if v > 0
+                                }
+                                if credits:
+                                    db.log_activity(
+                                        student_id=student["id"],
+                                        title=entry["title"] or f"Travel writing -- {entry['state']}",
+                                        tier=config.TIER_CHOICE,
+                                        primary_subject=next(iter(credits)),
+                                        minutes=sum(credits.values()),
+                                        subject_credits=credits,
+                                        occurred_on=log_date.isoformat(),
+                                        description=entry["story"],
+                                        source="travel_journal",
+                                    )
+                                    st.session_state["logging_travel_entry"] = None
+                                    st.success("Logged.")
+                                    st.rerun()
 
                     if editing:
                         park_options = [None, *parks.PARKS]
