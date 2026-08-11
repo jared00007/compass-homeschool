@@ -183,6 +183,50 @@ with journal_tab:
                     """,
                     unsafe_allow_html=True,
                 )
-                if is_parent() and st.button("Remove", key=f"remove_entry_{entry['id']}"):
-                    db.delete_travel_entry(entry["id"])
-                    st.rerun()
+                if is_parent():
+                    editing = st.session_state.get("editing_travel_entry") == entry["id"]
+                    button_columns = st.columns([1, 1, 6])
+                    if button_columns[0].button(
+                        "Cancel" if editing else "Edit", key=f"edit_entry_{entry['id']}"
+                    ):
+                        st.session_state["editing_travel_entry"] = None if editing else entry["id"]
+                        st.rerun()
+                    if button_columns[1].button("Remove", key=f"remove_entry_{entry['id']}"):
+                        db.delete_travel_entry(entry["id"])
+                        st.rerun()
+
+                    if editing:
+                        park_options = [None, *parks.PARKS]
+                        park_index = park_options.index(park) if park else 0
+                        state_index = (
+                            parks.STATES.index(entry["state"]) if entry["state"] in parks.STATES else 0
+                        )
+                        with st.form(f"edit_travel_entry_{entry['id']}"):
+                            edit_columns = st.columns([2, 1])
+                            edit_state = edit_columns[0].selectbox(
+                                "State", parks.STATES, index=state_index
+                            )
+                            edit_date = edit_columns[1].date_input(
+                                "Date", value=date.fromisoformat(entry["visited_on"])
+                            )
+                            edit_park = st.selectbox(
+                                "National Park (optional)",
+                                park_options,
+                                index=park_index,
+                                format_func=lambda p: (
+                                    "No park this trip" if p is None else f"{p.name} ({p.states})"
+                                ),
+                            )
+                            edit_title = st.text_input("Title", value=entry["title"])
+                            edit_story = st.text_area("The story", value=entry["story"], height=140)
+                            if st.form_submit_button("Save changes", type="primary") and edit_title.strip():
+                                db.update_travel_entry(
+                                    entry["id"],
+                                    state=edit_state,
+                                    visited_on=edit_date.isoformat(),
+                                    title=edit_title.strip(),
+                                    story=edit_story.strip(),
+                                    park_key=edit_park.key if edit_park else None,
+                                )
+                                st.session_state["editing_travel_entry"] = None
+                                st.rerun()

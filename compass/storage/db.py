@@ -1497,6 +1497,18 @@ class Database:
             )
         )
 
+    def update_travel_entry(self, entry_id: int, **fields: Any) -> None:
+        allowed = {"state", "park_key", "title", "story", "visited_on"}
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if not updates:
+            return
+        assignments = ", ".join(f"{k} = ?" for k in updates)
+        self.conn.execute(
+            f"UPDATE travel_entries SET {assignments} WHERE id = ?",
+            (*updates.values(), entry_id),
+        )
+        self.conn.commit()
+
     def delete_travel_entry(self, entry_id: int) -> None:
         self.conn.execute("DELETE FROM travel_entries WHERE id = ?", (entry_id,))
         self.conn.commit()

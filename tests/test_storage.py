@@ -194,6 +194,26 @@ def test_delete_travel_entry_removes_only_that_entry(db, student):
     assert remaining[0]["id"] == keep_id
 
 
+def test_update_travel_entry_changes_only_the_given_fields(db, student):
+    """A parent fixing a typo'd state shouldn't have to retype the story too."""
+    entry_id = db.add_travel_entry(
+        student["id"], "Texas", "2024-06-15", title="Red Rock Everywhere", story="Hiked all day.", park_key="zion"
+    )
+    db.update_travel_entry(entry_id, state="Utah")
+    entry = db.list_travel_entries(student["id"])[0]
+    assert entry["state"] == "Utah"
+    assert entry["title"] == "Red Rock Everywhere"
+    assert entry["story"] == "Hiked all day."
+    assert entry["park_key"] == "zion"
+
+
+def test_update_travel_entry_can_clear_the_park_link(db, student):
+    entry_id = db.add_travel_entry(student["id"], "Montana", "2024-06-15", park_key="glacier")
+    db.update_travel_entry(entry_id, park_key=None)
+    entry = db.list_travel_entries(student["id"])[0]
+    assert entry["park_key"] is None
+
+
 def test_zero_minute_activity_is_rejected(db, student):
     with pytest.raises(ValueError):
         db.log_activity(
