@@ -10,6 +10,7 @@ import html
 
 import streamlit as st
 
+from compass import config
 from compass.ui import page_setup, parent_only
 
 db, student = page_setup("Student Profile", icon="🧑‍🎓")
@@ -89,3 +90,25 @@ with st.form("add_interest", clear_on_submit=True):
     if add_columns[1].form_submit_button("Add", type="primary") and new_interest.strip():
         db.add_interest(student["id"], new_interest.strip())
         st.rerun()
+
+st.divider()
+
+st.subheader("Lesson difficulty")
+st.caption(
+    "How hard Tier 1 lessons (Math, Science, English, History) should be by "
+    "default. Each subject's Plan tab can override this for one lesson "
+    "without changing this setting."
+)
+
+current_difficulty = db.get_setting("lesson_difficulty") or config.DIFFICULTY_STANDARD
+if current_difficulty not in config.DIFFICULTY_LEVELS:
+    current_difficulty = config.DIFFICULTY_STANDARD
+difficulty_choice = st.selectbox(
+    "Family default",
+    config.DIFFICULTY_LEVELS,
+    index=config.DIFFICULTY_LEVELS.index(current_difficulty),
+    format_func=config.difficulty_label,
+)
+if difficulty_choice != current_difficulty:
+    db.set_setting("lesson_difficulty", difficulty_choice)
+    st.rerun()

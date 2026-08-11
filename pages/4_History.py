@@ -9,6 +9,7 @@ from compass.agents.strategies import ERAS
 from compass.ui import (
     api_status_banner,
     context_for,
+    difficulty_override_control,
     generate_and_log,
     is_parent,
     page_setup,
@@ -66,6 +67,7 @@ with plan_tab:
         placeholder="e.g. the 1855 Walla Walla Treaty Council",
     )
     parent_note = st.text_input("Note for this lesson (optional)")
+    difficulty = difficulty_override_control(db, key="history_difficulty")
 
     ctx = context_for(
         db,
@@ -75,6 +77,7 @@ with plan_tab:
         parent_note=parent_note,
         seed_topic=seed_topic,
         node_id=picked_id or None,
+        difficulty=difficulty,
     )
     proposal = agent.propose_topic(ctx)
     render_proposal(agent, proposal)

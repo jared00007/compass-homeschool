@@ -8,6 +8,7 @@ from compass.agents import get_agent
 from compass.ui import (
     api_status_banner,
     context_for,
+    difficulty_override_control,
     generate_and_log,
     is_parent,
     page_setup,
@@ -71,6 +72,7 @@ with plan_tab:
     parent_note = st.text_input(
         "Note for this lesson (optional)", placeholder="e.g. keep it to a two-hour hike"
     )
+    difficulty = difficulty_override_control(db, key="science_difficulty")
 
     ctx = context_for(
         db,
@@ -80,6 +82,7 @@ with plan_tab:
         parent_note=parent_note,
         seed_topic=seed_topic,
         node_id=picked_id or None,
+        difficulty=difficulty,
     )
     proposal = agent.propose_topic(ctx)
     render_proposal(agent, proposal)

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import pytest
 
+from compass import config
 from compass.agents import get_agent
 from compass.agents.framework import StudentContext, TopicProposal
 from compass.storage.db import Database
@@ -460,6 +461,39 @@ def test_student_facing_writing_guidance_references_his_interests(db, student):
     prompt = agent.build_system_prompt(ctx)
     section = prompt.split("## Writing for a 13-year-old", 1)[1]
     assert "skateboarding and video games" in section
+
+
+def test_prompt_defaults_to_standard_difficulty(db, student):
+    agent = get_agent("math")
+    prompt = agent.build_system_prompt(ctx_for(db, student))
+    assert config.DIFFICULTY_GUIDANCE[config.DIFFICULTY_STANDARD] in prompt
+
+
+def test_prompt_follows_the_family_default_difficulty_setting(db, student):
+    db.set_setting("lesson_difficulty", config.DIFFICULTY_PUSH)
+    agent = get_agent("math")
+    prompt = agent.build_system_prompt(ctx_for(db, student))
+    assert config.DIFFICULTY_GUIDANCE[config.DIFFICULTY_PUSH] in prompt
+    assert config.DIFFICULTY_GUIDANCE[config.DIFFICULTY_STANDARD] not in prompt
+
+
+def test_per_generation_difficulty_override_beats_the_family_default(db, student):
+    """A one-off "Ease in" pick for a rough week must not require changing
+    the family's overall setting."""
+    db.set_setting("lesson_difficulty", config.DIFFICULTY_PUSH)
+    agent = get_agent("math")
+    prompt = agent.build_system_prompt(ctx_for(db, student, difficulty=config.DIFFICULTY_EASE_IN))
+    assert config.DIFFICULTY_GUIDANCE[config.DIFFICULTY_EASE_IN] in prompt
+
+
+def test_difficulty_never_touches_the_mastery_bar_language(db, student):
+    """Whichever level is picked, the prompt must still pin assessment and
+    mastery criteria as unaffected -- otherwise "Ease in" could quietly mean
+    a lower bar for being marked mastered than "Push him" would require."""
+    agent = get_agent("math")
+    for level in config.DIFFICULTY_LEVELS:
+        prompt = agent.build_system_prompt(ctx_for(db, student, difficulty=level))
+        assert "stay the same regardless of this setting" in prompt
 
 
 def test_prompt_describes_the_self_graded_quiz(db, student):

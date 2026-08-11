@@ -9,6 +9,7 @@ from compass.agents.strategies import ELA_FOCUS_ROTATION
 from compass.ui import (
     api_status_banner,
     context_for,
+    difficulty_override_control,
     generate_and_log,
     is_parent,
     page_setup,
@@ -88,6 +89,7 @@ with plan_tab:
             book["current_page"] = int(page)
 
         parent_note = st.text_input("Note for this lesson (optional)")
+        difficulty = difficulty_override_control(db, key="english_difficulty")
 
         ctx = context_for(
             db,
@@ -95,6 +97,7 @@ with plan_tab:
             minutes=minutes,
             parent_note=parent_note,
             focus="" if focus_choice == "Let the agent rotate" else focus_choice,
+            difficulty=difficulty,
         )
         proposal = agent.propose_topic(ctx)
         render_proposal(agent, proposal)

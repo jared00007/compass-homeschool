@@ -68,6 +68,17 @@ class StudentContext:
     def parent_note(self) -> str:
         return (self.inputs.get("parent_note") or "").strip()
 
+    @property
+    def difficulty(self) -> str:
+        """The per-generation override if one was chosen, else the family
+        default -- never sticky, so a one-off "Ease in" pick doesn't quietly
+        become the new normal without anyone choosing that."""
+        return (
+            self.inputs.get("difficulty")
+            or self.db.get_setting("lesson_difficulty")
+            or config.DIFFICULTY_STANDARD
+        )
+
 
 @dataclass
 class TopicProposal:
@@ -202,6 +213,14 @@ correct choice is correct.
 - Base every question on this lesson's own material. If he could pass by \
 guessing or from outside knowledge, the question isn't doing its job.
 
+## How hard to make this
+{difficulty_guidance}
+
+This changes how you teach it, never what he's on the hook for: `assessment` \
+and `mastery_criteria` stay the same regardless of this setting. A parent \
+dialing this down for a rough week must not mean he's later marked as having \
+mastered less than the standard actually requires.
+
 ## Writing for a 13-year-old
 {student_name} reads `title`, `overview`, `learning_objectives`, `activities`, \
 `materials`, the video's `why`, and every `quiz` question directly, on his own \
@@ -307,6 +326,9 @@ class LessonAgent:
             allowed_secondary=", ".join(subjects.label(s) for s in allowed_secondary) or "none",
             minutes=ctx.minutes,
             video_channels=channels_for_prompt(self.spec.key),
+            difficulty_guidance=config.DIFFICULTY_GUIDANCE.get(
+                ctx.difficulty, config.DIFFICULTY_GUIDANCE[config.DIFFICULTY_STANDARD]
+            ),
         )
 
     def generate(

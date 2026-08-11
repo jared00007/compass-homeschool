@@ -30,7 +30,6 @@ scene from another point of view, defend an interpretation with textual evidence
 Give him a length target and say what a strong response does.
 - Spelling and grammar instruction should come out of his own writing or the \
 author's sentences, not a decontextualized rule sheet.
-- Read at grade level and above. He is 13 and capable; do not write down to him.
 
 Vocabulary format, exactly:
 Put any new words in `materials` as lines shaped `VOCAB: word — definition`. \

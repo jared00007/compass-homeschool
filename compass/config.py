@@ -57,6 +57,10 @@ DEFAULT_SETTINGS: dict[str, str] = {
     # districts a family reports to, or what that district's process looks
     # like this year.
     "declaration_url": "",
+    # How hard Tier 1 lessons should be, family-wide. A per-generation choice
+    # on each subject's Plan tab can override this for one lesson without
+    # changing the family default -- see DIFFICULTY_LEVELS below.
+    "lesson_difficulty": "standard",
 }
 
 # --- Tiers -------------------------------------------------------------------
@@ -82,3 +86,56 @@ def tier_label(tier: str, student_name: str) -> str:
     profile field (same one the sidebar already reads), not a hardcoded
     name, so it can't go stale if that profile is ever edited."""
     return TIER_LABELS.get(tier, tier).format(name=student_name)
+
+
+# --- Lesson difficulty --------------------------------------------------------
+# Family-wide by default (the `lesson_difficulty` setting above), with a
+# per-generation override each subject's Plan tab offers on top of it -- see
+# StudentContext.difficulty in agents/framework.py for how the two combine.
+# Applies to the four Tier 1 agents only; Life Skills plans a hands-on task,
+# not a reading/writing complexity level, so it isn't a fit for this dial.
+
+DIFFICULTY_EASE_IN = "ease_in"
+DIFFICULTY_STANDARD = "standard"
+DIFFICULTY_PUSH = "push"
+
+DIFFICULTY_LEVELS = (DIFFICULTY_EASE_IN, DIFFICULTY_STANDARD, DIFFICULTY_PUSH)
+
+DIFFICULTY_LABELS = {
+    DIFFICULTY_EASE_IN: "Ease in",
+    DIFFICULTY_STANDARD: "Standard",
+    DIFFICULTY_PUSH: "Push him",
+}
+
+# What each level actually tells the model, dropped into the shared system
+# prompt every Tier 1 agent uses (agents/framework.py's BASE_SYSTEM_PROMPT).
+# Deliberately one shared block, not per-subject text -- this is about tone,
+# scaffolding, and vocabulary, which generalize across subjects, while each
+# agent's own guidance still supplies the subject-specific instructions.
+# Never touches `assessment`/mastery criteria: BASE_SYSTEM_PROMPT pins that
+# bar as fixed regardless of difficulty, so "Ease in" can't quietly mean a
+# lower bar for being marked mastered than "Push him" would require.
+DIFFICULTY_GUIDANCE = {
+    DIFFICULTY_EASE_IN: (
+        "Keep this one approachable. Favor the version of an idea he can get on "
+        "the first read, a worked example before he's asked to try one cold, and "
+        "vocabulary he already knows over new technical terms unless the lesson "
+        "is specifically teaching that term. It's fine if this doesn't stretch "
+        "him -- steady footing matters more than pace today."
+    ),
+    DIFFICULTY_STANDARD: (
+        "Teach at grade level, with enough scaffolding that a capable "
+        "13-year-old can do this himself. New vocabulary or techniques get a "
+        "worked example before he's asked to apply one independently."
+    ),
+    DIFFICULTY_PUSH: (
+        "He's 13 and capable -- don't write down to him. Teach at or above "
+        "grade level, expect him to sit with a harder idea before you hand him "
+        "the answer, and don't over-scaffold: one clear example is enough, then "
+        "let him work independently."
+    ),
+}
+
+
+def difficulty_label(level: str) -> str:
+    return DIFFICULTY_LABELS.get(level, level)

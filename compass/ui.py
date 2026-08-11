@@ -262,6 +262,30 @@ def generate_and_log(
     )
 
 
+def difficulty_override_control(db: Database, key: str) -> str:
+    """A per-generation difficulty override for one subject's Plan tab.
+
+    Returns "" (meaning "use the family default") or a specific level key --
+    feed it straight into context_for's `difficulty` input. Never sticky:
+    each generation reads this fresh, so a one-off "Ease in" pick for a
+    rough week can't quietly become the new normal without a parent
+    actually choosing that on the Student Profile page.
+    """
+    default_level = db.get_setting("lesson_difficulty") or config.DIFFICULTY_STANDARD
+    options = ["", *config.DIFFICULTY_LEVELS]
+    return st.selectbox(
+        "Difficulty for this lesson",
+        options,
+        format_func=lambda level: (
+            f"Use family default ({config.difficulty_label(default_level)})"
+            if level == ""
+            else config.difficulty_label(level)
+        ),
+        key=key,
+        help="Just this one lesson -- change the family default on the Student Profile page.",
+    )
+
+
 # --- lesson rendering --------------------------------------------------------
 
 

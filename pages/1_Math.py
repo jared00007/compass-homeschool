@@ -16,6 +16,7 @@ from compass.curriculum import (
 from compass.ui import (
     api_status_banner,
     context_for,
+    difficulty_override_control,
     generate_and_log,
     is_parent,
     page_setup,
@@ -67,13 +68,19 @@ with plan_tab:
         "Note for this lesson (optional)",
         placeholder="e.g. he struggled with negative signs last time",
     )
+    difficulty = difficulty_override_control(db, key="math_difficulty")
 
     skill_id = ""
     if choice != "Let the agent choose":
         skill_id = next((s.id for s in ready if s.title == choice), "")
 
     ctx = context_for(
-        db, student, minutes=minutes, parent_note=parent_note, skill_id=skill_id
+        db,
+        student,
+        minutes=minutes,
+        parent_note=parent_note,
+        skill_id=skill_id,
+        difficulty=difficulty,
     )
     proposal = agent.propose_topic(ctx)
     render_proposal(agent, proposal)
