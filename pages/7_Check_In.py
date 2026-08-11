@@ -139,18 +139,14 @@ else:
 
 st.divider()
 
-st.subheader("Check-in history" if browse_only else "Past check-ins")
+st.subheader("Check-in history")
+# Today's is included here too, not just in the live card above -- the whole
+# point of a journal is being able to look back over it, today included, and
+# a "history" that hides the entry you just made isn't one.
 entries = db.list_journal_entries(student["id"])
-if not browse_only:
-    # Today's is already shown live in the card above -- listing it again
-    # below would just be a duplicate of what's already on screen.
-    entries = [e for e in entries if e["entry_date"] != today]
 
 if not entries:
-    if browse_only:
-        st.caption("No check-ins yet.")
-    else:
-        st.caption("Nothing yet -- today's will be the first.")
+    st.caption("Nothing yet -- today's will be the first.")
 else:
     for entry in entries:
         emoji = FEELING_EMOJI.get(entry["feeling"], "💬")
