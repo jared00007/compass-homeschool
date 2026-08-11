@@ -109,9 +109,7 @@ if log_tab is not None:
         "These hours count toward the 1,000-hour floor in full. The compliance page "
         "shows Tier 3's share against the family guideline — a warning, never a block."
     )
-    active = [
-        t for t in db.list_choice_topics(student["id"]) if t["status"] in ("approved", "active", "done")
-    ]
+    active = [t for t in topics if t["status"] in ("approved", "active", "done")]
     if not active:
         st.info("Approve a topic first and it'll show up here.")
     else:

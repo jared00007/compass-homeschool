@@ -350,9 +350,9 @@ st.caption(
 
 snapshots = list_snapshots(db.path)
 latest = snapshots[0] if snapshots else None
+age_days = (date.today() - latest.taken_at.date()).days if latest else None
 
 if latest:
-    age_days = (date.today() - latest.taken_at.date()).days
     freshness = {0: "Today", 1: "Yesterday"}.get(age_days, f"{age_days} days ago")
 else:
     freshness = "Never"
@@ -378,13 +378,11 @@ if latest is None:
         "No snapshot exists yet. One is taken automatically the first time Compass "
         "opens each day, or press **Back up now**."
     )
-else:
-    age = (date.today() - latest.taken_at.date()).days
-    if age > 2:
-        st.warning(
-            f"The most recent snapshot is {age} days old. If Compass hasn't been "
-            "opened in a while that's expected — press **Back up now** to be current."
-        )
+elif age_days > 2:
+    st.warning(
+        f"The most recent snapshot is {age_days} days old. If Compass hasn't been "
+        "opened in a while that's expected — press **Back up now** to be current."
+    )
 
 st.caption(
     f"Every snapshot from the last {KEEP_DAILY_DAYS} days is kept, then the first of "

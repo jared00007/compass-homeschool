@@ -28,7 +28,7 @@ from compass.agents import (
 from compass.agents.quiz import grade, passed as quiz_passes
 from compass.compliance import declaration_status
 from compass.export import lesson_to_docx, suggested_filename
-from compass.school_calendar import next_annual_date
+from compass.school_calendar import days_until, next_annual_date
 from compass.storage.db import Database
 
 
@@ -1203,7 +1203,7 @@ def api_status_banner() -> bool:
 def render_school_start_countdown(db: Database) -> None:
     """Shown to both parent and student -- there's nothing here to redact."""
     next_start = next_annual_date(db.get_setting("school_year_start") or "09-01")
-    remaining = (next_start - date.today()).days
+    remaining = days_until(next_start)
     when = f"{next_start.strftime('%B')} {next_start.day}"
     if remaining <= 0:
         st.caption(f"🎉 Today's the first day of school ({when}).")

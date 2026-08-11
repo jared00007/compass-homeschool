@@ -34,11 +34,12 @@ def test_park_by_key_finds_a_real_park_and_none_for_junk():
     assert parks.park_by_key("not-a-real-park") is None
 
 
-def test_map_insets_have_real_path_data():
+def test_map_insets_have_real_bounds_and_dimensions():
     insets = parks.map_insets()
     assert set(insets) == {"conus", "alaska", "hawaii"}
     for name, box in insets.items():
-        assert box["path"].startswith("M"), name
+        assert box["lon_min"] < box["lon_max"], name
+        assert box["lat_min"] < box["lat_max"], name
         assert box["w"] > 0 and box["h"] > 0
 
 

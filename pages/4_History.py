@@ -99,11 +99,13 @@ with timeline_tab:
         if era in covered:
             covered[era].append(lesson["title"])
 
+    open_threads = db.unexplored_web_nodes(student["id"], "history")
+
     touched = sum(1 for key, _ in ERAS if covered[key])
     columns = st.columns(3)
     columns[0].metric("Eras touched", f"{touched} / {len(ERAS)}")
     columns[1].metric("History lessons", len(lessons))
-    columns[2].metric("Open threads", len(db.unexplored_web_nodes(student["id"], "history")))
+    columns[2].metric("Open threads", len(open_threads))
 
     st.subheader("Scope and sequence")
     st.caption("The agent teaches the least-covered era unless the location earns an override.")
@@ -117,7 +119,6 @@ with timeline_tab:
             else:
                 st.caption("Nothing taught in this era yet.")
 
-    open_threads = db.unexplored_web_nodes(student["id"], "history")
     if open_threads:
         st.subheader("Open threads")
         for node in open_threads:
