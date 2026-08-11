@@ -33,6 +33,30 @@ def test_migrate_is_idempotent(tmp_path):
     second.close()
 
 
+def test_migrate_carries_old_park_visits_into_travel_entries(db, student):
+    """park_visits (park-only, no story) predates the state-first travel
+    journal -- a family already running the old tracker has real rows in it
+    that must survive the switch to travel_entries, not vanish."""
+    db.conn.execute(
+        "CREATE TABLE park_visits (id INTEGER PRIMARY KEY, student_id INTEGER, "
+        "park_key TEXT, visited_on TEXT, created_at TEXT DEFAULT (datetime('now')))"
+    )
+    db.conn.execute(
+        "INSERT INTO park_visits (student_id, park_key, visited_on) VALUES (?, ?, ?)",
+        (student["id"], "glacier", "2025-06-10"),
+    )
+    db.conn.commit()
+    db.migrate()
+    entries = db.list_travel_entries(student["id"])
+    assert len(entries) == 1
+    assert entries[0]["state"] == "Montana"
+    assert entries[0]["park_key"] == "glacier"
+    tables = {
+        row[0] for row in db.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    assert "park_visits" not in tables
+
+
 def test_settings_fall_back_to_defaults(db):
     assert db.get_int_setting("annual_hour_target") == config.WA_ANNUAL_HOURS
     db.set_setting("annual_hour_target", "1100")
@@ -136,27 +160,36 @@ def test_deleting_a_logged_lessons_activity_keeps_its_hours(db, student):
     assert activity["lesson_id"] is None
 
 
-def test_a_park_can_be_visited_more_than_once(db, student):
-    """One row per visit, not per park -- a return trip gets its own entry."""
-    db.add_park_visit(student["id"], "yellowstone", "2023-07-04")
-    db.add_park_visit(student["id"], "yellowstone", "2025-06-10")
-    visits = db.list_park_visits(student["id"])
-    assert len(visits) == 2
-    assert {v["visited_on"] for v in visits} == {"2023-07-04", "2025-06-10"}
+def test_a_state_can_have_more_than_one_travel_entry(db, student):
+    """One row per trip, not per state -- a return trip gets its own entry."""
+    db.add_travel_entry(student["id"], "Wyoming", "2023-07-04", title="First time at Yellowstone")
+    db.add_travel_entry(student["id"], "Wyoming", "2025-06-10", title="Back again")
+    entries = db.list_travel_entries(student["id"])
+    assert len(entries) == 2
+    assert {e["visited_on"] for e in entries} == {"2023-07-04", "2025-06-10"}
 
 
-def test_park_visits_are_most_recent_first(db, student):
-    db.add_park_visit(student["id"], "zion", "2022-01-01")
-    db.add_park_visit(student["id"], "yosemite", "2024-01-01")
-    visits = db.list_park_visits(student["id"])
-    assert [v["park_key"] for v in visits] == ["yosemite", "zion"]
+def test_travel_entry_park_key_is_optional(db, student):
+    """The entry's required scope is the state -- a trip with no park visit
+    still gets a real entry, just with no park_key attached."""
+    db.add_travel_entry(student["id"], "Montana", "2024-08-01", title="Just passing through")
+    entry = db.list_travel_entries(student["id"])[0]
+    assert entry["state"] == "Montana"
+    assert entry["park_key"] is None
 
 
-def test_delete_park_visit_removes_only_that_entry(db, student):
-    keep_id = db.add_park_visit(student["id"], "zion", "2022-01-01")
-    remove_id = db.add_park_visit(student["id"], "zion", "2024-01-01")
-    db.delete_park_visit(remove_id)
-    remaining = db.list_park_visits(student["id"])
+def test_travel_entries_are_most_recent_first(db, student):
+    db.add_travel_entry(student["id"], "Utah", "2022-01-01", park_key="zion")
+    db.add_travel_entry(student["id"], "California", "2024-01-01", park_key="yosemite")
+    entries = db.list_travel_entries(student["id"])
+    assert [e["park_key"] for e in entries] == ["yosemite", "zion"]
+
+
+def test_delete_travel_entry_removes_only_that_entry(db, student):
+    keep_id = db.add_travel_entry(student["id"], "Utah", "2022-01-01", park_key="zion")
+    remove_id = db.add_travel_entry(student["id"], "Utah", "2024-01-01", park_key="zion")
+    db.delete_travel_entry(remove_id)
+    remaining = db.list_travel_entries(student["id"])
     assert len(remaining) == 1
     assert remaining[0]["id"] == keep_id
 

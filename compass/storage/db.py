@@ -769,6 +769,7 @@ class Database:
         self._ensure_column("life_skills", "active", "INTEGER NOT NULL DEFAULT 1")
         self._backfill_life_skill_content()
         self._backfill_life_skill_catalog()
+        self._migrate_park_visits_to_travel_entries()
         for key, value in config.DEFAULT_SETTINGS.items():
             self.conn.execute(
                 "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value)
@@ -779,6 +780,39 @@ class Database:
         existing = {row["name"] for row in self.conn.execute(f"PRAGMA table_info({table})")}
         if column not in existing:
             self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+
+    def _migrate_park_visits_to_travel_entries(self) -> None:
+        """`park_visits` (park-only, no state, no story) predates the
+        state-first travel journal -- a family already running the old
+        National Parks tracker has real visit rows sitting in it. Carry
+        each one forward as its own travel entry (state derived from the
+        park's own catalog entry) before retiring the old table, so nothing
+        logged before this change quietly disappears."""
+        has_old_table = self.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='park_visits'"
+        ).fetchone()
+        if not has_old_table:
+            return
+        from compass import national_parks as parks
+
+        for row in _rows(self.conn.execute("SELECT * FROM park_visits")):
+            park = parks.park_by_key(row["park_key"])
+            state = parks.STATE_ABBR.get(park.states.split("/")[0], "") if park else ""
+            title = park.name if park else row["park_key"]
+            self.conn.execute(
+                "INSERT INTO travel_entries "
+                "(student_id, state, park_key, title, story, visited_on, created_at) "
+                "VALUES (?, ?, ?, ?, '', ?, ?)",
+                (
+                    row["student_id"],
+                    state,
+                    row["park_key"],
+                    title,
+                    row["visited_on"],
+                    row["created_at"],
+                ),
+            )
+        self.conn.execute("DROP TABLE park_visits")
 
     def _backfill_life_skill_content(self) -> None:
         """Fill in `description`/`materials` for catalog skills seeded before
@@ -1435,27 +1469,36 @@ class Database:
         self.conn.execute("DELETE FROM choice_topics WHERE id = ?", (topic_id,))
         self.conn.commit()
 
-    # -- National Parks ---------------------------------------------------------
+    # -- Landon's Travels ---------------------------------------------------------
 
-    def add_park_visit(self, student_id: int, park_key: str, visited_on: str) -> int:
+    def add_travel_entry(
+        self,
+        student_id: int,
+        state: str,
+        visited_on: str,
+        title: str = "",
+        story: str = "",
+        park_key: str | None = None,
+    ) -> int:
         cur = self.conn.execute(
-            "INSERT INTO park_visits (student_id, park_key, visited_on) VALUES (?, ?, ?)",
-            (student_id, park_key, visited_on),
+            "INSERT INTO travel_entries (student_id, state, park_key, title, story, visited_on) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (student_id, state, park_key, title, story, visited_on),
         )
         self.conn.commit()
         return cur.lastrowid  # type: ignore[return-value]
 
-    def list_park_visits(self, student_id: int) -> list[dict[str, Any]]:
+    def list_travel_entries(self, student_id: int) -> list[dict[str, Any]]:
         return _rows(
             self.conn.execute(
-                "SELECT * FROM park_visits WHERE student_id = ? "
+                "SELECT * FROM travel_entries WHERE student_id = ? "
                 "ORDER BY visited_on DESC, id DESC",
                 (student_id,),
             )
         )
 
-    def delete_park_visit(self, visit_id: int) -> None:
-        self.conn.execute("DELETE FROM park_visits WHERE id = ?", (visit_id,))
+    def delete_travel_entry(self, entry_id: int) -> None:
+        self.conn.execute("DELETE FROM travel_entries WHERE id = ?", (entry_id,))
         self.conn.commit()
 
     # -- Core life skills -----------------------------------------------------

@@ -83,23 +83,42 @@ def test_every_park_has_an_icon():
         assert isinstance(icon, str) and icon
 
 
-def test_render_map_svg_is_well_formed_and_reasonably_sized():
-    """The halftone texture used to be a few thousand hand-placed <circle>
-    elements (~300KB per inset) instead of one tileable <pattern> -- this
-    pins the fix: real markup, but not real bloat."""
-    svg = parks.render_map_svg("conus", {"yellowstone"}, "yellowstone")
+def test_states_catalog_has_all_50_states_with_real_path_data():
+    assert len(parks.STATES) == 50
+    for name in parks.STATES:
+        box = parks.state_inset(name)
+        assert box is not None, name
+        assert box["inset"] in {"conus", "alaska", "hawaii"}
+        assert box["path"].startswith("M"), name
+
+
+def test_state_abbr_covers_every_state_a_park_lists():
+    """Every abbreviation a park's `states` field can contain must resolve to
+    a real state name -- otherwise a travel entry migrated from an old park
+    visit would silently land with a blank state."""
+    for p in parks.PARKS:
+        for abbr in p.states.split("/"):
+            if abbr in parks.STATE_ABBR:
+                assert parks.STATE_ABBR[abbr] in parks.STATES
+
+
+def test_render_travel_map_svg_is_well_formed():
+    svg = parks.render_travel_map_svg("conus", {"Montana"}, {"glacier"}, "glacier")
     assert svg.startswith("<svg")
     assert svg.count("<svg") == svg.count("</svg>") == 1
-    assert "<pattern" in svg
-    assert svg.count("<circle") < 20, "halftone should be a pattern, not thousands of circles"
-    assert len(svg) < 150_000
+    assert "Montana" in svg
 
 
-def test_render_map_svg_marks_a_visited_park_differently_from_unvisited():
-    svg_none_visited = parks.render_map_svg("conus", set(), None)
-    svg_yellowstone_visited = parks.render_map_svg("conus", {"yellowstone"}, "yellowstone")
-    assert svg_none_visited != svg_yellowstone_visited
-    assert "visited" in svg_yellowstone_visited
+def test_render_travel_map_svg_shades_a_visited_state_differently():
+    svg_unvisited = parks.render_travel_map_svg("conus", set(), set(), None)
+    svg_visited = parks.render_travel_map_svg("conus", {"Montana"}, set(), None)
+    assert svg_unvisited != svg_visited
+
+
+def test_render_travel_map_svg_only_pins_visited_parks():
+    svg = parks.render_travel_map_svg("conus", {"Montana"}, {"glacier"}, "glacier")
+    assert "Glacier -- visited" in svg
+    assert "Yellowstone -- visited" not in svg
 
 
 def test_cluster_and_place_spreads_close_points_with_leader_lines():

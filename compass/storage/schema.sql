@@ -219,22 +219,26 @@ CREATE TABLE IF NOT EXISTS declarations_of_intent (
 );
 
 -- ---------------------------------------------------------------------------
--- National Parks -- a family tracker, deliberately separate from the Tier
--- system for now (no hours, no subject credit). `park_key` references
--- compass.national_parks.PARKS by its string key, the same pattern
--- skill_mastery.skill_id uses for the (also Python-side) math graph -- the
--- catalog is fixed reference data, not something a family edits, so it has
--- no table of its own. One row per visit, not per park: a family that
--- returns to a favorite gets a second row, not an overwritten date.
+-- Landon's Travels -- a family travel journal, deliberately separate from
+-- the Tier system for now (no hours, no subject credit). One row per trip,
+-- not per state or per park: a family that returns to a favorite gets a
+-- second entry, not an overwritten one. `state` is the required scope of
+-- the entry; `park_key` is an optional link to a specific National Park
+-- (compass.national_parks.PARKS, same string-key pattern skill_mastery.skill_id
+-- uses for the math graph) for trips that included a park visit -- not every
+-- trip does.
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS park_visits (
+CREATE TABLE IF NOT EXISTS travel_entries (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-    park_key    TEXT NOT NULL,
+    state       TEXT NOT NULL,
+    park_key    TEXT,
+    title       TEXT NOT NULL DEFAULT '',
+    story       TEXT NOT NULL DEFAULT '',
     visited_on  TEXT NOT NULL,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_park_visits_student
-    ON park_visits (student_id, park_key);
+CREATE INDEX IF NOT EXISTS idx_travel_entries_student
+    ON travel_entries (student_id, state);
