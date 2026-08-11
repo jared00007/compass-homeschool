@@ -36,7 +36,7 @@ log_tab = tabs[1] if is_parent() else None
 
 with add_tab:
     with st.form("add_choice", clear_on_submit=True):
-        st.markdown("**Add a topic** — he can add straight to the list; approval is separate.")
+        st.markdown("**Add a topic** — goes on the list for a parent to review and approve.")
         columns = st.columns([2, 1, 1])
         title = columns[0].text_input("What do you want to learn?")
         category = columns[1].text_input("Category", placeholder="e.g. coding, music, cars")
@@ -79,14 +79,25 @@ with add_tab:
             if topic["parent_note"]:
                 columns[0].caption(f"Parent: {topic['parent_note']}")
 
+            # "Approve"/"Decline" are the actual review step -- he proposes,
+            # a parent decides, or the "light parent approval" this page
+            # promises is fiction and he's approving his own ideas. Once a
+            # topic clears that step, "Start"/"Mark done" are just his own
+            # progress tracking and stay open to either of you, same as a
+            # Life Skills checkbox.
+            awaiting_review = topic["status"] == "proposed"
             action = STATUS_FLOW.get(topic["status"])
-            if action and columns[1].button(action[0], key=f"advance_{topic['id']}"):
-                db.set_choice_status(topic["id"], action[1])
-                st.rerun()
-            if topic["status"] == "proposed":
-                if columns[2].button("Decline", key=f"decline_{topic['id']}"):
-                    db.set_choice_status(topic["id"], "declined")
+            if action and (not awaiting_review or is_parent()):
+                if columns[1].button(action[0], key=f"advance_{topic['id']}"):
+                    db.set_choice_status(topic["id"], action[1])
                     st.rerun()
+            if awaiting_review:
+                if is_parent():
+                    if columns[2].button("Decline", key=f"decline_{topic['id']}"):
+                        db.set_choice_status(topic["id"], "declined")
+                        st.rerun()
+                else:
+                    columns[1].caption("Waiting on parent review")
             elif columns[2].button("Remove", key=f"remove_{topic['id']}"):
                 db.delete_choice_topic(topic["id"])
                 st.rerun()
