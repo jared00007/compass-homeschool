@@ -87,6 +87,12 @@ else:
 
     with st.container(key="checkin_today_card"):
         st.markdown("**Today — how are you feeling?**")
+        if todays_entry:
+            # A refresh reloads this from the DB, not from anything still held
+            # in memory -- this line is proof, on any later visit, that a save
+            # actually landed, without having to notice a highlighted button
+            # and separately reconcile that against an empty history list below.
+            st.caption("✓ Saved for today — change it anytime before tomorrow.")
         for row_start in range(0, len(FEELINGS), FEELINGS_PER_ROW):
             row = FEELINGS[row_start : row_start + FEELINGS_PER_ROW]
             columns = st.columns(FEELINGS_PER_ROW)
