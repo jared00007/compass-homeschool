@@ -454,6 +454,13 @@ def css() -> str:
 
 /* --- sidebar nav ------------------------------------------------------ */
 [data-testid="stSidebarNavLink"] {{ border-radius: var(--c-radius); }}
+/* `*` alongside the link itself, not just the link -- the label text lives in a
+   child span, and per the page-title bug above, a child's own colour/weight/
+   size always wins over the parent's, inherited or not. */
+[data-testid="stSidebarNavLink"], [data-testid="stSidebarNavLink"] * {{
+  font-size: 16px;
+  font-weight: 700;
+}}
 [data-testid="stSidebarNavLink"][aria-current="page"] {{
   background: var(--c-panel);
   color: var(--c-primary);
