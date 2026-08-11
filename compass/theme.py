@@ -90,7 +90,7 @@ class Theme:
 THEME = Theme(
     key="comic",
     panel="#FFFBF0", text="#241C12", dim="#8A7A5E",
-    primary="#F2B705", alt="#2F63E0", border="#E63946",
+    primary="#F2B705", alt="#2F63E0", border="#2E5EAA",
     radius="3px",
     heading_font='"Avenir Next", "Helvetica Neue", ' + SANS,
     heading_caps="uppercase", heading_track=".02em", heading_weight="800",
