@@ -201,6 +201,13 @@ with lessons_tab:
                     key_prefix=f"activitylog_{lesson['id']}",
                     tier=tier,
                 )
-                if st.button("Mark skipped instead", key=f"skip_{lesson['id']}"):
+                skip_col, remove_col = st.columns(2)
+                if skip_col.button("Mark skipped instead", key=f"skip_{lesson['id']}"):
                     db.set_lesson_status(lesson["id"], "skipped")
+                    st.rerun()
+                # Distinct from "skipped": skipped keeps the record (he was offered
+                # this and it didn't happen); remove is for a lesson that shouldn't
+                # exist at all, like an accidental double-generate of the same topic.
+                if remove_col.button("Remove", key=f"remove_lesson_{lesson['id']}"):
+                    db.delete_lesson(lesson["id"])
                     st.rerun()

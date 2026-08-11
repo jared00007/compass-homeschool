@@ -216,6 +216,40 @@ def test_nothing_renders_before_a_lesson_exists(monkeypatch, db, student):
     assert "Two-Step Equations" not in page
 
 
+def test_no_pending_lesson_shows_no_warning(monkeypatch, db, student):
+    page, _ = run(monkeypatch, db, student)
+    assert "already generated and unlogged" not in page
+
+
+def test_a_pending_planned_lesson_warns_before_generating_another(monkeypatch, db, student):
+    """The actual bug this guards against: session state is empty (a fresh
+    session, e.g. after an app restart) but the database already has an
+    unlogged lesson for this agent -- the page must say so instead of
+    looking untouched and inviting a duplicate."""
+    db.save_lesson(
+        student["id"], "math", "math", "topic", "Two-Step Equations", payload={"a": 1}
+    )
+    page, _ = run(monkeypatch, db, student)
+    assert "already generated and unlogged" in page
+    assert "Two-Step Equations" in page
+
+
+def test_no_warning_for_the_lesson_already_held_in_session(monkeypatch, db, student):
+    """The one exception: a pending lesson that IS the one already on screen
+    isn't a forgotten duplicate, so it shouldn't warn about itself."""
+    lesson_id = db.save_lesson(
+        student["id"], "math", "math", "topic", "Two-Step Equations", payload={"a": 1}
+    )
+    generated = GeneratedLesson(
+        lesson_id=lesson_id,
+        proposal=TopicProposal(topic="t", rationale="r", strategy="s"),
+        payload=a_lesson(),
+        warnings=[],
+    )
+    page, _ = run(monkeypatch, db, student, generated=generated)
+    assert "already generated and unlogged" not in page
+
+
 def test_the_session_key_is_per_agent(monkeypatch, db, student):
     """Four agents share this function; one shared key would have them overwrite
     each other's lessons on every page switch."""

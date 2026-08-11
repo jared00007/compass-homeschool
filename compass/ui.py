@@ -221,8 +221,30 @@ def generate_and_log(
 
     The generated lesson is held in session state under the agent's own key, so
     a rerun (logging hours, changing a widget) doesn't lose an expensive lesson.
+
+    Session state is what makes a just-generated lesson stick around across
+    reruns on *this* page -- but it's memory, not the record, so it's empty
+    again after an app restart or a fresh browser session even though the
+    lesson itself is still sitting in the database, unlogged. That gap is
+    exactly what let two near-identical English lessons get generated one
+    session apart with nothing on the page to say the first was still
+    waiting: the button looked untouched. Checking the database itself for
+    an existing planned lesson -- not just session state -- catches that.
     """
     state_key = f"{agent.key}_lesson"
+    current = st.session_state.get(state_key)
+
+    pending = [
+        lesson
+        for lesson in db.list_lessons(student["id"], agent=agent.key, limit=10)
+        if lesson["status"] == "planned" and (not current or lesson["id"] != current.lesson_id)
+    ]
+    if pending:
+        st.warning(
+            f"⚠️ **{pending[0]['title']}** is already generated and unlogged for this "
+            "subject. Generating another leaves both waiting on his Home page -- review "
+            "or remove the old one from Activity Log → To review."
+        )
 
     if st.button("Generate lesson", type="primary", disabled=not api_ok or proposal.blocked):
         with st.spinner(spinner):

@@ -104,6 +104,38 @@ def test_mark_student_done_preserves_other_metadata(db, student):
     assert lesson["metadata"]["student_done_on"] == date.today().isoformat()
 
 
+def test_delete_lesson_removes_a_planned_lesson(db, student):
+    """The escape hatch for an accidental double-generate: a planned lesson
+    nobody wants shouldn't have to live forever."""
+    lesson_id = db.save_lesson(
+        student["id"], "english", "reading", "topic", "title", payload={"a": 1}
+    )
+    db.delete_lesson(lesson_id)
+    assert db.get_lesson(lesson_id) is None
+
+
+def test_deleting_a_logged_lessons_activity_keeps_its_hours(db, student):
+    """A lesson can be deleted even after it's been logged -- the activity
+    (and its hours/credit) survives; it just loses the back-link, per
+    `activities.lesson_id`'s `ON DELETE SET NULL`."""
+    lesson_id = db.save_lesson(
+        student["id"], "math", "math", "topic", "title", payload={"a": 1}
+    )
+    db.log_activity(
+        student_id=student["id"],
+        title="title",
+        tier=config.TIER_CORE,
+        primary_subject="math",
+        minutes=45,
+        subject_credits={"math": 45},
+        lesson_id=lesson_id,
+    )
+    db.delete_lesson(lesson_id)
+    activity = db.list_activities(student["id"])[0]
+    assert activity["minutes"] == 45
+    assert activity["lesson_id"] is None
+
+
 def test_zero_minute_activity_is_rejected(db, student):
     with pytest.raises(ValueError):
         db.log_activity(

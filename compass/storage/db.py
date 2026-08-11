@@ -1248,6 +1248,14 @@ class Database:
         self.conn.execute("UPDATE lessons SET status = ? WHERE id = ?", (status, lesson_id))
         self.conn.commit()
 
+    def delete_lesson(self, lesson_id: int) -> None:
+        """For a planned lesson nobody wants -- an accidental double-generate,
+        say. Safe even if it was already logged: `activities.lesson_id` is
+        `ON DELETE SET NULL`, so a logged activity just loses the back-link,
+        not its own hours or credit."""
+        self.conn.execute("DELETE FROM lessons WHERE id = ?", (lesson_id,))
+        self.conn.commit()
+
     def mark_student_done(self, lesson_id: int) -> None:
         """The student's own "I'm done for today" signal.
 
