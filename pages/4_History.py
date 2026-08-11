@@ -38,9 +38,12 @@ with plan_tab:
     columns = st.columns([2, 1, 1])
     with columns[0]:
         location = st.text_input(
-            "Where are you right now?",
+            "Location-specific (optional)",
             placeholder="e.g. Whitman Mission, Walla Walla WA",
-            help="A genuine local connection takes priority over the next era in sequence.",
+            help=(
+                "A real historical site or place ties the lesson to it instead of the "
+                "next era in sequence. Leave blank to keep following the curriculum."
+            ),
         )
     with columns[1]:
         minutes = st.number_input("Minutes", min_value=15, max_value=240, value=60, step=15)

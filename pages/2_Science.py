@@ -37,9 +37,13 @@ with plan_tab:
     columns = st.columns([2, 1, 1])
     with columns[0]:
         location = st.text_input(
-            "Where are you right now?",
+            "Location-specific (optional)",
             placeholder="e.g. Olympic National Park, Hoh Rain Forest",
-            help="Drives the whole lesson. Leave blank for an at-home lesson.",
+            help=(
+                "If you're somewhere with hands-on science nearby -- a park, a trail, a "
+                "garden -- the lesson builds around it. Leave blank for a normal at-home "
+                "lesson continuing the current thread."
+            ),
         )
     with columns[1]:
         minutes = st.number_input("Minutes", min_value=15, max_value=240, value=75, step=15)
