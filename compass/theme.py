@@ -116,54 +116,6 @@ THEME = Theme(
 )
 
 
-def title_enforcer_script() -> str:
-    """A belt-and-suspenders backstop for the page title's colour/stroke, on
-    top of the `h1 *` CSS rule in `css()` that's the actual fix.
-
-    The real bug (see `css()`'s comment on this): the visible glyphs live in
-    a child `<span>` Streamlit wraps the heading text in, which a blanket
-    `.stApp span` rule gives its own explicit (non-gold) colour -- the `<h1>`
-    itself was gold the whole time, `getComputedStyle` on it said so, and
-    that was never the element actually painting the text. Found only by
-    sampling rendered pixels directly; every earlier check that inspected
-    the `<h1>`'s own computed style was quietly checking the wrong element.
-
-    This script is kept as a second layer in case a future Streamlit release
-    restructures the heading markup in some other way the CSS selector
-    doesn't anticipate. `<script>` tags inside `st.markdown(unsafe_allow_html=True)`
-    are inert -- confirmed directly, browsers never execute script inserted
-    via `innerHTML`-style rendering, which is how Streamlit renders markdown.
-    `st.components.v1.html()` is the one Streamlit primitive that runs in a
-    same-origin iframe with a real `srcdoc` document, so its script actually
-    executes -- and `window.parent` from inside it reaches back into the
-    real page. A `MutationObserver` keeps it applied across every rerun,
-    since Streamlit replaces the title element's DOM node on each one.
-    """
-    t = THEME
-    return f"""
-<script>
-(function() {{
-  var win = window.parent;
-  function apply() {{
-    var els = win.document.querySelectorAll(
-      '[data-testid="stHeading"] h1, [data-testid="stHeading"] h1 *, .stApp h1, .stApp h1 *'
-    );
-    els.forEach(function(el) {{
-      el.style.setProperty('color', '{t.primary}', 'important');
-      el.style.setProperty('-webkit-text-stroke', '{t.heading_stroke} {t.heading_stroke_color}', 'important');
-      el.style.setProperty('text-shadow', '{t.heading_shadow}', 'important');
-    }});
-  }}
-  apply();
-  if (win.__compassTitleObserver) {{ win.__compassTitleObserver.disconnect(); }}
-  var obs = new MutationObserver(apply);
-  obs.observe(win.document.body, {{childList: true, subtree: true}});
-  win.__compassTitleObserver = obs;
-}})();
-</script>
-"""
-
-
 def css() -> str:
     """The stylesheet that paints Streamlit in `THEME`.
 

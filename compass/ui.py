@@ -16,7 +16,6 @@ from functools import partial
 from typing import Any
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from compass import auth, config, subjects, theme as theming
 from compass.backup import auto_snapshot
@@ -53,9 +52,6 @@ def page_setup(title: str, icon: str = "🧭") -> tuple[Database, dict[str, Any]
     student = db.ensure_default_student()
     # Before anything renders, so the page never flashes unstyled.
     st.markdown(theming.css(), unsafe_allow_html=True)
-    # Backstop for the title colour/stroke -- see title_enforcer_script's own
-    # docstring for why CSS alone wasn't enough on every Streamlit version.
-    components.html(theming.title_enforcer_script(), height=0)
     _sidebar(db, student)
     return db, student
 

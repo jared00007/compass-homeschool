@@ -149,27 +149,6 @@ def test_the_page_title_rule_reaches_its_own_descendants():
     assert "text-shadow: var(--c-heading-shadow) !important" in block
 
 
-def test_title_enforcer_script_is_well_formed_and_carries_the_theme():
-    """A second layer behind the `h1 *` CSS fix, in case a future Streamlit
-    release restructures the heading markup in some way that selector
-    doesn't anticipate. Only checked for well-formedness and that it carries
-    the real theme values and reaches descendants here -- the actual DOM
-    effect is a browser-level claim, verified live rather than by a unit
-    test (pixel-sampled, not just `getComputedStyle` -- see css()'s own
-    comment for why that distinction mattered)."""
-    script = theme.title_enforcer_script()
-    assert script.count("{") == script.count("}"), "unbalanced braces"
-    assert script.count("(") == script.count(")"), "unbalanced parens"
-    assert theme.THEME.primary in script
-    assert theme.THEME.heading_stroke in script
-    assert theme.THEME.heading_stroke_color in script
-    assert theme.THEME.heading_shadow in script
-    assert "h1 *" in script, "must reach descendants, not just the h1 itself"
-    assert "MutationObserver" in script
-    assert "window.parent" in script
-    assert "'important'" in script
-
-
 def test_css_never_paints_metrics_in_the_accent():
     """Regression: every metric in the accent made compliance read as alarms."""
     css = theme.css()
