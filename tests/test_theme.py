@@ -127,36 +127,38 @@ def test_css_forces_the_sidebar_to_scroll():
     assert "overflow-y: auto !important" in block
 
 
-def test_the_page_title_colour_and_stroke_survive_a_specificity_tie():
-    """Regression: the page-title rule and the shared h1-h4 rule above it have
-    identical selector specificity for h1, so which one wins is decided by
-    DOM/CSSOM insertion order rather than this file's own source order --
-    Streamlit's React-managed styles can be inserted at points this file
-    doesn't control, and a Streamlit version difference alone was enough to
-    flip that order and silently print the title in plain text colour on a
-    real deployment, despite identical code. `!important` removes the
-    ambiguity instead of depending on it."""
+def test_the_page_title_rule_reaches_its_own_descendants():
+    """Regression, found only by sampling actual rendered pixels rather than
+    trusting `getComputedStyle` on the `<h1>` itself: the visible glyphs live
+    in a child `<span>` Streamlit wraps the heading text in (for
+    `aria-labelledby`), and the blanket `.stApp span` colour rule matches
+    that span directly -- an element's own explicit colour always wins over
+    whatever its parent computed to, `!important` or not, since `!important`
+    only wins the cascade for the element it's set on, not for children. The
+    `<h1>` itself was gold the entire time; the span never was. `h1 *` must
+    be in the selector, not just `h1`, or this regresses silently again."""
     css = theme.css()
-    block = css.rsplit('[data-testid="stHeading"] h1, .stApp h1', 1)[1].split("}")[0]
+    assert '[data-testid="stHeading"] h1 *' in css
+    assert ".stApp h1 *" in css
+    block = css.rsplit(".stApp h1 *", 1)[1].split("}")[0]
     assert "color: var(--c-heading-fill) !important" in block
     assert "-webkit-text-stroke: var(--c-heading-stroke) #000 !important" in block
 
 
 def test_title_enforcer_script_is_well_formed_and_carries_the_theme():
-    """The JS backstop for when even `!important` in `css()` loses -- confirmed
-    live: a real Streamlit version difference beat a same-specificity,
-    both-`!important` CSS tie. Direct inline-style + `!important`, set via
-    `window.parent` from inside a `components.html()` iframe, is the one
-    mechanism that wins regardless of any CSS ordering quirk, since inline
-    style always outranks every external stylesheet by spec. Only checked
-    for well-formedness and that it carries the real theme values here --
-    the actual DOM effect is a browser-level claim, verified live rather
-    than by a unit test."""
+    """A second layer behind the `h1 *` CSS fix, in case a future Streamlit
+    release restructures the heading markup in some way that selector
+    doesn't anticipate. Only checked for well-formedness and that it carries
+    the real theme values and reaches descendants here -- the actual DOM
+    effect is a browser-level claim, verified live rather than by a unit
+    test (pixel-sampled, not just `getComputedStyle` -- see css()'s own
+    comment for why that distinction mattered)."""
     script = theme.title_enforcer_script()
     assert script.count("{") == script.count("}"), "unbalanced braces"
     assert script.count("(") == script.count(")"), "unbalanced parens"
     assert theme.THEME.primary in script
     assert theme.THEME.heading_stroke in script
+    assert "h1 *" in script, "must reach descendants, not just the h1 itself"
     assert "MutationObserver" in script
     assert "window.parent" in script
     assert "'important'" in script

@@ -100,20 +100,22 @@ THEME = Theme(
 
 
 def title_enforcer_script() -> str:
-    """A backstop for the page title's colour/stroke, for when even `!important`
-    in `css()` isn't enough.
+    """A belt-and-suspenders backstop for the page title's colour/stroke, on
+    top of the `h1 *` CSS rule in `css()` that's the actual fix.
 
-    Confirmed on a real deployment: identical code, but a newer Streamlit
-    release than this was developed against still won a same-specificity,
-    both-`!important` tie against the CSS in `css()` -- something about how
-    that version orders its own generated styles beat ours regardless. CSS
-    alone can't out-argue that; only direct DOM manipulation can, since an
-    element's own inline `style` (especially with `!important`) always wins
-    over every external stylesheet, full stop, by spec.
+    The real bug (see `css()`'s comment on this): the visible glyphs live in
+    a child `<span>` Streamlit wraps the heading text in, which a blanket
+    `.stApp span` rule gives its own explicit (non-gold) colour -- the `<h1>`
+    itself was gold the whole time, `getComputedStyle` on it said so, and
+    that was never the element actually painting the text. Found only by
+    sampling rendered pixels directly; every earlier check that inspected
+    the `<h1>`'s own computed style was quietly checking the wrong element.
 
-    `<script>` tags inside `st.markdown(unsafe_allow_html=True)` are inert --
-    confirmed directly, browsers never execute script inserted via
-    `innerHTML`-style rendering, which is how Streamlit renders markdown.
+    This script is kept as a second layer in case a future Streamlit release
+    restructures the heading markup in some other way the CSS selector
+    doesn't anticipate. `<script>` tags inside `st.markdown(unsafe_allow_html=True)`
+    are inert -- confirmed directly, browsers never execute script inserted
+    via `innerHTML`-style rendering, which is how Streamlit renders markdown.
     `st.components.v1.html()` is the one Streamlit primitive that runs in a
     same-origin iframe with a real `srcdoc` document, so its script actually
     executes -- and `window.parent` from inside it reaches back into the
@@ -126,7 +128,9 @@ def title_enforcer_script() -> str:
 (function() {{
   var win = window.parent;
   function apply() {{
-    var els = win.document.querySelectorAll('[data-testid="stHeading"] h1, .stApp h1');
+    var els = win.document.querySelectorAll(
+      '[data-testid="stHeading"] h1, [data-testid="stHeading"] h1 *, .stApp h1, .stApp h1 *'
+    );
     els.forEach(function(el) {{
       el.style.setProperty('color', '{t.primary}', 'important');
       el.style.setProperty('-webkit-text-stroke', '{t.heading_stroke} #000', 'important');
@@ -218,17 +222,20 @@ def css() -> str:
    smaller (h2-h4: section headers, card titles) stays plain text colour, or
    a page reads as shouting by the third subheading.
 
-   `!important` on both properties: this rule and the shared h1-h4 rule above
-   it have identical selector specificity for h1, so which one wins a tie is
-   decided by DOM/CSSOM order rather than the source order of our own
-   stylesheet -- Streamlit's own React-managed styles can get inserted or
-   re-inserted at points this file doesn't control, and a version difference
-   is enough to flip who's "later." Confirmed live: same code, same commit,
-   a newer Streamlit release than this was authored against was enough to
-   silently lose the tie and print the title in plain text colour. `!important`
-   removes the ambiguity instead of relying on it -- same reasoning already
-   applied to the sidebar height and metric-truncation rules below. */
-[data-testid="stHeading"] h1, .stApp h1 {{
+   The real bug this rule exists to defeat, found only by sampling actual
+   rendered pixels rather than trusting `getComputedStyle` on the `<h1>`
+   itself: Streamlit wraps a heading's text in a child `<span>` (for
+   `aria-labelledby`), and the blanket ".stApp span" colour rule two rules
+   up (the one setting --c-text) matches that span directly. An element's
+   own explicit colour always wins over whatever its parent computed to,
+   `!important` or not -- `!important` only wins the cascade *for the
+   element it's set on*, it doesn't propagate to children. So the `<h1>`
+   itself was correctly gold the entire time; the visible glyphs, which
+   live in that child span, never were. `h1 *` targets every descendant
+   directly instead of depending on inheritance a more specific sibling
+   rule can always defeat. */
+[data-testid="stHeading"] h1, [data-testid="stHeading"] h1 *,
+.stApp h1, .stApp h1 * {{
   color: var(--c-heading-fill) !important;
   -webkit-text-stroke: var(--c-heading-stroke) #000 !important;
 }}
