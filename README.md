@@ -246,7 +246,8 @@ would only trip around May, far too late to rebalance.
 ```
 Home.py                      Streamlit entry — dashboard
 pages/                       Math, Science, English, History, Compliance,
-                             Choice Topics, Life Skills, Activity Log
+                             Choice Topics, Life Skills, Activity Log,
+                             National Parks
 compass/
   agents/
     framework.py             LessonAgent, AgentSpec, generation pipeline
@@ -269,7 +270,8 @@ compass/
   config.py                  statutory constants vs. editable family policy
   theme.py                   the one fixed theme and the CSS that applies it
   fun_facts.py               fact-of-the-day for the student home view
-tests/                       310 tests, no API key required
+  national_parks.py          the 63 parks + a real traced US coastline for the map
+tests/                       323 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 ```
 
@@ -817,7 +819,7 @@ student view, a plain countdown to the first day of school.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 310 tests, ~9s, no API key needed
+python -m pytest tests/ -q      # 323 tests, ~9s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

@@ -1435,6 +1435,29 @@ class Database:
         self.conn.execute("DELETE FROM choice_topics WHERE id = ?", (topic_id,))
         self.conn.commit()
 
+    # -- National Parks ---------------------------------------------------------
+
+    def add_park_visit(self, student_id: int, park_key: str, visited_on: str) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO park_visits (student_id, park_key, visited_on) VALUES (?, ?, ?)",
+            (student_id, park_key, visited_on),
+        )
+        self.conn.commit()
+        return cur.lastrowid  # type: ignore[return-value]
+
+    def list_park_visits(self, student_id: int) -> list[dict[str, Any]]:
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM park_visits WHERE student_id = ? "
+                "ORDER BY visited_on DESC, id DESC",
+                (student_id,),
+            )
+        )
+
+    def delete_park_visit(self, visit_id: int) -> None:
+        self.conn.execute("DELETE FROM park_visits WHERE id = ?", (visit_id,))
+        self.conn.commit()
+
     # -- Core life skills -----------------------------------------------------
 
     def list_life_skills(self, student_id: int) -> list[dict[str, Any]]:

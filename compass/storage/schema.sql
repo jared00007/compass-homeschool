@@ -217,3 +217,24 @@ CREATE TABLE IF NOT EXISTS declarations_of_intent (
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (student_id, due_on)
 );
+
+-- ---------------------------------------------------------------------------
+-- National Parks -- a family tracker, deliberately separate from the Tier
+-- system for now (no hours, no subject credit). `park_key` references
+-- compass.national_parks.PARKS by its string key, the same pattern
+-- skill_mastery.skill_id uses for the (also Python-side) math graph -- the
+-- catalog is fixed reference data, not something a family edits, so it has
+-- no table of its own. One row per visit, not per park: a family that
+-- returns to a favorite gets a second row, not an overwritten date.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS park_visits (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    park_key    TEXT NOT NULL,
+    visited_on  TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_park_visits_student
+    ON park_visits (student_id, park_key);

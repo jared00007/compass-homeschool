@@ -136,6 +136,31 @@ def test_deleting_a_logged_lessons_activity_keeps_its_hours(db, student):
     assert activity["lesson_id"] is None
 
 
+def test_a_park_can_be_visited_more_than_once(db, student):
+    """One row per visit, not per park -- a return trip gets its own entry."""
+    db.add_park_visit(student["id"], "yellowstone", "2023-07-04")
+    db.add_park_visit(student["id"], "yellowstone", "2025-06-10")
+    visits = db.list_park_visits(student["id"])
+    assert len(visits) == 2
+    assert {v["visited_on"] for v in visits} == {"2023-07-04", "2025-06-10"}
+
+
+def test_park_visits_are_most_recent_first(db, student):
+    db.add_park_visit(student["id"], "zion", "2022-01-01")
+    db.add_park_visit(student["id"], "yosemite", "2024-01-01")
+    visits = db.list_park_visits(student["id"])
+    assert [v["park_key"] for v in visits] == ["yosemite", "zion"]
+
+
+def test_delete_park_visit_removes_only_that_entry(db, student):
+    keep_id = db.add_park_visit(student["id"], "zion", "2022-01-01")
+    remove_id = db.add_park_visit(student["id"], "zion", "2024-01-01")
+    db.delete_park_visit(remove_id)
+    remaining = db.list_park_visits(student["id"])
+    assert len(remaining) == 1
+    assert remaining[0]["id"] == keep_id
+
+
 def test_zero_minute_activity_is_rejected(db, student):
     with pytest.raises(ValueError):
         db.log_activity(
