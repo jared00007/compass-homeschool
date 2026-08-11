@@ -117,7 +117,7 @@ with plan_tab:
 # --- books -------------------------------------------------------------------
 
 with books_tab:
-    st.subheader("What he's reading")
+    st.subheader(f"What's {student['name']} reading?")
     with st.form("add_book", clear_on_submit=True):
         columns = st.columns([2, 2, 1, 1])
         title = columns[0].text_input("Title")
