@@ -73,6 +73,31 @@ def test_migrate_carries_old_interests_string_into_the_list(db, student):
     assert "interests" not in columns
 
 
+def test_migrate_drops_old_journal_entries_unique_constraint(db, student):
+    """journal_entries originally had UNIQUE (student_id, entry_date), which
+    forced a second same-day check-in to silently overwrite the first.
+    Existing rows saved under that constraint must survive being freed from
+    it, and the freed table must actually accept a second same-day row after."""
+    db.conn.execute("DROP TABLE journal_entries")
+    db.conn.execute(
+        "CREATE TABLE journal_entries (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "student_id INTEGER NOT NULL, entry_date TEXT NOT NULL, feeling TEXT NOT NULL, "
+        "note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT (datetime('now')), "
+        "UNIQUE (student_id, entry_date))"
+    )
+    db.conn.execute(
+        "INSERT INTO journal_entries (student_id, entry_date, feeling, note) VALUES (?, ?, ?, ?)",
+        (student["id"], "2026-08-11", "Angry", "old row"),
+    )
+    db.conn.commit()
+    db.migrate()
+    entries = db.list_journal_entries(student["id"])
+    assert len(entries) == 1
+    assert entries[0]["note"] == "old row"
+    db.save_journal_entry(student["id"], "2026-08-11", "Calm", "second check-in")
+    assert len(db.list_journal_entries(student["id"])) == 2
+
+
 def test_settings_fall_back_to_defaults(db):
     assert db.get_int_setting("annual_hour_target") == config.WA_ANNUAL_HOURS
     db.set_setting("annual_hour_target", "1100")
@@ -465,13 +490,14 @@ def test_interests_text_is_empty_for_a_student_with_none(db, student):
     assert db.interests_text(student["id"]) == ""
 
 
-def test_checking_in_twice_the_same_day_updates_not_duplicates(db, student):
+def test_checking_in_twice_the_same_day_keeps_both(db, student):
     db.save_journal_entry(student["id"], "2026-08-11", "Frustrated", "Math was hard.")
     db.save_journal_entry(student["id"], "2026-08-11", "Calm", "Feeling better now.")
     entries = db.list_journal_entries(student["id"])
-    assert len(entries) == 1
+    assert len(entries) == 2
     assert entries[0]["feeling"] == "Calm"
     assert entries[0]["note"] == "Feeling better now."
+    assert entries[1]["feeling"] == "Frustrated"
 
 
 def test_journal_entries_are_most_recent_first(db, student):
@@ -486,6 +512,12 @@ def test_journal_entry_for_date_finds_it_or_returns_none(db, student):
     db.save_journal_entry(student["id"], "2026-08-11", "Angry", "")
     assert db.journal_entry_for_date(student["id"], "2026-08-11")["feeling"] == "Angry"
     assert db.journal_entry_for_date(student["id"], "2026-08-01") is None
+
+
+def test_journal_entry_for_date_returns_the_most_recent_of_several(db, student):
+    db.save_journal_entry(student["id"], "2026-08-11", "Angry", "")
+    db.save_journal_entry(student["id"], "2026-08-11", "Calm", "")
+    assert db.journal_entry_for_date(student["id"], "2026-08-11")["feeling"] == "Calm"
 
 
 def test_delete_journal_entry_removes_only_that_entry(db, student):

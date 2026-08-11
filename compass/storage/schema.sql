@@ -269,8 +269,7 @@ CREATE TABLE IF NOT EXISTS journal_entries (
     entry_date  TEXT NOT NULL,
     feeling     TEXT NOT NULL,
     note        TEXT NOT NULL DEFAULT '',
-    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE (student_id, entry_date)
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_journal_entries_student

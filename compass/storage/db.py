@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -808,6 +808,7 @@ class Database:
         self._backfill_life_skill_catalog()
         self._migrate_park_visits_to_travel_entries()
         self._migrate_interests_string_to_list()
+        self._migrate_journal_entries_allow_multiple_per_day()
         for key, value in config.DEFAULT_SETTINGS.items():
             self.conn.execute(
                 "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value)
@@ -875,6 +876,42 @@ class Database:
             self.conn.execute("ALTER TABLE students DROP COLUMN interests")
         except sqlite3.OperationalError:
             pass  # older SQLite without DROP COLUMN support -- harmless if left behind
+
+    def _migrate_journal_entries_allow_multiple_per_day(self) -> None:
+        """journal_entries originally had UNIQUE (student_id, entry_date), so
+        a second same-day check-in overwrote the first. Families running that
+        version have rows saved under it; SQLite can't just drop a
+        constraint, so this rebuilds the table without it, keeping every row
+        that's already there."""
+        table = _row(
+            self.conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='journal_entries'"
+            )
+        )
+        if table is None or "UNIQUE" not in (table["sql"] or ""):
+            return  # no table yet, or already rebuilt without the constraint
+        self.conn.execute("ALTER TABLE journal_entries RENAME TO journal_entries_old")
+        self.conn.execute(
+            "CREATE TABLE journal_entries ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,"
+            "entry_date TEXT NOT NULL,"
+            "feeling TEXT NOT NULL,"
+            "note TEXT NOT NULL DEFAULT '',"
+            "created_at TEXT NOT NULL DEFAULT (datetime('now'))"
+            ")"
+        )
+        self.conn.execute(
+            "INSERT INTO journal_entries "
+            "(id, student_id, entry_date, feeling, note, created_at) "
+            "SELECT id, student_id, entry_date, feeling, note, created_at "
+            "FROM journal_entries_old"
+        )
+        self.conn.execute("DROP TABLE journal_entries_old")
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_journal_entries_student "
+            "ON journal_entries (student_id, entry_date)"
+        )
 
     def _backfill_life_skill_content(self) -> None:
         """Fill in `description`/`materials` for catalog skills seeded before
@@ -1604,15 +1641,18 @@ class Database:
     def save_journal_entry(
         self, student_id: int, entry_date: str, feeling: str, note: str = ""
     ) -> int:
-        """One entry per day -- checking in again the same day updates that
-        day's entry (feeling and note both replaced) rather than adding a
-        second row, so "look back" reads as one entry per day, not a pile."""
+        """Every check-in is its own row -- a second one the same day sits
+        alongside the first rather than replacing it, so a rough afternoon
+        doesn't erase a fine morning from the record.
+
+        created_at is stamped here in local time rather than left to the
+        column's `datetime('now')` default (UTC) -- multiple entries in a
+        day need a time-of-day a parent can actually read against the wall
+        clock, not one that's off by the server's UTC offset."""
         cur = self.conn.execute(
-            "INSERT INTO journal_entries (student_id, entry_date, feeling, note) "
-            "VALUES (?, ?, ?, ?) "
-            "ON CONFLICT (student_id, entry_date) "
-            "DO UPDATE SET feeling = excluded.feeling, note = excluded.note",
-            (student_id, entry_date, feeling, note),
+            "INSERT INTO journal_entries (student_id, entry_date, feeling, note, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (student_id, entry_date, feeling, note, datetime.now().isoformat(sep=" ", timespec="seconds")),
         )
         self.conn.commit()
         return int(cur.lastrowid)
@@ -1621,15 +1661,18 @@ class Database:
         return _rows(
             self.conn.execute(
                 "SELECT * FROM journal_entries WHERE student_id = ? "
-                "ORDER BY entry_date DESC LIMIT ?",
+                "ORDER BY entry_date DESC, id DESC LIMIT ?",
                 (student_id, limit),
             )
         )
 
     def journal_entry_for_date(self, student_id: int, entry_date: str) -> dict[str, Any] | None:
+        """Most recent check-in for that date, if any -- there can be more
+        than one now, so this is "has he checked in today," not "the" entry."""
         return _row(
             self.conn.execute(
-                "SELECT * FROM journal_entries WHERE student_id = ? AND entry_date = ?",
+                "SELECT * FROM journal_entries WHERE student_id = ? AND entry_date = ? "
+                "ORDER BY id DESC LIMIT 1",
                 (student_id, entry_date),
             )
         )

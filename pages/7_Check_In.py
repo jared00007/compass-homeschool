@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import html
 import sqlite3
-from datetime import date
+from datetime import date, datetime
 
 import streamlit as st
 
@@ -43,7 +43,8 @@ FEELINGS_PER_ROW = 4
 st.title("💬 Check-In")
 
 today = date.today().isoformat()
-todays_entry = db.journal_entry_for_date(student["id"], today)
+entries = db.list_journal_entries(student["id"])
+todays_entries = [e for e in entries if e["entry_date"] == today]
 
 if browse_only:
     st.caption(f"A look back at how {student['name'].split()[0]}'s been checking in.")
@@ -106,12 +107,14 @@ else:
 
     with st.container(key="checkin_today_card"):
         st.markdown("**Today — how are you feeling?**")
-        if todays_entry:
+        if todays_entries:
             # A refresh reloads this from the DB, not from anything still held
             # in memory -- this line is proof, on any later visit, that a save
-            # actually landed, without having to notice a highlighted button
-            # and separately reconcile that against an empty history list below.
-            st.caption("✓ Saved for today — change it anytime before tomorrow.")
+            # actually landed, without having to hunt for it in the history
+            # list below. Each check-in adds a new one, so this counts them
+            # rather than implying there's a single answer to overwrite.
+            times = "time" if len(todays_entries) == 1 else "times"
+            st.caption(f"✓ Checked in {len(todays_entries)} {times} today — checking in again adds another.")
         for row_start in range(0, len(FEELINGS), FEELINGS_PER_ROW):
             row = FEELINGS[row_start : row_start + FEELINGS_PER_ROW]
             columns = st.columns(FEELINGS_PER_ROW)
@@ -158,8 +161,8 @@ st.divider()
 st.subheader("Check-in history")
 # Today's is included here too, not just in the live card above -- the whole
 # point of a journal is being able to look back over it, today included, and
-# a "history" that hides the entry you just made isn't one.
-entries = db.list_journal_entries(student["id"])
+# a "history" that hides the entry you just made isn't one. (`entries` was
+# already loaded up top, for the "checked in N times today" caption.)
 
 if not entries:
     st.caption("Nothing yet -- today's will be the first.")
@@ -171,7 +174,12 @@ else:
             if entry["note"]
             else '<span style="color:var(--c-dim);">No note.</span>'
         )
-        date_label = f"Today, {entry['entry_date']}" if entry["entry_date"] == today else entry["entry_date"]
+        day_label = "Today" if entry["entry_date"] == today else entry["entry_date"]
+        try:
+            time_label = datetime.fromisoformat(entry["created_at"]).strftime("%-I:%M %p")
+            date_label = f"{day_label} · {time_label}"
+        except ValueError:
+            date_label = day_label
         columns = st.columns([20, 1])
         with columns[0]:
             st.markdown(
