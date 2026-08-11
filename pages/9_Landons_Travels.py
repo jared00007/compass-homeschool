@@ -1,7 +1,9 @@
 """Landon's Travels -- a family travel journal. Entries are pure journal by
 default, same as Choice Topics and Life Skills: writing them logs nothing on
 its own, but a parent can log real minutes against a specific entry when it
-was genuine researched work, not just a two-sentence trip recap. Real state
+was genuine researched work, not just a two-sentence trip recap, or seed it
+as an open History topic (compass.storage.db.add_web_node) to be picked up
+by a real generated lesson later -- never automatic, either way. Real state
 borders and National Park pins -- see compass/national_parks.py's own
 docstring for where that data comes from.
 """
@@ -190,7 +192,7 @@ with journal_tab:
                 if is_parent():
                     editing = st.session_state.get("editing_travel_entry") == entry["id"]
                     logging_hours = st.session_state.get("logging_travel_entry") == entry["id"]
-                    button_columns = st.columns([1, 1, 1, 5])
+                    button_columns = st.columns([1, 1, 1, 1, 4])
                     if button_columns[0].button(
                         "Cancel" if editing else "Edit", key=f"edit_entry_{entry['id']}"
                     ):
@@ -204,6 +206,24 @@ with journal_tab:
                     if button_columns[2].button("Remove", key=f"remove_entry_{entry['id']}"):
                         db.delete_travel_entry(entry["id"])
                         st.rerun()
+                    if button_columns[3].button("Suggest lesson", key=f"suggest_entry_{entry['id']}"):
+                        rationale = (
+                            f"A real family trip: {story_text[:400]}"
+                            if story_text
+                            else f"A real family trip to {entry['state']}"
+                            + (f", including {park.name}" if park else "") + "."
+                        )
+                        db.add_web_node(
+                            student["id"],
+                            "history",
+                            topic=entry["title"] or f"Our trip to {entry['state']}",
+                            rationale=rationale,
+                            location=entry["state"],
+                        )
+                        st.success(
+                            "Added to History's open topics -- pick it up next time a "
+                            "history lesson gets generated."
+                        )
 
                     if logging_hours:
                         with st.form(f"log_travel_entry_{entry['id']}"):
