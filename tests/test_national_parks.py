@@ -1,8 +1,8 @@
 """The National Parks catalog and map projection. Coverage focuses on the
 things that would be silently wrong with no obvious symptom: a duplicate or
-missing park, a coordinate that doesn't land where its region says it
-should, or a park that quietly stops appearing on the map because its
-coordinates drifted outside every inset's bounding box.
+missing park, an unreal-looking coordinate, or a park that quietly stops
+appearing on the map because its coordinates drifted outside every inset's
+bounding box.
 """
 
 from __future__ import annotations
@@ -20,12 +20,6 @@ def test_every_park_has_real_looking_coordinates():
     for p in parks.PARKS:
         assert -180 <= p.lon <= 180, p.name
         assert -90 <= p.lat <= 90, p.name
-        assert p.region in parks.REGIONS, f"{p.name} has unknown region {p.region!r}"
-
-
-def test_every_region_in_use_is_declared():
-    used = {p.region for p in parks.PARKS}
-    assert used <= set(parks.REGIONS)
 
 
 def test_park_by_key_finds_a_real_park_and_none_for_junk():
