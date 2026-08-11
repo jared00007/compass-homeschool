@@ -38,7 +38,14 @@ MONO = 'ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace'
 # The static backdrop. A warm, bright off-white pair rather than pure white/grey
 # -- chosen, not inherited. See module docstring for why this stays fixed.
 BACKDROP_BG = "#FBF7EE"
-BACKDROP_SIDE = "#F3ECDA"
+BACKDROP_SIDE = "#EAF1FC"
+# A faint ink-blue texture on the sidebar only -- same repeating-gradient
+# technique as a theme's own `panel_texture`, echoing the border/nav-accent
+# blue instead of leaving the sidebar a flat, unvibed panel.
+BACKDROP_SIDE_TEXTURE = (
+    "repeating-radial-gradient(circle at 0 0, rgba(46,94,170,.10) 0 1.6px, "
+    "transparent 1.6px 9px)"
+)
 
 
 @dataclass(frozen=True)
@@ -203,6 +210,7 @@ def css() -> str:
 [data-testid="stHeader"] {{ background: transparent; }}
 [data-testid="stSidebar"] {{
   background: {BACKDROP_SIDE};
+  background-image: {BACKDROP_SIDE_TEXTURE};
   border-right: 1px solid var(--c-border);
   /* Streamlit sets `height: auto` as an *inline* style on this element, which
      beats any stylesheet rule regardless of selector specificity -- `!important`
