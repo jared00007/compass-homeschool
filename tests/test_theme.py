@@ -142,7 +142,11 @@ def test_the_page_title_rule_reaches_its_own_descendants():
     assert ".stApp h1 *" in css
     block = css.rsplit(".stApp h1 *", 1)[1].split("}")[0]
     assert "color: var(--c-heading-fill) !important" in block
-    assert "-webkit-text-stroke: var(--c-heading-stroke) #000 !important" in block
+    assert (
+        "-webkit-text-stroke: var(--c-heading-stroke) var(--c-heading-stroke-color) "
+        "!important" in block
+    )
+    assert "text-shadow: var(--c-heading-shadow) !important" in block
 
 
 def test_title_enforcer_script_is_well_formed_and_carries_the_theme():
@@ -158,6 +162,8 @@ def test_title_enforcer_script_is_well_formed_and_carries_the_theme():
     assert script.count("(") == script.count(")"), "unbalanced parens"
     assert theme.THEME.primary in script
     assert theme.THEME.heading_stroke in script
+    assert theme.THEME.heading_stroke_color in script
+    assert theme.THEME.heading_shadow in script
     assert "h1 *" in script, "must reach descendants, not just the h1 itself"
     assert "MutationObserver" in script
     assert "window.parent" in script

@@ -60,6 +60,10 @@ class Theme:
     heading_track: str = "0"
     heading_weight: str = "700"
     heading_stroke: str = "0px"       # an inked outline behind the page title
+    heading_stroke_color: str = "#000"
+    heading_shadow: str = "none"      # a flat offset shadow behind the page title,
+    # same comic-panel technique as `glow` on containers -- gives the title real
+    # dimension instead of just being colored text
     heading_fill: str = "var(--c-text)"  # the page title's own colour, separate
     # from body text so it can pop without recoloring every h2-h4
     # The primary button prints in this colour over `primary`. Defaults to the
@@ -90,7 +94,13 @@ THEME = Theme(
     radius="3px",
     heading_font='"Avenir Next", "Helvetica Neue", ' + SANS,
     heading_caps="uppercase", heading_track=".02em", heading_weight="800",
-    heading_stroke="1.1px", heading_fill="var(--c-primary)",
+    # A thin warm-ink stroke plus an offset shadow reads as a comic panel
+    # title; the original 1.1px pure-black stroke was heavy enough to look
+    # like a dark outline rather than an accent -- picked after previewing
+    # four variants live and choosing this one.
+    heading_stroke="0.6px", heading_stroke_color="#241C12",
+    heading_shadow="3px 3px 0 rgba(36,28,18,.35)",
+    heading_fill="var(--c-primary)",
     panel_texture=(
         "repeating-radial-gradient(circle at 100% 0%, "
         "rgba(36,28,18,.05) 0 1px, transparent 1px 7px)"
@@ -133,7 +143,8 @@ def title_enforcer_script() -> str:
     );
     els.forEach(function(el) {{
       el.style.setProperty('color', '{t.primary}', 'important');
-      el.style.setProperty('-webkit-text-stroke', '{t.heading_stroke} #000', 'important');
+      el.style.setProperty('-webkit-text-stroke', '{t.heading_stroke} {t.heading_stroke_color}', 'important');
+      el.style.setProperty('text-shadow', '{t.heading_shadow}', 'important');
     }});
   }}
   apply();
@@ -172,6 +183,8 @@ def css() -> str:
   --c-glow: {t.glow};
   --c-panel-texture: {t.panel_texture};
   --c-heading-stroke: {t.heading_stroke};
+  --c-heading-stroke-color: {t.heading_stroke_color};
+  --c-heading-shadow: {t.heading_shadow};
   --c-heading-fill: {t.heading_fill};
   --c-button-text: {t.button_text};
   --c-good: {t.good};
@@ -237,7 +250,8 @@ def css() -> str:
 [data-testid="stHeading"] h1, [data-testid="stHeading"] h1 *,
 .stApp h1, .stApp h1 * {{
   color: var(--c-heading-fill) !important;
-  -webkit-text-stroke: var(--c-heading-stroke) #000 !important;
+  -webkit-text-stroke: var(--c-heading-stroke) var(--c-heading-stroke-color) !important;
+  text-shadow: var(--c-heading-shadow) !important;
 }}
 
 /* Captions carry most of the app's explanatory writing. They must stay
