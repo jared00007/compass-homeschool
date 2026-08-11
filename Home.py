@@ -13,6 +13,7 @@ from compass.ui import (
     is_parent,
     page_setup,
     render_declaration_banner,
+    render_fun_fact,
     render_lesson,
     render_school_start_countdown,
     render_today_checklist,
@@ -60,6 +61,7 @@ if not is_parent():
                     render_lesson(payload, for_parent=False)
 
     st.divider()
+    render_fun_fact()
     columns = st.columns(3)
 
     with columns[0]:

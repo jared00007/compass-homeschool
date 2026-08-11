@@ -17,7 +17,7 @@ from typing import Any
 
 import streamlit as st
 
-from compass import auth, config, subjects, theme as theming
+from compass import auth, config, fun_facts, subjects, theme as theming
 from compass.backup import auto_snapshot
 from compass.agents import (
     GeneratedLesson,
@@ -1188,6 +1188,14 @@ def render_school_start_countdown(db: Database) -> None:
     else:
         plural = "s" if remaining != 1 else ""
         st.caption(f"🗓️ {remaining} day{plural} until the first day of school ({when}).")
+
+
+def render_fun_fact() -> None:
+    """Student view only -- a small reward for showing up, not a lesson.
+    Same card styling as an st.info, so it reads as part of the page rather
+    than an ad. Rotates daily; see fun_facts.fact_of_the_day for why that's
+    deterministic rather than random."""
+    st.info(f"🎲 **Fun fact of the day**\n\n{fun_facts.fact_of_the_day()}")
 
 
 def render_declaration_banner(db: Database, student: dict[str, Any]) -> None:

@@ -268,7 +268,8 @@ compass/
   subjects.py                the 11 WA subjects and Tier 2 folding rules
   config.py                  statutory constants vs. editable family policy
   theme.py                   the one fixed theme and the CSS that applies it
-tests/                       299 tests, no API key required
+  fun_facts.py               fact-of-the-day for the student home view
+tests/                       303 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 ```
 
@@ -816,7 +817,7 @@ student view, a plain countdown to the first day of school.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 299 tests, ~9s, no API key needed
+python -m pytest tests/ -q      # 303 tests, ~9s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the
