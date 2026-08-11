@@ -1,0 +1,238 @@
+"""Big Projects -- parent-curated, multi-step creative projects that build
+toward one finished thing, run agile-sprint style: small ordered steps, each
+one small enough to actually finish in a sitting, each with its own
+materials list and its own subject credit. The Lego stop-motion film is the
+starter project; more can be added the same way Life Skills grows -- by
+hand, not generated.
+"""
+
+from __future__ import annotations
+
+import html
+from datetime import date
+
+import streamlit as st
+
+from compass import config
+from compass.subjects import SUBJECT_KEYS, label
+from compass.ui import is_parent, page_setup
+
+db, student = page_setup("Big Projects", icon="🎬")
+
+st.title("🎬 Big Projects")
+st.caption(
+    "One big thing, broken into small steps. Check a step off when it's "
+    "done -- the project bar fills up as you go, and every step earns real "
+    "school credit."
+)
+
+projects = db.list_big_projects(student["id"])
+
+if not projects:
+    st.info("No projects yet.")
+    if st.button("Add the starter project (Stop-Motion Lego Film)", type="primary"):
+        count = db.seed_big_projects(student["id"])
+        st.success(f"Added {count} project{'s' if count != 1 else ''}.")
+        st.rerun()
+
+if is_parent():
+    checklist_tab, log_tab, manage_tab = st.tabs(["Checklist", "Log time", "Add / manage"])
+else:
+    checklist_tab = st.container()
+    log_tab = manage_tab = None
+
+_STEP_CARD_CSS = """
+<style>
+div[class*="st-key-project_card_"] {
+  border: 1px solid var(--c-border) !important;
+  border-radius: var(--c-radius) !important;
+  background: var(--c-panel) !important;
+  box-shadow: var(--c-glow);
+  padding: 16px !important;
+  margin-bottom: 20px !important;
+}
+div[class*="st-key-step_row_"] {
+  border-left: 3px solid var(--c-border) !important;
+  border-radius: var(--c-radius) !important;
+  padding: 10px 14px !important;
+  margin-bottom: 8px !important;
+}
+div[class*="st-key-step_row_next_"] {
+  border-left: 3px solid var(--c-alt) !important;
+  background: var(--c-panel) !important;
+}
+</style>
+"""
+
+with checklist_tab:
+    if not projects:
+        st.caption("Add the starter project above to get going.")
+    st.markdown(_STEP_CARD_CSS, unsafe_allow_html=True)
+    for project in projects:
+        steps = db.list_project_steps(project["id"])
+        done = sum(1 for s in steps if s["completed_on"])
+        with st.container(key=f"project_card_{project['id']}"):
+            st.markdown(f"### {html.escape(project['title'])}")
+            if project["vision"]:
+                st.caption(project["vision"])
+            if steps:
+                st.progress(done / len(steps), text=f"{done} / {len(steps)} steps done")
+            # The first not-done step is highlighted as "up next" -- steps
+            # aren't hard-locked (either of you can check any of them off,
+            # same parity as Life Skills), but the sprint-style point of this
+            # feature is having one clear next thing rather than a flat list.
+            next_step_id = next((s["id"] for s in steps if not s["completed_on"]), None)
+            for index, step in enumerate(steps, start=1):
+                is_next = step["id"] == next_step_id
+                row_key = f"step_row_next_{step['id']}" if is_next else f"step_row_{step['id']}"
+                with st.container(key=row_key):
+                    columns = st.columns([1, 20])
+                    with columns[0]:
+                        checked = st.checkbox(
+                            "Done",
+                            value=bool(step["completed_on"]),
+                            key=f"step_done_{step['id']}",
+                            label_visibility="collapsed",
+                        )
+                        if checked != bool(step["completed_on"]):
+                            db.set_project_step_done(step["id"], checked)
+                            st.rerun()
+                    with columns[1]:
+                        badge = " · ▶ up next" if is_next and not checked else ""
+                        st.markdown(f"**{index}. {html.escape(step['title'])}**{badge}")
+                        if step["description"]:
+                            st.write(step["description"])
+                        meta = []
+                        if step["materials"]:
+                            meta.append(f"**You'll need:** {step['materials']}")
+                        meta.append(f"Credits toward {label(step['credit_subject'])}")
+                        st.caption(" · ".join(meta))
+            if is_parent() and st.button(
+                "Remove this project", key=f"remove_project_{project['id']}"
+            ):
+                db.delete_big_project(project["id"])
+                st.rerun()
+
+if log_tab is not None:
+  with log_tab:
+    st.subheader("Log time on a project step")
+    st.caption(
+        "Every step credits a real subject -- writing, art, or occupational "
+        "education -- so project time genuinely counts toward the compliance "
+        "dashboard, not just the checklist."
+    )
+    if not projects:
+        st.info("Add a project first -- there's nothing to log yet.")
+    else:
+        all_steps = [
+            (project, step)
+            for project in projects
+            for step in db.list_project_steps(project["id"])
+        ]
+        with st.form("log_project_step"):
+            project_step = st.selectbox(
+                "Step",
+                all_steps,
+                format_func=lambda ps: f"{ps[0]['title']} — {ps[1]['title']}",
+            )
+            columns = st.columns(3)
+            occurred_on = columns[0].date_input("Date", value=date.today())
+            minutes = columns[1].number_input(
+                "Minutes", min_value=5, max_value=600, value=45, step=15
+            )
+            _, step = project_step
+            credit_subject = columns[2].selectbox(
+                "Credits toward",
+                SUBJECT_KEYS,
+                index=SUBJECT_KEYS.index(step["credit_subject"])
+                if step["credit_subject"] in SUBJECT_KEYS
+                else SUBJECT_KEYS.index("occupational_education"),
+                format_func=label,
+            )
+            note = st.text_input("What did he do?")
+            mark_done = st.checkbox("Mark this step done", value=False)
+            if st.form_submit_button("Log hours", type="primary"):
+                project, step = project_step
+                db.log_activity(
+                    student_id=student["id"],
+                    title=f"{project['title']} — {step['title']}",
+                    tier=config.TIER_PROJECTS,
+                    primary_subject=credit_subject,
+                    minutes=int(minutes),
+                    subject_credits={credit_subject: int(minutes)},
+                    occurred_on=occurred_on.isoformat(),
+                    description=note,
+                    source="big_projects",
+                )
+                if mark_done:
+                    db.set_project_step_done(step["id"], True)
+                # No rerun here on purpose -- the form submit already causes
+                # one, and an extra manual one right after st.success() wipes
+                # the confirmation before it ever renders (the same bug the
+                # Check-In save button had).
+                st.success("Logged.")
+
+if manage_tab is not None:
+  with manage_tab:
+    st.markdown("#### Add a project")
+    with st.form("add_big_project", clear_on_submit=True):
+        title = st.text_input("Project title")
+        vision = st.text_area(
+            "The vision -- what does the finished thing look like?", height=80
+        )
+        if st.form_submit_button("Add project", type="primary") and title.strip():
+            db.add_big_project(student["id"], title.strip(), vision.strip())
+            st.rerun()
+
+    st.divider()
+
+    st.markdown("#### Add a step to an existing project")
+    if not projects:
+        st.caption("Add a project first.")
+    else:
+        with st.form("add_project_step", clear_on_submit=True):
+            project = st.selectbox(
+                "Project", projects, format_func=lambda p: p["title"], key="step_project"
+            )
+            step_title = st.text_input("Step title")
+            description = st.text_area("What happens in this step?", height=80)
+            materials = st.text_input(
+                "What you'll need (optional)", placeholder="e.g. cardboard, tape, a phone"
+            )
+            credit_subject = st.selectbox(
+                "Credits toward",
+                SUBJECT_KEYS,
+                index=SUBJECT_KEYS.index("occupational_education"),
+                format_func=label,
+                key="step_credit",
+            )
+            if st.form_submit_button("Add step", type="primary") and step_title.strip():
+                db.add_project_step(
+                    project["id"],
+                    step_title.strip(),
+                    description.strip(),
+                    materials.strip(),
+                    credit_subject,
+                )
+                st.rerun()
+
+    st.divider()
+
+    st.markdown("#### Remove a step")
+    removable = [
+        (project, step)
+        for project in projects
+        for step in db.list_project_steps(project["id"])
+    ]
+    if not removable:
+        st.caption("No steps yet.")
+    else:
+        target = st.selectbox(
+            "Step to remove",
+            removable,
+            format_func=lambda ps: f"{ps[0]['title']} — {ps[1]['title']}",
+            key="remove_step_pick",
+        )
+        if st.button("Remove step"):
+            db.delete_project_step(target[1]["id"])
+            st.rerun()

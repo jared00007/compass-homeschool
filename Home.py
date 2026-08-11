@@ -194,7 +194,7 @@ with left:
         icon = "✅" if subject.has_instruction else "⬜"
         last = f" · last taught {subject.last_taught}" if subject.last_taught else ""
         st.markdown(f"{icon} **{subject.label}** — {subject.hours:g} hrs{last}")
-    st.page_link("pages/10_Compliance.py", label="Full compliance dashboard", icon="📋")
+    st.page_link("pages/11_Compliance.py", label="Full compliance dashboard", icon="📋")
 
 with right:
     st.subheader("Math graph")
@@ -265,4 +265,4 @@ else:
             f"**{activity['occurred_on']}** — {activity['title']} "
             f"({activity['minutes']} min) — {credit_summary}"
         )
-st.page_link("pages/9_Activity_Log.py", label="Full activity log", icon="🗂️")
+st.page_link("pages/10_Activity_Log.py", label="Full activity log", icon="🗂️")

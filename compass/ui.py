@@ -93,7 +93,7 @@ def _profile_control(db: Database, student: dict[str, Any]) -> None:
     """
     if not is_parent():
         return
-    st.page_link("pages/11_Student_Profile.py", label="Edit his profile", icon="✏️")
+    st.page_link("pages/12_Student_Profile.py", label="Edit his profile", icon="✏️")
 
 
 def _mode_control(db: Database) -> None:

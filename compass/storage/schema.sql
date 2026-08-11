@@ -147,7 +147,7 @@ CREATE TABLE IF NOT EXISTS activities (
     lesson_id       INTEGER REFERENCES lessons(id) ON DELETE SET NULL,
     title           TEXT NOT NULL,
     description     TEXT NOT NULL DEFAULT '',
-    tier            TEXT NOT NULL CHECK (tier IN ('core', 'folded', 'choice', 'life_skills')),
+    tier            TEXT NOT NULL CHECK (tier IN ('core', 'folded', 'choice', 'life_skills', 'projects')),
     primary_subject TEXT NOT NULL,
     source          TEXT NOT NULL DEFAULT 'manual',  -- agent key, 'manual', 'choice', 'life_skills'
     minutes         INTEGER NOT NULL CHECK (minutes > 0),
@@ -256,11 +256,12 @@ CREATE INDEX IF NOT EXISTS idx_travel_entries_student
     ON travel_entries (student_id, state);
 
 -- ---------------------------------------------------------------------------
--- Check-In -- a daily feelings journal. One entry per day (a second check-in
--- the same day updates it rather than piling up), a required feeling pick
--- plus an optional note about anything at all, not just school. Fully
--- visible to a parent by design -- see pages/7_Check_In.py's own banner,
--- which tells him that plainly rather than letting him assume privacy.
+-- Check-In -- a daily feelings journal. Every check-in is its own row (a
+-- second one the same day sits alongside the first rather than overwriting
+-- it), a required feeling pick plus an optional note about anything at all,
+-- not just school. Fully visible to a parent by design -- see
+-- pages/8_Check_In.py's own banner, which tells him that plainly rather
+-- than letting him assume privacy.
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS journal_entries (
@@ -274,3 +275,36 @@ CREATE TABLE IF NOT EXISTS journal_entries (
 
 CREATE INDEX IF NOT EXISTS idx_journal_entries_student
     ON journal_entries (student_id, entry_date);
+
+-- ---------------------------------------------------------------------------
+-- Big Projects -- parent-curated, multi-step creative projects (the Lego
+-- stop-motion film being the first). Distinct from Core Life Skills: a life
+-- skill is one self-contained lesson, a project is a whole pipeline of
+-- ordered steps that build toward one finished thing, run agile-sprint style
+-- -- each step small enough to actually finish in a sitting, in a fixed
+-- order because step 4 usually depends on step 3 being done.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS big_projects (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL,
+    vision      TEXT NOT NULL DEFAULT '',
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS project_steps (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id     INTEGER NOT NULL REFERENCES big_projects(id) ON DELETE CASCADE,
+    sort_order     INTEGER NOT NULL DEFAULT 0,
+    title          TEXT NOT NULL,
+    description    TEXT NOT NULL DEFAULT '',
+    materials      TEXT NOT NULL DEFAULT '',
+    credit_subject TEXT NOT NULL DEFAULT 'occupational_education',
+    completed_on   TEXT,
+    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_steps_project
+    ON project_steps (project_id, sort_order);

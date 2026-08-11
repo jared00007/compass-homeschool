@@ -203,8 +203,10 @@ if log_tab is not None:
                 )
                 if mark_done:
                     db.set_life_skill_done(skill["id"], True, note)
+                # No rerun here on purpose -- the form submit already causes
+                # one, and an extra manual one right after st.success() wipes
+                # the confirmation before it ever renders.
                 st.success("Logged.")
-                st.rerun()
 
 if master_tab is not None:
   with master_tab:

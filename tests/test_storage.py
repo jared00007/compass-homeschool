@@ -98,6 +98,67 @@ def test_migrate_drops_old_journal_entries_unique_constraint(db, student):
     assert len(db.list_journal_entries(student["id"])) == 2
 
 
+def test_migrate_rebuilds_activities_to_allow_projects_tier(db, student):
+    """activities.tier had a CHECK constraint that predates the Big Projects
+    tier -- existing logged hours must survive the rebuild, foreign keys
+    from activity_subject_credits must still resolve afterward, and a
+    'projects'-tier activity must actually be insertable once it's done."""
+    db.conn.execute("DROP TABLE activities")
+    db.conn.execute(
+        "CREATE TABLE activities (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "student_id INTEGER NOT NULL, lesson_id INTEGER, title TEXT NOT NULL, "
+        "description TEXT NOT NULL DEFAULT '', "
+        "tier TEXT NOT NULL CHECK (tier IN ('core', 'folded', 'choice', 'life_skills')), "
+        "primary_subject TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'manual', "
+        "minutes INTEGER NOT NULL CHECK (minutes > 0), occurred_on TEXT NOT NULL, "
+        "location TEXT NOT NULL DEFAULT '', "
+        "created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+    )
+    old_id = db.conn.execute(
+        "INSERT INTO activities (student_id, title, tier, primary_subject, minutes, occurred_on) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (student["id"], "Old-style logged hours", "core", "math", 30, "2026-08-01"),
+    ).lastrowid
+    db.conn.execute(
+        "INSERT INTO activity_subject_credits (activity_id, subject, minutes) VALUES (?, ?, ?)",
+        (old_id, "math", 30),
+    )
+    db.conn.commit()
+
+    db.migrate()
+
+    activities = _list(db, "activities", student["id"])
+    assert len(activities) == 1
+    assert activities[0]["title"] == "Old-style logged hours"
+    credits = db.conn.execute(
+        "SELECT * FROM activity_subject_credits WHERE activity_id = ?", (old_id,)
+    ).fetchall()
+    assert len(credits) == 1  # the foreign key still resolves to the rebuilt row
+
+    # the whole point: a 'projects'-tier row must now actually insert
+    new_id = db.log_activity(
+        student_id=student["id"],
+        title="Stop-Motion Lego Film — Pick your story",
+        tier=config.TIER_PROJECTS,
+        primary_subject="writing",
+        minutes=30,
+        subject_credits={"writing": 30},
+    )
+    assert new_id > 0
+    # foreign key enforcement is still live post-migration
+    with pytest.raises(sqlite3.IntegrityError):
+        db.conn.execute(
+            "INSERT INTO activity_subject_credits (activity_id, subject, minutes) "
+            "VALUES (?, ?, ?)",
+            (999999, "math", 10),
+        )
+        db.conn.commit()
+
+
+def _list(db, table, student_id):
+    return [dict(r) for r in db.conn.execute(f"SELECT * FROM {table} WHERE student_id = ?", (student_id,))]
+
+
 def test_settings_fall_back_to_defaults(db):
     assert db.get_int_setting("annual_hour_target") == config.WA_ANNUAL_HOURS
     db.set_setting("annual_hour_target", "1100")
@@ -527,6 +588,58 @@ def test_delete_journal_entry_removes_only_that_entry(db, student):
     remaining = db.list_journal_entries(student["id"])
     assert len(remaining) == 1
     assert remaining[0]["entry_date"] == "2026-08-11"
+
+
+def test_seed_big_projects_adds_the_catalog_once(db, student):
+    added = db.seed_big_projects(student["id"])
+    assert added == 1
+    projects = db.list_big_projects(student["id"])
+    assert len(projects) == 1
+    assert projects[0]["title"] == "Stop-Motion Lego Film"
+    steps = db.list_project_steps(projects[0]["id"])
+    assert len(steps) == 11
+    assert all(s["credit_subject"] for s in steps)
+    # Seeding again is a no-op -- a family that already has projects (or
+    # deleted the starter one on purpose) never gets it pushed back on them.
+    assert db.seed_big_projects(student["id"]) == 0
+    assert len(db.list_big_projects(student["id"])) == 1
+
+
+def test_add_project_step_appends_in_order(db, student):
+    project_id = db.add_big_project(student["id"], "Test Project", "A vision.")
+    db.add_project_step(project_id, "Step one", credit_subject="writing")
+    db.add_project_step(project_id, "Step two", credit_subject="art_and_music")
+    steps = db.list_project_steps(project_id)
+    assert [s["title"] for s in steps] == ["Step one", "Step two"]
+    assert [s["sort_order"] for s in steps] == [0, 1]
+
+
+def test_set_project_step_done_toggles_completed_on(db, student):
+    project_id = db.add_big_project(student["id"], "Test Project")
+    step_id = db.add_project_step(project_id, "Step one")
+    assert db.list_project_steps(project_id)[0]["completed_on"] is None
+    db.set_project_step_done(step_id, True)
+    assert db.list_project_steps(project_id)[0]["completed_on"] is not None
+    db.set_project_step_done(step_id, False)
+    assert db.list_project_steps(project_id)[0]["completed_on"] is None
+
+
+def test_delete_big_project_cascades_to_its_steps(db, student):
+    project_id = db.add_big_project(student["id"], "Test Project")
+    db.add_project_step(project_id, "Step one")
+    db.delete_big_project(project_id)
+    assert db.list_project_steps(project_id) == []
+    assert db.list_big_projects(student["id"]) == []
+
+
+def test_delete_project_step_removes_only_that_step(db, student):
+    project_id = db.add_big_project(student["id"], "Test Project")
+    keep_id = db.add_project_step(project_id, "Keep me")
+    remove_id = db.add_project_step(project_id, "Remove me")
+    db.delete_project_step(remove_id)
+    remaining = db.list_project_steps(project_id)
+    assert len(remaining) == 1
+    assert remaining[0]["id"] == keep_id
 
 
 def test_update_student_ignores_unknown_fields(db, student):

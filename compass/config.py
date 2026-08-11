@@ -69,14 +69,16 @@ TIER_CORE = "core"  # Tier 1 — agent-planned, WA-mandated core subjects
 TIER_FOLDED = "folded"  # Tier 2 — secondary credit earned inside a Tier 1 activity
 TIER_CHOICE = "choice"  # Tier 3 — student-selected interest topics
 TIER_LIFE_SKILLS = "life_skills"  # Parent-defined checklist track
+TIER_PROJECTS = "projects"  # Parent-defined multi-step project track (e.g. the Lego film)
 
-TIERS = (TIER_CORE, TIER_FOLDED, TIER_CHOICE, TIER_LIFE_SKILLS)
+TIERS = (TIER_CORE, TIER_FOLDED, TIER_CHOICE, TIER_LIFE_SKILLS, TIER_PROJECTS)
 
 TIER_LABELS = {
     TIER_CORE: "Tier 1 — Core",
     TIER_FOLDED: "Tier 2 — Folded in",
     TIER_CHOICE: "Tier 3 — {name}'s choice",
     TIER_LIFE_SKILLS: "Core life skills",
+    TIER_PROJECTS: "Big Projects",
 }
 
 

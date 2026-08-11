@@ -767,6 +767,92 @@ LIFE_SKILL_CATALOG: Sequence[tuple[str, str, str, str, str, bool]] = (
      "an honest conversation", False),
 )
 
+# Seed catalog for Big Projects: (project title, vision, steps), where each
+# step is (title, description, materials, credit_subject). Written by hand,
+# same reasoning as LIFE_SKILL_CATALOG -- plain, casual, kid-facing, and
+# ordered because later steps genuinely depend on earlier ones (you can't
+# shoot a set you haven't built). The Lego stop-motion film is the first
+# entry; more can be added to this tuple as new project ideas are agreed on.
+BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]]]] = (
+    (
+        "Stop-Motion Lego Film",
+        "Write, build, shoot, and edit your own short Lego stop-motion film -- "
+        "start to finish, your story, released as a real finished film the "
+        "family watches together.",
+        (
+            ("Pick your story",
+             "Come up with a short story with a clear beginning, middle, and "
+             "end. Keep it small on purpose -- 4 to 6 scenes is plenty for a "
+             "first film. Pick something you're actually excited about: a "
+             "heist, a battle, a chase, a mystery, whatever.",
+             "paper and pencil (or just talk it through out loud)", "writing"),
+            ("Write your shot list",
+             "Break the story into a numbered list of scenes. For each one, "
+             "jot down where it happens, who's in it, and what happens. Rough "
+             "stick-figure sketches are enough here -- this is a plan, not "
+             "finished art.",
+             "paper, pencil", "writing"),
+            ("Cast your minifigs",
+             "Decide which minifig plays which character. Stop-motion lives "
+             "or dies on consistency -- the same figure needs to look the "
+             "same in every scene it's in, so lock this in before you start "
+             "shooting.",
+             "your Lego minifigs", "art_and_music"),
+            ("Build your first set",
+             "Build or arrange the set for scene 1. Use your existing Lego "
+             "bricks and baseplates for anything they cover, and cardboard, "
+             "foam board, or craft supplies for anything they don't -- a "
+             "building front, hills, a backdrop sky.",
+             "Lego bricks/baseplates, cardboard or foam board, scissors, "
+             "tape or glue, paint or felt/cellophane for texture", "art_and_music"),
+            ("Set up your shooting station",
+             "A stop-motion shoot needs two things above all: a camera that "
+             "doesn't move, and light that doesn't change. Tape or wedge your "
+             "phone so it can't shift, point a desk lamp at the set instead "
+             "of a window (daylight shifts mid-shoot and causes flicker), and "
+             "install a stop-motion app.",
+             "phone or tablet, tripod or something to wedge it steady, a "
+             "desk lamp, the Stop Motion Studio app (free)", "occupational_education"),
+            ("Shoot your first scene",
+             "Move each minifig or prop just a little between shots -- small, "
+             "consistent movements read as smooth motion instead of a jump. "
+             "Use the app's onion-skin view to see the last frame ghosted "
+             "behind the camera so you know exactly how far to move things.",
+             "the set and shooting station from the last two steps", "occupational_education"),
+            ("Build and shoot the rest of your scenes",
+             "Repeat the build-then-shoot loop from the last three steps, "
+             "once per remaining scene on your shot list. Add one step to "
+             "this project for each scene so you can check them off one at "
+             "a time as you go.",
+             "same as the last three steps, one round per scene", "occupational_education"),
+            ("Add sound and voices",
+             "Record voices for your minifigs, add sound effects, and pick "
+             "music -- this is the step that turns a silent slideshow into a "
+             "movie. Foley is easier than it sounds: clapping, tapping, or "
+             "crinkling things near the mic often beats looking up 'real' "
+             "sound effects.",
+             "phone or tablet mic, a quiet room, CapCut or iMovie", "art_and_music"),
+            ("Edit it all together",
+             "Bring every scene clip into CapCut or iMovie, put them in "
+             "order, trim the rough edges, and add simple transitions "
+             "between scenes. This is where all those small separate files "
+             "finally become one finished film.",
+             "CapCut or iMovie, all your exported scene clips", "occupational_education"),
+            ("Add titles and credits",
+             "A title card up front and a credits roll at the end -- "
+             "'Directed by' you, cast list, music credits if you used any. "
+             "Small thing, but it's what makes it feel like a finished film "
+             "instead of a school assignment.",
+             "CapCut or iMovie's title tools", "art_and_music"),
+            ("Premiere night",
+             "Watch the finished film together as a family, start to finish, "
+             "no pausing to critique partway through. That's the payoff for "
+             "every small step that came before it.",
+             "a TV or big screen, snacks", "art_and_music"),
+        ),
+    ),
+)
+
 # Leitner intervals in days, indexed by box number (1-5).
 LEITNER_INTERVALS = {1: 1, 2: 3, 3: 7, 4: 16, 5: 35}
 
@@ -799,6 +885,12 @@ class Database:
 
     def migrate(self) -> None:
         self.conn.executescript(SCHEMA_PATH.read_text())
+        # Runs first, right after executescript (which commits any pending
+        # transaction before it runs) and before any other migration below
+        # issues DML of its own -- it needs to toggle the foreign_keys
+        # pragma, which SQLite silently no-ops in the middle of a
+        # transaction, so nothing else can be allowed to open one first.
+        self._migrate_activities_allow_projects_tier()
         # `CREATE TABLE IF NOT EXISTS` above only covers a table's first-ever
         # creation -- a family's existing life_skills table predates the
         # `materials`/`active` columns, so they need adding here instead.
@@ -819,6 +911,62 @@ class Database:
         existing = {row["name"] for row in self.conn.execute(f"PRAGMA table_info({table})")}
         if column not in existing:
             self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+
+    def _migrate_activities_allow_projects_tier(self) -> None:
+        """activities.tier had a CHECK constraint listing the tiers that
+        predates Big Projects -- SQLite can't ALTER a CHECK constraint in
+        place, so this rebuilds the table with 'projects' added, keeping
+        every row (same id, so activity_subject_credits' foreign keys still
+        point at the right one).
+
+        Built new-name-first rather than rename-old-then-recreate: SQLite's
+        ALTER TABLE RENAME rewrites *other* tables' foreign key clauses to
+        follow the renamed table, so renaming `activities` away would leave
+        activity_subject_credits permanently pointing at `activities_old`
+        even after that table is long gone. Building `activities_new` and
+        renaming it into the vacated `activities` name never touches
+        anything that references `activities` by its real name, so that
+        foreign key is never disturbed."""
+        table = _row(
+            self.conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='activities'"
+            )
+        )
+        if table is None or "'projects'" in (table["sql"] or ""):
+            return  # no table yet, or already rebuilt with the new tier
+        self.conn.execute("PRAGMA foreign_keys = OFF")
+        self.conn.execute(
+            "CREATE TABLE activities_new ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,"
+            "lesson_id INTEGER REFERENCES lessons(id) ON DELETE SET NULL,"
+            "title TEXT NOT NULL,"
+            "description TEXT NOT NULL DEFAULT '',"
+            "tier TEXT NOT NULL CHECK (tier IN "
+            "('core', 'folded', 'choice', 'life_skills', 'projects')),"
+            "primary_subject TEXT NOT NULL,"
+            "source TEXT NOT NULL DEFAULT 'manual',"
+            "minutes INTEGER NOT NULL CHECK (minutes > 0),"
+            "occurred_on TEXT NOT NULL,"
+            "location TEXT NOT NULL DEFAULT '',"
+            "created_at TEXT NOT NULL DEFAULT (datetime('now'))"
+            ")"
+        )
+        self.conn.execute(
+            "INSERT INTO activities_new "
+            "(id, student_id, lesson_id, title, description, tier, primary_subject, "
+            " source, minutes, occurred_on, location, created_at) "
+            "SELECT id, student_id, lesson_id, title, description, tier, primary_subject, "
+            "source, minutes, occurred_on, location, created_at FROM activities"
+        )
+        self.conn.execute("DROP TABLE activities")
+        self.conn.execute("ALTER TABLE activities_new RENAME TO activities")
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_activities_student_date "
+            "ON activities (student_id, occurred_on)"
+        )
+        self.conn.commit()
+        self.conn.execute("PRAGMA foreign_keys = ON")
 
     def _migrate_park_visits_to_travel_entries(self) -> None:
         """`park_visits` (park-only, no state, no story) predates the
@@ -1680,6 +1828,99 @@ class Database:
     def delete_journal_entry(self, entry_id: int) -> None:
         self.conn.execute("DELETE FROM journal_entries WHERE id = ?", (entry_id,))
         self.conn.commit()
+
+    # -- Big Projects (multi-step, sprint-style creative projects) ------------
+
+    def list_big_projects(self, student_id: int) -> list[dict[str, Any]]:
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM big_projects WHERE student_id = ? "
+                "ORDER BY sort_order, id",
+                (student_id,),
+            )
+        )
+
+    def add_big_project(self, student_id: int, title: str, vision: str = "") -> int:
+        next_order = self.conn.execute(
+            "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM big_projects WHERE student_id = ?",
+            (student_id,),
+        ).fetchone()[0]
+        cur = self.conn.execute(
+            "INSERT INTO big_projects (student_id, title, vision, sort_order) "
+            "VALUES (?, ?, ?, ?)",
+            (student_id, title, vision, next_order),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def delete_big_project(self, project_id: int) -> None:
+        self.conn.execute("DELETE FROM big_projects WHERE id = ?", (project_id,))
+        self.conn.commit()
+
+    def list_project_steps(self, project_id: int) -> list[dict[str, Any]]:
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM project_steps WHERE project_id = ? "
+                "ORDER BY sort_order, id",
+                (project_id,),
+            )
+        )
+
+    def add_project_step(
+        self,
+        project_id: int,
+        title: str,
+        description: str = "",
+        materials: str = "",
+        credit_subject: str = "occupational_education",
+    ) -> int:
+        next_order = self.conn.execute(
+            "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM project_steps WHERE project_id = ?",
+            (project_id,),
+        ).fetchone()[0]
+        cur = self.conn.execute(
+            "INSERT INTO project_steps "
+            "(project_id, sort_order, title, description, materials, credit_subject) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (project_id, next_order, title, description, materials, credit_subject),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def set_project_step_done(self, step_id: int, completed: bool) -> None:
+        self.conn.execute(
+            "UPDATE project_steps SET completed_on = ? WHERE id = ?",
+            (date.today().isoformat() if completed else None, step_id),
+        )
+        self.conn.commit()
+
+    def delete_project_step(self, step_id: int) -> None:
+        self.conn.execute("DELETE FROM project_steps WHERE id = ?", (step_id,))
+        self.conn.commit()
+
+    def seed_big_projects(self, student_id: int) -> int:
+        """Seed the starter catalog, once -- a family that already added its
+        own project (or deleted the starter one on purpose) never gets it
+        pushed back on them."""
+        if self.list_big_projects(student_id):
+            return 0
+        added = 0
+        for order, (title, vision, steps) in enumerate(BIG_PROJECT_CATALOG):
+            project_id = self.conn.execute(
+                "INSERT INTO big_projects (student_id, title, vision, sort_order) "
+                "VALUES (?, ?, ?, ?)",
+                (student_id, title, vision, order),
+            ).lastrowid
+            for step_order, (step_title, description, materials, credit_subject) in enumerate(steps):
+                self.conn.execute(
+                    "INSERT INTO project_steps "
+                    "(project_id, sort_order, title, description, materials, credit_subject) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (project_id, step_order, step_title, description, materials, credit_subject),
+                )
+            added += 1
+        self.conn.commit()
+        return added
 
     # -- Core life skills -----------------------------------------------------
 
