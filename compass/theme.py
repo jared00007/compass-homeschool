@@ -173,10 +173,21 @@ def css() -> str:
 /* The page title (st.title -> h1) is the one heading that gets to be loud --
    an inked stroke and the accent as its actual fill colour. Everything
    smaller (h2-h4: section headers, card titles) stays plain text colour, or
-   a page reads as shouting by the third subheading. */
+   a page reads as shouting by the third subheading.
+
+   `!important` on both properties: this rule and the shared h1-h4 rule above
+   it have identical selector specificity for h1, so which one wins a tie is
+   decided by DOM/CSSOM order rather than the source order of our own
+   stylesheet -- Streamlit's own React-managed styles can get inserted or
+   re-inserted at points this file doesn't control, and a version difference
+   is enough to flip who's "later." Confirmed live: same code, same commit,
+   a newer Streamlit release than this was authored against was enough to
+   silently lose the tie and print the title in plain text colour. `!important`
+   removes the ambiguity instead of relying on it -- same reasoning already
+   applied to the sidebar height and metric-truncation rules below. */
 [data-testid="stHeading"] h1, .stApp h1 {{
-  color: var(--c-heading-fill);
-  -webkit-text-stroke: var(--c-heading-stroke) #000;
+  color: var(--c-heading-fill) !important;
+  -webkit-text-stroke: var(--c-heading-stroke) #000 !important;
 }}
 
 /* Captions carry most of the app's explanatory writing. They must stay

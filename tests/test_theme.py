@@ -127,6 +127,21 @@ def test_css_forces_the_sidebar_to_scroll():
     assert "overflow-y: auto !important" in block
 
 
+def test_the_page_title_colour_and_stroke_survive_a_specificity_tie():
+    """Regression: the page-title rule and the shared h1-h4 rule above it have
+    identical selector specificity for h1, so which one wins is decided by
+    DOM/CSSOM insertion order rather than this file's own source order --
+    Streamlit's React-managed styles can be inserted at points this file
+    doesn't control, and a Streamlit version difference alone was enough to
+    flip that order and silently print the title in plain text colour on a
+    real deployment, despite identical code. `!important` removes the
+    ambiguity instead of depending on it."""
+    css = theme.css()
+    block = css.rsplit('[data-testid="stHeading"] h1, .stApp h1', 1)[1].split("}")[0]
+    assert "color: var(--c-heading-fill) !important" in block
+    assert "-webkit-text-stroke: var(--c-heading-stroke) #000 !important" in block
+
+
 def test_css_never_paints_metrics_in_the_accent():
     """Regression: every metric in the accent made compliance read as alarms."""
     css = theme.css()
