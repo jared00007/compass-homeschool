@@ -14,6 +14,17 @@ def test_facts_list_is_non_empty_strings():
     assert all(isinstance(fact, str) and fact.strip() for fact in fun_facts.FACTS)
 
 
+def test_facts_cover_a_full_year_without_repeating():
+    """The point of sizing this list generously: a school year (or any
+    365/366-day stretch) walks through fact_of_the_day without ever wrapping
+    around to a fact it already showed."""
+    assert len(fun_facts.FACTS) >= 366
+
+
+def test_facts_have_no_duplicates():
+    assert len(set(fun_facts.FACTS)) == len(fun_facts.FACTS)
+
+
 def test_fact_of_the_day_is_deterministic_for_a_given_date():
     today = date(2026, 3, 14)
     assert fun_facts.fact_of_the_day(today) == fun_facts.fact_of_the_day(today)
