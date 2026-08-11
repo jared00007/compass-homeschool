@@ -70,7 +70,26 @@ else:
 
     FEELING_KEY = "checkin_feeling_choice"
     if FEELING_KEY not in st.session_state:
-        st.session_state[FEELING_KEY] = todays_entry["feeling"] if todays_entry else None
+        st.session_state[FEELING_KEY] = None
+
+    def _save_checkin() -> None:
+        # Runs as an on_click callback, which fires *before* the rerun that
+        # follows a button click -- the one place Streamlit allows touching a
+        # widget's own session_state key, which is what clearing the form
+        # after save actually requires.
+        try:
+            db.save_journal_entry(
+                student["id"],
+                today,
+                st.session_state[FEELING_KEY],
+                st.session_state.get("checkin_note", "").strip(),
+            )
+        except sqlite3.OperationalError:
+            st.session_state["_checkin_error"] = True
+        else:
+            st.session_state["_checkin_saved"] = True
+            st.session_state[FEELING_KEY] = None
+            st.session_state["checkin_note"] = ""
 
     _TODAY_CARD_CSS = """
     <style>
@@ -108,32 +127,29 @@ else:
                         st.session_state[FEELING_KEY] = label
                         st.rerun()
 
-        note = st.text_area(
+        st.text_area(
             "Want to say more? Anything -- school, friends, home, whatever's on "
             "your mind. (optional)",
-            value=todays_entry["note"] if todays_entry else "",
             placeholder="Sometimes it helps just to get it out.",
             height=90,
             key="checkin_note",
         )
 
         save_disabled = st.session_state[FEELING_KEY] is None
-        if st.button("Save today's check-in", type="primary", disabled=save_disabled):
-            try:
-                db.save_journal_entry(
-                    student["id"], today, st.session_state[FEELING_KEY], note.strip()
-                )
-            except sqlite3.OperationalError:
-                st.error(
-                    "Couldn't save -- the app needs a full restart to pick up this "
-                    "update (closing and reopening the terminal/app, not just "
-                    "refreshing the browser tab)."
-                )
-            else:
-                # No rerun here on purpose: this same run already reflects the
-                # saved state (buttons/note match what was just written), and an
-                # immediate rerun was wiping this message before it was visible.
-                st.success("Saved.")
+        st.button(
+            "Save today's check-in",
+            type="primary",
+            disabled=save_disabled,
+            on_click=_save_checkin,
+        )
+        if st.session_state.pop("_checkin_error", False):
+            st.error(
+                "Couldn't save -- the app needs a full restart to pick up this "
+                "update (closing and reopening the terminal/app, not just "
+                "refreshing the browser tab)."
+            )
+        if st.session_state.pop("_checkin_saved", False):
+            st.success("Saved.")
         if save_disabled:
             st.caption("⬆️ Pick a feeling above to save today's check-in.")
 
