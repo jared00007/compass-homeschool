@@ -11,6 +11,7 @@ from compass.ui import (
     difficulty_override_control,
     generate_and_log,
     is_parent,
+    md,
     page_setup,
     render_proposal,
     student_lesson_view,
@@ -127,7 +128,7 @@ with web_tab:
             where = f" · {node['location']}" if node["location"] else ""
             row = st.columns([6, 1])
             row[0].markdown(
-                f"**{node['topic']}**{where}  \n<small>{node['rationale']}{lineage}</small>",
+                f"**{md(node['topic'])}**{where}  \n<small>{md(node['rationale'])}{md(lineage)}</small>",
                 unsafe_allow_html=True,
             )
             if row[1].button("Dismiss", key=f"sci_drop_{node['id']}"):
@@ -136,4 +137,4 @@ with web_tab:
 
         st.subheader("Already explored")
         for node in sorted(explored, key=lambda n: n["explored_on"] or "", reverse=True):
-            st.markdown(f"- ✅ {node['topic']} — *{node['explored_on']}*")
+            st.markdown(f"- ✅ {md(node['topic'])} — *{node['explored_on']}*")

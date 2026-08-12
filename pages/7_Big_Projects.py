@@ -10,14 +10,13 @@ grows, by hand, not generated.
 
 from __future__ import annotations
 
-import html
 from datetime import date
 
 import streamlit as st
 
 from compass import config
 from compass.subjects import SUBJECT_KEYS, label
-from compass.ui import is_parent, page_setup
+from compass.ui import is_parent, md, page_setup
 
 db, student = page_setup("Big Projects", icon="🎬")
 
@@ -99,7 +98,7 @@ with checklist_tab:
         with st.container(key=f"project_card_{project['id']}"):
             header = st.columns([20, 3])
             with header[0]:
-                st.markdown(f"### {html.escape(project['title'])}")
+                st.markdown(f"### {md(project['title'])}")
             with header[1]:
                 if st.button(
                     "Hide" if st.session_state[open_key] else "Show",
@@ -121,7 +120,7 @@ with checklist_tab:
                 continue
 
             if project["vision"]:
-                st.caption(project["vision"])
+                st.caption(md(project["vision"]))
             # The first not-done step is highlighted as "up next" -- steps
             # aren't hard-locked (either of you can check any of them off,
             # same parity as Life Skills), but the sprint-style point of this
@@ -150,13 +149,13 @@ with checklist_tab:
                         # nothing important is hidden by keeping it closed
                         # until he actually taps it open.
                         with st.expander(
-                            f"{index}. {step['title']}{pace}{badge}", expanded=False
+                            f"{index}. {md(step['title'])}{pace}{badge}", expanded=False
                         ):
                             if step["description"]:
-                                st.write(step["description"])
+                                st.write(md(step["description"]))
                             meta = []
                             if step["materials"]:
-                                meta.append(f"**You'll need:** {step['materials']}")
+                                meta.append(f"**You'll need:** {md(step['materials'])}")
                             meta.append(f"Credits toward {label(step['credit_subject'])}")
                             st.caption(" · ".join(meta))
             if is_parent() and st.button(

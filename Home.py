@@ -11,6 +11,7 @@ from compass.curriculum import frontier_report
 from compass.subjects import label
 from compass.ui import (
     is_parent,
+    md,
     page_setup,
     render_declaration_banner,
     render_fun_fact,
@@ -53,10 +54,10 @@ if not is_parent():
         for lesson in planned:
             with st.container(border=True):
                 payload = lesson["payload"]
-                st.markdown(f"### {payload.get('title', lesson['title'])}")
+                st.markdown(f"### {md(payload.get('title', lesson['title']))}")
                 st.caption(f"{lesson['agent'].title()} · {payload.get('estimated_minutes', '?')} min")
                 if payload.get("overview"):
-                    st.write(payload["overview"])
+                    st.write(md(payload["overview"]))
                 with st.expander("Open this lesson"):
                     render_lesson(payload, for_parent=False)
 
@@ -175,10 +176,10 @@ for column, (key, agent) in zip(agent_columns, all_agents().items()):
             st.error(f"Strategy error: {exc}")
             continue
         if proposal.blocked:
-            st.warning(proposal.blocked_reason)
+            st.warning(md(proposal.blocked_reason))
         else:
-            st.markdown(f"**{proposal.topic}**")
-            st.caption(proposal.rationale)
+            st.markdown(f"**{md(proposal.topic)}**")
+            st.caption(md(proposal.rationale))
         if page:
             st.page_link(page, label=f"Open {title}", icon="➡️")
 
@@ -262,7 +263,7 @@ else:
             f"{label(subject)} {minutes}m" for subject, minutes in activity["credits"].items()
         )
         st.markdown(
-            f"**{activity['occurred_on']}** — {activity['title']} "
+            f"**{activity['occurred_on']}** — {md(activity['title'])} "
             f"({activity['minutes']} min) — {credit_summary}"
         )
 st.page_link("pages/10_Activity_Log.py", label="Full activity log", icon="🗂️")

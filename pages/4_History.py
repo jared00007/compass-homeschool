@@ -12,6 +12,7 @@ from compass.ui import (
     difficulty_override_control,
     generate_and_log,
     is_parent,
+    md,
     page_setup,
     render_proposal,
     student_lesson_view,
@@ -118,7 +119,7 @@ with timeline_tab:
         with st.expander(f"{marker} {era_label} — {len(titles)} lesson(s)"):
             if titles:
                 for title in titles:
-                    st.markdown(f"- {title}")
+                    st.markdown(f"- {md(title)}")
             else:
                 st.caption("Nothing taught in this era yet.")
 
@@ -128,7 +129,7 @@ with timeline_tab:
             where = f" · {node['location']}" if node["location"] else ""
             row = st.columns([6, 1])
             row[0].markdown(
-                f"**{node['topic']}**{where} — <small>{node['rationale']}</small>",
+                f"**{md(node['topic'])}**{where} — <small>{md(node['rationale'])}</small>",
                 unsafe_allow_html=True,
             )
             if row[1].button("Dismiss", key=f"hist_drop_{node['id']}"):

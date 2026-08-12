@@ -147,6 +147,35 @@ def test_the_lesson_is_rendered_through_the_redacting_renderer(monkeypatch, db, 
     assert "Solve problems 1-10." in page
 
 
+def test_md_escapes_dollar_signs_so_streamlit_never_renders_them_as_latex():
+    """Streamlit's markdown renderer treats a `$...$` pair as inline LaTeX --
+    without escaping, a word problem mentioning two prices in the same block
+    of text silently turns everything between them into a rendered equation.
+    Reported live: "Snack bars: 6 bars for $4.20, or 10 bars for $6.50" had
+    "4.20, or 10 bars for" render as a formula instead of plain text."""
+    assert ui.md("6 bars for $4.20, or 10 bars for $6.50") == (
+        "6 bars for \\$4.20, or 10 bars for \\$6.50"
+    )
+    assert ui.md(None) == ""
+    assert ui.md("") == ""
+    assert ui.md("no dollar signs here") == "no dollar signs here"
+
+
+def test_activity_instructions_with_dollar_amounts_render_escaped(monkeypatch, db, student):
+    lesson = a_lesson()
+    lesson["activities"][0]["instructions"] = (
+        "Snack bars: 6 bars for $4.20, or 10 bars for $6.50. Which is cheaper?"
+    )
+    generated = GeneratedLesson(
+        lesson_id=1,
+        proposal=TopicProposal(topic="t", rationale="r", strategy="s"),
+        payload=lesson,
+        warnings=[],
+    )
+    page, _ = run(monkeypatch, db, student, generated=generated)
+    assert "6 bars for \\$4.20, or 10 bars for \\$6.50" in page
+
+
 def test_the_worked_example_is_shown_before_the_instructions(monkeypatch, db, student):
     generated = GeneratedLesson(
         lesson_id=1,

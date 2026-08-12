@@ -11,7 +11,7 @@ from compass import config
 from compass.agents.framework import GeneratedLesson, TopicProposal
 from compass.export import lesson_to_docx, suggested_filename
 from compass.subjects import SUBJECT_KEYS, label
-from compass.ui import log_lesson_form, page_setup, parent_only
+from compass.ui import log_lesson_form, md, page_setup, parent_only
 
 db, student = page_setup("Activity Log", icon="🗂️")
 
@@ -57,7 +57,7 @@ with log_tab:
                 columns = st.columns([5, 1])
                 where = f" · {activity['location']}" if activity["location"] else ""
                 columns[0].markdown(
-                    f"**{activity['occurred_on']} — {activity['title']}** "
+                    f"**{activity['occurred_on']} — {md(activity['title'])}** "
                     f"({activity['minutes']} min){where}"
                 )
                 columns[0].caption(
@@ -65,7 +65,7 @@ with log_tab:
                     f"source: {activity['source']}"
                 )
                 if activity["description"]:
-                    columns[0].caption(activity["description"])
+                    columns[0].caption(md(activity["description"]))
                 credits = " · ".join(
                     f"{label(s)} {m}m" for s, m in activity["credits"].items()
                 )
@@ -152,13 +152,13 @@ with lessons_tab:
             badge = "🎓 he's done — needs logging"
         else:
             badge = badge_map[lesson["status"]]
-        with st.expander(f"{badge} · {lesson['created_at'][:10]} · {lesson['title']}"):
+        with st.expander(f"{badge} · {lesson['created_at'][:10]} · {md(lesson['title'])}"):
             st.caption(
                 f"{lesson['agent']} agent · strategy: {lesson['strategy']} · "
-                f"topic: {lesson['topic']}"
+                f"topic: {md(lesson['topic'])}"
             )
             if lesson["rationale"]:
-                st.caption(f"Why: {lesson['rationale']}")
+                st.caption(f"Why: {md(lesson['rationale'])}")
             if student_done_on and lesson["status"] != "completed":
                 st.caption(f"🎓 He marked this done on {student_done_on} — not logged yet.")
             quiz_result = (lesson.get("metadata") or {}).get("quiz_result")
@@ -169,7 +169,7 @@ with lessons_tab:
                     f"📝 Quiz: {quiz_result['correct']}/{quiz_result['total']} ({pct}%) — "
                     f"{verdict}, graded {quiz_result.get('graded_on', '?')}"
                 )
-            st.write(lesson["payload"].get("overview", ""))
+            st.write(md(lesson["payload"].get("overview", "")))
             credits = lesson["payload"].get("subject_credits") or []
             if credits:
                 st.markdown(

@@ -12,7 +12,7 @@ import streamlit as st
 
 from compass import config
 from compass.subjects import SUBJECT_KEYS, label
-from compass.ui import is_parent, page_setup
+from compass.ui import is_parent, md, page_setup
 
 db, student = page_setup("Choice Topics", icon="⭐")
 
@@ -71,13 +71,13 @@ with add_tab:
                 "done": "✅ done",
                 "declined": "🚫 declined",
             }[topic["status"]]
-            category = f" · *{topic['category']}*" if topic["category"] else ""
-            columns[0].markdown(f"**{topic['title']}**{category} — {badge}")
+            category = f" · *{md(topic['category'])}*" if topic["category"] else ""
+            columns[0].markdown(f"**{md(topic['title'])}**{category} — {badge}")
             if topic["description"]:
-                columns[0].caption(topic["description"])
+                columns[0].caption(md(topic["description"]))
             columns[0].caption(f"Credits toward {label(topic['credit_subject'])}")
             if topic["parent_note"]:
-                columns[0].caption(f"Parent: {topic['parent_note']}")
+                columns[0].caption(f"Parent: {md(topic['parent_note'])}")
 
             # "Approve"/"Decline" are the actual review step -- he proposes,
             # a parent decides, or the "light parent approval" this page

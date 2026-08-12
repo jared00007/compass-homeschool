@@ -32,6 +32,22 @@ from compass.school_calendar import days_until, next_annual_date
 from compass.storage.db import Database
 
 
+def md(text: str | None) -> str:
+    """Escape literal dollar signs before handing text to st.write/st.markdown.
+
+    Streamlit's markdown renderer treats a pair of `$` as LaTeX math
+    delimiters -- completely invisible until a lesson happens to mention two
+    dollar amounts in the same block of text (a math word problem about
+    prices, a life-skill budget example, a quiz choice), at which point
+    everything between them silently turns into a rendered equation instead
+    of the price it actually was. `\\$` is always treated as a literal dollar
+    sign by Streamlit's renderer, math context or not, so this is safe to
+    apply unconditionally to any AI- or user-generated text before display —
+    not needed for the app's own hardcoded labels, but cheap either way.
+    """
+    return (text or "").replace("$", "\\$")
+
+
 @st.cache_resource
 def get_db() -> Database:
     db = Database()
@@ -291,13 +307,13 @@ def difficulty_override_control(db: Database, key: str) -> str:
 
 def render_proposal(agent: LessonAgent, proposal) -> None:
     if proposal.blocked:
-        st.warning(f"**{agent.name} can't plan a lesson yet.**\n\n{proposal.blocked_reason}")
+        st.warning(f"**{agent.name} can't plan a lesson yet.**\n\n{md(proposal.blocked_reason)}")
         return
-    st.info(f"**Next up: {proposal.topic}**\n\n{proposal.rationale}")
+    st.info(f"**Next up: {md(proposal.topic)}**\n\n{md(proposal.rationale)}")
     if proposal.context_lines:
         with st.expander("What the agent knows going in"):
             for line in proposal.context_lines:
-                st.markdown(f"- {line}")
+                st.markdown(f"- {md(line)}")
 
 
 def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> None:
@@ -309,15 +325,15 @@ def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> Non
     """
     parent = is_parent() if for_parent is None else for_parent
 
-    st.subheader(lesson.get("title", "Lesson"))
+    st.subheader(md(lesson.get("title", "Lesson")))
     if lesson.get("overview"):
-        st.write(lesson["overview"])
+        st.write(md(lesson["overview"]))
 
     objectives = lesson.get("learning_objectives") or []
     if objectives:
         st.markdown("**Learning objectives**")
         for objective in objectives:
-            st.markdown(f"- {objective}")
+            st.markdown(f"- {md(objective)}")
 
     # Materials before activities on purpose -- knowing what you need is part
     # of being set up to start, not a footnote to read after being told what
@@ -326,14 +342,14 @@ def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> Non
     if materials:
         st.markdown("**Materials**")
         for item in materials:
-            st.markdown(f"- {item}")
+            st.markdown(f"- {md(item)}")
 
     activities = lesson.get("activities") or []
     if activities:
         st.markdown("**Activities**")
         for index, activity in enumerate(activities, start=1):
             header = (
-                f"{index}. {activity.get('title', 'Activity')} · "
+                f"{index}. {md(activity.get('title', 'Activity'))} · "
                 f"{activity.get('kind', '')} · {activity.get('minutes', 0)} min"
             )
             with st.expander(header, expanded=False):
@@ -348,7 +364,7 @@ def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> Non
                 # student's version to redact.
                 video = activity.get("video") or {}
                 if video.get("found") and video.get("url"):
-                    st.markdown(f"▶️ **[{video.get('title', 'Watch')}]({video['url']})**")
+                    st.markdown(f"▶️ **[{md(video.get('title', 'Watch'))}]({video['url']})**")
                     caption_parts = []
                     if video.get("channel"):
                         caption_parts.append(video["channel"])
@@ -367,7 +383,10 @@ def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> Non
                 if example:
                     # A worked example, shown before the instructions -- see
                     # the move modeled once before being asked to do it,
-                    # same "I do, you do" order a teacher would use.
+                    # same "I do, you do" order a teacher would use. Raw HTML
+                    # via unsafe_allow_html isn't run through Streamlit's
+                    # markdown/LaTeX pass, so this one doesn't need `md()` --
+                    # html.escape already makes it safe on its own terms.
                     st.markdown(
                         f'<div style="background:var(--c-panel); border-left:3px solid '
                         f'var(--c-alt); border-radius:var(--c-radius); padding:10px 14px; '
@@ -376,7 +395,7 @@ def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> Non
                         f"</div>",
                         unsafe_allow_html=True,
                     )
-                st.write(activity.get("instructions", ""))
+                st.write(md(activity.get("instructions", "")))
 
     assessment = lesson.get("assessment") or {}
     if assessment and parent:
@@ -387,9 +406,9 @@ def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> Non
             "this to actually confirm he's got it, not just that he sat "
             "through the lesson."
         )
-        st.markdown(f"*{assessment.get('kind', '')}* — {assessment.get('description', '')}")
+        st.markdown(f"*{md(assessment.get('kind', ''))}* — {md(assessment.get('description', ''))}")
         if assessment.get("mastery_criteria"):
-            st.markdown(f"**Counts as mastered when:** {assessment['mastery_criteria']}")
+            st.markdown(f"**Counts as mastered when:** {md(assessment['mastery_criteria'])}")
     elif assessment:
         st.markdown("**Assessment**")
         st.caption(
@@ -399,7 +418,7 @@ def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> Non
     if parent:
         if lesson.get("parent_notes"):
             with st.expander("Notes for the parent"):
-                st.write(lesson["parent_notes"])
+                st.write(md(lesson["parent_notes"]))
 
         credits = lesson.get("subject_credits") or []
         if credits:
@@ -407,25 +426,25 @@ def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> Non
             for credit in credits:
                 st.markdown(
                     f"- **{subjects.label(credit['subject'])}** — {credit['minutes']} min · "
-                    f"{credit.get('justification', '')}"
+                    f"{md(credit.get('justification', ''))}"
                 )
 
         branches = lesson.get("branches") or []
         if branches:
             with st.expander(f"Branches this opens up ({len(branches)})"):
                 for branch in branches:
-                    st.markdown(f"- **{branch.get('topic')}** — {branch.get('rationale', '')}")
+                    st.markdown(f"- **{md(branch.get('topic'))}** — {md(branch.get('rationale', ''))}")
 
         quiz = lesson.get("quiz") or []
         if quiz:
             with st.expander(f"Quiz answer key ({len(quiz)} questions)"):
                 for index, item in enumerate(quiz, start=1):
-                    st.markdown(f"**{index}. {item['question']}**")
+                    st.markdown(f"**{index}. {md(item['question'])}**")
                     for choice_index, choice in enumerate(item["choices"]):
                         marker = "✅" if choice_index == item["correct_index"] else "—"
-                        st.markdown(f"{marker} {choice}")
+                        st.markdown(f"{marker} {md(choice)}")
                     if item.get("explanation"):
-                        st.caption(item["explanation"])
+                        st.caption(md(item["explanation"]))
 
 
 def render_life_skill_plan(plan: dict[str, Any]) -> None:
@@ -435,48 +454,48 @@ def render_life_skill_plan(plan: dict[str, Any]) -> None:
     do: a life skill is something the parent runs standing next to him, so the
     plan is addressed to them. Guard the call site, not the fields.
     """
-    st.subheader(plan.get("title", "Session plan"))
+    st.subheader(md(plan.get("title", "Session plan")))
     if plan.get("overview"):
-        st.write(plan["overview"])
+        st.write(md(plan["overview"]))
 
     columns = st.columns(2)
     with columns[0]:
         prep = (plan.get("prep") or "").strip()
         if prep and prep.lower().rstrip(".") != "nothing":
             st.markdown("**Before you start**")
-            st.write(prep)
+            st.write(md(prep))
     with columns[1]:
         materials = plan.get("materials") or []
         if materials:
             st.markdown("**What you need**")
             for item in materials:
-                st.markdown(f"- {item}")
+                st.markdown(f"- {md(item)}")
 
     steps = plan.get("steps") or []
     if steps:
         st.markdown("**How to run it**")
         for index, step in enumerate(steps, start=1):
-            header = f"{index}. {step.get('title', 'Step')} · {step.get('minutes', 0)} min"
+            header = f"{index}. {md(step.get('title', 'Step'))} · {step.get('minutes', 0)} min"
             with st.expander(header, expanded=False):
                 st.markdown("**He does**")
-                st.write(step.get("what_he_does", ""))
+                st.write(md(step.get("what_he_does", "")))
                 st.markdown("**You do**")
-                st.write(step.get("what_you_do", ""))
+                st.write(md(step.get("what_you_do", "")))
 
     if plan.get("done_looks_like"):
-        st.success(f"**Done looks like:** {plan['done_looks_like']}")
+        st.success(f"**Done looks like:** {md(plan['done_looks_like'])}")
 
     watch_for = plan.get("watch_for") or []
     if watch_for:
         with st.expander(f"Where this goes wrong ({len(watch_for)})"):
             for item in watch_for:
-                st.markdown(f"- {item}")
+                st.markdown(f"- {md(item)}")
 
     follow_ups = plan.get("follow_ups") or []
     if follow_ups:
         with st.expander("Making it stick"):
             for item in follow_ups:
-                st.markdown(f"- {item}")
+                st.markdown(f"- {md(item)}")
 
     credits = plan.get("subject_credits") or []
     if credits:
@@ -594,11 +613,11 @@ def render_quiz(
             picks: list[int | None] = []
             with st.form(f"quiz_form_{lesson_id}"):
                 for index, item in enumerate(quiz):
-                    st.markdown(f"**{index + 1}. {item['question']}**")
+                    st.markdown(f"**{index + 1}. {md(item['question'])}**")
                     pick = st.radio(
                         "choices",
                         options=list(range(len(item["choices"]))),
-                        format_func=lambda i, choices=item["choices"]: choices[i],
+                        format_func=lambda i, choices=item["choices"]: md(choices[i]),
                         index=None,
                         label_visibility="collapsed",
                         key=f"quiz_pick_{lesson_id}_{index}",
@@ -649,16 +668,16 @@ def render_quiz(
             pick = picks[index]
             right = pick == item["correct_index"]
             marker = "✅" if right else "❌"
-            with st.expander(f"{marker} {index + 1}. {item['question']}", expanded=False):
+            with st.expander(f"{marker} {index + 1}. {md(item['question'])}", expanded=False):
                 for choice_index, choice in enumerate(item["choices"]):
                     tag = ""
                     if choice_index == item["correct_index"]:
                         tag = " — correct answer"
                     elif choice_index == pick:
                         tag = " — your answer"
-                    st.markdown(f"- {choice}{tag}")
+                    st.markdown(f"- {md(choice)}{tag}")
                 if item.get("explanation"):
-                    st.caption(item["explanation"])
+                    st.caption(md(item["explanation"]))
 
         if st.button("Try again", key=f"quiz_retry_{lesson_id}"):
             del st.session_state[state_key]
@@ -769,10 +788,10 @@ def render_today_checklist(db: Database, student: dict[str, Any]) -> bool:
             pct = round(100 * quiz_result["correct"] / quiz_result["total"])
             trophy = " 🎯" if quiz_result.get("passed") else ""
             extra = f" — quiz {quiz_result['correct']}/{quiz_result['total']} ({pct}%){trophy}"
-        st.markdown(f"- {icon} **{lesson['title']}**{extra}")
+        st.markdown(f"- {icon} **{md(lesson['title'])}**{extra}")
 
     for skill in skills_today:
-        st.markdown(f"- 🛠️ **{skill['title']}**")
+        st.markdown(f"- 🛠️ **{md(skill['title'])}**")
 
     return True
 
@@ -1017,7 +1036,7 @@ def render_vocab_review(db: Database, student: dict[str, Any]) -> None:
                 st.session_state[reveal_key] = True
                 st.rerun()
         else:
-            st.write(entry["definition"])
+            st.write(md(entry["definition"]))
             columns = st.columns(2)
             if columns[0].button(
                 "✅ I knew it",
