@@ -1367,10 +1367,11 @@ class Database:
 
     def _migrate_activities_allow_projects_tier(self) -> None:
         """activities.tier had a CHECK constraint listing the tiers that
-        predates Big Projects -- SQLite can't ALTER a CHECK constraint in
-        place, so this rebuilds the table with 'projects' added, keeping
-        every row (same id, so activity_subject_credits' foreign keys still
-        point at the right one).
+        predates Big Projects and Morning Routine -- SQLite can't ALTER a
+        CHECK constraint in place, so this rebuilds the table with
+        'projects'/'wellness' added, keeping every row (same id, so
+        activity_subject_credits' foreign keys still point at the right
+        one).
 
         Built new-name-first rather than rename-old-then-recreate: SQLite's
         ALTER TABLE RENAME rewrites *other* tables' foreign key clauses to
@@ -1385,8 +1386,8 @@ class Database:
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name='activities'"
             )
         )
-        if table is None or "'projects'" in (table["sql"] or ""):
-            return  # no table yet, or already rebuilt with the new tier
+        if table is None or "'wellness'" in (table["sql"] or ""):
+            return  # no table yet, or already rebuilt with the new tiers
         self.conn.execute("PRAGMA foreign_keys = OFF")
         self.conn.execute(
             "CREATE TABLE activities_new ("
@@ -1396,7 +1397,7 @@ class Database:
             "title TEXT NOT NULL,"
             "description TEXT NOT NULL DEFAULT '',"
             "tier TEXT NOT NULL CHECK (tier IN "
-            "('core', 'folded', 'choice', 'life_skills', 'projects')),"
+            "('core', 'folded', 'choice', 'life_skills', 'projects', 'wellness')),"
             "primary_subject TEXT NOT NULL,"
             "source TEXT NOT NULL DEFAULT 'manual',"
             "minutes INTEGER NOT NULL CHECK (minutes > 0),"
@@ -2581,6 +2582,28 @@ class Database:
             (student_id, category),
         )
         self.conn.commit()
+
+    # -- morning routine --------------------------------------------------------
+
+    def log_morning_routine(self, student_id: int, entry_date: str, routine_key: str) -> None:
+        """One per student per day -- picking a different routine the same
+        day replaces the record rather than stacking, unlike Check-In."""
+        self.conn.execute(
+            "INSERT INTO morning_routine_log (student_id, entry_date, routine_key) "
+            "VALUES (?, ?, ?) "
+            "ON CONFLICT(student_id, entry_date) DO UPDATE SET "
+            "routine_key = excluded.routine_key, completed_at = datetime('now')",
+            (student_id, entry_date, routine_key),
+        )
+        self.conn.commit()
+
+    def morning_routine_for_date(self, student_id: int, entry_date: str) -> dict[str, Any] | None:
+        return _row(
+            self.conn.execute(
+                "SELECT * FROM morning_routine_log WHERE student_id = ? AND entry_date = ?",
+                (student_id, entry_date),
+            )
+        )
 
     # -- school-year helper ---------------------------------------------------
 

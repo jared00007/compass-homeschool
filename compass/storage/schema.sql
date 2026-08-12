@@ -147,7 +147,7 @@ CREATE TABLE IF NOT EXISTS activities (
     lesson_id       INTEGER REFERENCES lessons(id) ON DELETE SET NULL,
     title           TEXT NOT NULL,
     description     TEXT NOT NULL DEFAULT '',
-    tier            TEXT NOT NULL CHECK (tier IN ('core', 'folded', 'choice', 'life_skills', 'projects')),
+    tier            TEXT NOT NULL CHECK (tier IN ('core', 'folded', 'choice', 'life_skills', 'projects', 'wellness')),
     primary_subject TEXT NOT NULL,
     source          TEXT NOT NULL DEFAULT 'manual',  -- agent key, 'manual', 'choice', 'life_skills'
     minutes         INTEGER NOT NULL CHECK (minutes > 0),
@@ -332,4 +332,20 @@ CREATE TABLE IF NOT EXISTS district_documents (
     content      BLOB NOT NULL,
     uploaded_on  TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (student_id, category)
+);
+
+-- ---------------------------------------------------------------------------
+-- Morning routine log -- which stretch/breathing/mindfulness routine
+-- (compass/morning_routines.py) he did to start the day. One per student per
+-- day: unlike Check-In, a morning routine is fundamentally a single event,
+-- so a second pick the same day replaces the first rather than stacking.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS morning_routine_log (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id   INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    entry_date   TEXT NOT NULL,
+    routine_key  TEXT NOT NULL,
+    completed_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (student_id, entry_date)
 );

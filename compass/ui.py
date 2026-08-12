@@ -28,6 +28,7 @@ from compass.agents import (
 from compass.agents.quiz import grade, passed as quiz_passes
 from compass.compliance import declaration_status
 from compass.export import lesson_to_docx, suggested_filename
+from compass.morning_routines import MORNING_ROUTINES, routine_for_date
 from compass.school_calendar import days_until, next_annual_date
 from compass.storage.db import Database
 
@@ -794,6 +795,69 @@ def render_today_checklist(db: Database, student: dict[str, Any]) -> bool:
         st.markdown(f"- 🛠️ **{md(skill['title'])}**")
 
     return True
+
+
+def render_morning_routine(db: Database, student: dict[str, Any]) -> bool:
+    """A short, parent-curated menu of stretches/breathing/mindfulness
+    routines (compass.morning_routines) -- not agent-generated, this is
+    personal to the family, same reasoning as the Life Skills catalog.
+    Logs real Health-subject credit on first completion each day (WA's
+    Health subject explicitly covers physical and mental wellbeing).
+
+    Returns whether he's already done one today, so the caller can fold this
+    into the rest of the day's checklist.
+    """
+    today = date.today().isoformat()
+    logged = db.morning_routine_for_date(student["id"], today)
+    catalog = {r[0]: r for r in MORNING_ROUTINES}
+    default_key = logged["routine_key"] if logged else routine_for_date(today)[0]
+    default_routine = catalog.get(default_key, MORNING_ROUTINES[0])
+
+    st.markdown("### 🧘 Morning Routine")
+    if logged:
+        done_routine = catalog.get(logged["routine_key"])
+        title = done_routine[1] if done_routine else logged["routine_key"]
+        st.success(f"✅ Done for today — {md(title)}. Nice start.")
+        label = "Do a different one instead"
+    else:
+        st.caption("A few minutes to start the day feeling good, before anything else.")
+        label = (
+            f"{default_routine[2]} {default_routine[1]} ({default_routine[3]} min) "
+            "— tap to see the steps"
+        )
+
+    with st.expander(label, expanded=False):
+        options = list(catalog.keys())
+        picked_key = st.radio(
+            "Pick one",
+            options,
+            index=options.index(default_key),
+            format_func=lambda k: f"{catalog[k][2]} {catalog[k][1]} ({catalog[k][3]} min)",
+            label_visibility="collapsed",
+            key="morning_routine_pick",
+        )
+        routine = catalog[picked_key]
+        st.caption(md(routine[4]))
+        for step in routine[5]:
+            st.markdown(f"- {md(step)}")
+        button_label = "Switch to this one" if logged else "Mark this morning done ✅"
+        if st.button(button_label, type="primary", key="morning_routine_done"):
+            db.log_morning_routine(student["id"], today, picked_key)
+            if not logged:
+                db.log_activity(
+                    student_id=student["id"],
+                    title=f"Morning routine — {routine[1]}",
+                    tier=config.TIER_WELLNESS,
+                    primary_subject="health",
+                    minutes=routine[3],
+                    subject_credits={"health": routine[3]},
+                    occurred_on=today,
+                    description=routine[4],
+                    source="morning_routine",
+                )
+            st.rerun()
+
+    return logged is not None
 
 
 LIFE_SKILL_CATEGORY_ICONS = {

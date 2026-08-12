@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import streamlit as st
 
 from compass import config
@@ -16,6 +18,7 @@ from compass.ui import (
     render_declaration_banner,
     render_fun_fact,
     render_lesson,
+    render_morning_routine,
     render_school_start_countdown,
     render_today_checklist,
 )
@@ -24,21 +27,48 @@ db, student = page_setup("Home", icon="🧭")
 
 # --- student view -------------------------------------------------------------
 # When a PIN is set, this is what he lands on: today's work, and nothing that
-# would spoil it.
+# would spoil it. Laid out as a checklist he can work top to bottom -- start
+# the day feeling good, check in, then the actual lessons -- rather than one
+# flat pile of cards.
 
 if not is_parent():
     st.title(f"Hi {student['name'].split()[0]} 👋")
-    st.caption("Here's what's set up for you. Open a subject in the sidebar for the details.")
+    st.caption("Here's what's set up for you. Work down the list, or jump around — up to you.")
     render_school_start_countdown(db)
 
-    if render_today_checklist(db, student):
-        st.divider()
+    st.divider()
 
-    # Life-skill plans live in the same table but are written *to the parent* —
-    # "demonstrate once, then hand him the jack and stay quiet" is not his to read.
-    # A lesson he's already marked done (student_lesson_view's own signal, separate
-    # from `status`) drops off here too -- otherwise it sits under "Ready for you"
-    # forever until the parent logs it, which can be days.
+    # 1. Morning routine -- start the day with a stretch/breathing/mindfulness
+    # pick before anything else on the list.
+    render_morning_routine(db, student)
+
+    st.divider()
+
+    # 2. Check-in -- its own self-contained status, same as morning routine.
+    today = date.today().isoformat()
+    checked_in = db.journal_entry_for_date(student["id"], today) is not None
+    st.markdown("### 💬 Check-In")
+    row = st.columns([5, 2])
+    with row[0]:
+        if checked_in:
+            st.success("✅ You've checked in today.")
+        else:
+            st.caption("Take a second to say how you're doing today.")
+    with row[1]:
+        st.page_link(
+            "pages/8_Check_In.py",
+            label="Check in again" if checked_in else "Open Check-In",
+            icon="➡️",
+        )
+
+    st.divider()
+
+    # 3. Lessons ready for you. Life-skill plans live in the same table but are
+    # written *to the parent* — "demonstrate once, then hand him the jack and
+    # stay quiet" is not his to read. A lesson he's already marked done
+    # (student_lesson_view's own signal, separate from `status`) drops off
+    # here too -- otherwise it sits here forever until the parent logs it,
+    # which can be days.
     planned = [
         lesson
         for lesson in db.list_lessons(student["id"], limit=25)
@@ -47,23 +77,42 @@ if not is_parent():
         and not (lesson.get("metadata") or {}).get("student_done_on")
     ]
 
+    st.markdown(f"### 📚 Lessons ({len(planned)})")
     if not planned:
-        st.info("Nothing new is set up yet. Check back after your parent plans a lesson.")
+        st.caption("Nothing new is set up yet. Check back after your parent plans a lesson.")
     else:
-        st.subheader(f"Ready for you ({len(planned)})")
         for lesson in planned:
             with st.container(border=True):
                 payload = lesson["payload"]
-                st.markdown(f"### {md(payload.get('title', lesson['title']))}")
+                st.markdown(f"⬜ **{md(payload.get('title', lesson['title']))}**")
                 st.caption(f"{lesson['agent'].title()} · {payload.get('estimated_minutes', '?')} min")
                 if payload.get("overview"):
                     st.write(md(payload["overview"]))
-                with st.expander("Open this lesson"):
+                with st.expander("Open this lesson", expanded=False):
                     render_lesson(payload, for_parent=False)
 
     st.divider()
+
+    # 4. Vocabulary review.
+    # Same limit render_vocab_review uses, so this count matches what he'll
+    # actually see when he clicks through rather than under- or over-stating it.
+    due = db.vocabulary_due(student["id"], limit=25)
+    st.markdown("### 🔤 Words to Review")
+    row = st.columns([5, 2])
+    with row[0]:
+        if due:
+            st.caption(f"{len(due)} word(s) due today.")
+        else:
+            st.success("✅ Nothing due today.")
+    with row[1]:
+        if due:
+            st.page_link("pages/3_English.py", label="Review them", icon="➡️")
+
+    st.divider()
+    if render_today_checklist(db, student):
+        st.divider()
     render_fun_fact()
-    columns = st.columns(3)
+    columns = st.columns(2)
 
     with columns[0]:
         st.markdown("#### 📖 Reading")
@@ -79,22 +128,13 @@ if not is_parent():
             st.caption("No book set up yet.")
 
     with columns[1]:
-        st.markdown("#### 🔤 Words to review")
-        # Same limit render_vocab_review uses, so this count matches what he'll
-        # actually see when he clicks through rather than under- or over-stating it.
-        due = db.vocabulary_due(student["id"], limit=25)
-        st.metric("Due today", len(due))
-        if due:
-            st.page_link("pages/3_English.py", label="Review them", icon="➡️")
-
-    with columns[2]:
         st.markdown("#### ⭐ Your choice topics")
         topics = [
             t for t in db.list_choice_topics(student["id"]) if t["status"] in ("active", "approved")
         ]
         if topics:
             for topic in topics[:4]:
-                st.markdown(f"- {topic['title']}")
+                st.markdown(f"- {md(topic['title'])}")
         else:
             st.caption("Nothing yet — add something you want to learn.")
         st.page_link("pages/5_Choice_Topics.py", label="Add a topic", icon="➡️")

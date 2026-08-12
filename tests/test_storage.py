@@ -155,6 +155,39 @@ def test_migrate_rebuilds_activities_to_allow_projects_tier(db, student):
         db.conn.commit()
 
 
+def test_migrate_upgrades_activities_already_allowing_projects_to_also_allow_wellness(db, student):
+    """A database migrated mid-session (Big Projects added, Morning Routine
+    not yet) has a CHECK constraint listing 'projects' but not 'wellness'.
+    The guard must key off 'wellness' specifically, not bail out early just
+    because 'projects' is already there, or a 'wellness'-tier row would
+    never be insertable for a family sitting in that in-between state."""
+    db.conn.execute("DROP TABLE activities")
+    db.conn.execute(
+        "CREATE TABLE activities (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "student_id INTEGER NOT NULL, lesson_id INTEGER, title TEXT NOT NULL, "
+        "description TEXT NOT NULL DEFAULT '', "
+        "tier TEXT NOT NULL CHECK (tier IN "
+        "('core', 'folded', 'choice', 'life_skills', 'projects')), "
+        "primary_subject TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'manual', "
+        "minutes INTEGER NOT NULL CHECK (minutes > 0), occurred_on TEXT NOT NULL, "
+        "location TEXT NOT NULL DEFAULT '', "
+        "created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+    )
+    db.conn.commit()
+
+    db.migrate()
+
+    new_id = db.log_activity(
+        student_id=student["id"],
+        title="Morning routine — Box Breathing",
+        tier=config.TIER_WELLNESS,
+        primary_subject="health",
+        minutes=3,
+        subject_credits={"health": 3},
+    )
+    assert new_id > 0
+
+
 def _list(db, table, student_id):
     return [dict(r) for r in db.conn.execute(f"SELECT * FROM {table} WHERE student_id = ?", (student_id,))]
 
@@ -801,3 +834,33 @@ def test_update_student_with_no_recognised_fields_is_a_no_op(db, student):
     before = db.get_student(student["id"])
     db.update_student(student["id"])
     assert db.get_student(student["id"]) == before
+
+
+def test_morning_routine_for_date_is_none_before_logging(db, student):
+    assert db.morning_routine_for_date(student["id"], "2026-08-12") is None
+
+
+def test_log_morning_routine_round_trips(db, student):
+    db.log_morning_routine(student["id"], "2026-08-12", "box_breathing")
+    logged = db.morning_routine_for_date(student["id"], "2026-08-12")
+    assert logged["routine_key"] == "box_breathing"
+
+
+def test_logging_a_second_routine_same_day_replaces_the_first(db, student):
+    """Unlike Check-In, a morning routine is one event per day -- picking a
+    different one later the same day updates the record rather than
+    stacking a second row."""
+    db.log_morning_routine(student["id"], "2026-08-12", "box_breathing")
+    db.log_morning_routine(student["id"], "2026-08-12", "sun_salutation")
+    logged = db.morning_routine_for_date(student["id"], "2026-08-12")
+    assert logged["routine_key"] == "sun_salutation"
+    rows = db.conn.execute(
+        "SELECT COUNT(*) FROM morning_routine_log WHERE student_id = ?", (student["id"],)
+    ).fetchone()[0]
+    assert rows == 1
+
+
+def test_morning_routine_log_is_per_student(db, student):
+    other_id = db.create_student("Sibling", "5")
+    db.log_morning_routine(student["id"], "2026-08-12", "box_breathing")
+    assert db.morning_routine_for_date(other_id, "2026-08-12") is None

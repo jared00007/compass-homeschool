@@ -77,8 +77,9 @@ TIER_FOLDED = "folded"  # Tier 2 — secondary credit earned inside a Tier 1 act
 TIER_CHOICE = "choice"  # Tier 3 — student-selected interest topics
 TIER_LIFE_SKILLS = "life_skills"  # Parent-defined checklist track
 TIER_PROJECTS = "projects"  # Parent-defined multi-step project track (e.g. the Lego film)
+TIER_WELLNESS = "wellness"  # Morning routine -- stretch/breathing/mindfulness credit
 
-TIERS = (TIER_CORE, TIER_FOLDED, TIER_CHOICE, TIER_LIFE_SKILLS, TIER_PROJECTS)
+TIERS = (TIER_CORE, TIER_FOLDED, TIER_CHOICE, TIER_LIFE_SKILLS, TIER_PROJECTS, TIER_WELLNESS)
 
 TIER_LABELS = {
     TIER_CORE: "Tier 1 — Core",
@@ -86,6 +87,7 @@ TIER_LABELS = {
     TIER_CHOICE: "Tier 3 — {name}'s choice",
     TIER_LIFE_SKILLS: "Core life skills",
     TIER_PROJECTS: "Big Projects",
+    TIER_WELLNESS: "Morning Wellness",
 }
 
 

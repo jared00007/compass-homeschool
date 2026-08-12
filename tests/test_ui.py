@@ -10,6 +10,8 @@ key that keeps an expensive lesson alive across a rerun.
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 import compass.ui as ui
@@ -1092,3 +1094,81 @@ def test_relocking_an_active_skill_flips_it_back(monkeypatch, db, student):
     render_catalog_manager(monkeypatch, db, skills, checkbox_pressed=f"ls_active_{budget['id']}")
     updated = next(s for s in db.list_life_skills(student["id"]) if s["id"] == budget["id"])
     assert updated["active"] == 0
+
+
+# --- render_morning_routine: start-of-day stretch/breathing/mindfulness pick ---
+
+
+def radio_stub(*args, index=0, **kwargs):
+    """Mirrors a real `st.radio`'s default behaviour: whatever `index` picks
+    out of the options list, unless a test overrides the whole widget."""
+    options = args[1] if len(args) > 1 else kwargs.get("options")
+    return options[index]
+
+
+def render_morning(monkeypatch, db, student, *, button_pressed=None, radio_pick=None):
+    written: list[str] = []
+    recorder = Recorder(written, {})
+    recorder.radio = (lambda *a, **kw: radio_pick) if radio_pick is not None else radio_stub
+    if button_pressed is not None:
+        recorder.button = button_stub(written, button_pressed)
+    monkeypatch.setattr(ui, "st", recorder)
+    shown = ui.render_morning_routine(db, student)
+    return "\n".join(written), shown
+
+
+def test_not_done_yet_shows_todays_routine_and_returns_false(monkeypatch, db, student):
+    page, shown = render_morning(monkeypatch, db, student)
+    assert shown is False
+    assert "Morning Routine" in page
+    assert "feeling good" in page
+
+
+def test_marking_done_logs_health_credit_and_records_the_pick(monkeypatch, db, student):
+    page, shown = render_morning(monkeypatch, db, student, button_pressed="morning_routine_done")
+    assert "Mark this morning done" in page
+
+    today = date.today().isoformat()
+    logged = db.morning_routine_for_date(student["id"], today)
+    assert logged is not None
+
+    activities = db.list_activities(student["id"])
+    assert len(activities) == 1
+    assert activities[0]["primary_subject"] == "health"
+    assert activities[0]["tier"] == "wellness"
+    assert activities[0]["credits"] == {"health": activities[0]["minutes"]}
+
+
+def test_already_done_today_shows_success_and_offers_a_switch(monkeypatch, db, student):
+    today = date.today().isoformat()
+    db.log_morning_routine(student["id"], today, "box_breathing")
+    page, shown = render_morning(monkeypatch, db, student)
+    assert shown is True
+    assert "Done for today" in page
+    assert "Box Breathing" in page
+    assert "Switch to this one" in page
+
+
+def test_switching_routines_the_same_day_does_not_double_credit(monkeypatch, db, student):
+    """The first completion earns the Health minutes; picking a different
+    routine later the same day updates the record but must not log a
+    second, redundant chunk of credited time."""
+    today = date.today().isoformat()
+    db.log_morning_routine(student["id"], today, "box_breathing")
+    db.log_activity(
+        student_id=student["id"],
+        title="Morning routine — Box Breathing",
+        tier="wellness",
+        primary_subject="health",
+        minutes=3,
+        subject_credits={"health": 3},
+        occurred_on=today,
+    )
+
+    render_morning(
+        monkeypatch, db, student, button_pressed="morning_routine_done", radio_pick="sun_salutation"
+    )
+
+    logged = db.morning_routine_for_date(student["id"], today)
+    assert logged["routine_key"] == "sun_salutation"
+    assert len(db.list_activities(student["id"])) == 1
