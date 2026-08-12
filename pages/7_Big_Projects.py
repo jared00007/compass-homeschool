@@ -71,12 +71,33 @@ with checklist_tab:
     for project in projects:
         steps = db.list_project_steps(project["id"])
         done = sum(1 for s in steps if s["completed_on"])
+        # A real st.expander can't wrap this card -- each step below is
+        # already its own expander, and Streamlit doesn't allow nesting
+        # them. A toggle button driving a plain show/hide gets the same
+        # collapsible behavior at the project level without that limit.
+        open_key = f"project_open_{project['id']}"
+        if open_key not in st.session_state:
+            st.session_state[open_key] = True
         with st.container(key=f"project_card_{project['id']}"):
-            st.markdown(f"### {html.escape(project['title'])}")
-            if project["vision"]:
-                st.caption(project["vision"])
+            header = st.columns([20, 3])
+            with header[0]:
+                st.markdown(f"### {html.escape(project['title'])}")
+            with header[1]:
+                if st.button(
+                    "Hide" if st.session_state[open_key] else "Show",
+                    key=f"toggle_project_{project['id']}",
+                    width="stretch",
+                ):
+                    st.session_state[open_key] = not st.session_state[open_key]
+                    st.rerun()
             if steps:
                 st.progress(done / len(steps), text=f"{done} / {len(steps)} steps done")
+
+            if not st.session_state[open_key]:
+                continue
+
+            if project["vision"]:
+                st.caption(project["vision"])
             # The first not-done step is highlighted as "up next" -- steps
             # aren't hard-locked (either of you can check any of them off,
             # same parity as Life Skills), but the sprint-style point of this
