@@ -89,7 +89,15 @@ def _lesson():
         "learning_objectives": ["Apply the vertical line test"],
         "activities": [
             {"title": "Sort the relations", "kind": "practice", "minutes": 14,
-             "instructions": "Decide whether each relation is a function."}
+             "instructions": "Decide whether each relation is a function.",
+             "example": "A model example: relation {(1,2),(1,3)} is not a function.",
+             "video": {
+                 "found": True,
+                 "title": "Functions Explained With Real Examples",
+                 "url": "https://www.youtube.com/watch?v=abc123",
+                 "channel": "Some Teaching Channel",
+                 "why": "Shows several worked examples back to back.",
+             }}
         ],
         "materials": ["Graph paper"],
         "assessment": {
@@ -101,13 +109,6 @@ def _lesson():
         "parent_notes": "Watch for him reversing the definition.",
         "estimated_minutes": 60,
         "branches": [],
-        "video": {
-            "found": True,
-            "title": "Functions Explained With Real Examples",
-            "url": "https://www.youtube.com/watch?v=abc123",
-            "channel": "Some Teaching Channel",
-            "why": "Shows several worked examples back to back.",
-        },
     }
 
 
@@ -182,7 +183,9 @@ def test_student_view_also_sees_the_suggested_video(monkeypatch):
 
 def test_no_video_section_when_none_was_found(monkeypatch):
     lesson = _lesson()
-    lesson["video"] = {"found": False, "title": "", "url": "", "channel": "", "why": ""}
+    lesson["activities"][0]["video"] = {
+        "found": False, "title": "", "url": "", "channel": "", "why": "",
+    }
 
     import compass.ui as ui
 
@@ -213,7 +216,8 @@ def test_no_video_section_when_none_was_found(monkeypatch):
     monkeypatch.setattr(ui, "is_parent", lambda: True)
     ui.render_lesson(lesson, for_parent=True)
     page = "\n".join(written)
-    assert "Suggested video" not in page
+    assert "Functions Explained With Real Examples" not in page
+    assert "https://www.youtube.com/watch?v=abc123" not in page
 
 
 def test_student_view_hides_compliance_credit_detail(monkeypatch):

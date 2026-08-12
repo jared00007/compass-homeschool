@@ -53,10 +53,12 @@ SPEC = AgentSpec(
     agent_guidance=GUIDANCE,
     next_topic=reading_tied,
     build_user_prompt=_prompt,
-    # On, but only for the shared video search -- the book itself is the source
-    # of truth here, not the web, so the budget stays tight.
+    # On for video search, now per activity rather than once per lesson -- the
+    # book itself is the source of truth here, not the web, so this budget is
+    # spent entirely on finding a real matching video per activity, not on
+    # grounding research.
     use_web_search=True,
-    max_web_searches=2,
+    max_web_searches=6,
     post_process=_post_process,
 )
 

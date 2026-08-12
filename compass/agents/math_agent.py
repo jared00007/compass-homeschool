@@ -45,10 +45,13 @@ SPEC = AgentSpec(
     agent_guidance=GUIDANCE,
     next_topic=graph_walk,
     build_user_prompt=_prompt,
-    # On, but only for the shared video search -- math never needs the general
-    # web to teach a fixed skill, so the budget stays tight.
+    # On for video search, now per activity rather than once per lesson --
+    # math never needs the general web to teach a fixed skill, so this
+    # budget is spent entirely on finding a real matching video for as many
+    # activities as plausibly have one (Khan Academy's math coverage is
+    # deep, so that's usually most of them), not on grounding research.
     use_web_search=True,
-    max_web_searches=2,
+    max_web_searches=6,
 )
 
 AGENT = LessonAgent(SPEC)

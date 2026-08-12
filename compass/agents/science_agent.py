@@ -54,7 +54,10 @@ SPEC = AgentSpec(
     next_topic=spiderweb,
     build_user_prompt=_prompt,
     use_web_search=True,
-    max_web_searches=6,  # location grounding needs several; the video is one more
+    # Location grounding needs several searches, and video is now per activity
+    # rather than one-per-lesson (several more, not just one) -- both share
+    # this same budget.
+    max_web_searches=9,
     post_process=_post_process,
 )
 

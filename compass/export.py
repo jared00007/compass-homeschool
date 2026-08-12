@@ -61,6 +61,17 @@ def lesson_to_docx(lesson: dict[str, Any]) -> bytes:
                 f"({activity.get('kind', '')}, {activity.get('minutes', 0)} min)"
             )
             document.add_heading(heading, level=3)
+            video = activity.get("video") or {}
+            if video.get("found") and video.get("url"):
+                watch = document.add_paragraph()
+                watch.add_run(f"Video: {video.get('title') or 'Watch'}").bold = True
+                document.add_paragraph(video["url"])
+                if video.get("why"):
+                    document.add_paragraph(video["why"]).runs[0].italic = True
+            if activity.get("example"):
+                worked = document.add_paragraph()
+                worked.add_run("Here's how: ").bold = True
+                worked.add_run(activity["example"])
             if activity.get("instructions"):
                 document.add_paragraph(activity["instructions"])
 
@@ -88,14 +99,6 @@ def lesson_to_docx(lesson: dict[str, Any]) -> bytes:
             if item.get("explanation"):
                 explanation = document.add_paragraph()
                 explanation.add_run(item["explanation"]).italic = True
-
-    video = lesson.get("video") or {}
-    if video.get("found") and video.get("url"):
-        document.add_heading("Suggested video", level=2)
-        document.add_paragraph(video.get("title") or "Watch")
-        document.add_paragraph(video["url"])
-        if video.get("why"):
-            document.add_paragraph(video["why"])
 
     if lesson.get("parent_notes"):
         document.add_heading("Notes for the parent", level=2)

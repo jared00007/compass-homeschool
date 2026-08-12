@@ -190,31 +190,41 @@ copying — same failure mode as leaking `assessment` into an activity, just \
 through the back door.
 - Every activity gets one. Not just the ones that feel like they need it.
 
-## A supplementary video, if a real one exists
-Use `web_search` to look for one video that would help him actually see or hear \
-today's specific topic — a worked example in real time, real footage, a real \
-demonstration. This is optional and secondary to the lesson itself.
+## A supplementary video per activity, wherever a real one exists
+Each activity has its own `video` — not one video for the whole lesson. A \
+specific video almost always matches one specific activity's specific skill \
+far better than it matches the lesson as a whole, so look per activity, not \
+once in general.
 
 **Only look for a video from one of these channels, because they're the ones \
-this family has vetted for his age and this subject: {video_channels}.** Search \
-by including the channel name in your query — "Khan Academy two-step equations," \
-not just "two-step equations video" — so results actually point at their \
-uploads instead of whatever ranks highest.
+this family has vetted for his age and this subject: {video_channels}.** For \
+each activity where a real match plausibly exists, search including the \
+channel name and that activity's specific skill — "Khan Academy two-step \
+equations," not just "two-step equations video" — so results actually point \
+at their uploads instead of whatever ranks highest.
 
-- **Only report `found: true` if a search this turn actually returned a specific \
-video from one of those channels, and you are copying its title and URL exactly \
-as the search gave them.** Never write a URL from memory, never guess at one \
-that "should" exist, and never adjust or shorten a URL you found. If the best \
-result you find is from a channel not on that list, report `found: false` — the \
-channel matters as much as the content here, and a wrong-source video doesn't \
-belong even if it looks fine. A missing video costs nothing.
-- One search is usually enough. This is not the lesson's research budget — do \
-not spend it here if the topic also needs grounding in real places, species, or \
-sources.
+- **Search for most activities that teach a procedure, a formula, or a concept \
+that can be shown or demonstrated** — this is the common case, not the \
+exception, especially in math. Skip searching for activity kinds where a video \
+genuinely doesn't fit — a discussion prompt, a field observation log, a \
+writing-only activity — rather than forcing a tenuous match.
+- **Only report `found: true` on an activity if a search this turn actually \
+returned a specific video from one of those channels, and you are copying its \
+title and URL exactly as the search gave them.** Never write a URL from \
+memory, never guess at one that "should" exist, and never adjust or shorten a \
+URL you found. If the best result you find is from a channel not on that \
+list, report `found: false` — the channel matters as much as the content \
+here, and a wrong-source video doesn't belong even if it looks fine. A \
+missing video costs nothing; a wrong one costs trust.
+- Spend web searches on this in proportion to how many activities can \
+plausibly use one — this is most of the search budget for a subject that \
+only searches for video, but still share it with any grounding research the \
+lesson itself needs.
 - `why` is one sentence and specific: what he'll actually see in the video that \
-the lesson doesn't already show him. Not "this is a good video about X."
-- The lesson must stand on its own without it. Nothing in `activities` or \
-`assessment` may depend on him having watched it.
+that activity's own instructions and example don't already show him. Not \
+"this is a good video about X."
+- The lesson must stand on its own without any of them. Nothing in \
+`activities` or `assessment` may depend on him having watched one.
 
 ## A quiz he takes himself
 Write `quiz`: three to five multiple-choice questions checking whether he \
@@ -406,8 +416,14 @@ class LessonAgent:
         payload.setdefault("branches", [])
         payload.setdefault("materials", [])
         payload.setdefault("learning_objectives", [])
-        payload.setdefault("video", {"found": False, "title": "", "url": "", "channel": "", "why": ""})
         payload.setdefault("quiz", [])
+        # Defensive, per activity, same as the other setdefaults above --
+        # `video` is required by the schema, but every other optional-in-
+        # practice field gets this same belt-and-suspenders treatment.
+        for activity in payload.get("activities") or []:
+            activity.setdefault(
+                "video", {"found": False, "title": "", "url": "", "channel": "", "why": ""}
+            )
         return warnings
 
 

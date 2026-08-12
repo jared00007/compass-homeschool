@@ -1,11 +1,13 @@
 """Verifying a model's claim that a real teaching video exists.
 
-Every Tier 1 agent may propose one supplementary video per lesson. The risk this
-module exists to manage: a model asked "find a video" will, if left unchecked,
-confidently return a title, channel, and URL that sound entirely plausible and
-correspond to nothing real. A dead or wrong link is a minor annoyance; a fabricated
-one that happens to resolve to something unrelated (or unsuitable) is worse than no
-suggestion at all.
+Every Tier 1 activity may propose its own supplementary video -- one per
+activity, not one per lesson, since a specific video usually matches a
+specific activity's specific skill far better than it matches the lesson as
+a whole. The risk this module exists to manage: a model asked "find a video"
+will, if left unchecked, confidently return a title, channel, and URL that
+sound entirely plausible and correspond to nothing real. A dead or wrong
+link is a minor annoyance; a fabricated one that happens to resolve to
+something unrelated (or unsuitable) is worse than no suggestion at all.
 
 So a claimed video is trusted only if all three hold:
 
@@ -157,8 +159,58 @@ def _matches_a_real_result(url: str, search_urls: set[str]) -> bool:
     return any(claimed_id == _video_id(u) for u in search_urls)
 
 
+def _verify_one(video: dict[str, Any], agent_key: str, search_urls: set[str]) -> str | None:
+    """Check one activity's `video` claim in place, dropping it (reset to the
+    clean empty shape) unless all three trust conditions hold. Returns a
+    warning string if a claim was dropped, else None."""
+    if not video.get("found"):
+        # Defensive: force the clean shape even if the model left stray text
+        # alongside found=False, so every activity has one consistent "no
+        # video" representation for the renderer to check.
+        if any(video.get(k) for k in ("title", "url", "channel", "why")):
+            video.clear()
+            video.update(_EMPTY_VIDEO)
+        return None
+
+    url = (video.get("url") or "").strip()
+
+    if not url or not _matches_a_real_result(url, search_urls):
+        video.clear()
+        video.update(_EMPTY_VIDEO)
+        return (
+            "Dropped a suggested video whose link didn't match an actual web "
+            "search result — treating it as none found rather than risking a "
+            "broken or invented link."
+        )
+
+    if not is_trusted_domain(url):
+        domain = _domain(url) or url
+        video.clear()
+        video.update(_EMPTY_VIDEO)
+        return (
+            f"Dropped a suggested video at an unrecognised site ({domain}) "
+            "— only YouTube links are trusted for now."
+        )
+
+    channel = video.get("channel") or ""
+    if not channel_is_trusted(agent_key, channel):
+        video.clear()
+        video.update(_EMPTY_VIDEO)
+        return (
+            f"Dropped a suggested video from a channel not on the approved list "
+            f"for this subject ({channel or 'unlabeled'})."
+        )
+
+    return None
+
+
 def verify_video(payload: dict[str, Any], agent_key: str) -> list[str]:
-    """Check `payload["video"]` against this generation's real search results.
+    """Check every activity's `video` claim against this generation's real
+    search results.
+
+    One video per activity now, not one per lesson -- each activity's claim
+    is checked independently, so a fabricated or off-channel video on one
+    activity doesn't take down a genuine one found for another.
 
     `agent_key` selects which subject's channel allowlist applies -- a channel
     approved for math is not automatically approved for science, even if it's a
@@ -168,47 +220,19 @@ def verify_video(payload: dict[str, Any], agent_key: str) -> list[str]:
     URL actually returned by web search this call; it is consumed and removed
     here rather than persisted, since it has no value once verification is done.
 
-    Returns a parent-facing warning if a claim was dropped, exactly like the
-    credit-normalization warnings this mirrors — a silent downgrade would be
-    worse than not checking at all.
+    Returns parent-facing warnings for every claim that was dropped, exactly
+    like the credit-normalization warnings this mirrors — a silent downgrade
+    would be worse than not checking at all.
     """
     search_urls = set(payload.pop("_search_result_urls", None) or [])
 
-    video = payload.get("video")
-    if video is None:
-        return []
-
-    if not video.get("found"):
-        # Defensive: force the clean shape even if the model left stray text
-        # alongside found=False, so every lesson has one consistent "no video"
-        # representation for the renderer to check.
-        if any(video.get(k) for k in ("title", "url", "channel", "why")):
-            payload["video"] = dict(_EMPTY_VIDEO)
-        return []
-
-    url = (video.get("url") or "").strip()
-
-    if not url or not _matches_a_real_result(url, search_urls):
-        payload["video"] = dict(_EMPTY_VIDEO)
-        return [
-            "Dropped a suggested video whose link didn't match an actual web "
-            "search result — treating it as none found rather than risking a "
-            "broken or invented link."
-        ]
-
-    if not is_trusted_domain(url):
-        payload["video"] = dict(_EMPTY_VIDEO)
-        return [
-            f"Dropped a suggested video at an unrecognised site ({_domain(url) or url}) "
-            "— only YouTube links are trusted for now."
-        ]
-
-    channel = video.get("channel") or ""
-    if not channel_is_trusted(agent_key, channel):
-        payload["video"] = dict(_EMPTY_VIDEO)
-        return [
-            f"Dropped a suggested video from a channel not on the approved list "
-            f"for this subject ({channel or 'unlabeled'})."
-        ]
-
-    return []
+    warnings: list[str] = []
+    for activity in payload.get("activities") or []:
+        video = activity.get("video")
+        if video is None:
+            continue
+        warning = _verify_one(video, agent_key, search_urls)
+        if warning:
+            title = activity.get("title", "an activity")
+            warnings.append(f'{warning} ("{title}")')
+    return warnings

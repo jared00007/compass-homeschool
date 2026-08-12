@@ -6,6 +6,9 @@ module's whole job is refusing to trust that claim unless it's backed by three
 things the app can check for itself: a URL a real search actually returned, on a
 platform a parent already knows how to preview, from a channel that subject's
 own vetted list actually names.
+
+One video per *activity*, not one per lesson -- `a_payload()` below always
+nests the claim inside `activities[0]["video"]`, matching the real schema.
 """
 
 from __future__ import annotations
@@ -20,16 +23,20 @@ from compass.agents.video import (
 
 REAL_URL = "https://www.youtube.com/watch?v=abc123"
 
+DEFAULT_VIDEO = {
+    "found": True,
+    "title": "Two-Step Equations Explained",
+    "url": REAL_URL,
+    "channel": "Khan Academy",
+    "why": "Shows the steps worked in real time.",
+}
 
-def a_payload(**overrides):
+
+def a_payload(video=None, activities=None, **overrides):
     payload = {
-        "video": {
-            "found": True,
-            "title": "Two-Step Equations Explained",
-            "url": REAL_URL,
-            "channel": "Khan Academy",
-            "why": "Shows the steps worked in real time.",
-        },
+        "activities": activities
+        if activities is not None
+        else [{"title": "Warm-up", "video": dict(DEFAULT_VIDEO if video is None else video)}],
         "_search_result_urls": [REAL_URL, "https://www.youtube.com/watch?v=other"],
     }
     payload.update(overrides)
@@ -38,6 +45,10 @@ def a_payload(**overrides):
 
 def verify(payload, agent_key="math"):
     return verify_video(payload, agent_key)
+
+
+def first_video(payload):
+    return payload["activities"][0]["video"]
 
 
 # --- domain checking -----------------------------------------------------------
@@ -64,8 +75,8 @@ def test_a_real_search_verified_trusted_channel_video_is_kept():
     payload = a_payload()
     warnings = verify(payload)
     assert not warnings
-    assert payload["video"]["found"] is True
-    assert payload["video"]["url"] == REAL_URL
+    assert first_video(payload)["found"] is True
+    assert first_video(payload)["url"] == REAL_URL
 
 
 def test_the_search_urls_sidecar_is_removed_either_way():
@@ -77,6 +88,31 @@ def test_the_search_urls_sidecar_is_removed_either_way():
     payload = a_payload(video={"found": False, "title": "", "url": "", "channel": "", "why": ""})
     verify(payload)
     assert "_search_result_urls" not in payload
+
+
+def test_each_activitys_video_is_checked_independently():
+    """A fabricated video on one activity must not take down a genuine one
+    found for another."""
+    payload = a_payload(
+        activities=[
+            {"title": "Warm-up", "video": dict(DEFAULT_VIDEO)},
+            {
+                "title": "Practice",
+                "video": {
+                    "found": True,
+                    "title": "Invented",
+                    "url": "https://www.youtube.com/watch?v=totallymadeup",
+                    "channel": "Khan Academy",
+                    "why": "x",
+                },
+            },
+        ]
+    )
+    warnings = verify(payload)
+    assert payload["activities"][0]["video"]["found"] is True
+    assert payload["activities"][1]["video"]["found"] is False
+    assert len(warnings) == 1
+    assert "Practice" in warnings[0]
 
 
 # --- a video that doesn't match a real search result is dropped ----------------
@@ -94,7 +130,7 @@ def test_a_url_not_in_the_search_results_is_dropped():
         }
     )
     warnings = verify(payload)
-    assert payload["video"] == {
+    assert first_video(payload) == {
         "found": False, "title": "", "url": "", "channel": "", "why": "",
     }
     assert any("didn't match an actual web search result" in w for w in warnings)
@@ -103,7 +139,7 @@ def test_a_url_not_in_the_search_results_is_dropped():
 def test_an_empty_url_with_found_true_is_dropped():
     payload = a_payload(video={"found": True, "title": "x", "url": "", "channel": "Khan Academy", "why": ""})
     warnings = verify(payload)
-    assert payload["video"]["found"] is False
+    assert first_video(payload)["found"] is False
     assert warnings
 
 
@@ -128,7 +164,7 @@ def test_a_url_with_an_added_timestamp_param_still_matches():
     )
     warnings = verify(payload)
     assert not warnings
-    assert payload["video"]["found"] is True
+    assert first_video(payload)["found"] is True
 
 
 def test_a_shortened_youtu_be_url_matches_the_long_form_result():
@@ -144,7 +180,7 @@ def test_a_shortened_youtu_be_url_matches_the_long_form_result():
     )
     warnings = verify(payload)
     assert not warnings
-    assert payload["video"]["found"] is True
+    assert first_video(payload)["found"] is True
 
 
 def test_dropping_www_and_switching_scheme_still_matches():
@@ -160,7 +196,7 @@ def test_dropping_www_and_switching_scheme_still_matches():
     )
     warnings = verify(payload)
     assert not warnings
-    assert payload["video"]["found"] is True
+    assert first_video(payload)["found"] is True
 
 
 def test_a_different_video_id_on_the_same_host_is_still_rejected():
@@ -176,7 +212,7 @@ def test_a_different_video_id_on_the_same_host_is_still_rejected():
         _search_result_urls=["https://www.youtube.com/watch?v=abc123"],
     )
     warnings = verify(payload)
-    assert payload["video"]["found"] is False
+    assert first_video(payload)["found"] is False
     assert any("didn't match an actual web search result" in w for w in warnings)
 
 
@@ -197,7 +233,7 @@ def test_a_search_verified_video_on_an_untrusted_domain_is_dropped():
         _search_result_urls=[sketchy_url],
     )
     warnings = verify(payload)
-    assert payload["video"]["found"] is False
+    assert first_video(payload)["found"] is False
     assert any("unrecognised site" in w for w in warnings)
 
 
@@ -220,7 +256,7 @@ def test_a_channel_not_on_the_list_is_dropped():
         }
     )
     warnings = verify(payload, "math")
-    assert payload["video"]["found"] is False
+    assert first_video(payload)["found"] is False
     assert any("not on the approved list" in w for w in warnings)
     assert any("Some Random YouTuber" in w for w in warnings)
 
@@ -241,7 +277,7 @@ def test_the_channel_list_is_scoped_per_subject_not_pooled():
         }
     )
     warnings = verify(payload, "science")
-    assert payload["video"]["found"] is False
+    assert first_video(payload)["found"] is False
     assert any("not on the approved list" in w for w in warnings)
 
 
@@ -270,7 +306,7 @@ def test_an_empty_channel_with_a_real_url_is_dropped():
         }
     )
     warnings = verify(payload)
-    assert payload["video"]["found"] is False
+    assert first_video(payload)["found"] is False
     assert any("not on the approved list" in w for w in warnings)
 
 
@@ -290,7 +326,7 @@ def test_found_false_is_passed_through():
     payload = a_payload(video={"found": False, "title": "", "url": "", "channel": "", "why": ""})
     warnings = verify(payload)
     assert not warnings
-    assert payload["video"]["found"] is False
+    assert first_video(payload)["found"] is False
 
 
 def test_found_false_with_stray_text_is_cleaned_up():
@@ -299,15 +335,27 @@ def test_found_false_with_stray_text_is_cleaned_up():
         video={"found": False, "title": "leftover title", "url": "", "channel": "", "why": ""}
     )
     verify(payload)
-    assert payload["video"] == {
+    assert first_video(payload) == {
         "found": False, "title": "", "url": "", "channel": "", "why": "",
     }
 
 
-def test_a_payload_with_no_video_key_is_a_no_op():
-    """Life-skill plans and pre-feature cached lessons have no `video` key at all."""
+def test_an_activity_with_no_video_key_is_skipped():
+    """An activity the model didn't attach a video to (or a life-skill-plan-
+    style payload with no `activities` video field at all) is left alone."""
+    payload = {
+        "activities": [{"title": "Discuss"}],
+        "_search_result_urls": ["https://www.youtube.com/watch?v=x"],
+    }
+    warnings = verify(payload)
+    assert warnings == []
+    assert "video" not in payload["activities"][0]
+    assert "_search_result_urls" not in payload
+
+
+def test_a_payload_with_no_activities_key_is_a_no_op():
+    """Life-skill plans have no `activities` key at all."""
     payload = {"_search_result_urls": ["https://www.youtube.com/watch?v=x"]}
     warnings = verify(payload)
     assert warnings == []
-    assert "video" not in payload
     assert "_search_result_urls" not in payload

@@ -44,6 +44,38 @@ def _object(properties: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_VIDEO_PROPERTIES: dict[str, Any] = {
+    "found": {
+        "type": "boolean",
+        "description": (
+            "True only if a real web search this turn returned a specific video "
+            "with a URL you are copying exactly, that genuinely matches this "
+            "activity's own skill. Set false whenever you are not certain -- "
+            "never true just because a good video probably exists somewhere, "
+            "and never true for an activity type (discussion, writing a "
+            "paragraph, a field observation) that a video wouldn't actually "
+            "help with."
+        ),
+    },
+    "title": {"type": "string", "description": "Exact title from the search result. Empty if found is false."},
+    "url": {
+        "type": "string",
+        "description": (
+            "The exact URL from the search result, character for character. "
+            "Empty if found is false."
+        ),
+    },
+    "channel": {"type": "string", "description": "Empty if found is false."},
+    "why": {
+        "type": "string",
+        "description": (
+            "One sentence: what he'll actually see in it that this activity's "
+            "own instructions and example don't already show him. Empty if "
+            "found is false."
+        ),
+    },
+}
+
 LESSON_SCHEMA: dict[str, Any] = _object(
     {
         "title": {"type": "string", "description": "Short, concrete lesson title."},
@@ -87,6 +119,7 @@ LESSON_SCHEMA: dict[str, Any] = _object(
                             "every activity, not just the ones that feel like they need one."
                         ),
                     },
+                    "video": _object(_VIDEO_PROPERTIES),
                 }
             ),
         },
@@ -161,35 +194,6 @@ LESSON_SCHEMA: dict[str, Any] = _object(
             ),
             "items": _object({"topic": {"type": "string"}, "rationale": {"type": "string"}}),
         },
-        "video": _object(
-            {
-                "found": {
-                    "type": "boolean",
-                    "description": (
-                        "True only if a real web search this turn returned a specific video "
-                        "with a URL you are copying exactly. Set false whenever you are not "
-                        "certain -- never true just because a good video probably exists "
-                        "somewhere; it must be one you actually found."
-                    ),
-                },
-                "title": {"type": "string", "description": "Exact title from the search result. Empty if found is false."},
-                "url": {
-                    "type": "string",
-                    "description": (
-                        "The exact URL from the search result, character for character. "
-                        "Empty if found is false."
-                    ),
-                },
-                "channel": {"type": "string", "description": "Empty if found is false."},
-                "why": {
-                    "type": "string",
-                    "description": (
-                        "One sentence: what he'll actually see in it that this lesson doesn't "
-                        "already show him. Empty if found is false."
-                    ),
-                },
-            }
-        ),
     }
 )
 

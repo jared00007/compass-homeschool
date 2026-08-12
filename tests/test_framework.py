@@ -258,38 +258,42 @@ def test_reasonable_secondary_credits_are_left_alone(db, student):
 
 
 def test_all_four_agents_may_search_for_a_video(db, student):
-    """Math and English couldn't search at all before; now every agent can, but
-    only Science and History get the larger budget location grounding needs."""
+    """Every agent can search now. Science and History get the largest budget
+    (location grounding plus a per-activity video search each); Math and
+    English spend their whole budget on video, now per activity rather than
+    once per lesson, so they need more than the old single-video days too."""
     from compass.agents import all_agents
 
     for key, agent in all_agents().items():
         assert agent.spec.use_web_search is True, key
 
-    assert get_agent("math").spec.max_web_searches == 2
-    assert get_agent("english").spec.max_web_searches == 2
-    assert get_agent("science").spec.max_web_searches == 6
-    assert get_agent("history").spec.max_web_searches == 6
+    assert get_agent("math").spec.max_web_searches == 6
+    assert get_agent("english").spec.max_web_searches == 6
+    assert get_agent("science").spec.max_web_searches == 9
+    assert get_agent("history").spec.max_web_searches == 9
 
 
 def test_normalize_keeps_a_search_verified_video(db, student):
     agent = get_agent("math")
     url = "https://www.youtube.com/watch?v=abc123"
     payload = {
-        "activities": [{"minutes": 60}],
+        "activities": [{
+            "minutes": 60,
+            "video": {
+                "found": True,
+                "title": "Two-Step Equations",
+                "url": url,
+                "channel": "Khan Academy",
+                "why": "Shows it worked in real time.",
+            },
+        }],
         "estimated_minutes": 60,
         "subject_credits": [{"subject": "math", "minutes": 60, "justification": ""}],
-        "video": {
-            "found": True,
-            "title": "Two-Step Equations",
-            "url": url,
-            "channel": "Khan Academy",
-            "why": "Shows it worked in real time.",
-        },
         "_search_result_urls": [url],
     }
     warnings, payload = normalize(agent, payload, db, student)
-    assert payload["video"]["found"] is True
-    assert payload["video"]["url"] == url
+    assert payload["activities"][0]["video"]["found"] is True
+    assert payload["activities"][0]["video"]["url"] == url
     assert "_search_result_urls" not in payload, "the sidecar must never reach storage"
     assert not any("video" in w.lower() for w in warnings), "a good video needs no warning"
 
@@ -300,20 +304,22 @@ def test_normalize_drops_a_video_from_a_channel_not_on_this_subjects_list(db, st
     agent = get_agent("science")
     url = "https://www.youtube.com/watch?v=abc123"
     payload = {
-        "activities": [{"minutes": 75}],
+        "activities": [{
+            "minutes": 75,
+            "video": {
+                "found": True,
+                "title": "How Nurse Logs Work",
+                "url": url,
+                "channel": "Math Antics",  # approved for math, not for science
+                "why": "x",
+            },
+        }],
         "estimated_minutes": 75,
         "subject_credits": [{"subject": "science", "minutes": 75, "justification": ""}],
-        "video": {
-            "found": True,
-            "title": "How Nurse Logs Work",
-            "url": url,
-            "channel": "Math Antics",  # approved for math, not for science
-            "why": "x",
-        },
         "_search_result_urls": [url],
     }
     warnings, payload = normalize(agent, payload, db, student)
-    assert payload["video"]["found"] is False
+    assert payload["activities"][0]["video"]["found"] is False
     assert any("not on the approved list" in w for w in warnings)
 
 
@@ -322,39 +328,41 @@ def test_normalize_drops_a_hallucinated_video(db, student):
     channel, and URL that a real search never returned."""
     agent = get_agent("history")
     payload = {
-        "activities": [{"minutes": 60}],
+        "activities": [{
+            "minutes": 60,
+            "video": {
+                "found": True,
+                "title": "A Documentary That Sounds Exactly Right",
+                "url": "https://www.youtube.com/watch?v=doesnotexist",
+                "channel": "History Channel",
+                "why": "Perfectly on topic.",
+            },
+        }],
         "estimated_minutes": 60,
         "subject_credits": [{"subject": "history", "minutes": 60, "justification": ""}],
-        "video": {
-            "found": True,
-            "title": "A Documentary That Sounds Exactly Right",
-            "url": "https://www.youtube.com/watch?v=doesnotexist",
-            "channel": "History Channel",
-            "why": "Perfectly on topic.",
-        },
         "_search_result_urls": ["https://www.youtube.com/watch?v=somethingelse"],
     }
     warnings, payload = normalize(agent, payload, db, student)
-    assert payload["video"]["found"] is False
-    assert payload["video"]["url"] == ""
+    assert payload["activities"][0]["video"]["found"] is False
+    assert payload["activities"][0]["video"]["url"] == ""
     assert any("didn't match an actual web search result" in w for w in warnings)
     # credit policing must still run normally alongside it
     assert payload["subject_credits"][0]["subject"] == "history"
 
 
-def test_normalize_fills_in_video_for_a_payload_that_never_had_one(db, student):
+def test_normalize_fills_in_video_for_every_activity_that_never_had_one(db, student):
     """Back-compat: a lesson generated before this feature existed, or hand-built
-    in a test, still gets a consistent shape to render against."""
+    in a test, still gets a consistent per-activity shape to render against."""
     agent = get_agent("english")
     payload = {
-        "activities": [{"minutes": 60}],
-        "estimated_minutes": 60,
-        "subject_credits": [{"subject": "reading", "minutes": 60, "justification": ""}],
+        "activities": [{"minutes": 60}, {"minutes": 30}],
+        "estimated_minutes": 90,
+        "subject_credits": [{"subject": "reading", "minutes": 90, "justification": ""}],
     }
     warnings, payload = normalize(agent, payload, db, student)
-    assert payload["video"] == {
-        "found": False, "title": "", "url": "", "channel": "", "why": "",
-    }
+    empty = {"found": False, "title": "", "url": "", "channel": "", "why": ""}
+    assert payload["activities"][0]["video"] == empty
+    assert payload["activities"][1]["video"] == empty
 
 
 def test_prompt_forbids_inventing_a_video_url(db, student):

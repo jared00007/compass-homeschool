@@ -28,6 +28,8 @@ def a_lesson(**overrides):
                 "kind": "practice",
                 "minutes": 60,
                 "instructions": "Solve problems 1-10.",
+                "example": "Worked model: solve 5x + 3 = 18 step by step.",
+                "video": {"found": False, "title": "", "url": "", "channel": "", "why": ""},
             }
         ],
         "materials": ["Pencil"],
@@ -42,7 +44,6 @@ def a_lesson(**overrides):
         "estimated_minutes": 60,
         "parent_notes": "Watch for sign errors.",
         "branches": [],
-        "video": {"found": False, "title": "", "url": "", "channel": "", "why": ""},
         "quiz": [
             {
                 "question": "What do you do first to solve 2x + 3 = 11?",
@@ -97,22 +98,22 @@ def test_includes_subject_credit_table():
 
 
 def test_handles_a_missing_video_and_empty_quiz_without_crashing():
-    lesson = a_lesson(video={"found": False}, quiz=[])
+    lesson = a_lesson(quiz=[])
+    lesson["activities"][0]["video"] = {"found": False}
     text = text_of(lesson_to_docx(lesson))
-    assert "Suggested video" not in text
+    assert "Solving Two-Step Equations" not in text
     assert "Quiz answer key" not in text
 
 
 def test_handles_a_found_video():
-    lesson = a_lesson(
-        video={
-            "found": True,
-            "title": "Solving Two-Step Equations",
-            "url": "https://www.youtube.com/watch?v=abc123",
-            "channel": "Khan Academy",
-            "why": "Shows the undo steps worked in real time.",
-        }
-    )
+    lesson = a_lesson()
+    lesson["activities"][0]["video"] = {
+        "found": True,
+        "title": "Solving Two-Step Equations",
+        "url": "https://www.youtube.com/watch?v=abc123",
+        "channel": "Khan Academy",
+        "why": "Shows the undo steps worked in real time.",
+    }
     text = text_of(lesson_to_docx(lesson))
     assert "Solving Two-Step Equations" in text
     assert "https://www.youtube.com/watch?v=abc123" in text

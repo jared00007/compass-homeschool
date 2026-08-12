@@ -90,7 +90,8 @@ def a_lesson(**overrides):
         "activities": [
             {"title": "Practice", "kind": "practice", "minutes": 60,
              "instructions": "Solve problems 1-10.",
-             "example": "Worked model: solve 5x + 3 = 18 step by step."}
+             "example": "Worked model: solve 5x + 3 = 18 step by step.",
+             "video": {"found": False, "title": "", "url": "", "channel": "", "why": ""}}
         ],
         "materials": ["Pencil"],
         "assessment": {"kind": "check", "description": "Ten items",
@@ -99,7 +100,6 @@ def a_lesson(**overrides):
         "estimated_minutes": 60,
         "parent_notes": "Watch for sign errors.",
         "branches": [],
-        "video": {"found": False, "title": "", "url": "", "channel": "", "why": ""},
     }
     payload.update(overrides)
     return payload
@@ -171,21 +171,27 @@ def test_materials_render_before_activities(monkeypatch, db, student):
     assert page.index("**Materials**") < page.index("**Activities**")
 
 
-def test_suggested_video_renders_before_activities(monkeypatch, db, student):
-    """The video is his entry into the lesson -- watch/hear it explained
-    before being asked to do the activities himself, not after."""
+def test_an_activitys_video_renders_before_its_example_and_instructions(monkeypatch, db, student):
+    """One video per activity, not one per lesson -- it's that activity's own
+    entry point, so it shows before the worked example and instructions for
+    that same activity."""
+    lesson = a_lesson()
+    lesson["activities"][0]["video"] = {
+        "found": True, "title": "Two-Step Equations Explained",
+        "url": "https://youtube.com/watch?v=abc", "channel": "Khan Academy",
+        "why": "Shows the same undo-in-order idea worked out loud.",
+    }
     generated = GeneratedLesson(
         lesson_id=1,
         proposal=TopicProposal(topic="t", rationale="r", strategy="s"),
-        payload=a_lesson(video={
-            "found": True, "title": "Two-Step Equations Explained",
-            "url": "https://youtube.com/watch?v=abc", "channel": "Khan Academy",
-            "why": "Shows the same undo-in-order idea worked out loud.",
-        }),
+        payload=lesson,
         warnings=[],
     )
     page, _ = run(monkeypatch, db, student, generated=generated)
-    assert page.index("Suggested video") < page.index("**Activities**")
+    assert "Two-Step Equations Explained" in page
+    assert page.index("**Activities**") < page.index("Two-Step Equations Explained")
+    assert page.index("Two-Step Equations Explained") < page.index("Worked model:")
+    assert page.index("Worked model:") < page.index("Solve problems 1-10.")
 
 
 def test_a_generated_lesson_offers_a_word_doc_download(monkeypatch, db, student):

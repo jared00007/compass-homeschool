@@ -62,7 +62,10 @@ def test_count_web_searches_counts_tool_use_blocks_not_results():
 
 
 def test_lesson_schema_requires_the_video_object_closed():
-    video_schema = LESSON_SCHEMA["properties"]["video"]
+    """One video per activity now, not one per lesson -- see LESSON_SCHEMA's
+    activities item."""
+    activity_schema = LESSON_SCHEMA["properties"]["activities"]["items"]
+    video_schema = activity_schema["properties"]["video"]
     assert video_schema["additionalProperties"] is False
     assert set(video_schema["required"]) == {"found", "title", "url", "channel", "why"}
     assert video_schema["properties"]["found"]["type"] == "boolean"
