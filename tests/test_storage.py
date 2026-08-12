@@ -605,6 +605,28 @@ def test_seed_big_projects_adds_the_catalog_once(db, student):
     assert len(db.list_big_projects(student["id"])) == 1
 
 
+def test_backfill_big_project_step_content_syncs_revised_catalog_text(db, student):
+    """A project seeded before a step's text was revised (more detail added)
+    must pick up the new copy on the next launch, without losing whether
+    that step was already checked off."""
+    db.seed_big_projects(student["id"])
+    project = db.list_big_projects(student["id"])[0]
+    step = db.list_project_steps(project["id"])[0]
+    db.set_project_step_done(step["id"], True)
+    db.conn.execute(
+        "UPDATE project_steps SET description = 'old short text' WHERE id = ?",
+        (step["id"],),
+    )
+    db.conn.commit()
+
+    db._backfill_big_project_step_content()
+
+    refreshed = db.list_project_steps(project["id"])[0]
+    assert refreshed["description"] != "old short text"
+    assert "Before you move on" in refreshed["description"]
+    assert refreshed["completed_on"] is not None  # still checked off
+
+
 def test_add_project_step_appends_in_order(db, student):
     project_id = db.add_big_project(student["id"], "Test Project", "A vision.")
     db.add_project_step(project_id, "Step one", credit_subject="writing")

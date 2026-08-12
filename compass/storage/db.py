@@ -783,71 +783,173 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
             ("Pick your story",
              "Come up with a short story with a clear beginning, middle, and "
              "end. Keep it small on purpose -- 4 to 6 scenes is plenty for a "
-             "first film. Pick something you're actually excited about: a "
-             "heist, a battle, a chase, a mystery, whatever.",
+             "first film.\n\n"
+             "- Think up 2 or 3 different ideas before picking one -- a "
+             "one-line version of each is enough (\"a heist to steal back a "
+             "stolen treasure,\" \"two armies fighting over a castle\").\n"
+             "- Pick the one that actually excites you most, not the "
+             "easiest one to think of.\n"
+             "- Say the whole story out loud to a parent, start to finish. "
+             "If you get stuck explaining a part, that part isn't figured "
+             "out yet -- that's fine, just notice it.\n"
+             "- Write down three sentences: how it starts, the big problem "
+             "in the middle, how it ends.\n\n"
+             "**Before you move on:** can you tell the whole story in under "
+             "a minute without stopping to think? If not, sit with it "
+             "another day first -- a story you actually know cold makes "
+             "every step after this one easier.",
              "paper and pencil (or just talk it through out loud)", "writing"),
             ("Write your shot list",
-             "Break the story into a numbered list of scenes. For each one, "
-             "jot down where it happens, who's in it, and what happens. Rough "
-             "stick-figure sketches are enough here -- this is a plan, not "
-             "finished art.",
+             "Break the story into a numbered list of scenes -- a scene is "
+             "anywhere the location or the action changes.\n\n"
+             "- For each scene, write down three things: where it happens, "
+             "who's in it, what happens.\n"
+             "- Number them in order.\n"
+             "- Rough sketches are fine -- stick figures and arrows for "
+             "movement, it doesn't need to look good.\n\n"
+             "**Before you move on:** count your scenes. 4-6 is the sweet "
+             "spot for a first film -- more than that and the build-and-"
+             "shoot step later gets long. More than 6? Look for two scenes "
+             "you could combine into one.",
              "paper, pencil", "writing"),
             ("Cast your minifigs",
              "Decide which minifig plays which character. Stop-motion lives "
              "or dies on consistency -- the same figure needs to look the "
-             "same in every scene it's in, so lock this in before you start "
-             "shooting.",
+             "same in every scene it's in.\n\n"
+             "- Pull one minifig for every character in your story before "
+             "you do anything else.\n"
+             "- Line them up and match each one to a name in your story.\n"
+             "- Take a photo of the lineup, or write down which fig is "
+             "which character -- you will forget which one was who in a "
+             "week.\n\n"
+             "**Before you move on:** double-check every character in your "
+             "story actually has a fig lined up. A character who doesn't "
+             "exist yet in Lego form will trip you up when you get to "
+             "building scenes.",
              "your Lego minifigs", "art_and_music"),
             ("Build your first set",
-             "Build or arrange the set for scene 1. Use your existing Lego "
-             "bricks and baseplates for anything they cover, and cardboard, "
-             "foam board, or craft supplies for anything they don't -- a "
-             "building front, hills, a backdrop sky.",
+             "Build or arrange the set for scene 1 -- for that specific "
+             "scene, not just \"a cool set.\"\n\n"
+             "- Reread scene 1 on your shot list before you build anything.\n"
+             "- Start with what you already have (bricks, baseplates, "
+             "existing builds); only reach for cardboard or craft supplies "
+             "for what's missing -- a building front, hills, a backdrop "
+             "sky.\n"
+             "- Build slow, and stop partway through to check it from the "
+             "angle the camera will actually see, not just from above.\n"
+             "- Leave room for the camera and for hands to reach in and "
+             "move minifigs between shots.\n\n"
+             "**Before you move on:** stand back and look at the set the "
+             "way the camera will see it. Does it look like the place in "
+             "your head? Fix it now -- it's much harder to fix once you've "
+             "started shooting.",
              "Lego bricks/baseplates, cardboard or foam board, scissors, "
              "tape or glue, paint or felt/cellophane for texture", "art_and_music"),
             ("Set up your shooting station",
              "A stop-motion shoot needs two things above all: a camera that "
-             "doesn't move, and light that doesn't change. Tape or wedge your "
-             "phone so it can't shift, point a desk lamp at the set instead "
-             "of a window (daylight shifts mid-shoot and causes flicker), and "
-             "install a stop-motion app.",
+             "doesn't move, and light that doesn't change.\n\n"
+             "- Pick a spot that won't need to move for a few days -- this "
+             "isn't a one-sitting job.\n"
+             "- Lock the camera down first: a tripod, or a phone wedged "
+             "against something solid. Test it by taking two photos in a "
+             "row and checking they line up exactly.\n"
+             "- Point a desk lamp at the set instead of relying on a "
+             "window -- daylight shifts during a shoot and causes flicker.\n"
+             "- Install the stop-motion app and find onion-skin mode before "
+             "you need it, not in the middle of shooting.\n\n"
+             "**Before you move on:** take five test photos in a row "
+             "without touching anything else in the room. If they all look "
+             "identical, the station is solid. If anything shifted, fix it "
+             "now, not mid-scene.",
              "phone or tablet, tripod or something to wedge it steady, a "
              "desk lamp, the Stop Motion Studio app (free)", "occupational_education"),
             ("Shoot your first scene",
-             "Move each minifig or prop just a little between shots -- small, "
-             "consistent movements read as smooth motion instead of a jump. "
-             "Use the app's onion-skin view to see the last frame ghosted "
-             "behind the camera so you know exactly how far to move things.",
+             "Go slowest on this one, on purpose -- it's brand new, and "
+             "mistakes here are cheap to fix. Mistakes later cost more "
+             "time.\n\n"
+             "- Move one thing a small amount, take a photo, check the "
+             "onion-skin, move it a small amount again. Small movements = "
+             "smooth motion. Big jumps = jumpy motion.\n"
+             "- Don't rush to finish the scene -- a 5-second scene shot "
+             "slowly and carefully beats a 15-second scene shot in a "
+             "hurry.\n"
+             "- Play the shots back after every 10-15 of them to catch "
+             "problems early, not after the whole scene is done.\n\n"
+             "**Before you move on:** watch the whole scene back. Smooth, "
+             "or jumpy in spots? Jumpy usually means the movements were too "
+             "big -- worth reshooting that part now rather than living "
+             "with it in the finished film.",
              "the set and shooting station from the last two steps", "occupational_education"),
             ("Build and shoot the rest of your scenes",
-             "Repeat the build-then-shoot loop from the last three steps, "
-             "once per remaining scene on your shot list. Add one step to "
-             "this project for each scene so you can check them off one at "
-             "a time as you go.",
+             "Repeat the build-then-shoot loop, one scene at a time, in the "
+             "same order as your shot list -- don't jump ahead to a scene "
+             "you're more excited about.\n\n"
+             "- Each scene: reread it, build or adjust the set, lock the "
+             "camera down, shoot slowly, play it back.\n"
+             "- It's fine for this to take several separate sessions -- add "
+             "one step to this project per remaining scene, so each one "
+             "gets its own checkbox instead of feeling like one giant "
+             "task.\n\n"
+             "**Before you move on to editing:** every scene on your shot "
+             "list has its own finished clip. Don't start editing until "
+             "they're all shot -- jumping back and forth between shooting "
+             "and editing is how scenes get forgotten.",
              "same as the last three steps, one round per scene", "occupational_education"),
             ("Add sound and voices",
-             "Record voices for your minifigs, add sound effects, and pick "
-             "music -- this is the step that turns a silent slideshow into a "
-             "movie. Foley is easier than it sounds: clapping, tapping, or "
-             "crinkling things near the mic often beats looking up 'real' "
-             "sound effects.",
+             "This is the step that turns a silent slideshow into a "
+             "movie.\n\n"
+             "- Watch each scene silently first and decide what it needs: "
+             "voices? footsteps? music? a sound effect?\n"
+             "- Record voices in a quiet room, phone close to your mouth -- "
+             "redo a line if it's muffled or rushed, don't just keep the "
+             "first take.\n"
+             "- Try foley before searching for \"real\" sound effects -- "
+             "clapping, tapping a table, crinkling paper often sounds "
+             "better than a stock sound.\n"
+             "- Do one type of sound at a time (all the voices first, then "
+             "effects, then music) instead of everything at once.\n\n"
+             "**Before you move on:** watch it back with sound. Anything "
+             "feel rushed or mumbled? Redo just that one clip -- you don't "
+             "have to redo the whole thing.",
              "phone or tablet mic, a quiet room, CapCut or iMovie", "art_and_music"),
             ("Edit it all together",
-             "Bring every scene clip into CapCut or iMovie, put them in "
-             "order, trim the rough edges, and add simple transitions "
-             "between scenes. This is where all those small separate files "
-             "finally become one finished film.",
+             "This is where all those small separate files finally become "
+             "one finished film.\n\n"
+             "- Import every scene clip in order first, before trimming "
+             "anything -- get the whole film roughly assembled before you "
+             "polish any one part.\n"
+             "- Watch the rough assembly all the way through once. Notice "
+             "what drags or feels rushed.\n"
+             "- Trim the slow, boring bits and the too-fast confusing "
+             "bits.\n"
+             "- Add a simple transition (a cut or fade) between scenes -- "
+             "nothing fancy needed for a first film.\n\n"
+             "**Before you move on:** watch the full edit start to finish, "
+             "no pausing. If a part is confusing on a first watch, a viewer "
+             "who's never seen your story will be even more lost there -- "
+             "that's the part to go back and fix.",
              "CapCut or iMovie, all your exported scene clips", "occupational_education"),
             ("Add titles and credits",
-             "A title card up front and a credits roll at the end -- "
-             "'Directed by' you, cast list, music credits if you used any. "
-             "Small thing, but it's what makes it feel like a finished film "
-             "instead of a school assignment.",
+             "Small thing, but it's what makes it feel like a finished "
+             "film instead of a school assignment.\n\n"
+             "- Title card: just the movie's name, on screen for a couple "
+             "seconds at the start.\n"
+             "- Credits at the end: \"Directed by\" you, cast (which "
+             "minifig played who), any music you used.\n"
+             "- Keep it simple -- plain text on a plain background is "
+             "completely fine.\n\n"
+             "**Before you move on:** read the credits out loud once. Did "
+             "you credit everyone who's actually in it?",
              "CapCut or iMovie's title tools", "art_and_music"),
             ("Premiere night",
-             "Watch the finished film together as a family, start to finish, "
-             "no pausing to critique partway through. That's the payoff for "
-             "every small step that came before it.",
+             "The payoff for every step that came before it -- don't rush "
+             "this one either.\n\n"
+             "- Pick a night, tell the family it's happening ahead of "
+             "time, no screens or interruptions during the watch.\n"
+             "- Watch it start to finish without pausing to explain or "
+             "apologize for anything -- let it just play.\n"
+             "- Afterward, ask what people liked best. That's useful "
+             "information for the next film, not just a nice moment.",
              "a TV or big screen, snacks", "art_and_music"),
         ),
     ),
@@ -901,6 +1003,7 @@ class Database:
         self._migrate_park_visits_to_travel_entries()
         self._migrate_interests_string_to_list()
         self._migrate_journal_entries_allow_multiple_per_day()
+        self._backfill_big_project_step_content()
         for key, value in config.DEFAULT_SETTINGS.items():
             self.conn.execute(
                 "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value)
@@ -1921,6 +2024,27 @@ class Database:
             added += 1
         self.conn.commit()
         return added
+
+    def _backfill_big_project_step_content(self) -> None:
+        """Keeps an already-seeded starter project's step text in sync with
+        BIG_PROJECT_CATALOG when the catalog copy itself is revised (e.g.
+        adding more detail to each step). Unlike life skills' backfill this
+        isn't guarding a parent's own edit -- there's no per-step edit UI --
+        so it overwrites unconditionally rather than only when blank.
+        Matched by (project title, step title); never touches
+        `completed_on`, so a step he's already checked off stays checked."""
+        for project_title, _, steps in BIG_PROJECT_CATALOG:
+            for project in _rows(
+                self.conn.execute(
+                    "SELECT id FROM big_projects WHERE title = ?", (project_title,)
+                )
+            ):
+                for step_title, description, materials, credit_subject in steps:
+                    self.conn.execute(
+                        "UPDATE project_steps SET description = ?, materials = ?, "
+                        "credit_subject = ? WHERE project_id = ? AND title = ?",
+                        (description, materials, credit_subject, project["id"], step_title),
+                    )
 
     # -- Core life skills -----------------------------------------------------
 

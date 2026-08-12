@@ -99,14 +99,21 @@ with checklist_tab:
                             st.rerun()
                     with columns[1]:
                         badge = " · ▶ up next" if is_next and not checked else ""
-                        st.markdown(f"**{index}. {html.escape(step['title'])}**{badge}")
-                        if step["description"]:
-                            st.write(step["description"])
-                        meta = []
-                        if step["materials"]:
-                            meta.append(f"**You'll need:** {step['materials']}")
-                        meta.append(f"Credits toward {label(step['credit_subject'])}")
-                        st.caption(" · ".join(meta))
+                        # Collapsed by default except whichever step is up
+                        # next -- the detail per step is deliberately long
+                        # (so there's no ambiguity about what to actually
+                        # do), and eleven of those open at once would bury
+                        # the one that matters right now.
+                        with st.expander(
+                            f"{index}. {step['title']}{badge}", expanded=is_next
+                        ):
+                            if step["description"]:
+                                st.write(step["description"])
+                            meta = []
+                            if step["materials"]:
+                                meta.append(f"**You'll need:** {step['materials']}")
+                            meta.append(f"Credits toward {label(step['credit_subject'])}")
+                            st.caption(" · ".join(meta))
             if is_parent() and st.button(
                 "Remove this project", key=f"remove_project_{project['id']}"
             ):
