@@ -328,6 +328,27 @@ def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> Non
         for item in materials:
             st.markdown(f"- {item}")
 
+    # Video before activities too -- his entry into the lesson (watch/hear it
+    # explained once) comes before he's asked to do the activities himself,
+    # not tacked on afterward as an afterthought. Shown to both views:
+    # verified against a real search result and restricted to YouTube (see
+    # compass/agents/video.py) before it ever gets this far, so there's
+    # nothing here for the student's version to redact.
+    video = lesson.get("video") or {}
+    if video.get("found") and video.get("url"):
+        with st.expander(f"▶️ Suggested video — {video.get('title') or 'watch'}"):
+            st.markdown(f"**[{video.get('title', 'Watch')}]({video['url']})**")
+            if video.get("channel"):
+                st.caption(video["channel"])
+            if video.get("why"):
+                st.write(video["why"])
+            if parent:
+                st.caption(
+                    "Checked against a real search result and restricted to YouTube, "
+                    "but Compass doesn't control what YouTube recommends once the "
+                    "video ends."
+                )
+
     activities = lesson.get("activities") or []
     if activities:
         st.markdown("**Activities**")
@@ -351,24 +372,6 @@ def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> Non
                         unsafe_allow_html=True,
                     )
                 st.write(activity.get("instructions", ""))
-
-    # Shown to both views. Verified against a real search result and restricted
-    # to YouTube (see compass/agents/video.py) before it ever gets this far, so
-    # there's nothing here for the student's version to redact.
-    video = lesson.get("video") or {}
-    if video.get("found") and video.get("url"):
-        with st.expander(f"▶️ Suggested video — {video.get('title') or 'watch'}"):
-            st.markdown(f"**[{video.get('title', 'Watch')}]({video['url']})**")
-            if video.get("channel"):
-                st.caption(video["channel"])
-            if video.get("why"):
-                st.write(video["why"])
-            if parent:
-                st.caption(
-                    "Checked against a real search result and restricted to YouTube, "
-                    "but Compass doesn't control what YouTube recommends once the "
-                    "video ends."
-                )
 
     assessment = lesson.get("assessment") or {}
     if assessment and parent:

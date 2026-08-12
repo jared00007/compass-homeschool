@@ -171,6 +171,23 @@ def test_materials_render_before_activities(monkeypatch, db, student):
     assert page.index("**Materials**") < page.index("**Activities**")
 
 
+def test_suggested_video_renders_before_activities(monkeypatch, db, student):
+    """The video is his entry into the lesson -- watch/hear it explained
+    before being asked to do the activities himself, not after."""
+    generated = GeneratedLesson(
+        lesson_id=1,
+        proposal=TopicProposal(topic="t", rationale="r", strategy="s"),
+        payload=a_lesson(video={
+            "found": True, "title": "Two-Step Equations Explained",
+            "url": "https://youtube.com/watch?v=abc", "channel": "Khan Academy",
+            "why": "Shows the same undo-in-order idea worked out loud.",
+        }),
+        warnings=[],
+    )
+    page, _ = run(monkeypatch, db, student, generated=generated)
+    assert page.index("Suggested video") < page.index("**Activities**")
+
+
 def test_a_generated_lesson_offers_a_word_doc_download(monkeypatch, db, student):
     """generate_and_log only ever runs behind is_parent(), so it's safe for the
     downloadable doc to include the assessment and answer key too."""
