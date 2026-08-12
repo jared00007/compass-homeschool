@@ -278,8 +278,7 @@ Every family electing to homeschool in Washington files a signed Declaration of 
 with the superintendent of their local school district — by **September 15th**, or
 within two weeks of starting home-based instruction if that's later in the year
 (RCW 28A.200.010). There's no single statewide form or portal: each district runs its
-own process, so Compass can't link you to yours automatically — paste it below once
-you know it.
+own process, so these details are filled in from your own district's packet, not guessed.
         """
     )
     due_columns = st.columns(2)
@@ -292,17 +291,62 @@ you know it.
             st.rerun()
     with due_columns[1]:
         url_setting = st.text_input(
-            "Your district's filing page (optional)",
+            "Your district's website (optional)",
             value=db.get_setting("declaration_url") or "",
-            placeholder="https://your-district.example/homeschool",
+            placeholder="https://your-district.example",
         )
         if url_setting != db.get_setting("declaration_url"):
             db.set_setting("declaration_url", url_setting.strip())
             st.rerun()
 
+    mail_setting = st.text_area(
+        "Where the signed form actually goes (mailing address, fax, or however your "
+        "district accepts it)",
+        value=db.get_setting("declaration_mail_to") or "",
+        height=80,
+    )
+    if mail_setting != db.get_setting("declaration_mail_to"):
+        db.set_setting("declaration_mail_to", mail_setting.strip())
+        st.rerun()
+
     ds = declaration_status(db, student["id"])
     if ds.filed and st.button("Undo — not actually filed"):
         db.clear_declaration_filed(student["id"], ds.due_on.isoformat())
+        st.rerun()
+
+    st.divider()
+    st.markdown("**Your district's packet**")
+    st.caption(
+        "Keep the actual registration packet here so it's in the same place as "
+        "everything else, not buried in a downloads folder somewhere."
+    )
+    packet = db.get_district_document(student["id"], "declaration_packet")
+    if packet:
+        st.download_button(
+            f"⬇️ {packet['filename']}",
+            data=packet["content"],
+            file_name=packet["filename"],
+            mime=packet["content_type"],
+        )
+        st.caption(f"Uploaded {packet['uploaded_on'][:10]}.")
+        if st.button("Remove this packet"):
+            db.delete_district_document(student["id"], "declaration_packet")
+            st.rerun()
+    else:
+        st.caption("Nothing uploaded yet.")
+
+    uploaded = st.file_uploader(
+        "Upload your district's packet (PDF)", type=["pdf"], key="declaration_packet_upload"
+    )
+    if uploaded is not None:
+        db.save_district_document(
+            student["id"],
+            "declaration_packet",
+            uploaded.name,
+            uploaded.getvalue(),
+            uploaded.type or "application/pdf",
+        )
+        st.success(f"Saved {uploaded.name}.")
         st.rerun()
 
 st.divider()

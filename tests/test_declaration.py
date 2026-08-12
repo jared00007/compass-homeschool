@@ -14,6 +14,7 @@ from datetime import date
 
 import pytest
 
+from compass import config
 from compass.compliance.declaration import status
 from compass.school_calendar import date_in_year, days_until, next_annual_date
 from compass.storage.db import Database
@@ -115,7 +116,16 @@ def test_the_family_supplied_url_passes_through(db, student):
     assert ds.url == "https://example-district.k12.wa.us/homeschool"
 
 
-def test_no_url_set_is_an_empty_string_not_a_guess(db, student):
+def test_default_url_is_the_familys_own_district_not_an_invented_one(db, student):
+    """Filled in from this family's own district packet (see
+    config.DEFAULT_SETTINGS), not guessed for an unknown district -- Compass
+    still has no business inventing one for a family it doesn't know."""
+    ds = status(db, student["id"])
+    assert ds.url == config.DEFAULT_SETTINGS["declaration_url"]
+
+
+def test_clearing_the_url_is_respected_not_silently_reset(db, student):
+    db.set_setting("declaration_url", "")
     ds = status(db, student["id"])
     assert ds.url == ""
 

@@ -313,3 +313,23 @@ CREATE TABLE IF NOT EXISTS project_steps (
 
 CREATE INDEX IF NOT EXISTS idx_project_steps_project
     ON project_steps (project_id, sort_order);
+
+-- ---------------------------------------------------------------------------
+-- District documents -- a parent's own paperwork (the district's Declaration
+-- of Intent packet, its Granting Credit form, whatever else) stored right in
+-- the family's own database rather than a separate uploads folder to keep
+-- track of. One document per (student, category); uploading again replaces
+-- it, on the theory that last year's filing packet is rarely worth keeping
+-- once this year's is in hand.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS district_documents (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id   INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    category     TEXT NOT NULL,
+    filename     TEXT NOT NULL,
+    content_type TEXT NOT NULL DEFAULT 'application/pdf',
+    content      BLOB NOT NULL,
+    uploaded_on  TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (student_id, category)
+);

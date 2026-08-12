@@ -1335,6 +1335,7 @@ class Database:
         self._migrate_journal_entries_allow_multiple_per_day()
         self._backfill_big_project_step_content()
         self._backfill_big_project_catalog()
+        self._backfill_declaration_url_default()
         for key, value in config.DEFAULT_SETTINGS.items():
             self.conn.execute(
                 "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value)
@@ -1345,6 +1346,24 @@ class Database:
         existing = {row["name"] for row in self.conn.execute(f"PRAGMA table_info({table})")}
         if column not in existing:
             self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+
+    def _backfill_declaration_url_default(self) -> None:
+        """`declaration_url` predates knowing the family's actual district --
+        it was seeded blank on purpose rather than guessed. Now that their
+        real district packet has told us, upgrade it, but only if it's still
+        sitting at that original blank default -- a parent who already typed
+        their own value in keeps it untouched. `declaration_mail_to` needs no
+        equivalent: it's a brand-new setting key, so the normal INSERT OR
+        IGNORE seeding below already covers it for every database, new or
+        existing."""
+        row = self.conn.execute(
+            "SELECT value FROM settings WHERE key = 'declaration_url'"
+        ).fetchone()
+        if row is not None and row["value"] == "":
+            self.conn.execute(
+                "UPDATE settings SET value = ? WHERE key = 'declaration_url'",
+                (config.DEFAULT_SETTINGS["declaration_url"],),
+            )
 
     def _migrate_activities_allow_projects_tier(self) -> None:
         """activities.tier had a CHECK constraint listing the tiers that
@@ -2521,6 +2540,45 @@ class Database:
             "UPDATE declarations_of_intent SET filed_on = NULL "
             "WHERE student_id = ? AND due_on = ?",
             (student_id, due_on),
+        )
+        self.conn.commit()
+
+    # -- district documents -----------------------------------------------------
+
+    def save_district_document(
+        self,
+        student_id: int,
+        category: str,
+        filename: str,
+        content: bytes,
+        content_type: str = "application/pdf",
+    ) -> None:
+        """Uploading again replaces whatever was there for this category --
+        one current copy per (student, category), not a growing pile of
+        every year's packet."""
+        self.conn.execute(
+            "INSERT INTO district_documents "
+            "(student_id, category, filename, content_type, content) "
+            "VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(student_id, category) DO UPDATE SET "
+            "filename = excluded.filename, content_type = excluded.content_type, "
+            "content = excluded.content, uploaded_on = datetime('now')",
+            (student_id, category, filename, content_type, content),
+        )
+        self.conn.commit()
+
+    def get_district_document(self, student_id: int, category: str) -> dict[str, Any] | None:
+        return _row(
+            self.conn.execute(
+                "SELECT * FROM district_documents WHERE student_id = ? AND category = ?",
+                (student_id, category),
+            )
+        )
+
+    def delete_district_document(self, student_id: int, category: str) -> None:
+        self.conn.execute(
+            "DELETE FROM district_documents WHERE student_id = ? AND category = ?",
+            (student_id, category),
         )
         self.conn.commit()
 

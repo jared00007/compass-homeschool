@@ -52,11 +52,18 @@ DEFAULT_SETTINGS: dict[str, str] = {
     # instruction after the school year begins instead has two weeks from that
     # start date, so this is editable rather than a hardcoded constant.
     "declaration_due": "09-15",
-    # The family's own school district's filing page or contact. Left blank by
-    # default -- Compass has no business guessing which of Washington's ~300
-    # districts a family reports to, or what that district's process looks
-    # like this year.
-    "declaration_url": "",
+    # The family's own school district's site, and where its Declaration of
+    # Intent actually gets sent -- filled in from the family's own district
+    # packet once they've told Compass which district that is, not guessed.
+    # Sumner-Bonney Lake files by mail/fax, not an online portal, hence a
+    # separate mailing-address setting rather than assuming a "filing page."
+    "declaration_url": "https://www.sumnersd.org",
+    "declaration_mail_to": (
+        "Sumner-Bonney Lake School District\n"
+        "1202 Wood Avenue\n"
+        "Sumner, WA 98390\n"
+        "Phone: (253) 891-6000 · Fax: (253) 891-6101"
+    ),
     # How hard Tier 1 lessons should be, family-wide. A per-generation choice
     # on each subject's Plan tab can override this for one lesson without
     # changing the family default -- see DIFFICULTY_LEVELS below.

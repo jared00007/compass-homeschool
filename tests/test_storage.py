@@ -159,6 +159,51 @@ def _list(db, table, student_id):
     return [dict(r) for r in db.conn.execute(f"SELECT * FROM {table} WHERE student_id = ?", (student_id,))]
 
 
+def test_save_and_get_district_document_round_trips(db, student):
+    db.save_district_document(student["id"], "declaration_packet", "packet.pdf", b"%PDF-fake-bytes")
+    doc = db.get_district_document(student["id"], "declaration_packet")
+    assert doc["filename"] == "packet.pdf"
+    assert doc["content"] == b"%PDF-fake-bytes"
+    assert doc["content_type"] == "application/pdf"
+
+
+def test_get_district_document_is_none_when_nothing_uploaded(db, student):
+    assert db.get_district_document(student["id"], "declaration_packet") is None
+
+
+def test_uploading_again_replaces_rather_than_duplicates(db, student):
+    db.save_district_document(student["id"], "declaration_packet", "old.pdf", b"old")
+    db.save_district_document(student["id"], "declaration_packet", "new.pdf", b"new")
+    doc = db.get_district_document(student["id"], "declaration_packet")
+    assert doc["filename"] == "new.pdf"
+    assert doc["content"] == b"new"
+    rows = db.conn.execute(
+        "SELECT COUNT(*) FROM district_documents WHERE student_id = ?", (student["id"],)
+    ).fetchone()[0]
+    assert rows == 1
+
+
+def test_delete_district_document_removes_it(db, student):
+    db.save_district_document(student["id"], "declaration_packet", "packet.pdf", b"x")
+    db.delete_district_document(student["id"], "declaration_packet")
+    assert db.get_district_document(student["id"], "declaration_packet") is None
+
+
+def test_migrate_upgrades_a_blank_declaration_url_to_the_real_default(db, student):
+    """declaration_url predates knowing the family's district -- an existing
+    database has it seeded blank, and INSERT OR IGNORE alone won't touch an
+    existing row, so migrate() needs its own upgrade path."""
+    db.set_setting("declaration_url", "")
+    db.migrate()
+    assert db.get_setting("declaration_url") == config.DEFAULT_SETTINGS["declaration_url"]
+
+
+def test_migrate_never_overwrites_a_parents_own_declaration_url(db, student):
+    db.set_setting("declaration_url", "https://my-actual-district.example")
+    db.migrate()
+    assert db.get_setting("declaration_url") == "https://my-actual-district.example"
+
+
 def test_settings_fall_back_to_defaults(db):
     assert db.get_int_setting("annual_hour_target") == config.WA_ANNUAL_HOURS
     db.set_setting("annual_hour_target", "1100")
