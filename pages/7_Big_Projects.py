@@ -91,9 +91,11 @@ with checklist_tab:
         # already its own expander, and Streamlit doesn't allow nesting
         # them. A toggle button driving a plain show/hide gets the same
         # collapsible behavior at the project level without that limit.
+        # Collapsed on every fresh app launch, on purpose -- nothing on this
+        # page should greet him already expanded.
         open_key = f"project_open_{project['id']}"
         if open_key not in st.session_state:
-            st.session_state[open_key] = True
+            st.session_state[open_key] = False
         with st.container(key=f"project_card_{project['id']}"):
             header = st.columns([20, 3])
             with header[0]:
@@ -143,16 +145,12 @@ with checklist_tab:
                     with columns[1]:
                         badge = " · ▶ up next" if is_next and not checked else ""
                         pace = f" · ⏳ {_day_range(step['min_days'], step['max_days'])}"
-                        # Collapsed by default except whichever step is up
-                        # next -- the detail per step is deliberately long
-                        # (so there's no ambiguity about what to actually
-                        # do), and eleven of those open at once would bury
-                        # the one that matters right now. The pace shows in
-                        # the label itself so it's visible even collapsed --
-                        # the whole point is setting the expectation before
-                        # he dives in, not after.
+                        # Always collapsed on a fresh launch -- the "up next"
+                        # badge and the pace both show right in the label, so
+                        # nothing important is hidden by keeping it closed
+                        # until he actually taps it open.
                         with st.expander(
-                            f"{index}. {step['title']}{pace}{badge}", expanded=is_next
+                            f"{index}. {step['title']}{pace}{badge}", expanded=False
                         ):
                             if step["description"]:
                                 st.write(step["description"])

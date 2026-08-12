@@ -327,7 +327,7 @@ def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> Non
                 f"{index}. {activity.get('title', 'Activity')} · "
                 f"{activity.get('kind', '')} · {activity.get('minutes', 0)} min"
             )
-            with st.expander(header, expanded=index == 1):
+            with st.expander(header, expanded=False):
                 st.write(activity.get("instructions", ""))
 
     columns = st.columns(2)
@@ -429,7 +429,7 @@ def render_life_skill_plan(plan: dict[str, Any]) -> None:
         st.markdown("**How to run it**")
         for index, step in enumerate(steps, start=1):
             header = f"{index}. {step.get('title', 'Step')} · {step.get('minutes', 0)} min"
-            with st.expander(header, expanded=index == 1):
+            with st.expander(header, expanded=False):
                 st.markdown("**He does**")
                 st.write(step.get("what_he_does", ""))
                 st.markdown("**You do**")
@@ -621,7 +621,7 @@ def render_quiz(
             pick = picks[index]
             right = pick == item["correct_index"]
             marker = "✅" if right else "❌"
-            with st.expander(f"{marker} {index + 1}. {item['question']}", expanded=not right):
+            with st.expander(f"{marker} {index + 1}. {item['question']}", expanded=False):
                 for choice_index, choice in enumerate(item["choices"]):
                     tag = ""
                     if choice_index == item["correct_index"]:
