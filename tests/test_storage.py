@@ -654,6 +654,34 @@ def test_backfill_big_project_step_content_syncs_revised_catalog_text(db, studen
     assert refreshed["completed_on"] is not None  # still checked off
 
 
+def test_seeded_steps_carry_a_pace_not_a_deadline(db, student):
+    """Every seeded step should have a sane day-range pace (min <= max,
+    both positive) -- this is guidance for how long a step should take,
+    deliberately not a due date anywhere in the schema."""
+    db.seed_big_projects(student["id"])
+    for project in db.list_big_projects(student["id"]):
+        for step in db.list_project_steps(project["id"]):
+            assert step["min_days"] >= 1
+            assert step["max_days"] >= step["min_days"]
+
+
+def test_backfill_big_project_step_content_syncs_revised_pace(db, student):
+    db.seed_big_projects(student["id"])
+    project = db.list_big_projects(student["id"])[0]
+    step = db.list_project_steps(project["id"])[0]
+    db.conn.execute(
+        "UPDATE project_steps SET min_days = 99, max_days = 99 WHERE id = ?",
+        (step["id"],),
+    )
+    db.conn.commit()
+
+    db._backfill_big_project_step_content()
+
+    refreshed = db.list_project_steps(project["id"])[0]
+    assert refreshed["min_days"] != 99
+    assert refreshed["max_days"] != 99
+
+
 def test_add_project_step_appends_in_order(db, student):
     project_id = db.add_big_project(student["id"], "Test Project", "A vision.")
     db.add_project_step(project_id, "Step one", credit_subject="writing")
@@ -661,6 +689,30 @@ def test_add_project_step_appends_in_order(db, student):
     steps = db.list_project_steps(project_id)
     assert [s["title"] for s in steps] == ["Step one", "Step two"]
     assert [s["sort_order"] for s in steps] == [0, 1]
+
+
+def test_add_project_step_defaults_pace_to_one_day(db, student):
+    project_id = db.add_big_project(student["id"], "Test Project", "A vision.")
+    step_id = db.add_project_step(project_id, "Step one")
+    step = db.list_project_steps(project_id)[0]
+    assert step["min_days"] == 1
+    assert step["max_days"] == 1
+
+
+def test_add_project_step_accepts_a_custom_pace(db, student):
+    project_id = db.add_big_project(student["id"], "Test Project", "A vision.")
+    db.add_project_step(project_id, "Step one", min_days=3, max_days=5)
+    step = db.list_project_steps(project_id)[0]
+    assert step["min_days"] == 3
+    assert step["max_days"] == 5
+
+
+def test_add_project_step_never_lets_max_fall_below_min(db, student):
+    project_id = db.add_big_project(student["id"], "Test Project", "A vision.")
+    db.add_project_step(project_id, "Step one", min_days=5, max_days=2)
+    step = db.list_project_steps(project_id)[0]
+    assert step["min_days"] == 5
+    assert step["max_days"] == 5
 
 
 def test_set_project_step_done_toggles_completed_on(db, student):

@@ -302,6 +302,11 @@ CREATE TABLE IF NOT EXISTS project_steps (
     description    TEXT NOT NULL DEFAULT '',
     materials      TEXT NOT NULL DEFAULT '',
     credit_subject TEXT NOT NULL DEFAULT 'occupational_education',
+    -- A pace, not a deadline: a loose day range shown to set the
+    -- expectation that a step is meant to take a while, on purpose --
+    -- there's no due_on anywhere on this table, and that's intentional.
+    min_days       INTEGER NOT NULL DEFAULT 1,
+    max_days       INTEGER NOT NULL DEFAULT 1,
     completed_on   TEXT,
     created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );

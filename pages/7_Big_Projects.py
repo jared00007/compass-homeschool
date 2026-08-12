@@ -28,6 +28,15 @@ st.caption(
     "school credit."
 )
 
+def _day_range(min_days: int, max_days: int) -> str:
+    """A pace, not a deadline -- there's deliberately no due date anywhere
+    behind this, just a loose expectation of how long a step is worth
+    taking."""
+    if min_days == max_days:
+        return f"{min_days} day" if min_days == 1 else f"{min_days} days"
+    return f"{min_days}-{max_days} days"
+
+
 projects = db.list_big_projects(student["id"])
 
 if not projects:
@@ -99,6 +108,12 @@ with checklist_tab:
                     st.rerun()
             if steps:
                 st.progress(done / len(steps), text=f"{done} / {len(steps)} steps done")
+                total_min = sum(s["min_days"] for s in steps)
+                total_max = sum(s["max_days"] for s in steps)
+                st.caption(
+                    f"⏳ Roughly {_day_range(total_min, total_max)} total at a relaxed "
+                    f"pace -- this is a filler for when there's time, not something to rush."
+                )
 
             if not st.session_state[open_key]:
                 continue
@@ -127,13 +142,17 @@ with checklist_tab:
                             st.rerun()
                     with columns[1]:
                         badge = " · ▶ up next" if is_next and not checked else ""
+                        pace = f" · ⏳ {_day_range(step['min_days'], step['max_days'])}"
                         # Collapsed by default except whichever step is up
                         # next -- the detail per step is deliberately long
                         # (so there's no ambiguity about what to actually
                         # do), and eleven of those open at once would bury
-                        # the one that matters right now.
+                        # the one that matters right now. The pace shows in
+                        # the label itself so it's visible even collapsed --
+                        # the whole point is setting the expectation before
+                        # he dives in, not after.
                         with st.expander(
-                            f"{index}. {step['title']}{badge}", expanded=is_next
+                            f"{index}. {step['title']}{pace}{badge}", expanded=is_next
                         ):
                             if step["description"]:
                                 st.write(step["description"])
@@ -234,13 +253,22 @@ if manage_tab is not None:
             materials = st.text_input(
                 "What you'll need (optional)", placeholder="e.g. cardboard, tape, a phone"
             )
-            credit_subject = st.selectbox(
+            columns = st.columns(2)
+            credit_subject = columns[0].selectbox(
                 "Credits toward",
                 SUBJECT_KEYS,
                 index=SUBJECT_KEYS.index("occupational_education"),
                 format_func=label,
                 key="step_credit",
             )
+            with columns[1]:
+                pace_cols = st.columns(2)
+                min_days = pace_cols[0].number_input(
+                    "Pace: at least (days)", min_value=1, max_value=60, value=1, key="step_min_days"
+                )
+                max_days = pace_cols[1].number_input(
+                    "up to (days)", min_value=1, max_value=60, value=1, key="step_max_days"
+                )
             if st.form_submit_button("Add step", type="primary") and step_title.strip():
                 db.add_project_step(
                     project["id"],
@@ -248,6 +276,8 @@ if manage_tab is not None:
                     description.strip(),
                     materials.strip(),
                     credit_subject,
+                    int(min_days),
+                    int(max_days),
                 )
                 st.rerun()
 

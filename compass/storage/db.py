@@ -773,7 +773,9 @@ LIFE_SKILL_CATALOG: Sequence[tuple[str, str, str, str, str, bool]] = (
 # ordered because later steps genuinely depend on earlier ones (you can't
 # shoot a set you haven't built). The Lego stop-motion film is the first
 # entry; more can be added to this tuple as new project ideas are agreed on.
-BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]]]] = (
+BIG_PROJECT_CATALOG: Sequence[
+    tuple[str, str, Sequence[tuple[str, str, str, str, int, int]]]
+] = (
     (
         "Stop-Motion Lego Film",
         "Write, build, shoot, and edit your own short Lego stop-motion film -- "
@@ -798,7 +800,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "a minute without stopping to think? If not, sit with it "
              "another day first -- a story you actually know cold makes "
              "every step after this one easier.",
-             "paper and pencil (or just talk it through out loud)", "writing"),
+             "paper and pencil (or just talk it through out loud)", "writing", 1, 2),
             ("Write your shot list",
              "Break the story into a numbered list of scenes -- a scene is "
              "anywhere the location or the action changes.\n\n"
@@ -811,7 +813,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "spot for a first film -- more than that and the build-and-"
              "shoot step later gets long. More than 6? Look for two scenes "
              "you could combine into one.",
-             "paper, pencil", "writing"),
+             "paper, pencil", "writing", 1, 1),
             ("Cast your minifigs",
              "Decide which minifig plays which character. Stop-motion lives "
              "or dies on consistency -- the same figure needs to look the "
@@ -826,7 +828,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "story actually has a fig lined up. A character who doesn't "
              "exist yet in Lego form will trip you up when you get to "
              "building scenes.",
-             "your Lego minifigs", "art_and_music"),
+             "your Lego minifigs", "art_and_music", 1, 1),
             ("Build your first set",
              "Build or arrange the set for scene 1 -- for that specific "
              "scene, not just \"a cool set.\"\n\n"
@@ -844,7 +846,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "your head? Fix it now -- it's much harder to fix once you've "
              "started shooting.",
              "Lego bricks/baseplates, cardboard or foam board, scissors, "
-             "tape or glue, paint or felt/cellophane for texture", "art_and_music"),
+             "tape or glue, paint or felt/cellophane for texture", "art_and_music", 1, 2),
             ("Set up your shooting station",
              "A stop-motion shoot needs two things above all: a camera that "
              "doesn't move, and light that doesn't change.\n\n"
@@ -862,7 +864,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "identical, the station is solid. If anything shifted, fix it "
              "now, not mid-scene.",
              "phone or tablet, tripod or something to wedge it steady, a "
-             "desk lamp, the Stop Motion Studio app (free)", "occupational_education"),
+             "desk lamp, the Stop Motion Studio app (free)", "occupational_education", 1, 1),
             ("Shoot your first scene",
              "Go slowest on this one, on purpose -- it's brand new, and "
              "mistakes here are cheap to fix. Mistakes later cost more "
@@ -879,7 +881,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "or jumpy in spots? Jumpy usually means the movements were too "
              "big -- worth reshooting that part now rather than living "
              "with it in the finished film.",
-             "the set and shooting station from the last two steps", "occupational_education"),
+             "the set and shooting station from the last two steps", "occupational_education", 1, 2),
             ("Build and shoot the rest of your scenes",
              "Repeat the build-then-shoot loop, one scene at a time, in the "
              "same order as your shot list -- don't jump ahead to a scene "
@@ -894,7 +896,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "list has its own finished clip. Don't start editing until "
              "they're all shot -- jumping back and forth between shooting "
              "and editing is how scenes get forgotten.",
-             "same as the last three steps, one round per scene", "occupational_education"),
+             "same as the last three steps, one round per scene", "occupational_education", 5, 10),
             ("Add sound and voices",
              "This is the step that turns a silent slideshow into a "
              "movie.\n\n"
@@ -911,7 +913,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "**Before you move on:** watch it back with sound. Anything "
              "feel rushed or mumbled? Redo just that one clip -- you don't "
              "have to redo the whole thing.",
-             "phone or tablet mic, a quiet room, CapCut or iMovie", "art_and_music"),
+             "phone or tablet mic, a quiet room, CapCut or iMovie", "art_and_music", 2, 3),
             ("Edit it all together",
              "This is where all those small separate files finally become "
              "one finished film.\n\n"
@@ -928,7 +930,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "no pausing. If a part is confusing on a first watch, a viewer "
              "who's never seen your story will be even more lost there -- "
              "that's the part to go back and fix.",
-             "CapCut or iMovie, all your exported scene clips", "occupational_education"),
+             "CapCut or iMovie, all your exported scene clips", "occupational_education", 2, 3),
             ("Add titles and credits",
              "Small thing, but it's what makes it feel like a finished "
              "film instead of a school assignment.\n\n"
@@ -940,7 +942,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "completely fine.\n\n"
              "**Before you move on:** read the credits out loud once. Did "
              "you credit everyone who's actually in it?",
-             "CapCut or iMovie's title tools", "art_and_music"),
+             "CapCut or iMovie's title tools", "art_and_music", 1, 1),
             ("Premiere night",
              "The payoff for every step that came before it -- don't rush "
              "this one either.\n\n"
@@ -950,7 +952,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "apologize for anything -- let it just play.\n"
              "- Afterward, ask what people liked best. That's useful "
              "information for the next film, not just a nice moment.",
-             "a TV or big screen, snacks", "art_and_music"),
+             "a TV or big screen, snacks", "art_and_music", 1, 1),
         ),
     ),
     (
@@ -978,7 +980,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "5 minutes right now, off the top of your head, without "
              "running out of things to say? If not, it might be too "
              "narrow -- widen it a little.",
-             "paper and pencil (or just talk it through out loud)", "writing"),
+             "paper and pencil (or just talk it through out loud)", "writing", 1, 2),
             ("Decide: audio-only or video",
              "This changes almost everything after this step, so decide "
              "it on purpose instead of drifting into one.\n\n"
@@ -996,7 +998,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "**Before you move on:** write down which one you picked and "
              "why in one sentence. If you can't explain why, default to "
              "audio-only.",
-             "none -- this is a decision, not a build", "occupational_education"),
+             "none -- this is a decision, not a build", "occupational_education", 1, 1),
             ("Plan your first episode",
              "A podcast episode works better from a loose outline than a "
              "word-for-word script -- scripted episodes usually sound "
@@ -1016,7 +1018,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "timing it. Way under 3 minutes? You probably need another "
              "talking point. Way over 15? Pick your best points and cut "
              "the rest.",
-             "paper and pencil, whatever you're reviewing or researching", "writing"),
+             "paper and pencil, whatever you're reviewing or researching", "writing", 1, 2),
             ("Set up your recording space",
              "Where you record matters almost as much as what you say -- "
              "a bad room makes even a good episode sound rough.\n\n"
@@ -1035,7 +1037,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "echo or background hum? Fix the room before you record for "
              "real, not after.",
              "phone or a mic, a quiet/soft-surfaced room, headphones for "
-             "checking playback", "occupational_education"),
+             "checking playback", "occupational_education", 1, 1),
             ("Record your first episode",
              "Aim for one solid pass, not a perfect one -- editing fixes "
              "more than you'd think.\n\n"
@@ -1052,7 +1054,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "once, start to finish. Enough there for a real episode, or "
              "did you run out of things to say partway through? Better to "
              "notice now than after editing.",
-             "your recording setup from the last step", "occupational_education"),
+             "your recording setup from the last step", "occupational_education", 1, 1),
             ("Edit the episode",
              "Editing is where a rough recording turns into something "
              "people would actually want to listen to.\n\n"
@@ -1067,7 +1069,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "**Before you move on:** would you want to listen to this if "
              "someone else made it? If a section drags, trim it further -- "
              "much faster to fix now than after you've shared it.",
-             "CapCut, iMovie, or a simple audio editor, your raw recording", "occupational_education"),
+             "CapCut, iMovie, or a simple audio editor, your raw recording", "occupational_education", 1, 2),
             ("Design your cover art",
              "Every podcast needs a square image that represents the "
              "show -- small step, but it's what makes it feel like a real "
@@ -1078,7 +1080,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "thumbnail -- that's how it'll actually show up.\n\n"
              "**Before you move on:** shrink it down on screen until it's "
              "thumbnail-sized. Can you still read the title?",
-             "CapCut, Canva, or any simple design app", "art_and_music"),
+             "CapCut, Canva, or any simple design app", "art_and_music", 1, 1),
             ("Share your episode",
              "Decide who this is for before you send it anywhere -- same "
              "as any of your recorded projects, this is a choice to make "
@@ -1093,7 +1095,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "**Before you move on:** confirm with a parent where this "
              "episode is actually going before you send or post it "
              "anywhere.",
-             "wherever you and your family agree the file should live", "occupational_education"),
+             "wherever you and your family agree the file should live", "occupational_education", 1, 1),
             ("Record your next episodes",
              "Repeat the plan-record-edit loop from the last several "
              "steps, one episode at a time.\n\n"
@@ -1107,7 +1109,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "**Before you move on to wrapping up the season:** you've "
              "got at least 3 finished episodes. A season of one episode "
              "isn't really a series yet.",
-             "same as the recording and editing steps, one round per episode", "occupational_education"),
+             "same as the recording and editing steps, one round per episode", "occupational_education", 6, 9),
             ("Season listening party",
              "The payoff for a whole season of work.\n\n"
              "- Pick a night and actually play an episode (or your "
@@ -1117,7 +1119,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "for anything.\n"
              "- Afterward, ask what people liked best, and what they'd "
              "want to hear more of in season two.",
-             "a speaker, snacks", "art_and_music"),
+             "a speaker, snacks", "art_and_music", 1, 1),
         ),
     ),
     (
@@ -1141,7 +1143,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "**Before you move on:** can you describe your theme in one "
              "sentence? If it takes three sentences to explain, it's "
              "probably still two ideas -- pick one.",
-             "the toy(s) you're shooting", "art_and_music"),
+             "the toy(s) you're shooting", "art_and_music", 1, 1),
             ("Learn the core techniques before you shoot",
              "This is the step that actually teaches you photography, "
              "not just \"take some pictures\" -- try each of these on "
@@ -1170,7 +1172,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "**Before you move on:** look at your 5 test shots. Which "
              "technique made the biggest difference? Keep that one in "
              "mind for your real shoot.",
-             "your phone or camera, a few household objects to test with", "art_and_music"),
+             "your phone or camera, a few household objects to test with", "art_and_music", 1, 2),
             ("Scout your locations",
              "Find the real-world spots you'll actually shoot in before "
              "the day you shoot.\n\n"
@@ -1183,7 +1185,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "**Before you move on:** for each spot, can you say in one "
              "sentence what shot you'd get there? No answer for a spot? "
              "Drop it from the list.",
-             "none -- just your eyes and your house/yard", "art_and_music"),
+             "none -- just your eyes and your house/yard", "art_and_music", 1, 1),
             ("Plan your shot list",
              "Same idea as a shot list for a film -- a short plan so "
              "you're not standing there blank when you get to a "
@@ -1195,7 +1197,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "**Before you move on:** count your planned shots. 8-12 is a "
              "good range for a first collection -- covers a real series "
              "without dragging on forever.",
-             "paper and pencil", "writing"),
+             "paper and pencil", "writing", 1, 1),
             ("Shoot your first batch",
              "Go slower than feels necessary on this one -- the goal "
              "isn't to burn through your shot list fast, it's to "
@@ -1213,7 +1215,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "**Before you move on:** for your first location, do you "
              "have at least one shot you're genuinely happy with? If not, "
              "it's worth going back before moving to the next spot.",
-             "your shot list, the toy(s), your camera", "occupational_education"),
+             "your shot list, the toy(s), your camera", "occupational_education", 1, 2),
             ("Review and cull your shots",
              "A real photography skill: being willing to ignore most of "
              "what you shot and keep only the best.\n\n"
@@ -1228,7 +1230,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "you learned about thirds, eye level, light, and depth, or "
              "did you just pick the ones where the toy looks clearest? "
              "Both matter, but technique is the point of this project.",
-             "your shots from this location", "art_and_music"),
+             "your shots from this location", "art_and_music", 1, 1),
             ("Shoot your remaining locations",
              "Repeat the shoot-and-cull loop (the last two steps) once "
              "for each remaining spot on your list.\n\n"
@@ -1239,7 +1241,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "each one gets its own checkbox.\n\n"
              "**Before you move on to editing:** every location on your "
              "shot list has at least one favorite shot picked out.",
-             "same as the last two steps, one round per location", "occupational_education"),
+             "same as the last two steps, one round per location", "occupational_education", 3, 6),
             ("Edit your favorites",
              "Light editing only -- the goal is polishing a shot that "
              "already works, not rescuing one that doesn't.\n\n"
@@ -1250,7 +1252,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "**Before you move on:** compare the edited version to the "
              "original. Better version of the same photo, or does it "
              "look fake or overdone? If it's the second one, pull back.",
-             "Snapseed or your phone's built-in editor, your favorite shots", "occupational_education"),
+             "Snapseed or your phone's built-in editor, your favorite shots", "occupational_education", 1, 2),
             ("Put together your collection",
              "Turn your best shots into one finished thing, not just a "
              "folder of images.\n\n"
@@ -1265,7 +1267,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "photos? If it's the second one, the captions and the order "
              "are what tie it together -- work on those.",
              "a scrapbook/photo album, or a digital album/slideshow tool, "
-             "printing if you want physical copies", "art_and_music"),
+             "printing if you want physical copies", "art_and_music", 1, 2),
             ("Gallery night",
              "Show off the finished collection -- this is the payoff for "
              "all the shooting and culling.\n\n"
@@ -1276,7 +1278,7 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "single photo -- let the captions do that work.\n"
              "- Ask which shots people liked best -- that's real feedback "
              "for next time.",
-             "however you built your collection", "art_and_music"),
+             "however you built your collection", "art_and_music", 1, 1),
         ),
     ),
 )
@@ -1324,6 +1326,8 @@ class Database:
         # `materials`/`active` columns, so they need adding here instead.
         self._ensure_column("life_skills", "materials", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("life_skills", "active", "INTEGER NOT NULL DEFAULT 1")
+        self._ensure_column("project_steps", "min_days", "INTEGER NOT NULL DEFAULT 1")
+        self._ensure_column("project_steps", "max_days", "INTEGER NOT NULL DEFAULT 1")
         self._backfill_life_skill_content()
         self._backfill_life_skill_catalog()
         self._migrate_park_visits_to_travel_entries()
@@ -2303,6 +2307,8 @@ class Database:
         description: str = "",
         materials: str = "",
         credit_subject: str = "occupational_education",
+        min_days: int = 1,
+        max_days: int = 1,
     ) -> int:
         next_order = self.conn.execute(
             "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM project_steps WHERE project_id = ?",
@@ -2310,9 +2316,10 @@ class Database:
         ).fetchone()[0]
         cur = self.conn.execute(
             "INSERT INTO project_steps "
-            "(project_id, sort_order, title, description, materials, credit_subject) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (project_id, next_order, title, description, materials, credit_subject),
+            "(project_id, sort_order, title, description, materials, credit_subject, "
+            " min_days, max_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (project_id, next_order, title, description, materials, credit_subject,
+             max(1, min_days), max(min_days, max_days)),
         )
         self.conn.commit()
         return int(cur.lastrowid)
@@ -2334,19 +2341,22 @@ class Database:
         sort_order: int,
         title: str,
         vision: str,
-        steps: Sequence[tuple[str, str, str, str]],
+        steps: Sequence[tuple[str, str, str, str, int, int]],
     ) -> int:
         project_id = self.conn.execute(
             "INSERT INTO big_projects (student_id, title, vision, sort_order) "
             "VALUES (?, ?, ?, ?)",
             (student_id, title, vision, sort_order),
         ).lastrowid
-        for step_order, (step_title, description, materials, credit_subject) in enumerate(steps):
+        for step_order, (
+            step_title, description, materials, credit_subject, min_days, max_days,
+        ) in enumerate(steps):
             self.conn.execute(
                 "INSERT INTO project_steps "
-                "(project_id, sort_order, title, description, materials, credit_subject) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (project_id, step_order, step_title, description, materials, credit_subject),
+                "(project_id, sort_order, title, description, materials, credit_subject, "
+                " min_days, max_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (project_id, step_order, step_title, description, materials, credit_subject,
+                 min_days, max_days),
             )
         return int(project_id)
 
@@ -2390,24 +2400,27 @@ class Database:
                 next_order += 1
 
     def _backfill_big_project_step_content(self) -> None:
-        """Keeps an already-seeded starter project's step text in sync with
-        BIG_PROJECT_CATALOG when the catalog copy itself is revised (e.g.
-        adding more detail to each step). Unlike life skills' backfill this
-        isn't guarding a parent's own edit -- there's no per-step edit UI --
-        so it overwrites unconditionally rather than only when blank.
-        Matched by (project title, step title); never touches
-        `completed_on`, so a step he's already checked off stays checked."""
+        """Keeps an already-seeded starter project's step text (and pace)
+        in sync with BIG_PROJECT_CATALOG when the catalog copy itself is
+        revised (e.g. adding more detail, or adding day-range guidance).
+        Unlike life skills' backfill this isn't guarding a parent's own
+        edit -- there's no per-step edit UI -- so it overwrites
+        unconditionally rather than only when blank. Matched by (project
+        title, step title); never touches `completed_on`, so a step he's
+        already checked off stays checked."""
         for project_title, _, steps in BIG_PROJECT_CATALOG:
             for project in _rows(
                 self.conn.execute(
                     "SELECT id FROM big_projects WHERE title = ?", (project_title,)
                 )
             ):
-                for step_title, description, materials, credit_subject in steps:
+                for step_title, description, materials, credit_subject, min_days, max_days in steps:
                     self.conn.execute(
                         "UPDATE project_steps SET description = ?, materials = ?, "
-                        "credit_subject = ? WHERE project_id = ? AND title = ?",
-                        (description, materials, credit_subject, project["id"], step_title),
+                        "credit_subject = ?, min_days = ?, max_days = ? "
+                        "WHERE project_id = ? AND title = ?",
+                        (description, materials, credit_subject, min_days, max_days,
+                         project["id"], step_title),
                     )
 
     # -- Core life skills -----------------------------------------------------
