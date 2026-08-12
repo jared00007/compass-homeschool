@@ -66,3 +66,12 @@ def test_lesson_schema_requires_the_video_object_closed():
     assert video_schema["additionalProperties"] is False
     assert set(video_schema["required"]) == {"found", "title", "url", "channel", "why"}
     assert video_schema["properties"]["found"]["type"] == "boolean"
+
+
+def test_lesson_schema_requires_a_worked_example_on_every_activity():
+    """Every activity must model the skill before he's asked to do it himself
+    -- structurally required, not left to a hopefully-remembered prompt line."""
+    activity_schema = LESSON_SCHEMA["properties"]["activities"]["items"]
+    assert "example" in activity_schema["properties"]
+    assert "example" in activity_schema["required"]
+    assert activity_schema["additionalProperties"] is False

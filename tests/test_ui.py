@@ -89,7 +89,8 @@ def a_lesson(**overrides):
         "learning_objectives": ["Solve for x"],
         "activities": [
             {"title": "Practice", "kind": "practice", "minutes": 60,
-             "instructions": "Solve problems 1-10."}
+             "instructions": "Solve problems 1-10.",
+             "example": "Worked model: solve 5x + 3 = 18 step by step."}
         ],
         "materials": ["Pencil"],
         "assessment": {"kind": "check", "description": "Ten items",
@@ -144,6 +145,30 @@ def test_the_lesson_is_rendered_through_the_redacting_renderer(monkeypatch, db, 
     page, _ = run(monkeypatch, db, student, generated=generated)
     assert "Two-Step Equations" in page
     assert "Solve problems 1-10." in page
+
+
+def test_the_worked_example_is_shown_before_the_instructions(monkeypatch, db, student):
+    generated = GeneratedLesson(
+        lesson_id=1,
+        proposal=TopicProposal(topic="t", rationale="r", strategy="s"),
+        payload=a_lesson(),
+        warnings=[],
+    )
+    page, _ = run(monkeypatch, db, student, generated=generated)
+    assert "Worked model: solve 5x + 3 = 18 step by step." in page
+    assert page.index("Worked model:") < page.index("Solve problems 1-10.")
+
+
+def test_materials_render_before_activities(monkeypatch, db, student):
+    """He should see what he needs before being told what to do with it."""
+    generated = GeneratedLesson(
+        lesson_id=1,
+        proposal=TopicProposal(topic="t", rationale="r", strategy="s"),
+        payload=a_lesson(),
+        warnings=[],
+    )
+    page, _ = run(monkeypatch, db, student, generated=generated)
+    assert page.index("**Materials**") < page.index("**Activities**")
 
 
 def test_a_generated_lesson_offers_a_word_doc_download(monkeypatch, db, student):

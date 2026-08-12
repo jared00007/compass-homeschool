@@ -319,6 +319,15 @@ def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> Non
         for objective in objectives:
             st.markdown(f"- {objective}")
 
+    # Materials before activities on purpose -- knowing what you need is part
+    # of being set up to start, not a footnote to read after being told what
+    # to do.
+    materials = lesson.get("materials") or []
+    if materials:
+        st.markdown("**Materials**")
+        for item in materials:
+            st.markdown(f"- {item}")
+
     activities = lesson.get("activities") or []
     if activities:
         st.markdown("**Activities**")
@@ -328,27 +337,20 @@ def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> Non
                 f"{activity.get('kind', '')} · {activity.get('minutes', 0)} min"
             )
             with st.expander(header, expanded=False):
+                example = activity.get("example")
+                if example:
+                    # A worked example, shown before the instructions -- see
+                    # the move modeled once before being asked to do it,
+                    # same "I do, you do" order a teacher would use.
+                    st.markdown(
+                        f'<div style="background:var(--c-panel); border-left:3px solid '
+                        f'var(--c-alt); border-radius:var(--c-radius); padding:10px 14px; '
+                        f'margin-bottom:10px; font-size:13.5px;">'
+                        f'<b>📖 Here\'s how:</b><br>{html.escape(example).replace(chr(10), "<br>")}'
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
                 st.write(activity.get("instructions", ""))
-
-    columns = st.columns(2)
-    with columns[0]:
-        materials = lesson.get("materials") or []
-        if materials:
-            st.markdown("**Materials**")
-            for item in materials:
-                st.markdown(f"- {item}")
-    with columns[1]:
-        assessment = lesson.get("assessment") or {}
-        if assessment and parent:
-            st.markdown("**Assessment**")
-            st.markdown(f"*{assessment.get('kind', '')}* — {assessment.get('description', '')}")
-            if assessment.get("mastery_criteria"):
-                st.markdown(f"**Mastery:** {assessment['mastery_criteria']}")
-        elif assessment:
-            st.markdown("**Assessment**")
-            st.caption(
-                "There's a check at the end of this lesson — your parent has it."
-            )
 
     # Shown to both views. Verified against a real search result and restricted
     # to YouTube (see compass/agents/video.py) before it ever gets this far, so
@@ -367,6 +369,24 @@ def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> Non
                     "but Compass doesn't control what YouTube recommends once the "
                     "video ends."
                 )
+
+    assessment = lesson.get("assessment") or {}
+    if assessment and parent:
+        st.markdown("**Assessment**")
+        st.caption(
+            "A check you run with him after the lesson -- separate from the "
+            "on-screen quiz below, which he takes and grades himself. Use "
+            "this to actually confirm he's got it, not just that he sat "
+            "through the lesson."
+        )
+        st.markdown(f"*{assessment.get('kind', '')}* — {assessment.get('description', '')}")
+        if assessment.get("mastery_criteria"):
+            st.markdown(f"**Counts as mastered when:** {assessment['mastery_criteria']}")
+    elif assessment:
+        st.markdown("**Assessment**")
+        st.caption(
+            "There's a check at the end of this lesson — your parent has it."
+        )
 
     if parent:
         if lesson.get("parent_notes"):

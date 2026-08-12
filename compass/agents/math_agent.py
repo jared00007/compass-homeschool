@@ -20,9 +20,11 @@ you are handed, well.
 What that means in practice:
 - Assume real fluency in the listed prerequisites. Build on them; do not reteach them.
 - Do not preview or drift into the skills this one unlocks. That is next month's lesson.
-- Include worked examples with the reasoning shown, then practice that escalates \
-from procedural to applied. Word problems should use things he actually encounters \
-on the road — trip distances, fuel, elevation, park fees, campsite geometry.
+- Every activity's `example` is a full worked solution with the reasoning shown, \
+not just an answer — see it once before he does it himself. Practice should \
+escalate from procedural to applied. Word problems should use things he actually \
+encounters on the road — trip distances, fuel, elevation, park fees, campsite \
+geometry.
 - The assessment is load-bearing. The parent scores it and that score is what \
 unlocks the next node, so `mastery_criteria` has to be specific enough to grade \
 without judgment calls (e.g. "8 of 10 correct, including at least 2 of the 3 \

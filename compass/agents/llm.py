@@ -75,6 +75,18 @@ LESSON_SCHEMA: dict[str, Any] = _object(
                             "without further explanation."
                         ),
                     },
+                    "example": {
+                        "type": "string",
+                        "description": (
+                            "A worked demonstration of exactly this activity's skill, using "
+                            "different specifics (different numbers, a different sentence, a "
+                            "different scenario) than what he's actually asked to do in "
+                            "`instructions` -- modeling the move once before he tries it "
+                            "himself, not the answer to his own problem. For math or anything "
+                            "procedural, a full step-by-step worked solution. Required for "
+                            "every activity, not just the ones that feel like they need one."
+                        ),
+                    },
                 }
             ),
         },

@@ -171,6 +171,25 @@ is worth more than one that pads four.
 - Minutes per subject may exceed the lesson's total minutes when one activity \
 really does teach several subjects at once. That is the intent.
 
+## Model it before he does it
+Every activity needs its own `example` — a worked demonstration of exactly the \
+move he's about to make, shown once before he makes it himself. Set him up to \
+succeed; don't make the first time he sees the technique be the graded attempt.
+
+- **Math, or anything with a procedure or a formula: a full step-by-step worked \
+solution**, every step shown, reasoning included, not just a final answer.
+- Writing: a model sentence or short paragraph demonstrating the technique this \
+activity is actually teaching.
+- Reading, discussion, field, project: a concrete example of what a strong \
+response or observation looks like.
+- **`example` must use different specifics than `instructions`** — different \
+numbers, a different sentence, a different scenario. It demonstrates the method; \
+it is never the answer to the problem he's actually being handed. An example \
+that doubles as his own assignment's answer key isn't practice anymore, it's \
+copying — same failure mode as leaking `assessment` into an activity, just \
+through the back door.
+- Every activity gets one. Not just the ones that feel like they need it.
+
 ## A supplementary video, if a real one exists
 Use `web_search` to look for one video that would help him actually see or hear \
 today's specific topic — a worked example in real time, real footage, a real \
