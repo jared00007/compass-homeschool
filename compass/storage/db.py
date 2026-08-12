@@ -953,6 +953,332 @@ BIG_PROJECT_CATALOG: Sequence[tuple[str, str, Sequence[tuple[str, str, str, str]
              "a TV or big screen, snacks", "art_and_music"),
         ),
     ),
+    (
+        "Mini Podcast Series",
+        "Plan, record, and release your own mini podcast series -- pick a "
+        "subject you actually want to talk about, and turn it into real "
+        "episodes people can listen to.",
+        (
+            ("Pick your show's topic",
+             "A podcast is way easier to stick with when the topic is "
+             "something you'd talk about anyway, not something you think "
+             "you're supposed to make a show about.\n\n"
+             "- A few starting points, pick one or mix your own: review "
+             "games/movies/shows you actually play or watch, explain a "
+             "topic you're genuinely into (space, history, a hobby, a "
+             "sport), interview family members about their lives or "
+             "opinions, retell a mystery or story episode by episode, an "
+             "advice or opinions show, a recap of something happening "
+             "now.\n"
+             "- Decide: one big topic that carries every episode, or a "
+             "different topic each episode?\n"
+             "- Say your show's idea out loud in one sentence, the way "
+             "you'd describe it to a friend.\n\n"
+             "**Before you move on:** could you talk about this topic for "
+             "5 minutes right now, off the top of your head, without "
+             "running out of things to say? If not, it might be too "
+             "narrow -- widen it a little.",
+             "paper and pencil (or just talk it through out loud)", "writing"),
+            ("Decide: audio-only or video",
+             "This changes almost everything after this step, so decide "
+             "it on purpose instead of drifting into one.\n\n"
+             "- **Audio-only:** simpler gear (just a phone or mic), faster "
+             "to record and edit, no lighting or camera setup to worry "
+             "about, and it's how most real podcasts actually work.\n"
+             "- **Video podcast:** lets people see your face and "
+             "reactions, works well for things like showing gameplay or "
+             "holding up objects on screen, but takes the same "
+             "camera-and-lighting setup as the stop-motion film, and "
+             "editing takes longer.\n"
+             "- If this is your first podcast, audio-only gets you to a "
+             "finished episode faster -- you can always add video for a "
+             "season two.\n\n"
+             "**Before you move on:** write down which one you picked and "
+             "why in one sentence. If you can't explain why, default to "
+             "audio-only.",
+             "none -- this is a decision, not a build", "occupational_education"),
+            ("Plan your first episode",
+             "A podcast episode works better from a loose outline than a "
+             "word-for-word script -- scripted episodes usually sound "
+             "stiff.\n\n"
+             "- Write a simple rundown: how you'll open (who you are, "
+             "what the show is), 2-4 main points or segments, how you'll "
+             "close.\n"
+             "- Do the research before you record, not during: if you're "
+             "reviewing something, finish it first and jot down specific "
+             "moments and opinions, not vague ones. If you're explaining "
+             "a topic, look up 3-5 real facts so what you say is actually "
+             "accurate.\n"
+             "- Listen to one episode of a real podcast in a similar "
+             "style first -- notice how they open the show and how long "
+             "they spend per topic.\n\n"
+             "**Before you move on:** read your rundown out loud once, "
+             "timing it. Way under 3 minutes? You probably need another "
+             "talking point. Way over 15? Pick your best points and cut "
+             "the rest.",
+             "paper and pencil, whatever you're reviewing or researching", "writing"),
+            ("Set up your recording space",
+             "Where you record matters almost as much as what you say -- "
+             "a bad room makes even a good episode sound rough.\n\n"
+             "- Pick a small, soft room if you can -- a closet with "
+             "clothes in it, a bedroom with carpet and curtains. Hard, "
+             "empty rooms echo.\n"
+             "- Position the phone or mic a few inches from your mouth, "
+             "slightly off to the side rather than dead-on, to avoid "
+             "popping sounds on words like \"p\" and \"b.\"\n"
+             "- Doing video too? Set up the same steady-camera and "
+             "lamp-not-window lighting you used for the stop-motion "
+             "film.\n"
+             "- Record a 10-second test and actually listen back on "
+             "headphones before committing to a real take.\n\n"
+             "**Before you move on:** play your test clip back. Clear, no "
+             "echo or background hum? Fix the room before you record for "
+             "real, not after.",
+             "phone or a mic, a quiet/soft-surfaced room, headphones for "
+             "checking playback", "occupational_education"),
+            ("Record your first episode",
+             "Aim for one solid pass, not a perfect one -- editing fixes "
+             "more than you'd think.\n\n"
+             "- Follow your rundown loosely -- talk naturally instead of "
+             "reading it word for word.\n"
+             "- It's fine to pause, mess up, and just redo the last "
+             "sentence -- you'll cut the mess-up out later.\n"
+             "- Doing video? Keep the camera locked down and the lighting "
+             "steady the whole time, same lesson as the film shoot.\n"
+             "- Before you stop, play back at least a full minute of what "
+             "you recorded to make sure the audio actually came through "
+             "and sounds right.\n\n"
+             "**Before you move on:** listen to the whole raw recording "
+             "once, start to finish. Enough there for a real episode, or "
+             "did you run out of things to say partway through? Better to "
+             "notice now than after editing.",
+             "your recording setup from the last step", "occupational_education"),
+            ("Edit the episode",
+             "Editing is where a rough recording turns into something "
+             "people would actually want to listen to.\n\n"
+             "- Cut the dead air, the long pauses, and the worst flubbed "
+             "lines -- but don't remove every single \"um,\" a few is "
+             "normal and cutting them all sounds robotic.\n"
+             "- Add a short music clip at the start and end if you want "
+             "one -- look for royalty-free/free-to-use music rather than "
+             "a random song.\n"
+             "- Listen to the whole edit once, headphones on, before "
+             "calling it done.\n\n"
+             "**Before you move on:** would you want to listen to this if "
+             "someone else made it? If a section drags, trim it further -- "
+             "much faster to fix now than after you've shared it.",
+             "CapCut, iMovie, or a simple audio editor, your raw recording", "occupational_education"),
+            ("Design your cover art",
+             "Every podcast needs a square image that represents the "
+             "show -- small step, but it's what makes it feel like a real "
+             "show instead of just an audio file.\n\n"
+             "- Keep it simple: your show's title, plus one image or icon "
+             "that fits the topic.\n"
+             "- Make sure the title is readable even as a tiny "
+             "thumbnail -- that's how it'll actually show up.\n\n"
+             "**Before you move on:** shrink it down on screen until it's "
+             "thumbnail-sized. Can you still read the title?",
+             "CapCut, Canva, or any simple design app", "art_and_music"),
+            ("Share your episode",
+             "Decide who this is for before you send it anywhere -- same "
+             "as any of your recorded projects, this is a choice to make "
+             "on purpose.\n\n"
+             "- Private and family-only is a completely legitimate "
+             "choice, and the simplest one -- a shared folder or a link "
+             "works fine.\n"
+             "- Want it more widely available someday? That's a bigger "
+             "decision (a real podcast platform, a public account) worth "
+             "a separate conversation with a parent first, not a "
+             "default.\n\n"
+             "**Before you move on:** confirm with a parent where this "
+             "episode is actually going before you send or post it "
+             "anywhere.",
+             "wherever you and your family agree the file should live", "occupational_education"),
+            ("Record your next episodes",
+             "Repeat the plan-record-edit loop from the last several "
+             "steps, one episode at a time.\n\n"
+             "- Each new episode: pick your topic (or the next segment of "
+             "an ongoing one), plan a rundown, record, edit, done.\n"
+             "- Add one step to this project per additional episode, so "
+             "each one gets its own checkbox instead of the whole season "
+             "feeling like one giant task.\n"
+             "- It gets faster after the first one -- the setup and "
+             "rhythm are already figured out.\n\n"
+             "**Before you move on to wrapping up the season:** you've "
+             "got at least 3 finished episodes. A season of one episode "
+             "isn't really a series yet.",
+             "same as the recording and editing steps, one round per episode", "occupational_education"),
+            ("Season listening party",
+             "The payoff for a whole season of work.\n\n"
+             "- Pick a night and actually play an episode (or your "
+             "favorite moments from a few) for the family, out loud, "
+             "together.\n"
+             "- Let it just play -- no pausing to explain or apologize "
+             "for anything.\n"
+             "- Afterward, ask what people liked best, and what they'd "
+             "want to hear more of in season two.",
+             "a speaker, snacks", "art_and_music"),
+        ),
+    ),
+    (
+        "Toy Photography",
+        "Learn real photography technique and use it to shoot a themed "
+        "photo series starring your own toys -- your subject, your "
+        "style, turned into a finished collection you're proud to show "
+        "off.",
+        (
+            ("Pick your toy and your theme",
+             "Pick which toy or toys are starring in this -- Legos, "
+             "action figures, dinosaurs, cars, whatever you actually want "
+             "to shoot -- and a theme that gives the whole series a point "
+             "instead of just random snapshots.\n\n"
+             "- A few theme starting points: an adventure told across "
+             "several photos, \"a day in the life of\" your toy, a \"tiny "
+             "world\" series shot in different real locations around your "
+             "house or yard, dramatic action or battle shots.\n"
+             "- Pick a theme you can actually finish in 5-8 photos -- not "
+             "an epic.\n\n"
+             "**Before you move on:** can you describe your theme in one "
+             "sentence? If it takes three sentences to explain, it's "
+             "probably still two ideas -- pick one.",
+             "the toy(s) you're shooting", "art_and_music"),
+            ("Learn the core techniques before you shoot",
+             "This is the step that actually teaches you photography, "
+             "not just \"take some pictures\" -- try each of these on "
+             "purpose before your real shoot.\n\n"
+             "- **Rule of thirds:** turn on your camera's grid lines. "
+             "Instead of putting your toy dead center, line it up on one "
+             "of the grid lines or where two lines cross -- it almost "
+             "always looks more interesting.\n"
+             "- **Get to eye level:** get down low, level with the toy, "
+             "instead of shooting down from standing height. This is the "
+             "single biggest thing that makes a toy photo look like a "
+             "real scene instead of \"a toy on a table.\"\n"
+             "- **Light:** soft, indirect light (near a window, an "
+             "overcast day) looks better than harsh direct sun. Walk "
+             "around your toy and watch how the shadows change before "
+             "you pick your angle.\n"
+             "- **Depth:** get close to your subject and let the "
+             "background go soft/blurry if your camera does that (often "
+             "called portrait mode) -- it makes the toy feel bigger and "
+             "more real.\n"
+             "- **Forced perspective:** put the toy close to the camera "
+             "with something real far in the background (a tree, a "
+             "hill) -- it can make a small toy look full-sized.\n"
+             "- Actually go take 5 test shots right now, one technique at "
+             "a time, and compare them.\n\n"
+             "**Before you move on:** look at your 5 test shots. Which "
+             "technique made the biggest difference? Keep that one in "
+             "mind for your real shoot.",
+             "your phone or camera, a few household objects to test with", "art_and_music"),
+            ("Scout your locations",
+             "Find the real-world spots you'll actually shoot in before "
+             "the day you shoot.\n\n"
+             "- Walk around inside and outside and find 3-5 spots that "
+             "fit your theme.\n"
+             "- Check the light at each spot -- morning and afternoon "
+             "light look very different in the same location.\n"
+             "- Look for spots with an interesting background that isn't "
+             "cluttered or messy right behind your toy.\n\n"
+             "**Before you move on:** for each spot, can you say in one "
+             "sentence what shot you'd get there? No answer for a spot? "
+             "Drop it from the list.",
+             "none -- just your eyes and your house/yard", "art_and_music"),
+            ("Plan your shot list",
+             "Same idea as a shot list for a film -- a short plan so "
+             "you're not standing there blank when you get to a "
+             "location.\n\n"
+             "- For each planned photo, jot down: which toy, which "
+             "location, what's happening in the shot, which technique "
+             "from the last step you're using.\n"
+             "- Doesn't need to be long -- one line per shot is plenty.\n\n"
+             "**Before you move on:** count your planned shots. 8-12 is a "
+             "good range for a first collection -- covers a real series "
+             "without dragging on forever.",
+             "paper and pencil", "writing"),
+            ("Shoot your first batch",
+             "Go slower than feels necessary on this one -- the goal "
+             "isn't to burn through your shot list fast, it's to "
+             "actually get good shots.\n\n"
+             "- For each shot, take at least 3 variations -- a different "
+             "angle, a different distance, a different bit of framing -- "
+             "instead of one photo and moving on. Professionals call this "
+             "\"covering\" a shot.\n"
+             "- Check your screen after each setup, not just at the end -- "
+             "catch a blurry or badly lit shot while the toy is still "
+             "right there, not after you've packed up.\n"
+             "- Use the eye-level and rule-of-thirds habits from step 2 "
+             "on every single shot, on purpose, until they stop feeling "
+             "like extra effort.\n\n"
+             "**Before you move on:** for your first location, do you "
+             "have at least one shot you're genuinely happy with? If not, "
+             "it's worth going back before moving to the next spot.",
+             "your shot list, the toy(s), your camera", "occupational_education"),
+            ("Review and cull your shots",
+             "A real photography skill: being willing to ignore most of "
+             "what you shot and keep only the best.\n\n"
+             "- Go through everything from this location and pick your "
+             "actual favorites -- expect to keep maybe 1 in 5.\n"
+             "- For each favorite, say out loud (or write down) why it's "
+             "the best version of that shot -- that's what teaches you to "
+             "notice technique actually working.\n"
+             "- Delete or archive the rest so they're not cluttering your "
+             "search for favorites later.\n\n"
+             "**Before you move on:** do your favorites actually use what "
+             "you learned about thirds, eye level, light, and depth, or "
+             "did you just pick the ones where the toy looks clearest? "
+             "Both matter, but technique is the point of this project.",
+             "your shots from this location", "art_and_music"),
+            ("Shoot your remaining locations",
+             "Repeat the shoot-and-cull loop (the last two steps) once "
+             "for each remaining spot on your list.\n\n"
+             "- Same routine each time: reread your plan for that spot, "
+             "check the light, shoot multiple variations, review and "
+             "cull before moving on.\n"
+             "- Add one step to this project per remaining location, so "
+             "each one gets its own checkbox.\n\n"
+             "**Before you move on to editing:** every location on your "
+             "shot list has at least one favorite shot picked out.",
+             "same as the last two steps, one round per location", "occupational_education"),
+            ("Edit your favorites",
+             "Light editing only -- the goal is polishing a shot that "
+             "already works, not rescuing one that doesn't.\n\n"
+             "- Crop to improve the composition if needed.\n"
+             "- Adjust brightness or straighten a tilted horizon.\n"
+             "- Free apps like Snapseed work fine -- avoid heavy filters "
+             "that hide the actual photo.\n\n"
+             "**Before you move on:** compare the edited version to the "
+             "original. Better version of the same photo, or does it "
+             "look fake or overdone? If it's the second one, pull back.",
+             "Snapseed or your phone's built-in editor, your favorite shots", "occupational_education"),
+            ("Put together your collection",
+             "Turn your best shots into one finished thing, not just a "
+             "folder of images.\n\n"
+             "- Options: a printed photo book or scrapbook, a shared "
+             "digital album, or a slideshow with captions.\n"
+             "- Write a short caption for each photo -- what it is, or "
+             "the little story it's telling.\n"
+             "- Put them in an order that makes sense for your theme, not "
+             "just the order you shot them.\n\n"
+             "**Before you move on:** look at the whole collection in "
+             "order, start to finish. One series, or a random pile of toy "
+             "photos? If it's the second one, the captions and the order "
+             "are what tie it together -- work on those.",
+             "a scrapbook/photo album, or a digital album/slideshow tool, "
+             "printing if you want physical copies", "art_and_music"),
+            ("Gallery night",
+             "Show off the finished collection -- this is the payoff for "
+             "all the shooting and culling.\n\n"
+             "- Pick a night and actually show it to the family -- a "
+             "slideshow, prints laid out on a table, or a shared album, "
+             "whichever you made.\n"
+             "- Let people look through it without narrating over every "
+             "single photo -- let the captions do that work.\n"
+             "- Ask which shots people liked best -- that's real feedback "
+             "for next time.",
+             "however you built your collection", "art_and_music"),
+        ),
+    ),
 )
 
 # Leitner intervals in days, indexed by box number (1-5).
@@ -1004,6 +1330,7 @@ class Database:
         self._migrate_interests_string_to_list()
         self._migrate_journal_entries_allow_multiple_per_day()
         self._backfill_big_project_step_content()
+        self._backfill_big_project_catalog()
         for key, value in config.DEFAULT_SETTINGS.items():
             self.conn.execute(
                 "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value)
@@ -2001,29 +2328,66 @@ class Database:
         self.conn.execute("DELETE FROM project_steps WHERE id = ?", (step_id,))
         self.conn.commit()
 
+    def _insert_big_project(
+        self,
+        student_id: int,
+        sort_order: int,
+        title: str,
+        vision: str,
+        steps: Sequence[tuple[str, str, str, str]],
+    ) -> int:
+        project_id = self.conn.execute(
+            "INSERT INTO big_projects (student_id, title, vision, sort_order) "
+            "VALUES (?, ?, ?, ?)",
+            (student_id, title, vision, sort_order),
+        ).lastrowid
+        for step_order, (step_title, description, materials, credit_subject) in enumerate(steps):
+            self.conn.execute(
+                "INSERT INTO project_steps "
+                "(project_id, sort_order, title, description, materials, credit_subject) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (project_id, step_order, step_title, description, materials, credit_subject),
+            )
+        return int(project_id)
+
     def seed_big_projects(self, student_id: int) -> int:
         """Seed the starter catalog, once -- a family that already added its
-        own project (or deleted the starter one on purpose) never gets it
-        pushed back on them."""
+        own project (or deleted every starter one on purpose) never gets it
+        pushed back on them. `_backfill_big_project_catalog` is the top-up
+        path for a family that already seeded before the catalog grew."""
         if self.list_big_projects(student_id):
             return 0
-        added = 0
         for order, (title, vision, steps) in enumerate(BIG_PROJECT_CATALOG):
-            project_id = self.conn.execute(
-                "INSERT INTO big_projects (student_id, title, vision, sort_order) "
-                "VALUES (?, ?, ?, ?)",
-                (student_id, title, vision, order),
-            ).lastrowid
-            for step_order, (step_title, description, materials, credit_subject) in enumerate(steps):
-                self.conn.execute(
-                    "INSERT INTO project_steps "
-                    "(project_id, sort_order, title, description, materials, credit_subject) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
-                    (project_id, step_order, step_title, description, materials, credit_subject),
-                )
-            added += 1
+            self._insert_big_project(student_id, order, title, vision, steps)
         self.conn.commit()
-        return added
+        return len(BIG_PROJECT_CATALOG)
+
+    def _backfill_big_project_catalog(self) -> None:
+        """Top up a family that already seeded projects with any catalog
+        projects they're missing -- `seed_big_projects` only fires once per
+        student, so a family that seeded before the catalog grew (e.g. the
+        podcast and toy photography projects, added after the Lego film)
+        would otherwise never see them at all. Matched by title; never
+        touches a project that's already there."""
+        for row in self.conn.execute("SELECT id FROM students"):
+            student_id = row["id"]
+            existing_titles = {
+                r["title"]
+                for r in self.conn.execute(
+                    "SELECT title FROM big_projects WHERE student_id = ?", (student_id,)
+                )
+            }
+            if not existing_titles:
+                continue  # never seeded at all -- seed_big_projects handles that path
+            next_order = self.conn.execute(
+                "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM big_projects WHERE student_id = ?",
+                (student_id,),
+            ).fetchone()[0]
+            for title, vision, steps in BIG_PROJECT_CATALOG:
+                if title in existing_titles:
+                    continue
+                self._insert_big_project(student_id, next_order, title, vision, steps)
+                next_order += 1
 
     def _backfill_big_project_step_content(self) -> None:
         """Keeps an already-seeded starter project's step text in sync with

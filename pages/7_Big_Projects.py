@@ -1,9 +1,11 @@
 """Big Projects -- parent-curated, multi-step creative projects that build
 toward one finished thing, run agile-sprint style: small ordered steps, each
 one small enough to actually finish in a sitting, each with its own
-materials list and its own subject credit. The Lego stop-motion film is the
-starter project; more can be added the same way Life Skills grows -- by
-hand, not generated.
+materials list and its own subject credit. The starter catalog seeds a
+handful of options at once (Lego stop-motion film, mini podcast, toy
+photography) so there's a real menu to pick from and stick with, rather
+than one thing pushed on him -- more can be added the same way Life Skills
+grows, by hand, not generated.
 """
 
 from __future__ import annotations
@@ -30,10 +32,15 @@ projects = db.list_big_projects(student["id"])
 
 if not projects:
     st.info("No projects yet.")
-    if st.button("Add the starter project (Stop-Motion Lego Film)", type="primary"):
+    if st.button("Add this year's starter projects", type="primary"):
         count = db.seed_big_projects(student["id"])
         st.success(f"Added {count} project{'s' if count != 1 else ''}.")
         st.rerun()
+elif len(projects) > 1:
+    st.caption(
+        "A few options on purpose -- pick one to actually work through, "
+        "and use **Hide** on the others so it's not competing for attention."
+    )
 
 if is_parent():
     checklist_tab, log_tab, manage_tab = st.tabs(["Checklist", "Log time", "Add / manage"])

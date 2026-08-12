@@ -8,7 +8,7 @@ from datetime import date, timedelta
 import pytest
 
 from compass import config
-from compass.storage.db import LIFE_SKILL_CATALOG, Database
+from compass.storage.db import BIG_PROJECT_CATALOG, LIFE_SKILL_CATALOG, Database
 
 
 @pytest.fixture()
@@ -592,17 +592,44 @@ def test_delete_journal_entry_removes_only_that_entry(db, student):
 
 def test_seed_big_projects_adds_the_catalog_once(db, student):
     added = db.seed_big_projects(student["id"])
-    assert added == 1
+    assert added == 3
     projects = db.list_big_projects(student["id"])
-    assert len(projects) == 1
-    assert projects[0]["title"] == "Stop-Motion Lego Film"
-    steps = db.list_project_steps(projects[0]["id"])
-    assert len(steps) == 11
-    assert all(s["credit_subject"] for s in steps)
+    titles = {p["title"] for p in projects}
+    assert titles == {"Stop-Motion Lego Film", "Mini Podcast Series", "Toy Photography"}
+    for project in projects:
+        steps = db.list_project_steps(project["id"])
+        assert len(steps) >= 10
+        assert all(s["credit_subject"] for s in steps)
+        assert all(s["description"] for s in steps)
     # Seeding again is a no-op -- a family that already has projects (or
-    # deleted the starter one on purpose) never gets it pushed back on them.
+    # deleted the starter ones on purpose) never gets them pushed back on them.
     assert db.seed_big_projects(student["id"]) == 0
-    assert len(db.list_big_projects(student["id"])) == 1
+    assert len(db.list_big_projects(student["id"])) == 3
+
+
+def test_backfill_big_project_catalog_tops_up_new_catalog_projects(db, student):
+    """A family that seeded before the catalog grew (just the Lego film,
+    say) must pick up the newer catalog projects on next launch without
+    disturbing the one they already have -- same reasoning as the Life
+    Skills catalog top-up."""
+    lego_title, lego_vision, lego_steps = next(
+        p for p in BIG_PROJECT_CATALOG if p[0] == "Stop-Motion Lego Film"
+    )
+    db._insert_big_project(student["id"], 0, lego_title, lego_vision, lego_steps)
+    db.conn.commit()
+    project = db.list_big_projects(student["id"])[0]
+    step = db.list_project_steps(project["id"])[0]
+    db.set_project_step_done(step["id"], True)
+
+    db._backfill_big_project_catalog()
+
+    projects = db.list_big_projects(student["id"])
+    titles = {p["title"] for p in projects}
+    assert titles == {"Stop-Motion Lego Film", "Mini Podcast Series", "Toy Photography"}
+    # the pre-existing project and its progress are untouched
+    lego = next(p for p in projects if p["title"] == "Stop-Motion Lego Film")
+    assert lego["id"] == project["id"]
+    assert db.list_project_steps(lego["id"])[0]["completed_on"] is not None
 
 
 def test_backfill_big_project_step_content_syncs_revised_catalog_text(db, student):
