@@ -35,6 +35,7 @@ if not is_parent():
     st.title(f"Hi {student['name'].split()[0]} 👋")
     st.caption("Here's what's set up for you. Work down the list, or jump around — up to you.")
     render_school_start_countdown(db)
+    render_fun_fact()
 
     st.divider()
 
@@ -128,7 +129,6 @@ if not is_parent():
     st.divider()
     if render_today_checklist(db, student):
         st.divider()
-    render_fun_fact()
     columns = st.columns(2)
 
     with columns[0]:
