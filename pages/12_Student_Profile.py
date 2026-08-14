@@ -145,29 +145,8 @@ with st.form("api_key_form", clear_on_submit=True):
 
 st.divider()
 
-st.subheader("Model effort")
-st.caption(
-    "How much the model reasons before writing each lesson -- the single "
-    "biggest lever on generation cost. High is the default, and what every "
-    "lesson has used so far. Medium cuts cost meaningfully with some quality "
-    "tradeoff; switch here only if cost ever needs to come down."
-)
-
-current_effort = db.get_setting("effort_level") or config.DEFAULT_EFFORT
-if current_effort not in config.EFFORT_LEVELS:
-    current_effort = config.DEFAULT_EFFORT
-effort_choice = st.selectbox(
-    "Family default",
-    config.EFFORT_LEVELS,
-    index=config.EFFORT_LEVELS.index(current_effort),
-    format_func=config.effort_label,
-    key="effort_level_select",
-)
-if effort_choice != current_effort:
-    db.set_setting("effort_level", effort_choice)
-    st.rerun()
 st.page_link(
-    "pages/11_Compliance.py",
-    label="See what the agents cost to run — spend, per-lesson average, and a projected year total",
+    "pages/15_Model_Costs.py",
+    label="Model Costs — spend, per-lesson average, projected year total, and the effort setting",
     icon="💵",
 )

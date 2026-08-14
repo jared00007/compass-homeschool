@@ -257,11 +257,34 @@ def css() -> str:
   background: var(--c-top-bar);
 }}
 [data-testid="stExpander"] summary:hover {{ color: var(--c-primary); }}
-/* A metric with a delta line (pace, gap) is taller than one without --
-   four in a row otherwise reads as three different-height boxes and one
-   short one. Fixed to the with-delta height so every metric row lines up
-   regardless of which cells happen to have a delta this time. */
-[data-testid="stMetric"] {{ padding: .6rem .9rem; min-height: 114px; }}
+/* Metrics in the same row need to be the same height, even though what's
+   inside each one varies -- a delta line (Pace, Gap), or a value that wraps
+   to two lines because it's long or the column is narrow. A fixed min-height
+   guessed at "the tallest a metric ever gets" and broke the moment a value
+   wrapped past that guess, going crooked again just from a different cause.
+   Stretching every box in the row to whichever sibling is actually tallest
+   fixes it for any content, not just the case already seen -- the column
+   stretches full row height (flex default), and each link in that chain has
+   to actually pass the height down instead of sizing to its own content. */
+[data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:has([data-testid="stMetric"]) {{
+  display: flex;
+}}
+[data-testid="stColumn"] > [data-testid="stVerticalBlock"]:has(> [data-testid="stElementContainer"] > [data-testid="stMetric"]) {{
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}}
+[data-testid="stElementContainer"]:has(> [data-testid="stMetric"]) {{
+  display: flex;
+  flex: 1;
+}}
+[data-testid="stMetric"] {{
+  padding: .6rem .9rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 1;
+}}
 
 /* --- numbers ---------------------------------------------------------
    Deliberately *not* the accent. An early build painted every metric in it,
