@@ -2722,6 +2722,19 @@ class Database:
         ).fetchone()
         return int(row["total"])
 
+    def untagged_subject_minutes(self, student_id: int, start: str, end: str) -> dict[str, int]:
+        """Total minutes per subject, this date range, not yet claimed by any
+        course -- the raw material the Courses page nudges from: "this
+        subject has enough hours sitting around to be worth turning into a
+        course.\""""
+        rows = self.conn.execute(
+            "SELECT primary_subject, SUM(minutes) AS total FROM activities "
+            "WHERE student_id = ? AND course_id IS NULL "
+            "AND occurred_on BETWEEN ? AND ? GROUP BY primary_subject",
+            (student_id, start, end),
+        ).fetchall()
+        return {row["primary_subject"]: int(row["total"]) for row in rows}
+
     # -- school-year helper ---------------------------------------------------
 
     def school_year_bounds(self, on: date | None = None) -> tuple[str, str]:

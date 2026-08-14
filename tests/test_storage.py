@@ -1058,3 +1058,55 @@ def test_course_activities_has_none_lesson_for_a_manual_entry(db, student):
     db.set_activity_course(activity_id, course_id)
     activities = db.course_activities(course_id)
     assert activities[0]["lesson"] is None
+
+
+# --- untagged_subject_minutes: the raw material for the Courses page nudge ----
+
+
+def test_untagged_subject_minutes_excludes_tagged_activities(db, student):
+    course_id = db.create_course(student["id"], "Algebra 1", "math", "2025-09-01", "2026-06-01")
+    tagged = db.log_activity(
+        student_id=student["id"], title="Tagged", tier="core", primary_subject="math",
+        minutes=100, subject_credits={"math": 100}, occurred_on="2025-10-01",
+    )
+    db.set_activity_course(tagged, course_id)
+    db.log_activity(
+        student_id=student["id"], title="Untagged", tier="core", primary_subject="math",
+        minutes=60, subject_credits={"math": 60}, occurred_on="2025-10-02",
+    )
+    totals = db.untagged_subject_minutes(student["id"], "2025-09-01", "2026-06-01")
+    assert totals == {"math": 60}
+
+
+def test_untagged_subject_minutes_groups_by_subject(db, student):
+    db.log_activity(
+        student_id=student["id"], title="Math one", tier="core", primary_subject="math",
+        minutes=30, subject_credits={"math": 30}, occurred_on="2025-10-01",
+    )
+    db.log_activity(
+        student_id=student["id"], title="Math two", tier="core", primary_subject="math",
+        minutes=45, subject_credits={"math": 45}, occurred_on="2025-10-02",
+    )
+    db.log_activity(
+        student_id=student["id"], title="Science", tier="core", primary_subject="science",
+        minutes=50, subject_credits={"science": 50}, occurred_on="2025-10-01",
+    )
+    totals = db.untagged_subject_minutes(student["id"], "2025-09-01", "2026-06-01")
+    assert totals == {"math": 75, "science": 50}
+
+
+def test_untagged_subject_minutes_respects_the_date_range(db, student):
+    db.log_activity(
+        student_id=student["id"], title="In range", tier="core", primary_subject="math",
+        minutes=30, subject_credits={"math": 30}, occurred_on="2025-10-01",
+    )
+    db.log_activity(
+        student_id=student["id"], title="Out of range", tier="core", primary_subject="math",
+        minutes=90, subject_credits={"math": 90}, occurred_on="2024-01-01",
+    )
+    totals = db.untagged_subject_minutes(student["id"], "2025-09-01", "2026-06-01")
+    assert totals == {"math": 30}
+
+
+def test_untagged_subject_minutes_is_empty_with_nothing_logged(db, student):
+    assert db.untagged_subject_minutes(student["id"], "2025-09-01", "2026-06-01") == {}

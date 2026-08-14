@@ -64,9 +64,66 @@ def _taught_for(course_id: int) -> list[dict]:
         )
     return taught
 
+
+def _render_suggestions(courses: list[dict]) -> None:
+    """Nothing connects the agents' ongoing lesson generation to Courses on
+    its own -- a subject can rack up real hours indefinitely without ever
+    becoming a credit unless a parent notices and sets one up by hand. This
+    surfaces that gap instead of leaving it silent: any subject with enough
+    untagged hours this school year gets called out, either as a prompt to
+    create a course (prefilling the Add tab) or, if a course already covers
+    that subject and date range, a pointer to go check the hours in there.
+    """
+    start, end = db.school_year_bounds()
+    untagged = db.untagged_subject_minutes(student["id"], start, end)
+
+    overlapping_by_subject: dict[str, list[dict]] = {}
+    for c in courses:
+        if c["start_date"] <= end and c["end_date"] >= start:
+            overlapping_by_subject.setdefault(c["credit_subject"], []).append(c)
+
+    suggestions = sorted(
+        (
+            (subject, minutes / 60)
+            for subject, minutes in untagged.items()
+            if minutes / 60 >= config.COURSE_NUDGE_HOURS
+        ),
+        key=lambda s: -s[1],
+    )
+    if not suggestions:
+        return
+
+    st.markdown("#### 💡 Worth turning into a course")
+    for subject, hours in suggestions:
+        matching = overlapping_by_subject.get(subject, [])
+        with st.container(border=True):
+            if matching:
+                names = ", ".join(c["title"] for c in matching)
+                st.markdown(
+                    f"**{label(subject)}** — {hours:.1f} untagged hours this year. "
+                    f"You already have **{names}** covering this — open it below and "
+                    "check these hours in."
+                )
+            else:
+                st.markdown(
+                    f"**{label(subject)}** — {hours:.1f} untagged hours this year, "
+                    "not part of any course yet."
+                )
+                if st.button(f"Set up a {label(subject)} course", key=f"nudge_{subject}"):
+                    st.session_state["course_add_subject"] = subject
+                    st.session_state["course_add_title"] = label(subject)
+                    st.rerun()
+                st.caption(
+                    "Fills in the subject and a starter title on the **Add a course** "
+                    "tab — click over there to finish it."
+                )
+    st.divider()
+
+
 with list_tab:
     if not courses:
         st.info("No courses yet — add one in the **Add a course** tab.")
+    _render_suggestions(courses)
     for course in courses:
         minutes = db.course_minutes(course["id"])
         hours = round(minutes / 60, 1)

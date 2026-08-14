@@ -36,6 +36,12 @@ WA_ANNUAL_DAYS = 180
 
 CREDIT_HOURS_PER_UNIT = 150
 
+# Not a district figure at all -- just the point at which the Courses page
+# starts nudging "this subject has enough untagged hours sitting around to be
+# worth turning into a course," so hours don't quietly pile up uncounted
+# toward any credit. A UX tuning knob, free to adjust.
+COURSE_NUDGE_HOURS = 20
+
 # --- Family policy defaults (editable in Settings) ---------------------------
 
 DEFAULT_SETTINGS: dict[str, str] = {
