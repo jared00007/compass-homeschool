@@ -35,7 +35,32 @@ loads the key, and opens the browser. Leave the window open while using it;
 Ctrl-C stops it.
 
 **On another device** (his tablet, a second laptop) — `./run.sh --lan` or
-`run.bat --lan` prints an address to open from anything on the same wifi.
+`run.bat --lan` prints an address to open from anything on the same wifi. Over
+Tailscale instead of shared wifi, use that machine's Tailscale address on port
+8501 rather than the printed one.
+
+For his own device, turn that address into a real launcher rather than
+something he has to type: in Edge or Chrome, open the address, then **⋯ menu →
+Apps → Install this site as an app**. That gives him a taskbar/desktop icon
+that opens straight to Compass in its own window — no address bar, no tabs.
+
+### Starting automatically (macOS)
+
+`./run.sh --lan` only runs while that terminal window stays open. To skip that
+step entirely — Compass starts itself at login and restarts itself if it ever
+crashes — run this once on whichever Mac holds `compass.db`:
+
+```bash
+./scripts/install-autostart.sh
+```
+
+Installs a `launchd` background service (`~/Library/LaunchAgents/com.compass.homeschool.plist`).
+Logs land in `~/Library/Logs/Compass/` if anything needs debugging. Once
+installed, **don't also start Compass by hand** — the service already holds
+port 8501, and a second copy will just fail to bind it.
+
+Check it's running: `launchctl list | grep compass`.
+Undo it: `./scripts/uninstall-autostart.sh`.
 
 ### macOS: "Apple could not verify Compass.command"
 

@@ -8,6 +8,10 @@
 #   ./run.sh              open on this computer only
 #   ./run.sh --lan        also reachable from other devices on the same network
 #                         (a tablet, his laptop) — prints the address to use
+#   ./run.sh --service    same as --lan, but never opens a browser tab. Used by
+#                         the background auto-start service (see
+#                         scripts/install-autostart.sh) — nobody's sitting at
+#                         the keyboard to click through a tab that pops up.
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -134,7 +138,9 @@ fi
 # --- Network mode ------------------------------------------------------------
 
 ADDRESS="localhost"
-if [ "${1:-}" = "--lan" ]; then
+HEADLESS="false"
+MODE="${1:-}"
+if [ "$MODE" = "--lan" ] || [ "$MODE" = "--service" ]; then
     ADDRESS="0.0.0.0"
     IP=$(python - <<'PY'
 import socket
@@ -151,18 +157,26 @@ PY
     say ""
     if [ -n "$IP" ]; then
         say "${BOLD}  On his tablet or laptop, open:  http://$IP:8501${OFF}"
-        say "  (Both devices must be on the same wifi or hotspot.)"
+        say "  (Or over Tailscale, using this machine's Tailscale address instead.)"
     else
         warn "Could not determine this machine's network address."
     fi
 fi
 
-say ""
-say "  Opening Compass. ${BOLD}Leave this window open${OFF} while using it."
-say "  Press Ctrl-C here when finished."
-say ""
+if [ "$MODE" = "--service" ]; then
+    # Running unattended under launchd -- there's no browser tab to pop open
+    # and no terminal window for anyone to leave open or close.
+    HEADLESS="true"
+    say ""
+    say "  Running as a background service."
+else
+    say ""
+    say "  Opening Compass. ${BOLD}Leave this window open${OFF} while using it."
+    say "  Press Ctrl-C here when finished."
+    say ""
+fi
 
 exec streamlit run Home.py \
     --server.address "$ADDRESS" \
     --server.port 8501 \
-    --server.headless false
+    --server.headless "$HEADLESS"
