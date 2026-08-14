@@ -164,3 +164,26 @@ DIFFICULTY_GUIDANCE = {
 
 def difficulty_label(level: str) -> str:
     return DIFFICULTY_LABELS.get(level, level)
+
+
+# --- Model effort ---------------------------------------------------------------
+# Family-wide, changeable from Student Profile -- see StudentContext.effort in
+# agents/framework.py. How much the model reasons before writing a lesson is
+# the single biggest lever on generation cost; offering only "high" (the
+# default) and "medium" here is deliberate -- "low" trades away enough
+# quality that it isn't a real option for a family that's said no to that
+# tradeoff, and "xhigh"/"max" only cost more than the default, never less.
+
+EFFORT_MEDIUM = "medium"
+EFFORT_HIGH = "high"
+
+EFFORT_LEVELS = (EFFORT_MEDIUM, EFFORT_HIGH)
+
+EFFORT_LABELS = {
+    EFFORT_MEDIUM: "Medium — lower cost, some quality tradeoff",
+    EFFORT_HIGH: "High — best quality (default)",
+}
+
+
+def effort_label(level: str) -> str:
+    return EFFORT_LABELS.get(level, level)

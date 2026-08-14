@@ -15,14 +15,18 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any
 
-# Per-million-token rates. `cache_read` is ~0.1x input, `cache_write` ~1.25x
-# input for the default 5-minute TTL.
+# Per-million-token rates. `cache_read` is ~0.1x input. `cache_write` is ~2x
+# input, not the ~1.25x a 5-minute cache TTL would carry -- llm.py caches the
+# system prompt for 1 hour instead, since a subject's four lessons in one
+# batch can each take a couple of minutes at high effort with web search, and
+# the default 5-minute window can lapse mid-batch. Change both together if
+# that TTL ever changes.
 PRICING: dict[str, dict[str, float]] = {
-    "claude-opus-5": {"input": 5.00, "output": 25.00, "cache_read": 0.50, "cache_write": 6.25},
-    "claude-opus-4-8": {"input": 5.00, "output": 25.00, "cache_read": 0.50, "cache_write": 6.25},
-    "claude-sonnet-5": {"input": 3.00, "output": 15.00, "cache_read": 0.30, "cache_write": 3.75},
-    "claude-haiku-4-5": {"input": 1.00, "output": 5.00, "cache_read": 0.10, "cache_write": 1.25},
-    "claude-fable-5": {"input": 10.00, "output": 50.00, "cache_read": 1.00, "cache_write": 12.50},
+    "claude-opus-5": {"input": 5.00, "output": 25.00, "cache_read": 0.50, "cache_write": 10.00},
+    "claude-opus-4-8": {"input": 5.00, "output": 25.00, "cache_read": 0.50, "cache_write": 10.00},
+    "claude-sonnet-5": {"input": 3.00, "output": 15.00, "cache_read": 0.30, "cache_write": 6.00},
+    "claude-haiku-4-5": {"input": 1.00, "output": 5.00, "cache_read": 0.10, "cache_write": 2.00},
+    "claude-fable-5": {"input": 10.00, "output": 50.00, "cache_read": 1.00, "cache_write": 20.00},
 }
 
 FALLBACK_PRICING = PRICING["claude-opus-5"]

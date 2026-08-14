@@ -53,9 +53,11 @@ def test_cached_reads_are_a_tenth_of_input():
 
 
 def test_cache_writes_carry_the_premium():
+    """2x, not the 1.25x a 5-minute TTL would carry -- llm.py caches the
+    system prompt for 1 hour, so the pricing table prices that TTL."""
     full = lesson_cost(usage(input_tokens=1_000_000))
     written = lesson_cost(usage(cache_creation_input_tokens=1_000_000))
-    assert written == pytest.approx(full * 1.25)
+    assert written == pytest.approx(full * 2.0)
 
 
 def test_web_searches_are_billed_per_query_not_per_token():

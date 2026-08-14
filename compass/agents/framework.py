@@ -79,6 +79,16 @@ class StudentContext:
             or config.DIFFICULTY_STANDARD
         )
 
+    @property
+    def effort(self) -> str:
+        """Family-wide by default (Student Profile's Model effort setting),
+        same resolution order as difficulty above."""
+        return (
+            self.inputs.get("effort")
+            or self.db.get_setting("effort_level")
+            or config.DEFAULT_EFFORT
+        )
+
 
 @dataclass
 class TopicProposal:
@@ -310,7 +320,6 @@ class AgentSpec:
     # agent whose only reason to search is finding one video needs far fewer.
     max_web_searches: int = 6
     post_process: Callable[[StudentContext, TopicProposal, dict[str, Any]], None] | None = None
-    default_effort: str = config.DEFAULT_EFFORT
 
 
 class LessonAgent:
@@ -372,7 +381,7 @@ class LessonAgent:
             user_prompt=self.spec.build_user_prompt(ctx, proposal),
             use_web_search=self.spec.use_web_search,
             max_web_searches=self.spec.max_web_searches,
-            effort=self.spec.default_effort,
+            effort=ctx.effort,
         )
         warnings = self._normalize(payload, proposal, ctx)
 

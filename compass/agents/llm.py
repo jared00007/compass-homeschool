@@ -269,7 +269,15 @@ def generate_lesson(
     request: dict[str, Any] = {
         "model": model,
         "max_tokens": max_tokens,
-        "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+        # 1-hour TTL, not the 5-minute default: a subject's four lessons in one
+        # batch can each take a couple of minutes at high effort with web
+        # search, so the default window can lapse before the batch finishes,
+        # quietly losing the cache discount on every call after the first.
+        # Costs more to write (2x vs 1.25x) but pays for itself within the
+        # batch alone, well before accounting for later calls the same day.
+        "system": [
+            {"type": "text", "text": system, "cache_control": {"type": "ephemeral", "ttl": "1h"}}
+        ],
         "output_config": {
             "effort": effort,
             "format": {"type": "json_schema", "schema": schema or LESSON_SCHEMA},

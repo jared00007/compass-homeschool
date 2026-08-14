@@ -6,6 +6,8 @@ the normalization step is the last line of defence against an over-credited hour
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
 from compass import config
@@ -523,3 +525,61 @@ def test_single_subject_lesson_is_untouched(db, student):
         {"subject": "math", "minutes": 60, "justification": ""}
     ]
     assert not warnings
+
+
+# --- effort -------------------------------------------------------------------
+
+
+def test_effort_defaults_to_the_family_wide_default(db, student):
+    assert config.DEFAULT_EFFORT == config.EFFORT_HIGH
+    assert ctx_for(db, student).effort == config.EFFORT_HIGH
+
+
+def test_effort_follows_the_family_setting(db, student):
+    db.set_setting("effort_level", config.EFFORT_MEDIUM)
+    assert ctx_for(db, student).effort == config.EFFORT_MEDIUM
+
+
+def test_per_generation_effort_override_beats_the_family_default(db, student):
+    db.set_setting("effort_level", config.EFFORT_MEDIUM)
+    ctx = ctx_for(db, student, effort=config.EFFORT_HIGH)
+    assert ctx.effort == config.EFFORT_HIGH
+
+
+def a_payload(**overrides):
+    payload = {
+        "activities": [{"minutes": 60}],
+        "estimated_minutes": 60,
+        "subject_credits": [{"subject": "math", "minutes": 60, "justification": ""}],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_generate_passes_the_familys_effort_setting_to_the_model_call(db, student):
+    db.set_setting("effort_level", config.EFFORT_MEDIUM)
+    agent = get_agent("math")
+    proposal = TopicProposal(topic="t", rationale="r", strategy="s", metadata={})
+    with patch(
+        "compass.agents.framework.generate_lesson", return_value=a_payload()
+    ) as call:
+        agent.generate(ctx_for(db, student), proposal)
+    assert call.call_args.kwargs["effort"] == config.EFFORT_MEDIUM
+
+
+def test_generate_leaves_usage_in_the_saved_payload_for_the_cost_tracker(db, student):
+    """compass.costs.build_cost_report reads `_usage` straight out of the
+    saved payload with SQL (`json_extract(payload, '$._usage...')`), not from
+    metadata -- generate() must never pop or otherwise strip it before
+    save_lesson persists the payload, or every lesson generated goes dark
+    for cost tracking."""
+    agent = get_agent("math")
+    proposal = TopicProposal(topic="t", rationale="r", strategy="s", metadata={})
+    usage = {"input_tokens": 100, "output_tokens": 200, "model": "claude-opus-5"}
+    with patch(
+        "compass.agents.framework.generate_lesson",
+        return_value=a_payload(_usage=usage),
+    ):
+        result = agent.generate(ctx_for(db, student), proposal)
+    saved = db.get_lesson(result.lesson_id)
+    assert saved["payload"]["_usage"] == usage
