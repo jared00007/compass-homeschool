@@ -77,6 +77,12 @@ if not is_parent():
         and lesson["agent"] not in (life_skills.AGENT_KEY, course_summary.AGENT_KEY)
         and not (lesson.get("metadata") or {}).get("student_done_on")
     ]
+    # A lesson planned ahead (This Week -- Friday planning) carries which day
+    # it's meant for. Those sort first, in day order, labeled so the week
+    # reads as a week rather than a flat pile; anything generated the
+    # ordinary on-demand way (no day attached) sorts after, unlabeled,
+    # exactly as it always has.
+    planned.sort(key=lambda l: (l.get("metadata") or {}).get("planned_for") or "9999-99-99")
 
     st.markdown(f"### 📚 Lessons ({len(planned)})")
     if not planned:
@@ -85,8 +91,18 @@ if not is_parent():
         for lesson in planned:
             with st.container(border=True):
                 payload = lesson["payload"]
+                planned_for = (lesson.get("metadata") or {}).get("planned_for")
+                day_badge = ""
+                if planned_for:
+                    day_badge = (
+                        " · Today" if planned_for == today
+                        else f" · {date.fromisoformat(planned_for).strftime('%A')}"
+                    )
                 st.markdown(f"⬜ **{md(payload.get('title', lesson['title']))}**")
-                st.caption(f"{lesson['agent'].title()} · {payload.get('estimated_minutes', '?')} min")
+                st.caption(
+                    f"{lesson['agent'].title()} · {payload.get('estimated_minutes', '?')} min"
+                    f"{day_badge}"
+                )
                 if payload.get("overview"):
                     st.write(md(payload["overview"]))
                 with st.expander("Open this lesson", expanded=False):

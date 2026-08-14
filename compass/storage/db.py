@@ -1951,6 +1951,27 @@ class Database:
             row["metadata"] = json.loads(row["metadata"])
         return rows
 
+    def lessons_for_week(self, student_id: int, week_start: str) -> list[dict[str, Any]]:
+        """Every lesson planned for one Monday-anchored week, earliest planned
+        day first -- the raw material for both halves of `pages/14_This_Week.py`.
+
+        Matched on `metadata.week_start`, not `created_at`: a lesson planned
+        on Friday for the following Tuesday still belongs to *that* week's
+        plan regardless of when it was actually generated.
+        """
+        rows = _rows(
+            self.conn.execute(
+                "SELECT * FROM lessons WHERE student_id = ? "
+                "AND json_extract(metadata, '$.week_start') = ? "
+                "ORDER BY json_extract(metadata, '$.planned_for'), id",
+                (student_id, week_start),
+            )
+        )
+        for row in rows:
+            row["payload"] = json.loads(row["payload"])
+            row["metadata"] = json.loads(row["metadata"])
+        return rows
+
     def latest_life_skill_plan(self, student_id: int, skill_id: int) -> dict[str, Any] | None:
         """The most recent generated plan for one life skill, if there is one.
 

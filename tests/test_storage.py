@@ -1110,3 +1110,47 @@ def test_untagged_subject_minutes_respects_the_date_range(db, student):
 
 def test_untagged_subject_minutes_is_empty_with_nothing_logged(db, student):
     assert db.untagged_subject_minutes(student["id"], "2025-09-01", "2026-06-01") == {}
+
+
+# --- lessons_for_week ----------------------------------------------------------
+
+
+def test_lessons_for_week_filters_by_metadata_not_created_at(db, student):
+    """A lesson planned on Friday for the following Tuesday still belongs to
+    *that* week's plan regardless of when it was generated."""
+    db.save_lesson(
+        student["id"], "math", "math", "topic", "In this week",
+        payload={"title": "t"}, metadata={"week_start": "2026-08-17", "planned_for": "2026-08-18"},
+    )
+    db.save_lesson(
+        student["id"], "english", "english", "topic", "A different week",
+        payload={"title": "t"}, metadata={"week_start": "2026-08-24", "planned_for": "2026-08-24"},
+    )
+    week = db.lessons_for_week(student["id"], "2026-08-17")
+    assert [l["title"] for l in week] == ["In this week"]
+
+
+def test_lessons_for_week_orders_by_planned_for(db, student):
+    db.save_lesson(
+        student["id"], "history", "history", "topic", "Thursday",
+        payload={"title": "t"}, metadata={"week_start": "2026-08-17", "planned_for": "2026-08-20"},
+    )
+    db.save_lesson(
+        student["id"], "science", "science", "topic", "Monday",
+        payload={"title": "t"}, metadata={"week_start": "2026-08-17", "planned_for": "2026-08-17"},
+    )
+    week = db.lessons_for_week(student["id"], "2026-08-17")
+    assert [l["title"] for l in week] == ["Monday", "Thursday"]
+
+
+def test_lessons_for_week_is_empty_when_nothing_planned(db, student):
+    assert db.lessons_for_week(student["id"], "2026-08-17") == []
+
+
+def test_lessons_for_week_ignores_lessons_with_no_week_metadata(db, student):
+    """A lesson generated the ordinary on-demand way (no week tags at all)
+    must not accidentally show up in a week's plan."""
+    db.save_lesson(
+        student["id"], "math", "math", "topic", "On-demand lesson", payload={"title": "t"},
+    )
+    assert db.lessons_for_week(student["id"], "2026-08-17") == []
