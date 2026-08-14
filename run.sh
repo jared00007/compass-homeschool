@@ -62,13 +62,13 @@ fi
 # shellcheck disable=SC1091
 source "$VENV/bin/activate"
 
-python -m pip install --quiet --upgrade pip
+"$PY" -m pip install --quiet --upgrade pip
 # Always run this, not just on first setup: gating it on "is streamlit already
 # importable" meant a machine with an existing .venv silently kept running
 # without any dependency added after that .venv was first created. pip with
 # everything already satisfied is fast — there's no real cost to just asking
 # every time.
-python -m pip install --quiet -r requirements.txt || die "Dependency install failed."
+"$PY" -m pip install --quiet -r requirements.txt || die "Dependency install failed."
 ok "Dependencies ready"
 
 # Streamlit prompts for an email on its very first run and blocks on stdin
@@ -142,7 +142,7 @@ HEADLESS="false"
 MODE="${1:-}"
 if [ "$MODE" = "--lan" ] || [ "$MODE" = "--service" ]; then
     ADDRESS="0.0.0.0"
-    IP=$(python - <<'PY'
+    IP=$("$PY" - <<'PY'
 import socket
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 try:
