@@ -864,3 +864,197 @@ def test_morning_routine_log_is_per_student(db, student):
     other_id = db.create_student("Sibling", "5")
     db.log_morning_routine(student["id"], "2026-08-12", "box_breathing")
     assert db.morning_routine_for_date(other_id, "2026-08-12") is None
+
+
+# --- courses (grades 6-12 credit documentation) -------------------------------
+
+
+def test_migrate_adds_course_id_to_a_pre_existing_activities_table(db, student):
+    """A database that predates Courses has an `activities` table without
+    the column -- `CREATE TABLE IF NOT EXISTS` is a no-op against it, so the
+    column and its index have to come from `_ensure_column` instead, and
+    existing logged hours must survive untouched."""
+    db.conn.execute("DROP TABLE activities")
+    db.conn.execute(
+        "CREATE TABLE activities (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "student_id INTEGER NOT NULL, lesson_id INTEGER, title TEXT NOT NULL, "
+        "description TEXT NOT NULL DEFAULT '', "
+        "tier TEXT NOT NULL CHECK (tier IN "
+        "('core', 'folded', 'choice', 'life_skills', 'projects', 'wellness')), "
+        "primary_subject TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'manual', "
+        "minutes INTEGER NOT NULL CHECK (minutes > 0), occurred_on TEXT NOT NULL, "
+        "location TEXT NOT NULL DEFAULT '', "
+        "created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+    )
+    old_id = db.conn.execute(
+        "INSERT INTO activities (student_id, title, tier, primary_subject, minutes, occurred_on) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (student["id"], "Old-style logged hours", "core", "math", 30, "2026-08-01"),
+    ).lastrowid
+    db.conn.commit()
+
+    db.migrate()
+
+    columns = {row["name"] for row in db.conn.execute("PRAGMA table_info(activities)")}
+    assert "course_id" in columns
+    row = db.conn.execute("SELECT title, course_id FROM activities WHERE id = ?", (old_id,)).fetchone()
+    assert row["title"] == "Old-style logged hours"
+    assert row["course_id"] is None
+
+
+def test_create_and_get_course_round_trips(db, student):
+    course_id = db.create_course(
+        student["id"], "Washington State History", "history", "2025-09-01", "2026-08-31",
+        grade_level="8", description="desc", goals="goals", outline="outline",
+    )
+    course = db.get_course(course_id)
+    assert course["title"] == "Washington State History"
+    assert course["credit_subject"] == "history"
+    assert course["credit_value"] == 1.0
+    assert course["pass_fail"] is None
+    assert course["final_grade"] == ""
+
+
+def test_get_course_is_none_for_an_unknown_id(db, student):
+    assert db.get_course(999999) is None
+
+
+def test_list_courses_is_most_recent_start_date_first(db, student):
+    db.create_course(student["id"], "Older", "math", "2024-09-01", "2025-06-01")
+    db.create_course(student["id"], "Newer", "history", "2025-09-01", "2026-06-01")
+    titles = [c["title"] for c in db.list_courses(student["id"])]
+    assert titles == ["Newer", "Older"]
+
+
+def test_update_course_ignores_unknown_fields(db, student):
+    course_id = db.create_course(student["id"], "Algebra 1", "math", "2025-09-01", "2026-06-01")
+    db.update_course(course_id, final_grade="B+", not_a_real_field="x")
+    course = db.get_course(course_id)
+    assert course["final_grade"] == "B+"
+    assert "not_a_real_field" not in course
+
+
+def test_update_course_with_no_recognised_fields_is_a_no_op(db, student):
+    course_id = db.create_course(student["id"], "Algebra 1", "math", "2025-09-01", "2026-06-01")
+    before = db.get_course(course_id)
+    db.update_course(course_id)
+    assert db.get_course(course_id) == before
+
+
+def test_pass_fail_rejects_anything_other_than_pass_or_fail(db, student):
+    course_id = db.create_course(student["id"], "Algebra 1", "math", "2025-09-01", "2026-06-01")
+    with pytest.raises(sqlite3.IntegrityError):
+        db.update_course(course_id, pass_fail="incomplete")
+
+
+def test_delete_course_untags_its_activities_but_keeps_them(db, student):
+    course_id = db.create_course(student["id"], "Algebra 1", "math", "2025-09-01", "2026-06-01")
+    activity_id = db.log_activity(
+        student_id=student["id"], title="Solving for x", tier="core", primary_subject="math",
+        minutes=45, subject_credits={"math": 45}, occurred_on="2025-10-01",
+    )
+    db.set_activity_course(activity_id, course_id)
+    db.delete_course(course_id)
+    assert db.get_course(course_id) is None
+    remaining = db.conn.execute(
+        "SELECT course_id FROM activities WHERE id = ?", (activity_id,)
+    ).fetchone()
+    assert remaining["course_id"] is None
+    activities = db.list_activities(student["id"])
+    assert len(activities) == 1  # the logged hours themselves are untouched
+
+
+def test_candidate_activities_matches_by_subject_and_date_range(db, student):
+    course_id = db.create_course(student["id"], "Algebra 1", "math", "2025-09-01", "2026-06-01")
+    in_range = db.log_activity(
+        student_id=student["id"], title="In range", tier="core", primary_subject="math",
+        minutes=30, subject_credits={"math": 30}, occurred_on="2025-10-01",
+    )
+    db.log_activity(
+        student_id=student["id"], title="Wrong subject", tier="core", primary_subject="science",
+        minutes=30, subject_credits={"science": 30}, occurred_on="2025-10-01",
+    )
+    db.log_activity(
+        student_id=student["id"], title="Out of range", tier="core", primary_subject="math",
+        minutes=30, subject_credits={"math": 30}, occurred_on="2024-01-01",
+    )
+    candidates = db.candidate_activities_for_course(
+        student["id"], "math", "2025-09-01", "2026-06-01", course_id
+    )
+    assert [a["id"] for a in candidates] == [in_range]
+
+
+def test_candidate_activities_excludes_ones_claimed_by_another_course(db, student):
+    course_a = db.create_course(student["id"], "Algebra 1", "math", "2025-09-01", "2026-06-01")
+    course_b = db.create_course(student["id"], "Geometry", "math", "2025-09-01", "2026-06-01")
+    activity_id = db.log_activity(
+        student_id=student["id"], title="Claimed by A", tier="core", primary_subject="math",
+        minutes=30, subject_credits={"math": 30}, occurred_on="2025-10-01",
+    )
+    db.set_activity_course(activity_id, course_a)
+    candidates_for_b = db.candidate_activities_for_course(
+        student["id"], "math", "2025-09-01", "2026-06-01", course_b
+    )
+    assert candidates_for_b == []
+    candidates_for_a = db.candidate_activities_for_course(
+        student["id"], "math", "2025-09-01", "2026-06-01", course_a
+    )
+    assert [a["id"] for a in candidates_for_a] == [activity_id]
+
+
+def test_set_activity_course_can_untag(db, student):
+    course_id = db.create_course(student["id"], "Algebra 1", "math", "2025-09-01", "2026-06-01")
+    activity_id = db.log_activity(
+        student_id=student["id"], title="Solving for x", tier="core", primary_subject="math",
+        minutes=45, subject_credits={"math": 45}, occurred_on="2025-10-01",
+    )
+    db.set_activity_course(activity_id, course_id)
+    db.set_activity_course(activity_id, None)
+    activity = db.conn.execute("SELECT course_id FROM activities WHERE id = ?", (activity_id,)).fetchone()
+    assert activity["course_id"] is None
+
+
+def test_course_minutes_sums_only_tagged_activities(db, student):
+    course_id = db.create_course(student["id"], "Algebra 1", "math", "2025-09-01", "2026-06-01")
+    tagged = db.log_activity(
+        student_id=student["id"], title="Tagged", tier="core", primary_subject="math",
+        minutes=45, subject_credits={"math": 45}, occurred_on="2025-10-01",
+    )
+    db.log_activity(
+        student_id=student["id"], title="Untagged", tier="core", primary_subject="math",
+        minutes=100, subject_credits={"math": 100}, occurred_on="2025-10-02",
+    )
+    db.set_activity_course(tagged, course_id)
+    assert db.course_minutes(course_id) == 45
+
+
+def test_course_minutes_is_zero_for_a_course_with_nothing_tagged(db, student):
+    course_id = db.create_course(student["id"], "Algebra 1", "math", "2025-09-01", "2026-06-01")
+    assert db.course_minutes(course_id) == 0
+
+
+def test_course_activities_carries_the_full_lesson_when_there_is_one(db, student):
+    course_id = db.create_course(student["id"], "Algebra 1", "math", "2025-09-01", "2026-06-01")
+    lesson_id = db.save_lesson(
+        student["id"], "math", "math", "topic", "Two-Step Equations",
+        payload={"title": "Two-Step Equations", "assessment": {"kind": "check"}},
+    )
+    activity_id = db.log_activity(
+        student_id=student["id"], title="Two-Step Equations", tier="core", primary_subject="math",
+        minutes=45, subject_credits={"math": 45}, occurred_on="2025-10-01", lesson_id=lesson_id,
+    )
+    db.set_activity_course(activity_id, course_id)
+    activities = db.course_activities(course_id)
+    assert len(activities) == 1
+    assert activities[0]["lesson"]["payload"]["title"] == "Two-Step Equations"
+
+
+def test_course_activities_has_none_lesson_for_a_manual_entry(db, student):
+    course_id = db.create_course(student["id"], "Algebra 1", "math", "2025-09-01", "2026-06-01")
+    activity_id = db.log_activity(
+        student_id=student["id"], title="Worksheet practice", tier="core", primary_subject="math",
+        minutes=30, subject_credits={"math": 30}, occurred_on="2025-10-01",
+    )
+    db.set_activity_course(activity_id, course_id)
+    activities = db.course_activities(course_id)
+    assert activities[0]["lesson"] is None

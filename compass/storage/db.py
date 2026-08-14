@@ -1328,6 +1328,8 @@ class Database:
         self._ensure_column("life_skills", "active", "INTEGER NOT NULL DEFAULT 1")
         self._ensure_column("project_steps", "min_days", "INTEGER NOT NULL DEFAULT 1")
         self._ensure_column("project_steps", "max_days", "INTEGER NOT NULL DEFAULT 1")
+        self._ensure_column("activities", "course_id", "INTEGER REFERENCES courses(id) ON DELETE SET NULL")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_activities_course ON activities (course_id)")
         self._backfill_life_skill_content()
         self._backfill_life_skill_catalog()
         self._migrate_park_visits_to_travel_entries()
@@ -2604,6 +2606,121 @@ class Database:
                 (student_id, entry_date),
             )
         )
+
+    # -- courses (grades 6-12 credit documentation) ----------------------------
+
+    def create_course(
+        self,
+        student_id: int,
+        title: str,
+        credit_subject: str,
+        start_date: str,
+        end_date: str,
+        grade_level: str = "",
+        description: str = "",
+        goals: str = "",
+        outline: str = "",
+        credit_value: float = 1.0,
+    ) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO courses "
+            "(student_id, title, credit_subject, grade_level, description, goals, "
+            " outline, credit_value, start_date, end_date) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                student_id, title, credit_subject, grade_level, description, goals,
+                outline, credit_value, start_date, end_date,
+            ),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def list_courses(self, student_id: int) -> list[dict[str, Any]]:
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM courses WHERE student_id = ? ORDER BY start_date DESC, id DESC",
+                (student_id,),
+            )
+        )
+
+    def get_course(self, course_id: int) -> dict[str, Any] | None:
+        return _row(self.conn.execute("SELECT * FROM courses WHERE id = ?", (course_id,)))
+
+    def update_course(self, course_id: int, **fields: Any) -> None:
+        allowed = {
+            "title", "credit_subject", "grade_level", "description", "goals", "outline",
+            "credit_value", "start_date", "end_date", "final_grade", "pass_fail",
+        }
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if not updates:
+            return
+        assignments = ", ".join(f"{k} = ?" for k in updates)
+        self.conn.execute(
+            f"UPDATE courses SET {assignments} WHERE id = ?",
+            (*updates.values(), course_id),
+        )
+        self.conn.commit()
+
+    def delete_course(self, course_id: int) -> None:
+        """The activities logged toward this course aren't deleted -- the
+        column's own ON DELETE SET NULL just untags them, so the hours stay
+        on the compliance dashboard where they always counted."""
+        self.conn.execute("DELETE FROM courses WHERE id = ?", (course_id,))
+        self.conn.commit()
+
+    def candidate_activities_for_course(
+        self,
+        student_id: int,
+        credit_subject: str,
+        start_date: str,
+        end_date: str,
+        course_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Activities that could plausibly count toward this course: right
+        subject, right date range, and not already claimed by a *different*
+        course. Activities already tagged to this course itself are included
+        too, so the picker shows the current state, not just what's still up
+        for grabs."""
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM activities WHERE student_id = ? AND primary_subject = ? "
+                "AND occurred_on BETWEEN ? AND ? AND (course_id IS NULL OR course_id = ?) "
+                "ORDER BY occurred_on, id",
+                (student_id, credit_subject, start_date, end_date, course_id),
+            )
+        )
+
+    def set_activity_course(self, activity_id: int, course_id: int | None) -> None:
+        self.conn.execute(
+            "UPDATE activities SET course_id = ? WHERE id = ?", (course_id, activity_id)
+        )
+        self.conn.commit()
+
+    def course_activities(self, course_id: int) -> list[dict[str, Any]]:
+        """Every activity tagged to this course, each carrying its full
+        lesson (assignment content, assessment description, quiz result)
+        when it came from one -- that lesson detail is exactly what the
+        district's "assignments and assessments" and "how performance is
+        assessed" requirements need, and it's already sitting in `lessons`
+        rather than something this table has to duplicate."""
+        activities = _rows(
+            self.conn.execute(
+                "SELECT * FROM activities WHERE course_id = ? ORDER BY occurred_on, id",
+                (course_id,),
+            )
+        )
+        for activity in activities:
+            activity["lesson"] = (
+                self.get_lesson(activity["lesson_id"]) if activity["lesson_id"] else None
+            )
+        return activities
+
+    def course_minutes(self, course_id: int) -> int:
+        row = self.conn.execute(
+            "SELECT COALESCE(SUM(minutes), 0) AS total FROM activities WHERE course_id = ?",
+            (course_id,),
+        ).fetchone()
+        return int(row["total"])
 
     # -- school-year helper ---------------------------------------------------
 

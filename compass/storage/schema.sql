@@ -141,10 +141,43 @@ CREATE TABLE IF NOT EXISTS lessons (
 CREATE INDEX IF NOT EXISTS idx_lessons_student
     ON lessons (student_id, created_at DESC);
 
+-- ---------------------------------------------------------------------------
+-- Courses -- grades 6-12 credit documentation. Sumner-Bonney Lake requires,
+-- per course counted toward a diploma: a description, goals/objectives, an
+-- outline, a log of instructional time (150 hours = 1 credit), completed
+-- assignments/assessments, a description of how performance is assessed, and
+-- a final grade (converted to Pass/Fail on the transcript). A course is a
+-- named container a parent points at a slice of already-logged activities
+-- (matched by subject + date range, then hand-adjustable) rather than a
+-- separate place to re-enter everything -- the activities/lessons already
+-- carry the assignment and assessment detail this packet needs.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS courses (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id     INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    title          TEXT NOT NULL,
+    credit_subject TEXT NOT NULL,
+    grade_level    TEXT NOT NULL DEFAULT '',
+    description    TEXT NOT NULL DEFAULT '',
+    goals          TEXT NOT NULL DEFAULT '',
+    outline        TEXT NOT NULL DEFAULT '',
+    credit_value   REAL NOT NULL DEFAULT 1.0,
+    start_date     TEXT NOT NULL,
+    end_date       TEXT NOT NULL,
+    final_grade    TEXT NOT NULL DEFAULT '',
+    pass_fail      TEXT CHECK (pass_fail IN ('pass', 'fail')),
+    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_courses_student
+    ON courses (student_id, start_date DESC);
+
 CREATE TABLE IF NOT EXISTS activities (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     student_id      INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
     lesson_id       INTEGER REFERENCES lessons(id) ON DELETE SET NULL,
+    course_id       INTEGER REFERENCES courses(id) ON DELETE SET NULL,
     title           TEXT NOT NULL,
     description     TEXT NOT NULL DEFAULT '',
     tier            TEXT NOT NULL CHECK (tier IN ('core', 'folded', 'choice', 'life_skills', 'projects', 'wellness')),
@@ -158,6 +191,12 @@ CREATE TABLE IF NOT EXISTS activities (
 
 CREATE INDEX IF NOT EXISTS idx_activities_student_date
     ON activities (student_id, occurred_on);
+
+-- No `idx_activities_course` here: a database created before Courses existed
+-- has an `activities` table without the column yet, and `CREATE TABLE IF NOT
+-- EXISTS` above is a no-op against it, so an index statement running in this
+-- same script would fail before `_ensure_column` gets a chance to add the
+-- column. Created in Python, in `migrate()`, right after that call instead.
 
 CREATE TABLE IF NOT EXISTS activity_subject_credits (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

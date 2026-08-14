@@ -28,6 +28,14 @@ DEFAULT_MAX_TOKENS = 16000
 WA_ANNUAL_HOURS = 1000
 WA_ANNUAL_DAYS = 180
 
+# --- High school credit (grades 6-12 course documentation) -------------------
+# Sumner-Bonney Lake's own figure for converting logged instructional time into
+# a Carnegie-style credit toward the diploma. Not a WA statute -- a district
+# packet requirement -- but not a family preference either, so it lives here
+# rather than in `settings`.
+
+CREDIT_HOURS_PER_UNIT = 150
+
 # --- Family policy defaults (editable in Settings) ---------------------------
 
 DEFAULT_SETTINGS: dict[str, str] = {

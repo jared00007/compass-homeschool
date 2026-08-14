@@ -1,10 +1,17 @@
-"""Turn a lesson payload into a printable Word document.
+"""Turn a lesson payload -- or a whole course -- into a printable Word document.
 
-This is a parent-only export: it includes everything `render_lesson`'s parent
-view shows, assessment and quiz answer key included. It exists because reading
-an assessment off a laptop screen while scoring a kid's paper worksheet is
-awkward — a printed page isn't. Callers must not offer this from a student-view
-context; nothing here re-checks who's asking.
+The lesson export is parent-only: it includes everything `render_lesson`'s
+parent view shows, assessment and quiz answer key included. It exists because
+reading an assessment off a laptop screen while scoring a kid's paper
+worksheet is awkward — a printed page isn't. Callers must not offer this from
+a student-view context; nothing here re-checks who's asking.
+
+The course export exists for a different, higher-stakes reason: Sumner-Bonney
+Lake requires this exact documentation set, per course, before a grade 6-12
+course counts toward the diploma. `course_to_docx` produces one packet per
+course covering all seven required pieces, built from data the app already
+has (the course's own record, plus every activity/lesson tagged to it) rather
+than anything re-typed for the district.
 """
 
 from __future__ import annotations
@@ -17,7 +24,7 @@ from typing import Any
 from docx import Document
 from docx.shared import Pt
 
-from compass import subjects
+from compass import config, subjects
 
 
 def suggested_filename(lesson: dict[str, Any]) -> str:
@@ -116,6 +123,131 @@ def lesson_to_docx(lesson: dict[str, Any]) -> bytes:
             row[0].text = subjects.label(credit.get("subject", ""))
             row[1].text = str(credit.get("minutes", ""))
             row[2].text = credit.get("justification", "")
+
+    buffer = io.BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
+def course_filename(course: dict[str, Any]) -> str:
+    """A readable .docx filename: the course title, slugged, plus today's date."""
+    title = course.get("title") or "course"
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "course"
+    return f"{slug}-documentation-{date.today().isoformat()}.docx"
+
+
+def course_to_docx(
+    course: dict[str, Any],
+    activities: list[dict[str, Any]],
+    student_name: str,
+) -> bytes:
+    """Render one course's full district documentation packet.
+
+    `activities` is `Database.course_activities(course_id)` -- each row is an
+    `activities` record, carrying its full generated `lesson` (assignment
+    content, assessment description, quiz result) when it came from one.
+    Covers, in order, the seven pieces Sumner-Bonney Lake's grades 6-12
+    packet requires: description, goals/objectives, outline, the hours log
+    (150 hours = 1 credit), completed assignments/assessments, how
+    performance is assessed, and progress + final grade (converted to
+    Pass/Fail on the transcript).
+    """
+    document = Document()
+    style = document.styles["Normal"]
+    style.font.size = Pt(11)
+
+    document.add_heading(course.get("title") or "Course", level=1)
+    target_hours = round(config.CREDIT_HOURS_PER_UNIT * (course.get("credit_value") or 1.0), 1)
+    subtitle = document.add_paragraph()
+    subtitle.add_run(
+        f"{student_name} · {subjects.label(course['credit_subject'])} · "
+        f"{course.get('credit_value', 1.0):g} credit · Grade {course.get('grade_level') or '—'}"
+    ).bold = True
+    document.add_paragraph(f"{course['start_date']} through {course['end_date']}")
+
+    document.add_heading("Course description", level=2)
+    document.add_paragraph(course.get("description") or "—")
+
+    document.add_heading("Course goals and objectives", level=2)
+    document.add_paragraph(course.get("goals") or "—")
+
+    document.add_heading("Course outline of the program", level=2)
+    document.add_paragraph(course.get("outline") or "—")
+
+    total_minutes = sum(a["minutes"] for a in activities)
+    total_hours = round(total_minutes / 60, 1)
+    document.add_heading("Learning activities and instructional time log", level=2)
+    document.add_paragraph(
+        f"{total_hours:g} of {target_hours:g} hours logged "
+        f"({round(100 * total_hours / target_hours) if target_hours else 0}% of "
+        f"{course.get('credit_value', 1.0):g} credit)."
+    )
+    if activities:
+        table = document.add_table(rows=1, cols=3)
+        table.style = "Light Grid Accent 1"
+        header = table.rows[0].cells
+        header[0].text, header[1].text, header[2].text = "Date", "Activity", "Minutes"
+        for activity in activities:
+            row = table.add_row().cells
+            row[0].text = activity["occurred_on"]
+            row[1].text = activity["title"]
+            row[2].text = str(activity["minutes"])
+    else:
+        document.add_paragraph("No instructional time logged toward this course yet.")
+
+    document.add_heading("Completed assignments and assessments", level=2)
+    if activities:
+        for activity in activities:
+            lesson = activity.get("lesson")
+            heading = f"{activity['occurred_on']} — {activity['title']}"
+            document.add_heading(heading, level=3)
+            payload = lesson["payload"] if lesson else {}
+            for objective in payload.get("learning_objectives") or []:
+                document.add_paragraph(str(objective), style="List Bullet")
+            if activity.get("description"):
+                document.add_paragraph(activity["description"])
+            quiz_result = (lesson or {}).get("metadata", {}).get("quiz_result")
+            if quiz_result and quiz_result.get("total"):
+                verdict = "passed" if quiz_result.get("passed") else "did not yet pass"
+                document.add_paragraph(
+                    f"Quiz: {quiz_result['correct']}/{quiz_result['total']} — {verdict}."
+                )
+    else:
+        document.add_paragraph("Nothing completed toward this course yet.")
+
+    document.add_heading("How student performance is assessed", level=2)
+    described_any = False
+    seen: set[tuple[str, str]] = set()
+    for activity in activities:
+        lesson = activity.get("lesson")
+        assessment = (lesson or {}).get("payload", {}).get("assessment") or {}
+        key = (assessment.get("kind", ""), assessment.get("description", ""))
+        if not assessment or key in seen:
+            continue
+        seen.add(key)
+        described_any = True
+        if assessment.get("kind"):
+            document.add_paragraph(assessment["kind"]).runs[0].bold = True
+        if assessment.get("description"):
+            document.add_paragraph(assessment["description"])
+        if assessment.get("mastery_criteria"):
+            criteria = document.add_paragraph()
+            criteria.add_run("Mastery: ").bold = True
+            criteria.add_run(assessment["mastery_criteria"])
+    if not described_any:
+        document.add_paragraph(
+            "Performance assessed through direct parent observation of each completed "
+            "activity, checked against the activity's stated purpose."
+        )
+
+    document.add_heading("Student progress and final grade", level=2)
+    document.add_paragraph(f"{total_hours:g} of {target_hours:g} hours completed.")
+    if course.get("final_grade"):
+        document.add_paragraph(f"Final grade: {course['final_grade']}")
+    if course.get("pass_fail"):
+        document.add_paragraph(f"Transcript record: {course['pass_fail'].upper()}")
+    else:
+        document.add_paragraph("Transcript record: in progress — not yet finalized.")
 
     buffer = io.BytesIO()
     document.save(buffer)

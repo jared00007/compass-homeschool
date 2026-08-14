@@ -14,7 +14,7 @@ import io
 import pytest
 from docx import Document
 
-from compass.export import lesson_to_docx, suggested_filename
+from compass.export import course_filename, course_to_docx, lesson_to_docx, suggested_filename
 
 
 def a_lesson(**overrides):
@@ -136,6 +136,135 @@ def test_handles_a_minimal_lesson_with_only_required_looking_fields():
 )
 def test_suggested_filename_is_slugged_and_dated(title, expected_prefix):
     name = suggested_filename({"title": title})
+    assert name.startswith(expected_prefix)
+    assert name.endswith(".docx")
+    assert " " not in name
+
+
+# --- course_to_docx: the grades 6-12 district documentation packet -----------
+
+
+def a_course(**overrides):
+    course = {
+        "id": 1,
+        "title": "Washington State History",
+        "credit_subject": "history",
+        "grade_level": "8",
+        "description": "A survey of Washington state history.",
+        "goals": "Understand tribal, territorial, and statehood eras.",
+        "outline": "Unit 1: Indigenous peoples. Unit 2: Territorial era.",
+        "credit_value": 1.0,
+        "start_date": "2025-09-01",
+        "end_date": "2026-08-31",
+        "final_grade": "",
+        "pass_fail": None,
+    }
+    course.update(overrides)
+    return course
+
+
+def an_activity_with_lesson(**overrides):
+    activity = {
+        "id": 1,
+        "occurred_on": "2025-10-01",
+        "title": "Indigenous Peoples of the Puget Sound",
+        "description": "",
+        "minutes": 60,
+        "lesson_id": 1,
+        "lesson": {
+            "payload": {
+                "learning_objectives": ["Identify three tribes native to the Puget Sound region"],
+                "assessment": {
+                    "kind": "Oral check",
+                    "description": "Name three tribes and one cultural practice each.",
+                    "mastery_criteria": "3 of 3 correct",
+                },
+            },
+            "metadata": {"quiz_result": {"correct": 9, "total": 10, "passed": True}},
+        },
+    }
+    activity.update(overrides)
+    return activity
+
+
+def test_course_packet_covers_all_seven_required_sections():
+    docx_bytes = course_to_docx(a_course(), [an_activity_with_lesson()], "Landon")
+    text = text_of(docx_bytes)
+    assert "Course description" in text
+    assert "A survey of Washington state history." in text
+    assert "Course goals and objectives" in text
+    assert "Understand tribal, territorial, and statehood eras." in text
+    assert "Course outline of the program" in text
+    assert "Learning activities and instructional time log" in text
+    assert "Completed assignments and assessments" in text
+    assert "Identify three tribes native to the Puget Sound region" in text
+    assert "Quiz: 9/10" in text
+    assert "How student performance is assessed" in text
+    assert "Name three tribes and one cultural practice each." in text
+    assert "Student progress and final grade" in text
+
+
+def test_hours_log_totals_and_shows_progress_toward_the_150_hour_credit():
+    docx_bytes = course_to_docx(a_course(), [an_activity_with_lesson()], "Landon")
+    text = text_of(docx_bytes)
+    assert "1 of 150 hours logged" in text
+    assert "2025-10-01" in text and "60" in text
+
+
+def test_half_credit_course_targets_75_hours():
+    docx_bytes = course_to_docx(a_course(credit_value=0.5), [], "Landon")
+    text = text_of(docx_bytes)
+    assert "75" in text
+
+
+def test_final_grade_and_pass_fail_appear_when_set():
+    docx_bytes = course_to_docx(
+        a_course(final_grade="A", pass_fail="pass"), [an_activity_with_lesson()], "Landon"
+    )
+    text = text_of(docx_bytes)
+    assert "Final grade: A" in text
+    assert "Transcript record: PASS" in text
+
+
+def test_not_yet_graded_says_so_rather_than_omitting_the_line():
+    docx_bytes = course_to_docx(a_course(), [], "Landon")
+    text = text_of(docx_bytes)
+    assert "in progress" in text.lower()
+
+
+def test_handles_a_course_with_no_activities_yet():
+    """A freshly created course, before anything's tagged to it, must still
+    produce a valid packet rather than crashing on an empty list."""
+    docx_bytes = course_to_docx(a_course(), [], "Landon")
+    text = text_of(docx_bytes)
+    assert "Washington State History" in text
+    assert "No instructional time logged" in text
+    assert "Nothing completed toward this course yet." in text
+
+
+def test_handles_an_activity_with_no_lesson_behind_it():
+    """A manually logged activity (no `lesson_id`) has `lesson: None` --
+    the packet must fall back to the activity's own description rather than
+    assuming lesson content always exists."""
+    activity = an_activity_with_lesson(lesson_id=None, lesson=None, description="Field trip notes.")
+    docx_bytes = course_to_docx(a_course(), [activity], "Landon")
+    text = text_of(docx_bytes)
+    assert "Field trip notes." in text
+    assert (
+        "Performance assessed through direct parent observation" in text
+    )
+
+
+@pytest.mark.parametrize(
+    "title,expected_prefix",
+    [
+        ("Washington State History", "washington-state-history-documentation-"),
+        ("Algebra 1!", "algebra-1-documentation-"),
+        ("", "course-documentation-"),
+    ],
+)
+def test_course_filename_is_slugged_and_dated(title, expected_prefix):
+    name = course_filename({"title": title})
     assert name.startswith(expected_prefix)
     assert name.endswith(".docx")
     assert " " not in name
