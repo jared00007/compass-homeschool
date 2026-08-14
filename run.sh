@@ -176,7 +176,7 @@ else
     say ""
 fi
 
-exec streamlit run Home.py \
+exec "$PY" -m streamlit run Home.py \
     --server.address "$ADDRESS" \
     --server.port 8501 \
     --server.headless "$HEADLESS"
