@@ -41,7 +41,73 @@ if not is_parent():
 
     st.divider()
 
-    day_tab, week_tab = st.tabs(["📅 Today", "🗓️ This Week"])
+    def _render_week_grid(week_start_date: date) -> None:
+        """The 5-column Monday-Friday layout, shared by This Week and
+        Upcoming Week -- same read-only glance at whatever's been planned,
+        just pointed at a different Monday. Monday-Thursday get whatever
+        Tier 1 subject was planned for that day; Friday is deliberately
+        never a new-content day (see compass/weekly.py), so it gets a
+        lighter prompt instead.
+        """
+        day_dates = [week_start_date + timedelta(days=i) for i in range(5)]
+        day_names = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
+        today_date = date.today()
+
+        week_lessons = weekly.latest_per_day(
+            db.lessons_for_week(student["id"], week_start_date.isoformat())
+        )
+        lessons_by_day: dict[str, list[dict]] = {}
+        for lesson in week_lessons:
+            planned_for = lesson["metadata"].get("planned_for", "")
+            lessons_by_day.setdefault(planned_for, []).append(lesson)
+
+        checked_in_dates = {
+            e["entry_date"] for e in db.list_journal_entries(student["id"], limit=60)
+        }
+
+        day_columns = st.columns(5)
+        for column, day_name, day_date in zip(day_columns, day_names, day_dates):
+            day_iso = day_date.isoformat()
+            with column:
+                st.markdown(f"**{day_name}**" + (" · Today" if day_date == today_date else ""))
+                st.caption(day_date.strftime("%b %-d"))
+
+                if day_iso in checked_in_dates:
+                    st.caption("💬 ✅ checked in")
+                elif day_date > today_date:
+                    st.caption("💬 —")
+                else:
+                    st.caption("💬 ⬜ no check-in")
+
+                if day_name == "Friday":
+                    st.caption(
+                        "🎬 Light day — review what you've done this week, or work "
+                        "on whatever's below."
+                    )
+                else:
+                    day_lessons = lessons_by_day.get(day_iso, [])
+                    if not day_lessons:
+                        st.caption("Nothing planned yet.")
+                    for lesson in day_lessons:
+                        icon = SUBJECT_ICONS.get(lesson["agent"], "📘")
+                        done = bool(lesson["metadata"].get("student_done_on"))
+                        marker = "✅" if done else "⬜"
+                        quiz = lesson["metadata"].get("quiz_result") or {}
+                        badge = " 🎯" if quiz.get("passed") else ""
+                        st.markdown(f"{marker} {icon} {md(lesson['title'])}{badge}")
+
+    def _render_extra_activities() -> None:
+        st.divider()
+        st.caption("✨ Extra activities, if there's time this week")
+        extra_columns = st.columns(4)
+        extra_columns[0].page_link("pages/7_Big_Projects.py", label="Big Projects", icon="🎬")
+        extra_columns[1].page_link("pages/6_Life_Skills.py", label="Life Skills", icon="🛠️")
+        extra_columns[2].page_link("pages/5_Choice_Topics.py", label="Choice Topics", icon="⭐")
+        extra_columns[3].page_link("pages/9_Landons_Travels.py", label="Travels", icon="🧭")
+
+    day_tab, week_tab, upcoming_tab = st.tabs(
+        ["📅 Today", "🗓️ This Week", "🔜 Upcoming Week"]
+    )
 
     # === Today ===================================================================
 
@@ -78,34 +144,46 @@ if not is_parent():
         # A lesson he's already marked done (student_lesson_view's own signal,
         # separate from `status`) drops off here too -- otherwise it sits here
         # forever until the parent logs it, which can be days.
-        planned = [
+        all_planned = [
             lesson
             for lesson in db.list_lessons(student["id"], limit=25)
             if lesson["status"] == "planned"
             and lesson["agent"] not in (life_skills.AGENT_KEY, course_summary.AGENT_KEY)
             and not (lesson.get("metadata") or {}).get("student_done_on")
         ]
-        # A lesson planned ahead (This Week -- Friday planning) carries which day
-        # it's meant for. Those sort first, in day order, labeled so the week
-        # reads as a week rather than a flat pile; anything generated the
-        # ordinary on-demand way (no day attached) sorts after, unlabeled,
-        # exactly as it always has.
-        planned.sort(key=lambda l: (l.get("metadata") or {}).get("planned_for") or "9999-99-99")
+        # A lesson planned ahead (This Week -- Friday planning) carries which
+        # day it's meant for. Only what's actually due now belongs here --
+        # today's, anything overdue from an earlier day, and anything
+        # generated the ordinary on-demand way (no day attached, so there's
+        # nothing to defer). A lesson planned for a *later* day used to show
+        # here too, which meant "Lessons (14)" was really a whole week's
+        # worth stacked into one list -- read at a glance, that's 10+ hours
+        # that looks like it's all due today. Later days now live on the
+        # This Week / Upcoming Week tabs instead.
+        due_now = []
+        later_count = 0
+        for lesson in all_planned:
+            planned_for = (lesson.get("metadata") or {}).get("planned_for")
+            if planned_for and planned_for > today:
+                later_count += 1
+            else:
+                due_now.append(lesson)
+        due_now.sort(key=lambda l: (l.get("metadata") or {}).get("planned_for") or "9999-99-99")
 
-        st.markdown(f"### 📚 Lessons ({len(planned)})")
-        if not planned:
+        st.markdown(f"### 📚 Lessons ({len(due_now)})")
+        if not due_now:
             st.caption("Nothing new is set up yet. Check back after your parent plans a lesson.")
         else:
-            for lesson in planned:
+            for lesson in due_now:
                 with st.container(border=True):
                     payload = lesson["payload"]
                     planned_for = (lesson.get("metadata") or {}).get("planned_for")
                     day_badge = ""
-                    if planned_for:
-                        day_badge = (
-                            " · Today" if planned_for == today
-                            else f" · {date.fromisoformat(planned_for).strftime('%A')}"
-                        )
+                    if planned_for and planned_for < today:
+                        weekday = date.fromisoformat(planned_for).strftime("%A")
+                        day_badge = f" · ⚠️ was due {weekday}"
+                    elif planned_for == today:
+                        day_badge = " · Today"
                     st.markdown(f"⬜ **{md(payload.get('title', lesson['title']))}**")
                     st.caption(
                         f"{lesson['agent'].title()} · {payload.get('estimated_minutes', '?')} min"
@@ -115,6 +193,11 @@ if not is_parent():
                         st.write(md(payload["overview"]))
                     with st.expander("Open this lesson", expanded=False):
                         render_lesson(payload, for_parent=False)
+        if later_count:
+            st.caption(
+                f"{later_count} more lesson(s) planned for later this week — see "
+                "the **This Week** tab."
+            )
 
         st.divider()
 
@@ -165,76 +248,35 @@ if not is_parent():
                 st.caption("Nothing yet — add something you want to learn.")
             st.page_link("pages/5_Choice_Topics.py", label="Add a topic", icon="➡️")
 
-    # === This Week ================================================================
-    # Read-only -- the plan itself is set by a parent on This Week (Friday
-    # planning), this just lays out what's already there day by day so he can
-    # see the whole week without clicking into Monday through Friday one at a
-    # time. Monday-Thursday get whatever Tier 1 subject was planned for that
-    # day; Friday is deliberately never a new-content day (see compass/weekly.py),
-    # so it gets a lighter prompt instead.
+    # === This Week / Upcoming Week ===============================================
+    # Both read-only -- the plan itself is set by a parent on This Week (Friday
+    # planning), these just lay out what's already there day by day so he can
+    # see the week ahead without clicking into Monday through Friday one at a
+    # time. Upcoming Week is only ever as populated as however far ahead a
+    # parent has actually planned -- usually nothing until the Friday before.
+
+    this_week_start = weekly.week_start()
+    next_week_start = this_week_start + timedelta(days=7)
 
     with week_tab:
-        this_week_start = weekly.week_start()
-        day_dates = [this_week_start + timedelta(days=i) for i in range(5)]
-        day_names = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
-        today_date = date.today()
-
         st.caption(
-            f"{day_dates[0].strftime('%b %-d')} – {day_dates[-1].strftime('%b %-d')} · "
+            f"{this_week_start.strftime('%b %-d')} – "
+            f"{(this_week_start + timedelta(days=4)).strftime('%b %-d')} · "
             "only shows what's been planned through weekly planning -- anything "
             "generated on the fly still shows up on **Today**, not here."
         )
+        _render_week_grid(this_week_start)
+        _render_extra_activities()
 
-        week_lessons = weekly.latest_per_day(
-            db.lessons_for_week(student["id"], this_week_start.isoformat())
+    with upcoming_tab:
+        st.caption(
+            f"{next_week_start.strftime('%b %-d')} – "
+            f"{(next_week_start + timedelta(days=4)).strftime('%b %-d')} · "
+            "next week's plan, once your parent sets it up -- usually on a "
+            "Friday, for the week ahead."
         )
-        lessons_by_day: dict[str, list[dict]] = {}
-        for lesson in week_lessons:
-            planned_for = lesson["metadata"].get("planned_for", "")
-            lessons_by_day.setdefault(planned_for, []).append(lesson)
-
-        checked_in_dates = {
-            e["entry_date"] for e in db.list_journal_entries(student["id"], limit=60)
-        }
-
-        day_columns = st.columns(5)
-        for column, day_name, day_date in zip(day_columns, day_names, day_dates):
-            day_iso = day_date.isoformat()
-            with column:
-                st.markdown(f"**{day_name}**" + (" · Today" if day_date == today_date else ""))
-                st.caption(day_date.strftime("%b %-d"))
-
-                if day_iso in checked_in_dates:
-                    st.caption("💬 ✅ checked in")
-                elif day_date > today_date:
-                    st.caption("💬 —")
-                else:
-                    st.caption("💬 ⬜ no check-in")
-
-                if day_name == "Friday":
-                    st.caption(
-                        "🎬 Light day — review what you've done this week, or work "
-                        "on whatever's below."
-                    )
-                else:
-                    day_lessons = lessons_by_day.get(day_iso, [])
-                    if not day_lessons:
-                        st.caption("Nothing planned yet.")
-                    for lesson in day_lessons:
-                        icon = SUBJECT_ICONS.get(lesson["agent"], "📘")
-                        done = bool(lesson["metadata"].get("student_done_on"))
-                        marker = "✅" if done else "⬜"
-                        quiz = lesson["metadata"].get("quiz_result") or {}
-                        badge = " 🎯" if quiz.get("passed") else ""
-                        st.markdown(f"{marker} {icon} {md(lesson['title'])}{badge}")
-
-        st.divider()
-        st.caption("✨ Extra activities, if there's time this week")
-        extra_columns = st.columns(4)
-        extra_columns[0].page_link("pages/7_Big_Projects.py", label="Big Projects", icon="🎬")
-        extra_columns[1].page_link("pages/6_Life_Skills.py", label="Life Skills", icon="🛠️")
-        extra_columns[2].page_link("pages/5_Choice_Topics.py", label="Choice Topics", icon="⭐")
-        extra_columns[3].page_link("pages/9_Landons_Travels.py", label="Travels", icon="🧭")
+        _render_week_grid(next_week_start)
+        _render_extra_activities()
 
     st.stop()
 
