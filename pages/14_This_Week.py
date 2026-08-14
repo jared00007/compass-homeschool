@@ -145,139 +145,101 @@ with plan_tab:
     for lesson in existing:
         existing_by_agent.setdefault(lesson["agent"], []).append(lesson)
 
-    if not existing:
-        st.markdown("**Nothing planned yet for this week.**")
-        st.caption(
-            "The three spiderweb/timeline/reading-driven subjects each get four fresh "
-            "topics; Math gets one skill framed across the week (see This Week's own "
-            "notes on why). Optionally point Monday at something specific instead of "
-            "the agent's automatic pick -- this is where a Class CrunchLabs unit would "
-            "get slotted into Science on purpose."
-        )
-        seed_topics: dict[str, str] = {}
-        for key in ("science", "english", "history"):
-            seed_topics[key] = st.text_input(
-                f"{_agent_label(key)} — Monday's topic (optional, leave blank to let the agent choose)",
-                key=f"weekplan_seed_{key}",
-            )
+    st.caption(
+        "Each subject plans on its own click -- at most four lessons at a time, "
+        "never all sixteen in one shot. A batch that large can run well past "
+        "ten minutes, long enough for the browser connection to drop before it "
+        "finishes, which silently strands whatever hadn't been reached yet. "
+        "The three spiderweb/timeline/reading-driven subjects each get four "
+        "fresh topics; Math gets one skill framed across the week (see This "
+        "Week's own notes on why). Optionally point a subject's Monday at "
+        "something specific instead of its automatic pick -- this is where a "
+        "Class CrunchLabs unit would get slotted into Science on purpose. "
+        "Filling in only covers days that don't have a lesson yet -- it never "
+        "touches a day that's already planned, whether he's done it or not. "
+        "To replace a specific day on purpose, open it below and use "
+        "**Regenerate just this day**."
+    )
 
-        if st.button("Plan next week", type="primary"):
-            status = st.status("Planning next week…", expanded=True)
-            any_errors = False
-            for key in AGENT_ORDER:
-                agent = AGENTS[key]
-                status.write(f"{_agent_label(key)} …")
-                if key == "math":
-                    day_results = weekly.plan_math_week(db, student, target_week_start)
-                else:
-                    seed = seed_topics.get(key, "").strip()
-                    day_results = weekly.plan_subject_week(
-                        db, student, agent, target_week_start,
-                        seed_topics={0: seed} if seed else None,
-                    )
-                for day in day_results:
-                    if day.error:
-                        any_errors = True
-                        status.write(f"  ⚠️ {day.target_date}: {day.error}")
-            if any_errors:
-                # Leave the status open with the errors visible rather than
-                # rerunning immediately -- a rerun starts a fresh script
-                # execution where nothing written into this status box
-                # survives, so the parent would see the spinner flash and
-                # then just land back on this same screen with no idea why.
-                status.update(
-                    label="Finished with some errors — see above.",
-                    state="error", expanded=True,
-                )
-            else:
-                status.update(
-                    label="Done planning next week.", state="complete", expanded=False
-                )
-                st.rerun()
-    else:
-        st.markdown("**Already planned:**")
-        st.caption(
-            "Filling in only covers days that don't have a lesson yet — it never "
-            "touches a day that's already planned, whether he's done it or not. To "
-            "replace a specific day on purpose, open it below and use **Regenerate "
-            "just this day**."
-        )
-        for key in AGENT_ORDER:
-            lessons = existing_by_agent.get(key, [])
-            covered = {lesson["metadata"].get("planned_for") for lesson in lessons}
-            missing_dates = [d for d in target_dates if d.isoformat() not in covered]
+    for key in AGENT_ORDER:
+        lessons = existing_by_agent.get(key, [])
+        covered = {lesson["metadata"].get("planned_for") for lesson in lessons}
+        missing_dates = [d for d in target_dates if d.isoformat() not in covered]
+        monday_missing = key != "math" and target_dates[0] in missing_dates
 
-            with st.container(border=True):
-                header_columns = st.columns([5, 2])
-                with header_columns[0]:
-                    st.markdown(f"**{_agent_label(key)}**")
-                with header_columns[1]:
-                    button_label = "Plan this week" if not lessons else "Fill in missing days"
-                    if st.button(
-                        button_label, key=f"regen_week_{key}", disabled=not missing_dates
-                    ):
-                        with st.spinner(f"Planning {_agent_label(key)}…"):
-                            # Math's missing days must continue the week's one
-                            # shared skill rather than each proposing fresh --
-                            # read it off whatever's already planned this week,
-                            # or let the first missing day pick it naturally if
-                            # nothing exists yet at all.
-                            skill_id = lessons[0]["metadata"].get("skill_id", "") if (
-                                key == "math" and lessons
-                            ) else ""
-                            day_results = []
-                            for target in missing_dates:
-                                index = target_dates.index(target)
-                                note = weekly.MATH_STAGE_NOTES[index] if key == "math" else ""
-                                result = weekly.plan_day(
-                                    db, student, AGENTS[key], target_week_start, target,
-                                    skill_id=skill_id, parent_note=note,
-                                )
-                                day_results.append(result)
-                                if key == "math" and index == 0 and result.generated:
-                                    skill_id = result.generated.proposal.metadata.get(
-                                        "skill_id", ""
-                                    )
-                        day_errors = [d for d in day_results if d.error]
-                        for day in day_errors:
-                            st.error(f"{day.target_date}: {day.error}")
-                        if not day_errors:
+        with st.container(border=True):
+            st.markdown(f"**{_agent_label(key)}**")
+            seed = ""
+            if monday_missing:
+                seed = st.text_input(
+                    "Monday's topic (optional, leave blank to let the agent choose)",
+                    key=f"weekplan_seed_{key}",
+                )
+            button_label = "Plan this week" if not lessons else "Fill in missing days"
+            if st.button(button_label, key=f"regen_week_{key}", disabled=not missing_dates):
+                with st.spinner(f"Planning {_agent_label(key)}…"):
+                    # Math's missing days must continue the week's one
+                    # shared skill rather than each proposing fresh --
+                    # read it off whatever's already planned this week,
+                    # or let the first missing day pick it naturally if
+                    # nothing exists yet at all.
+                    skill_id = lessons[0]["metadata"].get("skill_id", "") if (
+                        key == "math" and lessons
+                    ) else ""
+                    day_results = []
+                    for target in missing_dates:
+                        index = target_dates.index(target)
+                        note = weekly.MATH_STAGE_NOTES[index] if key == "math" else ""
+                        day_seed = seed.strip() if index == 0 else ""
+                        result = weekly.plan_day(
+                            db, student, AGENTS[key], target_week_start, target,
+                            seed_topic=day_seed, skill_id=skill_id, parent_note=note,
+                        )
+                        day_results.append(result)
+                        if key == "math" and index == 0 and result.generated:
+                            skill_id = result.generated.proposal.metadata.get(
+                                "skill_id", ""
+                            )
+                day_errors = [d for d in day_results if d.error]
+                for day in day_errors:
+                    st.error(f"{day.target_date}: {day.error}")
+                if not day_errors:
+                    st.rerun()
+
+            if not lessons:
+                st.caption(f"Not planned yet — use **{button_label}** above to set it up.")
+            for lesson in lessons:
+                planned_for = lesson["metadata"].get("planned_for", "")
+                done = bool(lesson["metadata"].get("student_done_on"))
+                with st.expander(
+                    f"{_day_label(planned_for)} — {md(lesson['title'])}"
+                    + (" ✅" if done else ""),
+                    expanded=False,
+                ):
+                    render_lesson(lesson["payload"], for_parent=True)
+                    # Math isn't offered a single-day regenerate: its four days
+                    # share one skill, so swapping just one out of sequence
+                    # would need to re-derive that shared skill_id from a
+                    # sibling day -- simpler and safer to fill in or fully
+                    # replan (above) when math needs to change at all.
+                    if key == "math":
+                        continue
+                    if done:
+                        st.caption(
+                            "⚠️ He's already marked this done — regenerating replaces "
+                            "what's shown here but doesn't touch his completed record."
+                        )
+                    if st.button("Regenerate just this day", key=f"regen_day_{lesson['id']}"):
+                        target = (
+                            date.fromisoformat(planned_for)
+                            if planned_for
+                            else target_week_start
+                        )
+                        with st.spinner("Regenerating…"):
+                            result = weekly.plan_day(
+                                db, student, AGENTS[key], target_week_start, target
+                            )
+                        if result.error:
+                            st.error(result.error)
+                        else:
                             st.rerun()
-
-                if not lessons:
-                    st.caption(f"Not planned yet — use **{button_label}** to set it up.")
-                for lesson in lessons:
-                    planned_for = lesson["metadata"].get("planned_for", "")
-                    done = bool(lesson["metadata"].get("student_done_on"))
-                    with st.expander(
-                        f"{_day_label(planned_for)} — {md(lesson['title'])}"
-                        + (" ✅" if done else ""),
-                        expanded=False,
-                    ):
-                        render_lesson(lesson["payload"], for_parent=True)
-                        # Math isn't offered a single-day regenerate: its four days
-                        # share one skill, so swapping just one out of sequence
-                        # would need to re-derive that shared skill_id from a
-                        # sibling day -- simpler and safer to fill in or fully
-                        # replan (above) when math needs to change at all.
-                        if key == "math":
-                            continue
-                        if done:
-                            st.caption(
-                                "⚠️ He's already marked this done — regenerating replaces "
-                                "what's shown here but doesn't touch his completed record."
-                            )
-                        if st.button("Regenerate just this day", key=f"regen_day_{lesson['id']}"):
-                            target = (
-                                date.fromisoformat(planned_for)
-                                if planned_for
-                                else target_week_start
-                            )
-                            with st.spinner("Regenerating…"):
-                                result = weekly.plan_day(
-                                    db, student, AGENTS[key], target_week_start, target
-                                )
-                            if result.error:
-                                st.error(result.error)
-                            else:
-                                st.rerun()
