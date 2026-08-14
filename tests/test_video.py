@@ -319,6 +319,36 @@ def test_channels_for_prompt_lists_only_that_agents_channels():
     assert "SciShow" in science_text
 
 
+def test_crunchlabs_is_trusted_for_science_but_not_other_subjects():
+    """Mark Rober's free, NGSS-aligned Class CrunchLabs curriculum -- vetted
+    for science specifically, not pooled onto the other three agents' lists."""
+    assert channel_is_trusted("science", "CrunchLabs")
+    assert not channel_is_trusted("math", "CrunchLabs")
+    assert not channel_is_trusted("english", "CrunchLabs")
+    assert not channel_is_trusted("history", "CrunchLabs")
+
+
+def test_class_crunchlabs_subchannel_name_matches_the_approved_entry():
+    """Real videos are more likely to be credited to "Class CrunchLabs" than
+    the bare brand name -- the substring match already used for "Crash Course
+    Chemistry" must cover this the same way."""
+    assert channel_is_trusted("science", "Class CrunchLabs")
+
+
+def test_a_verified_crunchlabs_video_survives_verification():
+    payload = a_payload(video={
+        "found": True,
+        "title": "Rocks vs. Big Rigs",
+        "url": REAL_URL,
+        "channel": "Class CrunchLabs",
+        "why": "Models kinetic energy with mass and speed, exactly this activity's skill.",
+    })
+    warnings = verify(payload, agent_key="science")
+    assert warnings == []
+    assert first_video(payload)["found"] is True
+    assert first_video(payload)["channel"] == "Class CrunchLabs"
+
+
 # --- "no video found" is left alone, and cleaned up if inconsistent -----------
 
 

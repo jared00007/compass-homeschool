@@ -66,6 +66,7 @@ TRUSTED_CHANNELS: dict[str, tuple[str, ...]] = {
         "SciShow",
         "Bozeman Science",
         "National Geographic",
+        "CrunchLabs",
     ),
     "english": ("Khan Academy", "Crash Course", "TED-Ed"),
     "history": ("Khan Academy", "Crash Course", "TED-Ed"),
