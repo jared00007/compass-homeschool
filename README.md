@@ -109,6 +109,33 @@ Snapshots sit in `backups/` next to `compass.db` and are gitignored. **Copy that
 folder somewhere off this machine** — a cloud drive or a USB stick. A daily
 snapshot on the same disk does not survive losing the disk.
 
+#### Syncing backups to Google Drive automatically
+
+Rather than remembering to copy `backups/` anywhere, point it *at* a cloud
+drive once and every automatic snapshot syncs itself from then on. With
+Google Drive for desktop installed and signed in:
+
+```bash
+./scripts/setup-cloud-backups.sh
+```
+
+It finds Google Drive's local synced folder, moves any snapshots already in
+`backups/` into a `Compass Backups` folder there, and replaces `backups/`
+with a symlink pointing at it. Compass itself needs no changes — it already
+just writes wherever `backups/` happens to point. Safe to re-run; it no-ops
+if already set up, and if more than one Google account is signed in it lists
+them and asks which to use.
+
+This only syncs the point-in-time snapshots, never the live `compass.db` —
+a cloud sync tool can corrupt a database file it catches mid-write, but a
+finished snapshot is never written to again once it exists, so it's safe.
+
+For real disaster-proofing, follow the **3-2-1 rule**: 3 copies of the data,
+on 2 different kinds of storage, with 1 kept offsite. Google Drive syncing
+covers the offsite cloud copy; periodically (quarterly, or at least at the
+end of each school year) also copy `backups/` to a USB drive and store that
+somewhere physically separate from the house.
+
 ---
 
 ## Why four agents instead of one
