@@ -301,6 +301,14 @@ def generate_lesson(
             raise LessonGenerationError(
                 "Could not reach the Anthropic API. Check your network connection."
             ) from exc
+        except TypeError as exc:
+            # The SDK raises a plain TypeError (not one of its own exception
+            # classes) when it can't resolve any credential at all -- caught
+            # here so a parent sees the same friendly error as every other
+            # auth failure, not a raw stack trace across their screen.
+            raise LessonGenerationError(
+                "Could not authenticate with the Anthropic API. Check ANTHROPIC_API_KEY."
+            ) from exc
 
         if response.stop_reason == "refusal":
             detail = getattr(response, "stop_details", None)

@@ -16,6 +16,7 @@ from compass.agents.framework import (
 )
 from compass.agents.llm import LessonGenerationError, api_available
 from compass.agents import life_skills
+from compass.agents import course_summary
 
 from compass.agents.math_agent import AGENT as MATH_AGENT
 from compass.agents.science_agent import AGENT as SCIENCE_AGENT
@@ -40,5 +41,6 @@ __all__ = [
     "api_available",
     "get_agent",
     "life_skills",
+    "course_summary",
     "register",
 ]

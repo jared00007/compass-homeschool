@@ -24,9 +24,10 @@ from functools import partial
 import streamlit as st
 
 from compass import config
+from compass.agents import LessonGenerationError, course_summary
 from compass.export import course_filename, course_to_docx
 from compass.subjects import SUBJECT_KEYS, label
-from compass.ui import md, page_setup, parent_only
+from compass.ui import api_status_banner, md, page_setup, parent_only
 
 db, student = page_setup("Courses", icon="🎓")
 
@@ -41,8 +42,27 @@ st.caption(
 if not parent_only("Course records are for your parent."):
     st.stop()
 
+api_ok = api_status_banner()
+
 courses = db.list_courses(student["id"])
 list_tab, add_tab = st.tabs(["Courses", "Add a course"])
+
+
+def _taught_for(course_id: int) -> list[dict]:
+    """Every activity tagged to this course, reshaped to what
+    `course_summary.generate_course_summary` wants: a title plus whatever
+    learning objectives its lesson recorded, or none for a manual entry."""
+    taught = []
+    for activity in db.course_activities(course_id):
+        lesson = activity.get("lesson")
+        payload = lesson["payload"] if lesson else {}
+        taught.append(
+            {
+                "title": payload.get("title") or activity["title"],
+                "objectives": payload.get("learning_objectives") or [],
+            }
+        )
+    return taught
 
 with list_tab:
     if not courses:
@@ -89,6 +109,21 @@ with list_tab:
                 f"Grade {course['grade_level'] or '—'} · "
                 f"{course['start_date']} through {course['end_date']}"
             )
+
+            taught = _taught_for(course["id"])
+            regen_label = (
+                "✨ Regenerate description, goals & outline from what's been taught"
+                if taught
+                else "✨ Draft description, goals & outline with AI"
+            )
+            if st.button(regen_label, key=f"regen_{course['id']}", disabled=not api_ok):
+                with st.spinner("Drafting course documentation…"):
+                    try:
+                        draft = course_summary.generate_course_summary(db, student, course, taught)
+                        db.update_course(course["id"], **draft)
+                        st.rerun()
+                    except LessonGenerationError as exc:
+                        st.error(str(exc))
 
             with st.form(f"edit_course_{course['id']}"):
                 description = st.text_area(
@@ -186,33 +221,78 @@ with list_tab:
 with add_tab:
     st.markdown("#### Add a course")
     default_start, default_end = db.school_year_bounds()
-    with st.form("add_course", clear_on_submit=True):
-        title = st.text_input("Course title", placeholder="e.g. Washington State History")
-        columns = st.columns(3)
-        credit_subject = columns[0].selectbox("Subject", SUBJECT_KEYS, format_func=label)
-        grade_level = columns[1].text_input("Grade level", value=student["grade"])
-        credit_value = columns[2].number_input(
-            "Credit value", min_value=0.25, max_value=2.0, value=1.0, step=0.25
+
+    # Not wrapped in st.form: the "Draft with AI" button below needs to react
+    # to whatever's already typed and then fill in the description/goals/
+    # outline fields, and a form only reruns on its own submit button --
+    # every other widget inside one is frozen until then.
+    title = st.text_input(
+        "Course title", placeholder="e.g. Washington State History", key="course_add_title"
+    )
+    columns = st.columns(3)
+    credit_subject = columns[0].selectbox(
+        "Subject", SUBJECT_KEYS, format_func=label, key="course_add_subject"
+    )
+    grade_level = columns[1].text_input(
+        "Grade level", value=student["grade"], key="course_add_grade"
+    )
+    credit_value = columns[2].number_input(
+        "Credit value", min_value=0.25, max_value=2.0, value=1.0, step=0.25,
+        key="course_add_credit_value",
+    )
+    date_columns = st.columns(2)
+    start = date_columns[0].date_input(
+        "Start date", value=date.fromisoformat(default_start), key="course_add_start"
+    )
+    end = date_columns[1].date_input(
+        "End date", value=date.fromisoformat(default_end), key="course_add_end"
+    )
+
+    if st.button(
+        "✨ Draft description, goals & outline with AI",
+        disabled=not api_ok or not title.strip(),
+    ):
+        with st.spinner("Drafting course documentation…"):
+            try:
+                draft = course_summary.generate_course_summary(
+                    db,
+                    student,
+                    {
+                        "title": title.strip(),
+                        "credit_subject": credit_subject,
+                        "grade_level": grade_level.strip(),
+                        "credit_value": float(credit_value),
+                    },
+                    taught=[],
+                )
+                st.session_state["course_add_description"] = draft["description"]
+                st.session_state["course_add_goals"] = draft["goals"]
+                st.session_state["course_add_outline"] = draft["outline"]
+                st.rerun()
+            except LessonGenerationError as exc:
+                st.error(str(exc))
+
+    description = st.text_area("Course description", key="course_add_description", height=80)
+    goals = st.text_area("Course goals and objectives", key="course_add_goals", height=80)
+    outline = st.text_area("Course outline of the program", key="course_add_outline", height=100)
+
+    if st.button("Add course", type="primary") and title.strip():
+        db.create_course(
+            student["id"],
+            title.strip(),
+            credit_subject,
+            start.isoformat(),
+            end.isoformat(),
+            grade_level=grade_level.strip(),
+            description=description.strip(),
+            goals=goals.strip(),
+            outline=outline.strip(),
+            credit_value=float(credit_value),
         )
-        date_columns = st.columns(2)
-        start = date_columns[0].date_input(
-            "Start date", value=date.fromisoformat(default_start)
-        )
-        end = date_columns[1].date_input("End date", value=date.fromisoformat(default_end))
-        description = st.text_area("Course description", height=80)
-        goals = st.text_area("Course goals and objectives", height=80)
-        outline = st.text_area("Course outline of the program", height=100)
-        if st.form_submit_button("Add course", type="primary") and title.strip():
-            db.create_course(
-                student["id"],
-                title.strip(),
-                credit_subject,
-                start.isoformat(),
-                end.isoformat(),
-                grade_level=grade_level.strip(),
-                description=description.strip(),
-                goals=goals.strip(),
-                outline=outline.strip(),
-                credit_value=float(credit_value),
-            )
-            st.rerun()
+        for key in (
+            "course_add_title", "course_add_subject", "course_add_grade",
+            "course_add_credit_value", "course_add_start", "course_add_end",
+            "course_add_description", "course_add_goals", "course_add_outline",
+        ):
+            st.session_state.pop(key, None)
+        st.rerun()

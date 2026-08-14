@@ -8,8 +8,17 @@ real URLs a search actually returned.
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
-from compass.agents.llm import LESSON_SCHEMA, _count_web_searches, _search_result_urls
+import pytest
+
+from compass.agents.llm import (
+    LESSON_SCHEMA,
+    LessonGenerationError,
+    _count_web_searches,
+    _search_result_urls,
+    generate_lesson,
+)
 
 
 def result_block(urls: list[str]):
@@ -78,3 +87,18 @@ def test_lesson_schema_requires_a_worked_example_on_every_activity():
     assert "example" in activity_schema["properties"]
     assert "example" in activity_schema["required"]
     assert activity_schema["additionalProperties"] is False
+
+
+def test_an_unresolved_credential_typeerror_becomes_a_lessongenerationerror():
+    """The Anthropic SDK raises a bare TypeError (not one of its own
+    exception classes) when it can't resolve any credential at all -- caught
+    live during this session's own testing, where it surfaced as a raw
+    traceback across the Streamlit page instead of the friendly error every
+    other auth failure gets. Must be wrapped the same way."""
+    fake_client = MagicMock()
+    fake_client.beta.messages.create.side_effect = TypeError(
+        "Could not resolve authentication method."
+    )
+    with patch("compass.agents.llm._client", return_value=fake_client):
+        with pytest.raises(LessonGenerationError, match="authenticate"):
+            generate_lesson(system="system prompt", user_prompt="write it")

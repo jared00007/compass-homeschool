@@ -7,7 +7,7 @@ from datetime import date
 import streamlit as st
 
 from compass import config
-from compass.agents import life_skills
+from compass.agents import course_summary, life_skills
 from compass.compliance import build_report
 from compass.curriculum import frontier_report
 from compass.subjects import label
@@ -63,17 +63,18 @@ if not is_parent():
 
     st.divider()
 
-    # 3. Lessons ready for you. Life-skill plans live in the same table but are
-    # written *to the parent* — "demonstrate once, then hand him the jack and
-    # stay quiet" is not his to read. A lesson he's already marked done
-    # (student_lesson_view's own signal, separate from `status`) drops off
-    # here too -- otherwise it sits here forever until the parent logs it,
-    # which can be days.
+    # 3. Lessons ready for you. Life-skill plans and course-documentation
+    # drafts live in the same table but are written *to the parent* --
+    # "demonstrate once, then hand him the jack and stay quiet" is not his
+    # to read, and a drafted course description is paperwork, not a lesson.
+    # A lesson he's already marked done (student_lesson_view's own signal,
+    # separate from `status`) drops off here too -- otherwise it sits here
+    # forever until the parent logs it, which can be days.
     planned = [
         lesson
         for lesson in db.list_lessons(student["id"], limit=25)
         if lesson["status"] == "planned"
-        and lesson["agent"] != life_skills.AGENT_KEY
+        and lesson["agent"] not in (life_skills.AGENT_KEY, course_summary.AGENT_KEY)
         and not (lesson.get("metadata") or {}).get("student_done_on")
     ]
 
