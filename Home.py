@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import streamlit as st
 
-from compass import config
+from compass import config, weekly
 from compass.agents import course_summary, life_skills
 from compass.compliance import build_report
 from compass.curriculum import frontier_report
 from compass.subjects import label
 from compass.ui import (
+    SUBJECT_ICONS,
     is_parent,
     md,
     page_setup,
@@ -27,9 +28,10 @@ db, student = page_setup("Home", icon="🧭")
 
 # --- student view -------------------------------------------------------------
 # When a PIN is set, this is what he lands on: today's work, and nothing that
-# would spoil it. Laid out as a checklist he can work top to bottom -- start
-# the day feeling good, check in, then the actual lessons -- rather than one
-# flat pile of cards.
+# would spoil it. Two tabs -- Day is the checklist he works top to bottom
+# (start the day feeling good, check in, then the actual lessons), Week is a
+# read-only glance at the whole week at once so he can see what's coming
+# without having to click through five separate days.
 
 if not is_parent():
     st.title(f"Hi {student['name'].split()[0]} 👋")
@@ -39,122 +41,200 @@ if not is_parent():
 
     st.divider()
 
-    # 1. Morning routine -- start the day with a stretch/breathing/mindfulness
-    # pick before anything else on the list.
-    render_morning_routine(db, student)
+    day_tab, week_tab = st.tabs(["📅 Today", "🗓️ This Week"])
 
-    st.divider()
+    # === Today ===================================================================
 
-    # 2. Check-in -- its own self-contained status, same as morning routine.
-    today = date.today().isoformat()
-    checked_in = db.journal_entry_for_date(student["id"], today) is not None
-    st.markdown("### 💬 Check-In")
-    row = st.columns([5, 2])
-    with row[0]:
-        if checked_in:
-            st.success("✅ You've checked in today.")
+    with day_tab:
+        # 1. Morning routine -- start the day with a stretch/breathing/mindfulness
+        # pick before anything else on the list.
+        render_morning_routine(db, student)
+
+        st.divider()
+
+        # 2. Check-in -- its own self-contained status, same as morning routine.
+        today = date.today().isoformat()
+        checked_in = db.journal_entry_for_date(student["id"], today) is not None
+        st.markdown("### 💬 Check-In")
+        row = st.columns([5, 2])
+        with row[0]:
+            if checked_in:
+                st.success("✅ You've checked in today.")
+            else:
+                st.caption("Take a second to say how you're doing today.")
+        with row[1]:
+            st.page_link(
+                "pages/8_Check_In.py",
+                label="Check in again" if checked_in else "Open Check-In",
+                icon="➡️",
+            )
+
+        st.divider()
+
+        # 3. Lessons ready for you. Life-skill plans and course-documentation
+        # drafts live in the same table but are written *to the parent* --
+        # "demonstrate once, then hand him the jack and stay quiet" is not his
+        # to read, and a drafted course description is paperwork, not a lesson.
+        # A lesson he's already marked done (student_lesson_view's own signal,
+        # separate from `status`) drops off here too -- otherwise it sits here
+        # forever until the parent logs it, which can be days.
+        planned = [
+            lesson
+            for lesson in db.list_lessons(student["id"], limit=25)
+            if lesson["status"] == "planned"
+            and lesson["agent"] not in (life_skills.AGENT_KEY, course_summary.AGENT_KEY)
+            and not (lesson.get("metadata") or {}).get("student_done_on")
+        ]
+        # A lesson planned ahead (This Week -- Friday planning) carries which day
+        # it's meant for. Those sort first, in day order, labeled so the week
+        # reads as a week rather than a flat pile; anything generated the
+        # ordinary on-demand way (no day attached) sorts after, unlabeled,
+        # exactly as it always has.
+        planned.sort(key=lambda l: (l.get("metadata") or {}).get("planned_for") or "9999-99-99")
+
+        st.markdown(f"### 📚 Lessons ({len(planned)})")
+        if not planned:
+            st.caption("Nothing new is set up yet. Check back after your parent plans a lesson.")
         else:
-            st.caption("Take a second to say how you're doing today.")
-    with row[1]:
-        st.page_link(
-            "pages/8_Check_In.py",
-            label="Check in again" if checked_in else "Open Check-In",
-            icon="➡️",
+            for lesson in planned:
+                with st.container(border=True):
+                    payload = lesson["payload"]
+                    planned_for = (lesson.get("metadata") or {}).get("planned_for")
+                    day_badge = ""
+                    if planned_for:
+                        day_badge = (
+                            " · Today" if planned_for == today
+                            else f" · {date.fromisoformat(planned_for).strftime('%A')}"
+                        )
+                    st.markdown(f"⬜ **{md(payload.get('title', lesson['title']))}**")
+                    st.caption(
+                        f"{lesson['agent'].title()} · {payload.get('estimated_minutes', '?')} min"
+                        f"{day_badge}"
+                    )
+                    if payload.get("overview"):
+                        st.write(md(payload["overview"]))
+                    with st.expander("Open this lesson", expanded=False):
+                        render_lesson(payload, for_parent=False)
+
+        st.divider()
+
+        # 4. Vocabulary review.
+        # Same limit render_vocab_review uses, so this count matches what he'll
+        # actually see when he clicks through rather than under- or over-stating it.
+        due = db.vocabulary_due(student["id"], limit=25)
+        st.markdown("### 🔤 Words to Review")
+        row = st.columns([5, 2])
+        with row[0]:
+            if due:
+                st.caption(f"{len(due)} word(s) due today.")
+            else:
+                st.success("✅ Nothing due today.")
+        with row[1]:
+            if due:
+                st.page_link("pages/3_English.py", label="Review them", icon="➡️")
+
+        st.divider()
+        if render_today_checklist(db, student):
+            st.divider()
+        columns = st.columns(2)
+
+        with columns[0]:
+            st.markdown("#### 📖 Reading")
+            book = db.current_book(student["id"])
+            if book:
+                st.markdown(f"**{book['title']}**")
+                if book["total_pages"]:
+                    st.progress(
+                        min((book["current_page"] or 0) / book["total_pages"], 1.0),
+                        text=f"page {book['current_page']} of {book['total_pages']}",
+                    )
+            else:
+                st.caption("No book set up yet.")
+
+        with columns[1]:
+            st.markdown("#### ⭐ Your choice topics")
+            topics = [
+                t
+                for t in db.list_choice_topics(student["id"])
+                if t["status"] in ("active", "approved")
+            ]
+            if topics:
+                for topic in topics[:4]:
+                    st.markdown(f"- {md(topic['title'])}")
+            else:
+                st.caption("Nothing yet — add something you want to learn.")
+            st.page_link("pages/5_Choice_Topics.py", label="Add a topic", icon="➡️")
+
+    # === This Week ================================================================
+    # Read-only -- the plan itself is set by a parent on This Week (Friday
+    # planning), this just lays out what's already there day by day so he can
+    # see the whole week without clicking into Monday through Friday one at a
+    # time. Monday-Thursday get whatever Tier 1 subject was planned for that
+    # day; Friday is deliberately never a new-content day (see compass/weekly.py),
+    # so it gets a lighter prompt instead.
+
+    with week_tab:
+        this_week_start = weekly.week_start()
+        day_dates = [this_week_start + timedelta(days=i) for i in range(5)]
+        day_names = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
+        today_date = date.today()
+
+        st.caption(
+            f"{day_dates[0].strftime('%b %-d')} – {day_dates[-1].strftime('%b %-d')} · "
+            "only shows what's been planned through weekly planning -- anything "
+            "generated on the fly still shows up on **Today**, not here."
         )
 
-    st.divider()
+        week_lessons = weekly.latest_per_day(
+            db.lessons_for_week(student["id"], this_week_start.isoformat())
+        )
+        lessons_by_day: dict[str, list[dict]] = {}
+        for lesson in week_lessons:
+            planned_for = lesson["metadata"].get("planned_for", "")
+            lessons_by_day.setdefault(planned_for, []).append(lesson)
 
-    # 3. Lessons ready for you. Life-skill plans and course-documentation
-    # drafts live in the same table but are written *to the parent* --
-    # "demonstrate once, then hand him the jack and stay quiet" is not his
-    # to read, and a drafted course description is paperwork, not a lesson.
-    # A lesson he's already marked done (student_lesson_view's own signal,
-    # separate from `status`) drops off here too -- otherwise it sits here
-    # forever until the parent logs it, which can be days.
-    planned = [
-        lesson
-        for lesson in db.list_lessons(student["id"], limit=25)
-        if lesson["status"] == "planned"
-        and lesson["agent"] not in (life_skills.AGENT_KEY, course_summary.AGENT_KEY)
-        and not (lesson.get("metadata") or {}).get("student_done_on")
-    ]
-    # A lesson planned ahead (This Week -- Friday planning) carries which day
-    # it's meant for. Those sort first, in day order, labeled so the week
-    # reads as a week rather than a flat pile; anything generated the
-    # ordinary on-demand way (no day attached) sorts after, unlabeled,
-    # exactly as it always has.
-    planned.sort(key=lambda l: (l.get("metadata") or {}).get("planned_for") or "9999-99-99")
+        checked_in_dates = {
+            e["entry_date"] for e in db.list_journal_entries(student["id"], limit=60)
+        }
 
-    st.markdown(f"### 📚 Lessons ({len(planned)})")
-    if not planned:
-        st.caption("Nothing new is set up yet. Check back after your parent plans a lesson.")
-    else:
-        for lesson in planned:
-            with st.container(border=True):
-                payload = lesson["payload"]
-                planned_for = (lesson.get("metadata") or {}).get("planned_for")
-                day_badge = ""
-                if planned_for:
-                    day_badge = (
-                        " · Today" if planned_for == today
-                        else f" · {date.fromisoformat(planned_for).strftime('%A')}"
+        day_columns = st.columns(5)
+        for column, day_name, day_date in zip(day_columns, day_names, day_dates):
+            day_iso = day_date.isoformat()
+            with column:
+                st.markdown(f"**{day_name}**" + (" · Today" if day_date == today_date else ""))
+                st.caption(day_date.strftime("%b %-d"))
+
+                if day_iso in checked_in_dates:
+                    st.caption("💬 ✅ checked in")
+                elif day_date > today_date:
+                    st.caption("💬 —")
+                else:
+                    st.caption("💬 ⬜ no check-in")
+
+                if day_name == "Friday":
+                    st.caption(
+                        "🎬 Light day — review what you've done this week, or work "
+                        "on whatever's below."
                     )
-                st.markdown(f"⬜ **{md(payload.get('title', lesson['title']))}**")
-                st.caption(
-                    f"{lesson['agent'].title()} · {payload.get('estimated_minutes', '?')} min"
-                    f"{day_badge}"
-                )
-                if payload.get("overview"):
-                    st.write(md(payload["overview"]))
-                with st.expander("Open this lesson", expanded=False):
-                    render_lesson(payload, for_parent=False)
+                else:
+                    day_lessons = lessons_by_day.get(day_iso, [])
+                    if not day_lessons:
+                        st.caption("Nothing planned yet.")
+                    for lesson in day_lessons:
+                        icon = SUBJECT_ICONS.get(lesson["agent"], "📘")
+                        done = bool(lesson["metadata"].get("student_done_on"))
+                        marker = "✅" if done else "⬜"
+                        quiz = lesson["metadata"].get("quiz_result") or {}
+                        badge = " 🎯" if quiz.get("passed") else ""
+                        st.markdown(f"{marker} {icon} {md(lesson['title'])}{badge}")
 
-    st.divider()
-
-    # 4. Vocabulary review.
-    # Same limit render_vocab_review uses, so this count matches what he'll
-    # actually see when he clicks through rather than under- or over-stating it.
-    due = db.vocabulary_due(student["id"], limit=25)
-    st.markdown("### 🔤 Words to Review")
-    row = st.columns([5, 2])
-    with row[0]:
-        if due:
-            st.caption(f"{len(due)} word(s) due today.")
-        else:
-            st.success("✅ Nothing due today.")
-    with row[1]:
-        if due:
-            st.page_link("pages/3_English.py", label="Review them", icon="➡️")
-
-    st.divider()
-    if render_today_checklist(db, student):
         st.divider()
-    columns = st.columns(2)
-
-    with columns[0]:
-        st.markdown("#### 📖 Reading")
-        book = db.current_book(student["id"])
-        if book:
-            st.markdown(f"**{book['title']}**")
-            if book["total_pages"]:
-                st.progress(
-                    min((book["current_page"] or 0) / book["total_pages"], 1.0),
-                    text=f"page {book['current_page']} of {book['total_pages']}",
-                )
-        else:
-            st.caption("No book set up yet.")
-
-    with columns[1]:
-        st.markdown("#### ⭐ Your choice topics")
-        topics = [
-            t for t in db.list_choice_topics(student["id"]) if t["status"] in ("active", "approved")
-        ]
-        if topics:
-            for topic in topics[:4]:
-                st.markdown(f"- {md(topic['title'])}")
-        else:
-            st.caption("Nothing yet — add something you want to learn.")
-        st.page_link("pages/5_Choice_Topics.py", label="Add a topic", icon="➡️")
+        st.caption("✨ Extra activities, if there's time this week")
+        extra_columns = st.columns(4)
+        extra_columns[0].page_link("pages/7_Big_Projects.py", label="Big Projects", icon="🎬")
+        extra_columns[1].page_link("pages/6_Life_Skills.py", label="Life Skills", icon="🛠️")
+        extra_columns[2].page_link("pages/5_Choice_Topics.py", label="Choice Topics", icon="⭐")
+        extra_columns[3].page_link("pages/9_Landons_Travels.py", label="Travels", icon="🧭")
 
     st.stop()
 

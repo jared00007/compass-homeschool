@@ -53,28 +53,6 @@ def _day_label(iso_date: str) -> str:
     return date.fromisoformat(iso_date).strftime("%A, %b %-d")
 
 
-def _latest_per_day(lessons: list[dict]) -> list[dict]:
-    """Regenerating a day inserts a fresh lesson rather than replacing the
-    old one -- same "newest wins, nothing gets deleted" approach already
-    used for life-skill plans (`Database.latest_life_skill_plan`). Keyed on
-    (agent, planned_for) so a superseded lesson just stops being shown here
-    rather than needing to be deleted; it's still there for Activity Log's
-    own "to review" cleanup if it was never logged.
-
-    `lessons` must already be sorted oldest-first (planned_for, id), which
-    is exactly what `Database.lessons_for_week` returns -- iterating in that
-    order and overwriting a dict keyed by (agent, planned_for) naturally
-    keeps the newest entry for each day.
-    """
-    latest: dict[tuple[str, str], dict] = {}
-    for lesson in lessons:
-        key = (lesson["agent"], lesson["metadata"].get("planned_for", ""))
-        latest[key] = lesson
-    return sorted(
-        latest.values(), key=lambda l: (l["metadata"].get("planned_for", ""), l["id"])
-    )
-
-
 review_tab, plan_tab = st.tabs(["Review this week", "Plan next week"])
 
 # --- Review this week ----------------------------------------------------------
@@ -94,7 +72,9 @@ with review_tab:
     columns[1].metric("Days of instruction", report.instructional_days)
     columns[2].metric("Activities logged", report.activity_count)
 
-    week_lessons = _latest_per_day(db.lessons_for_week(student["id"], this_week_start.isoformat()))
+    week_lessons = weekly.latest_per_day(
+        db.lessons_for_week(student["id"], this_week_start.isoformat())
+    )
     if not week_lessons:
         st.info(
             "Nothing was planned for this week -- either it predates this feature, "
@@ -140,7 +120,9 @@ with plan_tab:
         f"{target_dates[-1].strftime('%b %-d, %Y')}."
     )
 
-    existing = _latest_per_day(db.lessons_for_week(student["id"], target_week_start.isoformat()))
+    existing = weekly.latest_per_day(
+        db.lessons_for_week(student["id"], target_week_start.isoformat())
+    )
     existing_by_agent: dict[str, list[dict]] = {}
     for lesson in existing:
         existing_by_agent.setdefault(lesson["agent"], []).append(lesson)

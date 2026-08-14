@@ -135,6 +135,30 @@ def plan_subject_week(
     return results
 
 
+def latest_per_day(lessons: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Regenerating a day inserts a fresh lesson rather than replacing the
+    old one -- same "newest wins, nothing gets deleted" approach already
+    used for life-skill plans (`Database.latest_life_skill_plan`). Keyed on
+    (agent, planned_for) so a superseded lesson just stops being shown here
+    rather than needing to be deleted; it's still there for Activity Log's
+    own "to review" cleanup if it was never logged.
+
+    `lessons` must already be sorted oldest-first (planned_for, id), which
+    is exactly what `Database.lessons_for_week` returns -- iterating in that
+    order and overwriting a dict keyed by (agent, planned_for) naturally
+    keeps the newest entry for each day. Shared by `pages/14_This_Week.py`
+    (the parent's planner) and Home's Week tab (the student's read-only
+    view of the same plan).
+    """
+    latest: dict[tuple[str, str], dict[str, Any]] = {}
+    for lesson in lessons:
+        key = (lesson["agent"], lesson["metadata"].get("planned_for", ""))
+        latest[key] = lesson
+    return sorted(
+        latest.values(), key=lambda l: (l["metadata"].get("planned_for", ""), l["id"])
+    )
+
+
 MATH_STAGE_NOTES: tuple[str, ...] = (
     "",  # Day 1: no note. A fresh introduction, taught the normal way.
     "This is day 2 of 4 on this same skill this week -- additional "

@@ -21,6 +21,7 @@ from compass.agents.llm import LessonGenerationError
 from compass.weekly import (
     MATH_STAGE_NOTES,
     default_plan_target,
+    latest_per_day,
     plan_day,
     plan_math_week,
     plan_subject_week,
@@ -61,6 +62,43 @@ def test_default_plan_target_is_the_monday_after_next():
     Friday Aug 14 sits in the week starting Aug 10, so the plan target is
     Aug 17, not Aug 10 itself."""
     assert default_plan_target(date(2026, 8, 14)) == date(2026, 8, 17)
+
+
+# --- latest_per_day: dedup for a regenerated day ------------------------------------
+
+
+def _lesson(id, agent, planned_for):
+    return {"id": id, "agent": agent, "metadata": {"planned_for": planned_for}}
+
+
+def test_latest_per_day_keeps_the_newest_lesson_for_a_regenerated_day():
+    lessons = [
+        _lesson(1, "math", "2026-08-10"),
+        _lesson(2, "math", "2026-08-10"),  # regenerated -- supersedes id 1
+    ]
+    result = latest_per_day(lessons)
+    assert len(result) == 1
+    assert result[0]["id"] == 2
+
+
+def test_latest_per_day_keeps_different_agents_and_days_separate():
+    lessons = [
+        _lesson(1, "math", "2026-08-10"),
+        _lesson(2, "science", "2026-08-10"),
+        _lesson(3, "math", "2026-08-11"),
+    ]
+    result = latest_per_day(lessons)
+    assert {(l["id"]) for l in result} == {1, 2, 3}
+
+
+def test_latest_per_day_sorts_by_planned_for_then_id():
+    lessons = [
+        _lesson(5, "math", "2026-08-12"),
+        _lesson(1, "science", "2026-08-10"),
+        _lesson(3, "english", "2026-08-10"),
+    ]
+    result = latest_per_day(lessons)
+    assert [l["id"] for l in result] == [1, 3, 5]
 
 
 # --- plan_day: the single-day primitive -------------------------------------------
