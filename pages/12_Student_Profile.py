@@ -10,7 +10,7 @@ import html
 
 import streamlit as st
 
-from compass import config
+from compass import apikey, config
 from compass.ui import page_setup, parent_only
 
 db, student = page_setup("Student Profile", icon="🧑‍🎓")
@@ -112,3 +112,33 @@ difficulty_choice = st.selectbox(
 if difficulty_choice != current_difficulty:
     db.set_setting("lesson_difficulty", difficulty_choice)
     st.rerun()
+
+st.divider()
+
+st.subheader("Anthropic API key")
+st.caption(
+    "Powers lesson generation everywhere in Compass -- Anthropic keys expire "
+    "or get rotated occasionally, so this is where to drop in a new one "
+    "without touching a terminal. Takes effect immediately, no restart."
+)
+
+current = apikey.masked_key()
+if current:
+    st.success(f"Active key ends in {current}")
+else:
+    st.warning("No API key set -- lesson generation is off.")
+
+with st.form("api_key_form", clear_on_submit=True):
+    new_key = st.text_input(
+        "New key",
+        type="password",
+        placeholder="sk-ant-...",
+        label_visibility="collapsed",
+    )
+    if st.form_submit_button("Save key", type="primary") and new_key.strip():
+        if new_key.strip().startswith("sk-ant-"):
+            apikey.save_key(new_key)
+            st.success("Saved -- ready to use right away.")
+            st.rerun()
+        else:
+            st.error("That doesn't look like an Anthropic key (they start with 'sk-ant-').")
