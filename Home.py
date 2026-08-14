@@ -105,6 +105,9 @@ if not is_parent():
         extra_columns[2].page_link("pages/5_Choice_Topics.py", label="Choice Topics", icon="⭐")
         extra_columns[3].page_link("pages/9_Landons_Travels.py", label="Travels", icon="🧭")
 
+    this_week_start = weekly.week_start()
+    this_week_end = (this_week_start + timedelta(days=4)).isoformat()  # Friday
+
     day_tab, week_tab, upcoming_tab = st.tabs(
         ["📅 Today", "🗓️ This Week", "🔜 Upcoming Week"]
     )
@@ -159,13 +162,21 @@ if not is_parent():
         # here too, which meant "Lessons (14)" was really a whole week's
         # worth stacked into one list -- read at a glance, that's 10+ hours
         # that looks like it's all due today. Later days now live on the
-        # This Week / Upcoming Week tabs instead.
+        # This Week / Upcoming Week tabs instead -- split on this week's own
+        # Friday, not just "today," since on a Friday itself (the week's last
+        # scheduled day) *nothing* dated after today can still be "later this
+        # week" -- it's necessarily a future week, and mislabeling it "this
+        # week" points at the wrong tab.
         due_now = []
-        later_count = 0
+        later_this_week = 0
+        later_week = 0
         for lesson in all_planned:
             planned_for = (lesson.get("metadata") or {}).get("planned_for")
             if planned_for and planned_for > today:
-                later_count += 1
+                if planned_for <= this_week_end:
+                    later_this_week += 1
+                else:
+                    later_week += 1
             else:
                 due_now.append(lesson)
         due_now.sort(key=lambda l: (l.get("metadata") or {}).get("planned_for") or "9999-99-99")
@@ -193,10 +204,15 @@ if not is_parent():
                         st.write(md(payload["overview"]))
                     with st.expander("Open this lesson", expanded=False):
                         render_lesson(payload, for_parent=False)
-        if later_count:
+        if later_this_week:
             st.caption(
-                f"{later_count} more lesson(s) planned for later this week — see "
-                "the **This Week** tab."
+                f"{later_this_week} more lesson(s) planned for later this week — "
+                "see the **This Week** tab."
+            )
+        if later_week:
+            st.caption(
+                f"{later_week} more lesson(s) planned for a later week — see the "
+                "**Upcoming Week** tab."
             )
 
         st.divider()
@@ -255,7 +271,6 @@ if not is_parent():
     # time. Upcoming Week is only ever as populated as however far ahead a
     # parent has actually planned -- usually nothing until the Friday before.
 
-    this_week_start = weekly.week_start()
     next_week_start = this_week_start + timedelta(days=7)
 
     with week_tab:
