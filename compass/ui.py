@@ -96,6 +96,40 @@ def _sidebar(db: Database, student: dict[str, Any]) -> None:
         _profile_control(db, student)
         st.divider()
         _mode_control(db)
+    _hide_parent_only_nav()
+
+
+# Pages that are entirely parent admin -- record-keeping, settings, spend --
+# rather than something he does. Each already gates its own content behind
+# parent_only(), so hiding the tab is UX cleanup on top of that, not the only
+# thing standing between him and it: typing the URL directly still hits the
+# same PIN gate the tab would have.
+_PARENT_ONLY_PAGES = (
+    "Activity_Log",
+    "Compliance",
+    "Student_Profile",
+    "Courses",
+    "This_Week",
+    "Model_Costs",
+)
+
+
+def _hide_parent_only_nav() -> None:
+    if is_parent():
+        return
+    selector = ", ".join(
+        f'a[data-testid="stSidebarNavLink"][href$="/{slug}"]' for slug in _PARENT_ONLY_PAGES
+    )
+    st.markdown(
+        f"""<style>
+        {selector} {{ display: none !important; }}
+        /* Once the pages above are hidden, the ones left over fit without
+        Streamlit's "View N more" collapse -- toggling it would just open onto
+        empty space, so it goes too rather than becoming a dead click. */
+        [data-testid="stSidebarNavViewButton"] {{ display: none !important; }}
+        </style>""",
+        unsafe_allow_html=True,
+    )
 
 
 def _profile_control(db: Database, student: dict[str, Any]) -> None:

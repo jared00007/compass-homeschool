@@ -265,3 +265,54 @@ def test_profile_editor_is_parent_only(monkeypatch, tmp_path):
     db.close()
 
     assert not written, "the student-view branch must render nothing at all"
+
+
+def test_student_view_hides_the_parent_only_nav_tabs(monkeypatch):
+    """Activity Log, Compliance, Student Profile, Courses, This Week, and Model
+    Costs are all parent admin -- record-keeping, settings, spend -- rather than
+    something he does. Each already gates its own content behind parent_only(),
+    but the tab itself has to disappear too, not just the content behind it."""
+    import compass.ui as ui
+
+    written: list[str] = []
+
+    class Recorder:
+        def __getattr__(self, _name):
+            def record(*args, **kwargs):
+                for arg in args:
+                    if isinstance(arg, str):
+                        written.append(arg)
+                return Recorder()
+            return record
+
+    monkeypatch.setattr(ui, "st", Recorder())
+    monkeypatch.setattr(ui, "is_parent", lambda: False)
+    ui._hide_parent_only_nav()
+
+    css = "\n".join(written)
+    for slug in ui._PARENT_ONLY_PAGES:
+        assert f'href$="/{slug}"' in css
+    # And the subjects/tiers he does use must never be targeted.
+    for kept in ("Home", "Math", "Choice_Topics", "Life_Skills", "Big_Projects", "Check_In"):
+        assert f'href$="/{kept}"' not in css
+
+
+def test_parent_view_leaves_the_nav_untouched(monkeypatch):
+    import compass.ui as ui
+
+    written: list[str] = []
+
+    class Recorder:
+        def __getattr__(self, _name):
+            def record(*args, **kwargs):
+                for arg in args:
+                    if isinstance(arg, str):
+                        written.append(arg)
+                return Recorder()
+            return record
+
+    monkeypatch.setattr(ui, "st", Recorder())
+    monkeypatch.setattr(ui, "is_parent", lambda: True)
+    ui._hide_parent_only_nav()
+
+    assert not written, "parent view must never hide nav tabs"
