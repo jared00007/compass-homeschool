@@ -1083,7 +1083,37 @@ VOCAB_STREAK_ON_FIRE = 5  # streak length that earns balloons, not just a toast
 
 
 VOCAB_MEMORY_ROUND_SIZE = 6  # pairs per round -- 12 face-down cards
-VOCAB_MEMORY_COLUMNS = 4
+VOCAB_MEMORY_COLUMNS = 3  # fewer, wider columns -- bigger cards
+VOCAB_MEMORY_CARD_BACK = "**?**"
+
+_VOCAB_CARD_CSS = """
+<style>
+div[class*="st-key-vocab_card_"] button {
+  aspect-ratio: 1 / 1;
+  height: auto !important;
+  min-height: 120px;
+  padding: 14px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  white-space: normal !important;
+}
+div[class*="st-key-vocab_card_"] button p {
+  font-size: 1.15rem;
+  line-height: 1.35;
+}
+/* The card back's "?" is the only bold text this grid ever shows -- markdown
+   bold renders as a nested <strong>, which nothing else here uses, so this
+   reaches the glyph itself without touching revealed word/definition text. */
+div[class*="st-key-vocab_card_"] button p strong {
+  font-size: 3.4rem;
+  font-family: var(--c-mono);
+  color: var(--c-alt);
+  text-shadow: 0 0 14px var(--c-alt);
+}
+</style>
+"""
 
 
 def render_vocab_memory(db: Database, student: dict[str, Any]) -> None:
@@ -1201,6 +1231,7 @@ def render_vocab_memory(db: Database, student: dict[str, Any]) -> None:
     else:
         st.caption("Flip two cards. Word and definition, same pair.")
 
+    st.markdown(_VOCAB_CARD_CSS, unsafe_allow_html=True)
     columns = st.columns(VOCAB_MEMORY_COLUMNS)
     for index, card_id in enumerate(state["card_order"]):
         vocab_id = state["card_vocab"][card_id]
@@ -1215,7 +1246,7 @@ def render_vocab_memory(db: Database, student: dict[str, Any]) -> None:
             )
             label = f"✅ {text}" if is_resolved else str(text)
         else:
-            label = "🎴"
+            label = VOCAB_MEMORY_CARD_BACK
         if column.button(
             label,
             key=f"vocab_card_{card_id}",

@@ -524,7 +524,7 @@ def test_cards_start_face_down(monkeypatch, db, student):
     page, _ = render_memory(monkeypatch, db, student)
     assert "ephemeral" not in page
     assert "lasting a very short time" not in page
-    assert "🎴" in page
+    assert ui.VOCAB_MEMORY_CARD_BACK in page
 
 
 def test_a_fresh_call_initializes_a_round_from_due_words(monkeypatch, db, student):
