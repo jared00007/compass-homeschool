@@ -207,6 +207,48 @@ def test_pace_is_achievable_when_the_year_is_on_track(db, student):
     assert pace["hours_per_week_needed"] < 40
 
 
+def test_pace_projects_a_days_shortfall_from_a_light_logging_rate(db, student):
+    """Hours and days are separate risks -- a family can clear 1,000 hours on
+    a four-day week while still projecting well short of 180 days, since a
+    day only counts once *something* gets logged on it."""
+    for day in range(1, 6):  # 5 distinct days logged out of 30 elapsed
+        db.log_activity(
+            student_id=student["id"],
+            title="Math",
+            tier=config.TIER_CORE,
+            primary_subject="math",
+            minutes=60,
+            subject_credits={"math": 60},
+            occurred_on=f"2025-09-{day:02d}",
+        )
+    report = build_report(db, student["id"], "2025-09-01", "2026-08-31")
+    pace = report.pace(today=date(2025, 9, 30))
+
+    assert report.instructional_days == 5
+    # 5 days logged over 30 elapsed, projected across the full 365-day period.
+    assert pace["projected_days"] == pytest.approx(5 * 365 / 30, abs=0.1)
+    assert not pace["days_on_track"]
+
+
+def test_pace_is_on_track_when_the_day_rate_clears_the_target(db, student):
+    for day in range(1, 17):  # 16 distinct days out of 30 elapsed
+        db.log_activity(
+            student_id=student["id"],
+            title="Math",
+            tier=config.TIER_CORE,
+            primary_subject="math",
+            minutes=60,
+            subject_credits={"math": 60},
+            occurred_on=f"2025-09-{day:02d}",
+        )
+    report = build_report(db, student["id"], "2025-09-01", "2026-08-31")
+    pace = report.pace(today=date(2025, 9, 30))
+
+    assert report.instructional_days == 16
+    assert pace["projected_days"] >= report.day_target
+    assert pace["days_on_track"]
+
+
 def test_activities_outside_the_range_are_excluded(db, student):
     db.log_activity(
         student_id=student["id"],

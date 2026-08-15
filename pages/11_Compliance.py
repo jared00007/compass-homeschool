@@ -16,7 +16,11 @@ from compass.backup import (
 )
 from compass.backup import restore as restore_snapshot
 from compass.backup import snapshot as take_snapshot
-from compass.compliance import build_report, declaration_status
+from compass.compliance import (
+    MIN_ELAPSED_DAYS_FOR_DAY_PACE_SIGNAL,
+    build_report,
+    declaration_status,
+)
 from compass.ui import page_setup, parent_only, render_declaration_banner
 
 db, student = page_setup("Compliance", icon="📋")
@@ -72,6 +76,21 @@ if report.hours_remaining and pace["remaining_days"] > 0:
             "If hours were taught but not logged, backfill them in the Activity Log; "
             "otherwise adjust the year's dates or target below."
         )
+
+# Hours and days are separate risks. One content day can carry three-plus
+# hours (four Tier 1 subjects at once), so the hour floor clears easily even
+# on a four-day week -- but a day only counts once something gets logged on
+# it, and volume on days that do happen doesn't buy back a day that never
+# happened. This can stay invisible for months, since the headline metric
+# above only shows the *current* ratio, not where it's headed.
+if pace["elapsed_days"] >= MIN_ELAPSED_DAYS_FOR_DAY_PACE_SIGNAL and not pace["days_on_track"]:
+    st.warning(
+        f"At the current pace, you're on track for about {pace['projected_days']:g} of "
+        f"{report.day_target} instructional days by year end — "
+        f"{report.day_target - pace['projected_days']:g} short. Hours alone won't close "
+        "this: a light day still needs *something* logged on it to count. Even 20-30 "
+        "minutes of Big Projects, Life Skills, or a Choice Topic is enough."
+    )
 
 if report.activity_count == 0:
     # Don't let a parent stare at a red 0/1000 when the real cause is the date range.

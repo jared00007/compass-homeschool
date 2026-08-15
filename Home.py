@@ -46,8 +46,11 @@ if not is_parent():
         Upcoming Week -- same read-only glance at whatever's been planned,
         just pointed at a different Monday. Monday-Thursday get whatever
         Tier 1 subject was planned for that day; Friday is deliberately
-        never a new-content day (see compass/weekly.py), so it gets a
-        lighter prompt instead.
+        never a new-content day (see compass/weekly.py), so it points at
+        whatever's next on Big Projects plus a Travel Journal entry instead --
+        low-effort, but each is enough on its own to make Friday an
+        instructional day that counts, which a truly empty "light day" isn't
+        guaranteed to be (see compass.compliance's day-count pace warning).
         """
         day_dates = [week_start_date + timedelta(days=i) for i in range(5)]
         day_names = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
@@ -82,10 +85,25 @@ if not is_parent():
                     st.caption("💬 No check-in yet")
 
                 if day_name == "Friday":
-                    st.caption(
-                        "🎬 Light day — review what you've done this week, or work "
-                        "on whatever's below."
-                    )
+                    st.caption("🎬 Light day — review the week, plus a quick win:")
+                    next_step = None
+                    for project in db.list_big_projects(student["id"]):
+                        step = next(
+                            (
+                                s
+                                for s in db.list_project_steps(project["id"])
+                                if not s["completed_on"]
+                            ),
+                            None,
+                        )
+                        if step:
+                            next_step = step
+                            break
+                    step_label = f" — {md(next_step['title'])}" if next_step else ""
+                    st.markdown(f"🎬 **Big Projects**{step_label}")
+                    st.page_link("pages/7_Big_Projects.py", label="Open", icon="➡️")
+                    st.markdown("🧭 **Travel Journal** — write about a trip")
+                    st.page_link("pages/9_Landons_Travels.py", label="Open", icon="➡️")
                 else:
                     day_lessons = lessons_by_day.get(day_iso, [])
                     if not day_lessons:

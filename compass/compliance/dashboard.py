@@ -31,6 +31,11 @@ MIN_MINUTES_FOR_TIER_SIGNAL = 600
 # Above this, a "hours per week to catch up" figure is not a plan anyone can follow.
 MAX_PLAUSIBLE_HOURS_PER_WEEK = 40
 
+# Don't project a year-end day count from the first handful of days -- one day
+# logged on day one projects to a wildly optimistic (or, one missed day,
+# wildly pessimistic) year. Two weeks is enough for the rate to mean something.
+MIN_ELAPSED_DAYS_FOR_DAY_PACE_SIGNAL = 14
+
 
 @dataclass
 class SubjectCoverage:
@@ -146,6 +151,20 @@ class ComplianceReport:
         expected_hours = round(self.hour_target * elapsed / total_days, 1)
         weeks_left = max(remaining_days / 7, 0.1)
         needed = round(self.hours_remaining / weeks_left, 1)
+
+        # Straight-line projection of instructional *days* -- same technique
+        # compass.costs.CostReport.projected_year_cost uses, extrapolating
+        # today's rate to the end of the period. This is a genuinely separate
+        # risk from hours: a single content day can carry three-plus hours
+        # (four Tier 1 subjects at once), so the hour floor clears easily even
+        # on a four-day week -- but a day only counts once something gets
+        # logged on it, and volume on the days that do happen doesn't buy back
+        # a day that never happened. A family running strictly Monday-Thursday
+        # can clear 1,000 hours while still landing well short of 180 days.
+        projected_days = (
+            round(self.instructional_days * total_days / elapsed, 1) if elapsed else 0.0
+        )
+
         return {
             "elapsed_days": elapsed,
             "remaining_days": remaining_days,
@@ -156,6 +175,8 @@ class ComplianceReport:
             # and starts being arithmetic. Say so rather than printing a number
             # nobody can act on.
             "achievable": needed <= MAX_PLAUSIBLE_HOURS_PER_WEEK,
+            "projected_days": projected_days,
+            "days_on_track": projected_days >= self.day_target,
         }
 
 
