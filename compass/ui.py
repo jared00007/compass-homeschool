@@ -719,6 +719,11 @@ def render_quiz(
             st.rerun()
 
 
+def _done_lessons(db: Database, student_id: int, agent_key: str) -> list[dict[str, Any]]:
+    lessons = db.list_lessons(student_id, agent=agent_key, limit=10)
+    return [l for l in lessons if (l.get("metadata") or {}).get("student_done_on")]
+
+
 def student_lesson_view(
     db: Database, student: dict[str, Any], agent_key: str, subject_label: str
 ) -> None:
@@ -726,16 +731,24 @@ def student_lesson_view(
 
     "Done" here is his own signal (`metadata.student_done_on`), not the
     parent's `status` -- logging hours is a separate act the parent still
-    controls. Marking a lesson done just moves it from "current" to a
-    "Past lessons" list he can still reopen; it never touches hours, credits,
-    or the compliance record.
+    controls. Marking a lesson done just moves it out of here and into
+    render_past_lessons's list, reopenable there; it never touches hours,
+    credits, or the compliance record.
+
+    Deliberately doesn't render "Past lessons" itself -- a page with its own
+    content after the current lesson (English's Words to Review, for one)
+    needs that section last, not sandwiched in the middle of the page.
+    Call render_past_lessons() once, at the very end, after everything else
+    on the page -- every subject page should, even ones with nothing of
+    their own following it today, so a page added later doesn't have to
+    remember this rule.
     """
     lessons = db.list_lessons(student["id"], agent=agent_key, limit=10)
     todo = [
         l for l in lessons
         if l["status"] != "skipped" and not (l.get("metadata") or {}).get("student_done_on")
     ]
-    done = [l for l in lessons if (l.get("metadata") or {}).get("student_done_on")]
+    done = _done_lessons(db, student["id"], agent_key)
     current = todo[0] if todo else None
 
     if current is None:
@@ -760,27 +773,35 @@ def student_lesson_view(
             db.mark_student_done(current["id"])
             st.rerun()
 
-    if done:
-        st.divider()
-        st.subheader("Past lessons")
-        labels = [f"{l['created_at'][:10]} — {l['title']}" for l in done]
-        choice = st.selectbox(
-            "Look back at a finished lesson",
-            labels,
-            index=None,
-            placeholder="Pick one to reopen",
-            key=f"past_lesson_pick_{agent_key}",
+
+def render_past_lessons(db: Database, student: dict[str, Any], agent_key: str) -> None:
+    """The reopenable archive of lessons he's marked done -- always the last
+    thing on a subject page. See student_lesson_view's docstring for why
+    this is a separate call rather than folded into it.
+    """
+    done = _done_lessons(db, student["id"], agent_key)
+    if not done:
+        return
+    st.divider()
+    st.subheader("Past lessons")
+    labels = [f"{l['created_at'][:10]} — {l['title']}" for l in done]
+    choice = st.selectbox(
+        "Look back at a finished lesson",
+        labels,
+        index=None,
+        placeholder="Pick one to reopen",
+        key=f"past_lesson_pick_{agent_key}",
+    )
+    if choice is not None:
+        selected = done[labels.index(choice)]
+        render_lesson(selected["payload"], for_parent=False)
+        render_quiz(
+            db,
+            student,
+            selected["id"],
+            selected.get("metadata") or {},
+            selected["payload"].get("quiz") or [],
         )
-        if choice is not None:
-            selected = done[labels.index(choice)]
-            render_lesson(selected["payload"], for_parent=False)
-            render_quiz(
-                db,
-                student,
-                selected["id"],
-                selected.get("metadata") or {},
-                selected["payload"].get("quiz") or [],
-            )
 
 
 SUBJECT_ICONS = {"math": "📐", "science": "🔬", "english": "📖", "history": "🏛️"}

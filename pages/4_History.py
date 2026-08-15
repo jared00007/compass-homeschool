@@ -14,6 +14,7 @@ from compass.ui import (
     is_parent,
     md,
     page_setup,
+    render_past_lessons,
     render_proposal,
     student_lesson_view,
 )
@@ -30,6 +31,7 @@ st.caption(
 # Student view: his lesson, without the answer key or the admin surface.
 if not is_parent():
     student_lesson_view(db, student, "history", "history")
+    render_past_lessons(db, student, "history")
     st.stop()
 
 plan_tab, timeline_tab = st.tabs(["Plan a lesson", "Timeline coverage"])

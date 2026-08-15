@@ -20,6 +20,7 @@ from compass.ui import (
     generate_and_log,
     is_parent,
     page_setup,
+    render_past_lessons,
     render_proposal,
     student_lesson_view,
 )
@@ -42,6 +43,7 @@ ready = available_skills(mastered)
 # Student view: his lesson, without the answer key or the admin surface.
 if not is_parent():
     student_lesson_view(db, student, "math", "math")
+    render_past_lessons(db, student, "math")
     st.stop()
 
 plan_tab, mastery_tab, graph_tab = st.tabs(["Plan a lesson", "Record mastery", "The graph"])

@@ -13,6 +13,7 @@ from compass.ui import (
     generate_and_log,
     is_parent,
     page_setup,
+    render_past_lessons,
     render_proposal,
     render_vocab_memory,
     student_lesson_view,
@@ -37,6 +38,7 @@ if not is_parent():
     st.divider()
     st.subheader("🔤 Words to review")
     render_vocab_memory(db, student)
+    render_past_lessons(db, student, "english")
     st.stop()
 
 plan_tab, books_tab, vocab_tab = st.tabs(["Plan a lesson", "Books", "Vocabulary"])

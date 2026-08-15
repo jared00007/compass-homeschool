@@ -390,6 +390,27 @@ def test_skipped_lessons_never_show_as_his_current_lesson(monkeypatch, db, stude
     assert "No math lesson has been set up yet" in page
 
 
+# --- render_past_lessons: always last, a separate call so page-specific ---
+# --- content (English's Words to Review) can come between it and the      ---
+# --- current lesson above ---------------------------------------------------
+
+
+def render_past(monkeypatch, db, student, *, agent_key="math", selectbox_return=None):
+    written: list[str] = []
+    recorder = Recorder(written, {})
+    recorder.selectbox = lambda *args, **kwargs: selectbox_return
+    monkeypatch.setattr(ui, "st", recorder)
+    ui.render_past_lessons(db, student, agent_key)
+    return "\n".join(written)
+
+
+def test_nothing_done_renders_nothing(monkeypatch, db, student):
+    """No "Past lessons" heading at all when there's nothing to show --
+    not an empty section sitting on the page."""
+    page = render_past(monkeypatch, db, student)
+    assert page == ""
+
+
 def test_a_finished_lesson_can_be_reopened_from_past_lessons(monkeypatch, db, student):
     lesson_id = db.save_lesson(
         student["id"], "math", "math", "topic", "Two-Step Equations", payload=a_lesson()
@@ -398,7 +419,8 @@ def test_a_finished_lesson_can_be_reopened_from_past_lessons(monkeypatch, db, st
     lesson = db.get_lesson(lesson_id)
     label = f"{lesson['created_at'][:10]} — {lesson['title']}"
 
-    page = render_student_view(monkeypatch, db, student, selectbox_return=label)
+    page = render_past(monkeypatch, db, student, selectbox_return=label)
+    assert "Past lessons" in page
     assert "Solve problems 1-10." in page  # reopened, read-only
 
 
