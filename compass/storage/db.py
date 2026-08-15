@@ -2334,6 +2334,28 @@ class Database:
         self.conn.execute("DELETE FROM big_projects WHERE id = ?", (project_id,))
         self.conn.commit()
 
+    def active_big_project(self, student_id: int) -> dict[str, Any] | None:
+        """The one project he's actually committed to working through this
+        year, chosen on Big Projects -- Friday's nudge points at this
+        specifically instead of guessing at an arbitrary project with steps
+        left. None until he's deliberately picked one, which is the point:
+        there's no default. Self-healing if the chosen project was since
+        deleted -- the lookup just comes back empty, same as never having
+        picked one, with nothing extra to clean up.
+        """
+        raw = self.get_setting("active_big_project_id")
+        if not raw:
+            return None
+        return _row(
+            self.conn.execute(
+                "SELECT * FROM big_projects WHERE id = ? AND student_id = ?",
+                (int(raw), student_id),
+            )
+        )
+
+    def set_active_big_project(self, project_id: int | None) -> None:
+        self.set_setting("active_big_project_id", str(project_id) if project_id else "")
+
     def list_project_steps(self, project_id: int) -> list[dict[str, Any]]:
         return _rows(
             self.conn.execute(

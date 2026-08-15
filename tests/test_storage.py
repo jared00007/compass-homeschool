@@ -811,6 +811,45 @@ def test_delete_big_project_cascades_to_its_steps(db, student):
     assert db.list_big_projects(student["id"]) == []
 
 
+def test_no_active_big_project_until_one_is_chosen(db, student):
+    db.add_big_project(student["id"], "Test Project")
+    assert db.active_big_project(student["id"]) is None
+
+
+def test_active_big_project_returns_the_chosen_one(db, student):
+    first_id = db.add_big_project(student["id"], "First")
+    db.add_big_project(student["id"], "Second")
+    db.set_active_big_project(first_id)
+    active = db.active_big_project(student["id"])
+    assert active is not None
+    assert active["id"] == first_id
+    assert active["title"] == "First"
+
+
+def test_active_big_project_can_be_changed(db, student):
+    first_id = db.add_big_project(student["id"], "First")
+    second_id = db.add_big_project(student["id"], "Second")
+    db.set_active_big_project(first_id)
+    db.set_active_big_project(second_id)
+    assert db.active_big_project(student["id"])["id"] == second_id
+
+
+def test_active_big_project_can_be_cleared(db, student):
+    project_id = db.add_big_project(student["id"], "Test Project")
+    db.set_active_big_project(project_id)
+    db.set_active_big_project(None)
+    assert db.active_big_project(student["id"]) is None
+
+
+def test_active_big_project_self_heals_after_deletion(db, student):
+    """Deleting the chosen project shouldn't leave a dangling reference --
+    the lookup just comes back empty, same as never having picked one."""
+    project_id = db.add_big_project(student["id"], "Test Project")
+    db.set_active_big_project(project_id)
+    db.delete_big_project(project_id)
+    assert db.active_big_project(student["id"]) is None
+
+
 def test_delete_project_step_removes_only_that_step(db, student):
     project_id = db.add_big_project(student["id"], "Test Project")
     keep_id = db.add_project_step(project_id, "Keep me")

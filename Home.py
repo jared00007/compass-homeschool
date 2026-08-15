@@ -47,10 +47,12 @@ if not is_parent():
         just pointed at a different Monday. Monday-Thursday get whatever
         Tier 1 subject was planned for that day; Friday is deliberately
         never a new-content day (see compass/weekly.py), so it points at
-        whatever's next on Big Projects plus a Travel Journal entry instead --
-        low-effort, but each is enough on its own to make Friday an
-        instructional day that counts, which a truly empty "light day" isn't
-        guaranteed to be (see compass.compliance's day-count pace warning).
+        the next step on whichever Big Project he's chosen as this year's
+        (db.active_big_project -- picked on the Big Projects page, never
+        guessed at here) plus a Travel Journal entry -- low-effort, but
+        each is enough on its own to make Friday an instructional day that
+        counts, which a truly empty "light day" isn't guaranteed to be (see
+        compass.compliance's day-count pace warning).
         """
         day_dates = [week_start_date + timedelta(days=i) for i in range(5)]
         day_names = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
@@ -86,21 +88,27 @@ if not is_parent():
 
                 if day_name == "Friday":
                     st.caption("🎬 Light day — review the week, plus a quick win:")
-                    next_step = None
-                    for project in db.list_big_projects(student["id"]):
-                        step = next(
+                    active_project = db.active_big_project(student["id"])
+                    if active_project is None:
+                        st.markdown("🎬 **Big Projects** — pick one to work on this year")
+                    else:
+                        next_step = next(
                             (
                                 s
-                                for s in db.list_project_steps(project["id"])
+                                for s in db.list_project_steps(active_project["id"])
                                 if not s["completed_on"]
                             ),
                             None,
                         )
-                        if step:
-                            next_step = step
-                            break
-                    step_label = f" — {md(next_step['title'])}" if next_step else ""
-                    st.markdown(f"🎬 **Big Projects**{step_label}")
+                        if next_step:
+                            st.markdown(
+                                f"🎬 **{md(active_project['title'])}** — "
+                                f"{md(next_step['title'])}"
+                            )
+                        else:
+                            st.markdown(
+                                f"🎬 **{md(active_project['title'])}** — all done! 🎉"
+                            )
                     st.page_link("pages/7_Big_Projects.py", label="Open", icon="➡️")
                     st.markdown("🧭 **Travel Journal** — write about a trip")
                     st.page_link("pages/9_Landons_Travels.py", label="Open", icon="➡️")

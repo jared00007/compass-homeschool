@@ -46,8 +46,9 @@ if not projects:
         st.rerun()
 elif len(projects) > 1:
     st.caption(
-        "A few options on purpose -- pick one to actually work through, "
-        "and use **Hide** on the others so it's not competing for attention."
+        "A few options on purpose -- pick **one** to actually work through this "
+        "year with the button on its card below. That's also what Friday's "
+        "quick-win nudge on Home points at."
     )
 
 if is_parent():
@@ -83,6 +84,8 @@ with checklist_tab:
     if not projects:
         st.caption("Add the starter project above to get going.")
     st.markdown(_STEP_CARD_CSS, unsafe_allow_html=True)
+    active_project = db.active_big_project(student["id"])
+    active_id = active_project["id"] if active_project else None
     for project in projects:
         steps = db.list_project_steps(project["id"])
         done = sum(1 for s in steps if s["completed_on"])
@@ -98,7 +101,8 @@ with checklist_tab:
         with st.container(key=f"project_card_{project['id']}"):
             header = st.columns([20, 3])
             with header[0]:
-                st.markdown(f"### {md(project['title'])}")
+                star = "🌟 " if project["id"] == active_id else ""
+                st.markdown(f"### {star}{md(project['title'])}")
             with header[1]:
                 if st.button(
                     "Hide" if st.session_state[open_key] else "Show",
@@ -115,6 +119,17 @@ with checklist_tab:
                     f"⏳ Roughly {_day_range(total_min, total_max)} total at a relaxed "
                     f"pace -- this is a filler for when there's time, not something to rush."
                 )
+
+            # Deliberately no default -- Friday's nudge on Home only ever
+            # points at what's chosen here, never an arbitrary guess, so
+            # picking one is a real decision, not a formality.
+            if project["id"] == active_id:
+                st.success("🌟 This is the one you're working on this year.")
+            elif st.button(
+                "🌟 Work on this one this year", key=f"activate_project_{project['id']}"
+            ):
+                db.set_active_big_project(project["id"])
+                st.rerun()
 
             if not st.session_state[open_key]:
                 continue
