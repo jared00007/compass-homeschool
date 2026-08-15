@@ -68,16 +68,18 @@ if not is_parent():
         day_columns = st.columns(5)
         for column, day_name, day_date in zip(day_columns, day_names, day_dates):
             day_iso = day_date.isoformat()
-            with column:
+            with column, st.container(border=True):
                 st.markdown(f"**{day_name}**" + (" · Today" if day_date == today_date else ""))
                 st.caption(day_date.strftime("%b %-d"))
 
+                # Nothing shown at all for a day that hasn't arrived yet -- a
+                # check-in can't have happened, so a "—" here was never a
+                # status, just noise (every cell reads that way at once on
+                # Upcoming Week, where every day is still in the future).
                 if day_iso in checked_in_dates:
-                    st.caption("💬 ✅ checked in")
-                elif day_date > today_date:
-                    st.caption("💬 —")
-                else:
-                    st.caption("💬 ⬜ no check-in")
+                    st.caption("💬 Checked in")
+                elif day_date <= today_date:
+                    st.caption("💬 No check-in yet")
 
                 if day_name == "Friday":
                     st.caption(
@@ -97,8 +99,22 @@ if not is_parent():
                         st.markdown(f"{marker} {icon} {md(lesson['title'])}{badge}")
 
     def _render_extra_activities() -> None:
-        st.divider()
-        st.caption("✨ Extra activities, if there's time this week")
+        st.markdown(
+            """
+            <div style="background:var(--c-panel); border-left:4px solid var(--c-alt);
+                 border-radius:var(--c-radius); padding:14px 18px; margin:18px 0 4px;
+                 box-shadow:var(--c-glow);">
+              <div style="font-weight:800; font-size:15px; margin-bottom:2px;">
+                ✨ Extra activities — if there's time
+              </div>
+              <div style="font-size:13px; color:var(--c-dim);">
+                Anytime this week, not just Friday — worth a look whenever a day's
+                light on assignments.
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         extra_columns = st.columns(4)
         extra_columns[0].page_link("pages/7_Big_Projects.py", label="Big Projects", icon="🎬")
         extra_columns[1].page_link("pages/6_Life_Skills.py", label="Life Skills", icon="🛠️")
