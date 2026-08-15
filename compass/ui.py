@@ -1083,7 +1083,7 @@ VOCAB_STREAK_ON_FIRE = 5  # streak length that earns balloons, not just a toast
 
 
 VOCAB_MEMORY_ROUND_SIZE = 6  # pairs per round -- 12 face-down cards
-VOCAB_MEMORY_COLUMNS = 3  # fewer, wider columns -- bigger cards
+VOCAB_MEMORY_COLUMNS = 6  # more, narrower columns -- half the card size of 3
 VOCAB_MEMORY_CARD_BACK = "**?**"
 
 _VOCAB_CARD_CSS = """
@@ -1091,8 +1091,8 @@ _VOCAB_CARD_CSS = """
 div[class*="st-key-vocab_card_"] button {
   aspect-ratio: 1 / 1;
   height: auto !important;
-  min-height: 120px;
-  padding: 14px !important;
+  min-height: 60px;
+  padding: 7px !important;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1100,17 +1100,17 @@ div[class*="st-key-vocab_card_"] button {
   white-space: normal !important;
 }
 div[class*="st-key-vocab_card_"] button p {
-  font-size: 1.15rem;
-  line-height: 1.35;
+  font-size: 0.8rem;
+  line-height: 1.25;
 }
 /* The card back's "?" is the only bold text this grid ever shows -- markdown
    bold renders as a nested <strong>, which nothing else here uses, so this
    reaches the glyph itself without touching revealed word/definition text. */
 div[class*="st-key-vocab_card_"] button p strong {
-  font-size: 3.4rem;
+  font-size: 1.8rem;
   font-family: var(--c-mono);
   color: var(--c-alt);
-  text-shadow: 0 0 14px var(--c-alt);
+  text-shadow: 0 0 8px var(--c-alt);
 }
 </style>
 """
