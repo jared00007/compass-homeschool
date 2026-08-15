@@ -41,6 +41,47 @@ if not is_parent():
 
     st.divider()
 
+    # "Sunday Funnies" week-grid styling -- one of three retro comic
+    # directions sampled and approved before building (see Home's own week
+    # tab). Colors are hardcoded to this one printed look on purpose, not
+    # pulled from theme.py.
+    _WEEK_DAY_COLORS = ("#e14b3a", "#f0ac1f", "#3564c4", "#3f9450", "#8c4fa8")  # Mon-Fri
+    _WEEK_INK = "#211a14"
+    _WEEK_PAPER = "#fffaf0"
+    _WEEK_TODAY_BURST = (
+        '<div style="position:absolute; top:-14px; right:-10px; width:46px; height:46px; '
+        f'border-radius:999px; background:{_WEEK_DAY_COLORS[1]}; border:2.5px solid {_WEEK_INK}; '
+        'display:flex; align-items:center; justify-content:center; font-weight:900; '
+        f'font-size:9px; color:{_WEEK_INK}; letter-spacing:-.02em; transform:rotate(-12deg); '
+        f'box-shadow:3px 3px 0 0 {_WEEK_INK}; z-index:1;">TODAY!</div>'
+    )
+    _WEEK_CARD_CSS = (
+        "<style>\n"
+        'div[class*="st-key-week_day_"] {\n'
+        f"  background: {_WEEK_PAPER};\n"
+        f"  border: 3px solid {_WEEK_INK};\n"
+        "  border-radius: 3px;\n"
+        "  padding: 14px 14px 4px;\n"
+        "  position: relative;\n"
+        f"  box-shadow: 6px 6px 0 0 {_WEEK_INK};\n"
+        "  margin-bottom: 10px;\n"
+        "}\n"
+        'div[class*="st-key-week_day_"] [data-testid="stCaptionContainer"] { color: #6b5f4d; }\n'
+        'div[class*="st-key-week_day_0"] { transform: rotate(-1.1deg); }\n'
+        'div[class*="st-key-week_day_1"] { transform: rotate(.8deg); }\n'
+        'div[class*="st-key-week_day_2"] { transform: rotate(-.6deg); }\n'
+        'div[class*="st-key-week_day_3"] { transform: rotate(1deg); }\n'
+        'div[class*="st-key-week_day_4"] { transform: rotate(-1deg); }\n'
+        + "".join(
+            f'div[class*="st-key-week_day_{i}"]::before {{ content:""; position:absolute; '
+            "inset:0; border-radius:2px; pointer-events:none; opacity:.16; "
+            f"background-image: radial-gradient(circle, {c} 1.6px, transparent 1.7px); "
+            "background-size: 9px 9px; }\n"
+            for i, c in enumerate(_WEEK_DAY_COLORS)
+        )
+        + "</style>"
+    )
+
     def _render_week_grid(week_start_date: date) -> None:
         """The 5-column Monday-Friday layout, shared by This Week and
         Upcoming Week -- same read-only glance at whatever's been planned,
@@ -53,6 +94,15 @@ if not is_parent():
         each is enough on its own to make Friday an instructional day that
         counts, which a truly empty "light day" isn't guaranteed to be (see
         compass.compliance's day-count pace warning).
+
+        Styled as a "Sunday Funnies" comic strip -- thick ink border, a hard
+        offset shadow instead of a soft glow, a halftone dot tint, and a
+        different classic comic color per weekday -- picked from three
+        sample directions shown and approved before building. A fixed
+        "printed" look on purpose, like the rest of this app's styling:
+        colors are hardcoded, not pulled from theme.py's tokens, the same
+        way a printed comic page doesn't re-theme itself for the room it's
+        read in.
         """
         day_dates = [week_start_date + timedelta(days=i) for i in range(5)]
         day_names = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
@@ -70,11 +120,30 @@ if not is_parent():
             e["entry_date"] for e in db.list_journal_entries(student["id"], limit=60)
         }
 
+        st.markdown(_WEEK_CARD_CSS, unsafe_allow_html=True)
         day_columns = st.columns(5)
-        for column, day_name, day_date in zip(day_columns, day_names, day_dates):
+        for index, (column, day_name, day_date) in enumerate(
+            zip(day_columns, day_names, day_dates)
+        ):
             day_iso = day_date.isoformat()
-            with column, st.container(border=True):
-                st.markdown(f"**{day_name}**" + (" · Today" if day_date == today_date else ""))
+            color = _WEEK_DAY_COLORS[index]
+            # week_start_date in the key, not just the index -- this
+            # function runs once per tab (This Week, Upcoming Week), and a
+            # bare "week_day_0" key would collide the second time it's
+            # called in the same script run. The CSS below still matches on
+            # the "week_day_N" prefix alone, so this doesn't need a second
+            # set of style rules.
+            with column, st.container(key=f"week_day_{index}_{week_start_date.isoformat()}"):
+                if day_date == today_date:
+                    st.markdown(_WEEK_TODAY_BURST, unsafe_allow_html=True)
+                st.markdown(
+                    f'<span style="display:inline-block; padding:2px 10px 3px; '
+                    f'border-radius:3px; background:{color}; color:{_WEEK_PAPER}; '
+                    f'font-weight:900; font-size:15px; text-transform:uppercase; '
+                    f'letter-spacing:-.01em; text-shadow:1.5px 1.5px 0 rgba(0,0,0,.35);">'
+                    f"{day_name}</span>",
+                    unsafe_allow_html=True,
+                )
                 st.caption(day_date.strftime("%b %-d"))
 
                 # Nothing shown at all for a day that hasn't arrived yet -- a
