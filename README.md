@@ -325,6 +325,7 @@ compass/
   national_parks.py          the 63 parks + real state borders for Landon's Travels
 tests/                       346 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
+scripts/new_school_year_reset.py  wipe a finished school year's data, see below
 ```
 
 `compass/` knows nothing about Streamlit — the agents, storage, and compliance
@@ -867,6 +868,31 @@ Shown on the Home page: the parent gets the Declaration banner (with a **Mark as
 filed** button that writes straight to a small `declarations_of_intent` table,
 keyed by student and due date so each year gets its own row) and, in both parent and
 student view, a plain countdown to the first day of school.
+
+## Starting a new school year
+
+```bash
+python3 scripts/new_school_year_reset.py
+```
+
+Wipes the previous school year's working data so the app opens clean for the
+next one, without touching anything that isn't tied to a single year. Takes
+a safety snapshot first (the same `compass.backup.snapshot` mechanism behind
+automatic backups), prints exactly what it's about to touch, and asks for a
+typed `YES` before writing anything.
+
+Cleared: generated lessons, logged activities and their subject credits,
+saved books and vocabulary, the travel journal, math mastery progress, the
+Science/History "topics already explored" history, course/credit records,
+the Check-In feelings journal, and the morning routine log. Life Skills keep
+their curated list — only `completed_on` resets, so nothing he already
+learned needs re-adding.
+
+Left alone: the student profile, Big Projects (long-term projects are
+explicitly meant to carry across a summer), Tier 3 Choice topics,
+declarations of intent, and uploaded district documents — none of those are
+a single year's assignments, so clearing them isn't this script's call to
+make.
 
 ## Tests
 
