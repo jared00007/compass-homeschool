@@ -2748,6 +2748,37 @@ class Database:
             )
         )
 
+    # -- Friday plan items --------------------------------------------------------
+
+    def list_friday_plan_items(self, student_id: int, plan_date: str) -> list[dict[str, Any]]:
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM friday_plan_items WHERE student_id = ? AND plan_date = ? "
+                "ORDER BY sort_order, id",
+                (student_id, plan_date),
+            )
+        )
+
+    def add_friday_plan_item(
+        self, student_id: int, plan_date: str, kind: str, label: str = ""
+    ) -> int:
+        next_order = self.conn.execute(
+            "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM friday_plan_items "
+            "WHERE student_id = ? AND plan_date = ?",
+            (student_id, plan_date),
+        ).fetchone()[0]
+        cur = self.conn.execute(
+            "INSERT INTO friday_plan_items "
+            "(student_id, plan_date, kind, label, sort_order) VALUES (?, ?, ?, ?, ?)",
+            (student_id, plan_date, kind, label, next_order),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def delete_friday_plan_item(self, item_id: int) -> None:
+        self.conn.execute("DELETE FROM friday_plan_items WHERE id = ?", (item_id,))
+        self.conn.commit()
+
     # -- courses (grades 6-12 credit documentation) ----------------------------
 
     def create_course(

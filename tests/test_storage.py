@@ -353,6 +353,34 @@ def test_book_with_no_term_behaves_exactly_as_before(db, student):
     assert db.current_book(student["id"])["id"] == book_id
 
 
+def test_friday_plan_items_are_scoped_to_one_exact_date(db, student):
+    db.add_friday_plan_item(student["id"], "2026-08-28", "big_project")
+    db.add_friday_plan_item(student["id"], "2026-09-04", "travel_new")
+
+    this_friday = db.list_friday_plan_items(student["id"], "2026-08-28")
+    assert len(this_friday) == 1
+    assert this_friday[0]["kind"] == "big_project"
+    assert this_friday[0]["label"] == ""
+
+
+def test_friday_plan_items_keep_insertion_order(db, student):
+    first_id = db.add_friday_plan_item(student["id"], "2026-08-28", "travel_catchup", "5 trips")
+    second_id = db.add_friday_plan_item(student["id"], "2026-08-28", "custom", "Guitar practice")
+
+    items = db.list_friday_plan_items(student["id"], "2026-08-28")
+    assert [i["id"] for i in items] == [first_id, second_id]
+
+
+def test_delete_friday_plan_item_removes_only_that_one(db, student):
+    keep_id = db.add_friday_plan_item(student["id"], "2026-08-28", "big_project")
+    remove_id = db.add_friday_plan_item(student["id"], "2026-08-28", "custom", "Guitar")
+
+    db.delete_friday_plan_item(remove_id)
+
+    items = db.list_friday_plan_items(student["id"], "2026-08-28")
+    assert [i["id"] for i in items] == [keep_id]
+
+
 def test_logging_an_activity_defaults_credit_to_the_primary_subject(db, student):
     activity_id = db.log_activity(
         student_id=student["id"],

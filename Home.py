@@ -17,6 +17,7 @@ from compass.ui import (
     md,
     page_setup,
     render_declaration_banner,
+    render_friday_plan,
     render_fun_fact,
     render_lesson,
     render_morning_routine,
@@ -157,30 +158,7 @@ if not is_parent():
 
                 if day_name == "Friday":
                     st.caption("🎬 Light day — review the week, plus a quick win:")
-                    active_project = db.active_big_project(student["id"])
-                    if active_project is None:
-                        st.markdown("🎬 **Big Projects** — pick one to work on this year")
-                    else:
-                        next_step = next(
-                            (
-                                s
-                                for s in db.list_project_steps(active_project["id"])
-                                if not s["completed_on"]
-                            ),
-                            None,
-                        )
-                        if next_step:
-                            st.markdown(
-                                f"🎬 **{md(active_project['title'])}** — "
-                                f"{md(next_step['title'])}"
-                            )
-                        else:
-                            st.markdown(
-                                f"🎬 **{md(active_project['title'])}** — all done! 🎉"
-                            )
-                    st.page_link("pages/7_Big_Projects.py", label="Open", icon="➡️")
-                    st.markdown("🧭 **Travel Journal** — write about a trip")
-                    st.page_link("pages/9_Landons_Travels.py", label="Open", icon="➡️")
+                    render_friday_plan(db, student, day_iso)
                 else:
                     day_lessons = lessons_by_day.get(day_iso, [])
                     if not day_lessons:

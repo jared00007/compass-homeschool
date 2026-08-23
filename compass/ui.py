@@ -806,6 +806,80 @@ def render_past_lessons(db: Database, student: dict[str, Any], agent_key: str) -
 
 SUBJECT_ICONS = {"math": "📐", "science": "🔬", "english": "📖", "history": "🏛️"}
 
+# Friday is deliberately never a new-content day (see compass/weekly.py), so
+# its cell on the Week grid has always shown a fixed Big Project + Travel
+# Journal pairing. friday_plan_items lets a parent replace that, one Friday
+# at a time, with any mix of these standardized options -- or a free-text
+# 'custom' one -- rather than being stuck with the one fixed pairing. Each
+# entry is (icon, default label, page to link, that page's link text);
+# 'custom' has no default label (the parent's own text is the whole point)
+# and nothing to link to.
+FRIDAY_PLAN_KINDS: dict[str, tuple[str, str, str | None, str | None]] = {
+    "big_project": (
+        "🎬", "Big Project — work on the next step",
+        "pages/7_Big_Projects.py", "Big Projects",
+    ),
+    "travel_new": (
+        "🧭", "Travel Journal — write about a trip",
+        "pages/9_Landons_Travels.py", "Travels",
+    ),
+    "travel_catchup": (
+        "🧭", "Travel Journal — catch up on older trips",
+        "pages/9_Landons_Travels.py", "Travels",
+    ),
+    "life_skills": (
+        "🛠️", "Life Skills — work on a skill",
+        "pages/6_Life_Skills.py", "Life Skills",
+    ),
+    "choice_topics": (
+        "⭐", "Choice Topics — work on a topic",
+        "pages/5_Choice_Topics.py", "Choice Topics",
+    ),
+    "custom": ("📝", "", None, None),
+}
+
+
+def big_project_status_text(db: Database, student_id: int) -> str:
+    """'<title> — <next step>', or a nudge to pick one at all -- the same
+    smart label the Week grid's Friday cell has always shown for Big
+    Projects, factored out so a parent-added friday_plan_items row can reuse
+    it as that item's default text instead of a generic string."""
+    active = db.active_big_project(student_id)
+    if active is None:
+        return "Big Projects — pick one to work on this year"
+    next_step = next(
+        (s for s in db.list_project_steps(active["id"]) if not s["completed_on"]),
+        None,
+    )
+    if next_step:
+        return f"{md(active['title'])} — {md(next_step['title'])}"
+    return f"{md(active['title'])} — all done! 🎉"
+
+
+def render_friday_plan(db: Database, student: dict[str, Any], plan_date: str) -> None:
+    """Friday's cell on the Week grid, and the This Week page's own
+    "review this week" display, both render whatever a parent has set for
+    that specific Friday through this one function. No rows yet for that
+    date falls back to the original fixed Big Project + Travel Journal
+    pairing, so a week nobody's customized reads exactly as it always has."""
+    items = db.list_friday_plan_items(student["id"], plan_date)
+    if not items:
+        st.markdown(f"🎬 {big_project_status_text(db, student['id'])}")
+        st.page_link("pages/7_Big_Projects.py", label="Open", icon="➡️")
+        st.markdown("🧭 **Travel Journal** — write about a trip")
+        st.page_link("pages/9_Landons_Travels.py", label="Open", icon="➡️")
+        return
+
+    for item in items:
+        icon, default_label, page, page_label = FRIDAY_PLAN_KINDS[item["kind"]]
+        if item["kind"] == "big_project" and not item["label"]:
+            text = big_project_status_text(db, student["id"])
+        else:
+            text = md(item["label"]) if item["label"] else default_label
+        st.markdown(f"{icon} {text}")
+        if page:
+            st.page_link(page, label="Open", icon="➡️")
+
 
 def render_today_checklist(db: Database, student: dict[str, Any]) -> bool:
     """His own "what I did today" list -- a fun accomplishment checklist, not

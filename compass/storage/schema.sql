@@ -396,3 +396,30 @@ CREATE TABLE IF NOT EXISTS morning_routine_log (
     completed_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (student_id, entry_date)
 );
+
+-- ---------------------------------------------------------------------------
+-- Friday plan items -- Friday is deliberately never a new-content day (see
+-- compass/weekly.py), so the Week grid's Friday cell has always shown a
+-- fixed Big Project + Travel Journal pairing. This is how a parent replaces
+-- that fixed pairing, one Friday at a time, with any mix of the
+-- standardized options in compass.ui.FRIDAY_PLAN_KINDS (or a free-text
+-- 'custom' one) -- log five old trips, work the project, whatever that
+-- particular Friday calls for. A Friday with no rows here still falls back
+-- to the original fixed pairing, so nothing about an already-planned week
+-- changes just because this table now exists.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS friday_plan_items (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    plan_date   TEXT NOT NULL,
+    kind        TEXT NOT NULL CHECK (kind IN
+                ('big_project', 'travel_new', 'travel_catchup',
+                 'life_skills', 'choice_topics', 'custom')),
+    label       TEXT NOT NULL DEFAULT '',
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_friday_plan_items_date
+    ON friday_plan_items (student_id, plan_date);

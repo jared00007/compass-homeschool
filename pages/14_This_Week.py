@@ -24,7 +24,15 @@ import streamlit as st
 from compass import weekly
 from compass.agents import all_agents
 from compass.compliance import build_report
-from compass.ui import SUBJECT_ICONS, md, page_setup, parent_only, render_lesson
+from compass.ui import (
+    FRIDAY_PLAN_KINDS,
+    SUBJECT_ICONS,
+    md,
+    page_setup,
+    parent_only,
+    render_friday_plan,
+    render_lesson,
+)
 
 db, student = page_setup("This Week", icon="🗓️")
 
@@ -96,14 +104,9 @@ with review_tab:
             st.markdown(f"- {label} · {_day_label(planned_for)}")
 
     st.divider()
-    st.markdown("**Filler time, if there's room left today**")
-    st.caption(
-        "Friday's light on purpose -- whatever's left over goes to Big Projects or "
-        "Life Skills, ad hoc."
-    )
-    link_columns = st.columns(2)
-    link_columns[0].page_link("pages/7_Big_Projects.py", label="Big Projects", icon="🎬")
-    link_columns[1].page_link("pages/6_Life_Skills.py", label="Life Skills", icon="🛠️")
+    st.markdown(f"**Friday's plan** — {this_week_friday.strftime('%b %-d')}")
+    st.caption("Friday's light on purpose -- see **Plan next week** to change what's set here.")
+    render_friday_plan(db, student, this_week_friday.isoformat())
 
 # --- Plan next week --------------------------------------------------------------
 
@@ -225,3 +228,43 @@ with plan_tab:
                             st.error(result.error)
                         else:
                             st.rerun()
+
+    st.divider()
+    # target_dates only ever holds the four scheduled dates (Monday-Thursday,
+    # see weekly.week_dates) -- Friday isn't a lesson day, so its date is
+    # derived from the Monday directly rather than indexed off that list.
+    friday_date = target_week_start + timedelta(days=4)
+    st.markdown(f"**Friday's plan** — {friday_date.strftime('%b %-d')}")
+    st.caption(
+        "Friday's never a new-content day (see the four subjects above) -- this is "
+        "what actually shows on the Week grid instead. Pick any mix of the "
+        "standard options below, or add your own; nothing picked yet falls back "
+        "to the original Big Project + Travel Journal pairing."
+    )
+
+    friday_items = db.list_friday_plan_items(student["id"], friday_date.isoformat())
+    for item in friday_items:
+        icon, default_label, _, _ = FRIDAY_PLAN_KINDS[item["kind"]]
+        text = md(item["label"]) if item["label"] else default_label
+        item_columns = st.columns([8, 1])
+        item_columns[0].markdown(f"{icon} {text}")
+        if item_columns[1].button("✕", key=f"remove_friday_item_{item['id']}"):
+            db.delete_friday_plan_item(item["id"])
+            st.rerun()
+
+    with st.form(f"add_friday_item_{friday_date.isoformat()}", clear_on_submit=True):
+        form_columns = st.columns([2, 3])
+        kind = form_columns[0].selectbox(
+            "Add to Friday",
+            list(FRIDAY_PLAN_KINDS),
+            format_func=lambda k: f"{FRIDAY_PLAN_KINDS[k][0]} "
+            + (FRIDAY_PLAN_KINDS[k][1] or "Custom…"),
+        )
+        label = form_columns[1].text_input(
+            "Detail",
+            placeholder="Required for Custom -- optional detail for the rest, "
+            "e.g. \"catch up on 5 older trips\"",
+        )
+        if st.form_submit_button("Add") and (kind != "custom" or label.strip()):
+            db.add_friday_plan_item(student["id"], friday_date.isoformat(), kind, label.strip())
+            st.rerun()
