@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import streamlit as st
 
 from compass.agents import get_agent
@@ -12,6 +14,7 @@ from compass.ui import (
     difficulty_override_control,
     generate_and_log,
     is_parent,
+    md,
     page_setup,
     render_past_lessons,
     render_proposal,
@@ -113,6 +116,34 @@ with plan_tab:
 
 with books_tab:
     st.subheader(f"What's {student['name']} reading?")
+    st.caption(
+        "Running two books this year, one per half? Tag each with **When is "
+        "this for?** below when you add it -- the second-half book waits as "
+        "*upcoming* until you switch to it, so the agent never reads from "
+        "the wrong one."
+    )
+
+    upcoming = db.upcoming_book(student["id"])
+    if upcoming:
+        current = db.current_book(student["id"])
+        midpoint = db.school_year_midpoint()
+        with st.container(border=True):
+            if date.today() >= midpoint:
+                st.markdown(
+                    f"📅 Past this year's midpoint ({midpoint.strftime('%b %-d')}) -- "
+                    f"ready to switch to **{md(upcoming['title'])}** for the second half?"
+                )
+            else:
+                switch_from = f"**{md(current['title'])}**" if current else "the first-half book"
+                st.markdown(
+                    f"**{md(upcoming['title'])}** is queued for the second half of the "
+                    f"year (around {midpoint.strftime('%b %-d')}). Finished {switch_from} "
+                    "early? You don't have to wait for that date."
+                )
+            if st.button(f"Switch to {upcoming['title']} now", key=f"promote_{upcoming['id']}"):
+                db.promote_upcoming_book(student["id"], upcoming["id"])
+                st.rerun()
+
     with st.form("add_book", clear_on_submit=True):
         columns = st.columns([2, 2, 1, 1])
         title = columns[0].text_input("Title")
@@ -128,7 +159,27 @@ with books_tab:
         )
         pages = columns[3].number_input("Pages", min_value=0, max_value=5000, value=0)
         notes = st.text_input("Notes for the agent (optional)")
+        term_choice = st.selectbox(
+            "When is this for?",
+            [
+                "No specific term -- start reading now",
+                "First half of the year -- start reading now",
+                "Second half of the year -- queue it for later",
+            ],
+            help=(
+                "Tagging both halves' books up front lets you set the whole year's "
+                "reading up in one sitting; the second-half pick sits as upcoming "
+                "until you (or the midpoint nudge above) switch to it."
+            ),
+        )
         if st.form_submit_button("Add book", type="primary") and title.strip():
+            term = None
+            status = "reading"
+            if term_choice.startswith("First half"):
+                term = "first_half"
+            elif term_choice.startswith("Second half"):
+                term = "second_half"
+                status = "upcoming"
             db.add_book(
                 student["id"],
                 title.strip(),
@@ -136,15 +187,19 @@ with books_tab:
                 level.strip(),
                 int(pages) or None,
                 notes.strip(),
+                term=term,
+                status=status,
             )
             st.rerun()
 
+    term_badges = {"first_half": " · 1st half", "second_half": " · 2nd half"}
     for book in db.list_books(student["id"]):
         with st.container(border=True):
             columns = st.columns([4, 1, 1])
             byline = f" — {book['author']}" if book["author"] else ""
-            columns[0].markdown(f"**{book['title']}**{byline}  \n*{book['status']}*")
-            if book["total_pages"]:
+            badge = term_badges.get(book["term"], "")
+            columns[0].markdown(f"**{book['title']}**{byline}  \n*{book['status']}{badge}*")
+            if book["total_pages"] and book["status"] == "reading":
                 columns[0].progress(
                     min((book["current_page"] or 0) / book["total_pages"], 1.0),
                     text=f"page {book['current_page']} of {book['total_pages']}",
@@ -155,6 +210,10 @@ with books_tab:
                     st.rerun()
                 if columns[2].button("Set aside", key=f"drop_{book['id']}"):
                     db.update_book(book["id"], status="abandoned")
+                    st.rerun()
+            elif book["status"] == "upcoming":
+                if columns[1].button("Start now", key=f"start_{book['id']}"):
+                    db.promote_upcoming_book(student["id"], book["id"])
                     st.rerun()
             elif columns[1].button("Resume", key=f"resume_{book['id']}"):
                 db.update_book(book["id"], status="reading")

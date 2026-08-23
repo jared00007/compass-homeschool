@@ -84,6 +84,13 @@ CREATE INDEX IF NOT EXISTS idx_topic_web_pool
 -- English: what he is currently reading, plus vocabulary spaced repetition.
 -- ---------------------------------------------------------------------------
 
+-- `term` tags a book to a half of the school year ('first_half' /
+-- 'second_half') for a family running two books, one per half, picked ahead
+-- of time. Status 'upcoming' is a second-half book queued but not yet the
+-- one the English agent reads from -- current_book() only ever returns a
+-- 'reading' row, so an upcoming book sits inert until promote_upcoming_book
+-- moves it over. Neither is required: a book added with no term and
+-- status 'reading' (the old default) behaves exactly as it always has.
 CREATE TABLE IF NOT EXISTS books (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     student_id   INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
@@ -93,7 +100,8 @@ CREATE TABLE IF NOT EXISTS books (
     total_pages  INTEGER,
     current_page INTEGER NOT NULL DEFAULT 0,
     status       TEXT NOT NULL DEFAULT 'reading'
-                 CHECK (status IN ('reading', 'finished', 'abandoned')),
+                 CHECK (status IN ('reading', 'finished', 'abandoned', 'upcoming')),
+    term         TEXT CHECK (term IN ('first_half', 'second_half')),
     started_on   TEXT,
     finished_on  TEXT,
     notes        TEXT NOT NULL DEFAULT '',

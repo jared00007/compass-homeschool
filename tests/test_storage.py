@@ -188,6 +188,50 @@ def test_migrate_upgrades_activities_already_allowing_projects_to_also_allow_wel
     assert new_id > 0
 
 
+def test_migrate_rebuilds_books_to_allow_upcoming_status(db, student):
+    """books.status/term predate the two-books-per-year split -- an old-style
+    row (no term column, status CHECK missing 'upcoming') must survive the
+    rebuild, and vocabulary.source_book_id's foreign key must still resolve
+    to it afterward."""
+    db.conn.execute("DROP TABLE books")
+    db.conn.execute(
+        "CREATE TABLE books (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "student_id INTEGER NOT NULL, title TEXT NOT NULL, "
+        "author TEXT NOT NULL DEFAULT '', reading_level TEXT NOT NULL DEFAULT '', "
+        "total_pages INTEGER, current_page INTEGER NOT NULL DEFAULT 0, "
+        "status TEXT NOT NULL DEFAULT 'reading' "
+        "CHECK (status IN ('reading', 'finished', 'abandoned')), "
+        "started_on TEXT, finished_on TEXT, notes TEXT NOT NULL DEFAULT '', "
+        "created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+    )
+    old_id = db.conn.execute(
+        "INSERT INTO books (student_id, title, status, started_on) "
+        "VALUES (?, ?, ?, ?)",
+        (student["id"], "Old-style book", "reading", "2026-08-01"),
+    ).lastrowid
+    db.conn.execute(
+        "INSERT INTO vocabulary (student_id, word, source_book_id, next_review_on) "
+        "VALUES (?, ?, ?, date('now'))",
+        (student["id"], "resilient", old_id),
+    )
+    db.conn.commit()
+
+    db.migrate()
+
+    books = _list(db, "books", student["id"])
+    assert len(books) == 1
+    assert books[0]["title"] == "Old-style book"
+    assert books[0]["term"] is None  # new column, backfilled to NULL
+
+    word = db.list_vocabulary(student["id"])[0]
+    assert word["source_book_id"] == old_id  # the foreign key still resolves
+
+    # the whole point: an 'upcoming'-status row must now actually insert
+    new_id = db.add_book(student["id"], "New book", term="second_half", status="upcoming")
+    assert new_id > 0
+    assert db.upcoming_book(student["id"])["id"] == new_id
+
+
 def _list(db, table, student_id):
     return [dict(r) for r in db.conn.execute(f"SELECT * FROM {table} WHERE student_id = ?", (student_id,))]
 
@@ -252,6 +296,61 @@ def test_school_year_bounds_wrap_correctly(db):
     start, end = db.school_year_bounds(date(2026, 9, 1))
     assert start == "2026-09-01"
     assert end == "2027-08-31"
+
+
+def test_school_year_midpoint_is_halfway_between_the_bounds(db):
+    db.set_setting("school_year_start", "09-01")
+    midpoint = db.school_year_midpoint(date(2026, 9, 1))
+    start, end = db.school_year_bounds(date(2026, 9, 1))
+    start_date, end_date = date.fromisoformat(start), date.fromisoformat(end)
+    assert midpoint == start_date + (end_date - start_date) / 2
+
+    # shifts automatically if the family adjusts their actual start date
+    db.set_setting("school_year_start", "08-24")
+    earlier_midpoint = db.school_year_midpoint(date(2026, 8, 24))
+    assert earlier_midpoint < midpoint
+
+
+def test_book_term_split_queues_a_second_half_book_without_making_it_current(db, student):
+    first_id = db.add_book(student["id"], "Hatchet", term="first_half")
+    second_id = db.add_book(
+        student["id"], "The Giver", term="second_half", status="upcoming"
+    )
+
+    current = db.current_book(student["id"])
+    assert current["id"] == first_id
+    assert current["term"] == "first_half"
+
+    upcoming = db.upcoming_book(student["id"])
+    assert upcoming["id"] == second_id
+    assert upcoming["term"] == "second_half"
+    assert upcoming["started_on"] is None  # not started yet
+
+
+def test_promote_upcoming_book_finishes_the_old_one_and_starts_the_new_one(db, student):
+    first_id = db.add_book(student["id"], "Hatchet", term="first_half")
+    second_id = db.add_book(
+        student["id"], "The Giver", term="second_half", status="upcoming"
+    )
+
+    db.promote_upcoming_book(student["id"], second_id)
+
+    books = {b["id"]: b for b in db.list_books(student["id"])}
+    assert books[first_id]["status"] == "finished"
+    assert books[first_id]["finished_on"] is not None
+    assert books[second_id]["status"] == "reading"
+    assert books[second_id]["started_on"] is not None
+    assert db.current_book(student["id"])["id"] == second_id
+    assert db.upcoming_book(student["id"]) is None
+
+
+def test_book_with_no_term_behaves_exactly_as_before(db, student):
+    book_id = db.add_book(student["id"], "Hatchet")
+    book = db.list_books(student["id"])[0]
+    assert book["id"] == book_id
+    assert book["term"] is None
+    assert book["status"] == "reading"
+    assert db.current_book(student["id"])["id"] == book_id
 
 
 def test_logging_an_activity_defaults_credit_to_the_primary_subject(db, student):

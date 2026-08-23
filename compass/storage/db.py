@@ -1335,6 +1335,7 @@ class Database:
         self._migrate_park_visits_to_travel_entries()
         self._migrate_interests_string_to_list()
         self._migrate_journal_entries_allow_multiple_per_day()
+        self._migrate_books_allow_upcoming_status()
         self._backfill_big_project_step_content()
         self._backfill_big_project_catalog()
         self._backfill_declaration_url_default()
@@ -1516,6 +1517,61 @@ class Database:
             "CREATE INDEX IF NOT EXISTS idx_journal_entries_student "
             "ON journal_entries (student_id, entry_date)"
         )
+
+    def _migrate_books_allow_upcoming_status(self) -> None:
+        """books.status had a CHECK constraint predating 'upcoming' (a
+        second-half book queued but not yet the one current_book() returns)
+        and there was no `term` column at all -- SQLite can't ALTER a CHECK
+        constraint in place, so this rebuilds the table with both added,
+        keeping every row (same id, so vocabulary.source_book_id's foreign
+        key still points at the right one).
+
+        Built new-name-first rather than rename-old-then-recreate, same
+        reasoning as _migrate_activities_allow_projects_tier: renaming
+        `books` away would leave vocabulary's foreign key permanently
+        pointing at `books_old`."""
+        table = _row(
+            self.conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='books'"
+            )
+        )
+        if table is None or "'upcoming'" in (table["sql"] or ""):
+            return  # no table yet, or already rebuilt with the new status/column
+        # Unlike _migrate_activities_allow_projects_tier (which runs first,
+        # right after executescript's own commit), this one runs later in
+        # migrate() -- an earlier migration may have left a transaction open,
+        # and the foreign_keys pragma silently no-ops mid-transaction.
+        self.conn.commit()
+        self.conn.execute("PRAGMA foreign_keys = OFF")
+        self.conn.execute(
+            "CREATE TABLE books_new ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,"
+            "title TEXT NOT NULL,"
+            "author TEXT NOT NULL DEFAULT '',"
+            "reading_level TEXT NOT NULL DEFAULT '',"
+            "total_pages INTEGER,"
+            "current_page INTEGER NOT NULL DEFAULT 0,"
+            "status TEXT NOT NULL DEFAULT 'reading' "
+            "CHECK (status IN ('reading', 'finished', 'abandoned', 'upcoming')),"
+            "term TEXT CHECK (term IN ('first_half', 'second_half')),"
+            "started_on TEXT,"
+            "finished_on TEXT,"
+            "notes TEXT NOT NULL DEFAULT '',"
+            "created_at TEXT NOT NULL DEFAULT (datetime('now'))"
+            ")"
+        )
+        self.conn.execute(
+            "INSERT INTO books_new "
+            "(id, student_id, title, author, reading_level, total_pages, current_page, "
+            " status, started_on, finished_on, notes, created_at) "
+            "SELECT id, student_id, title, author, reading_level, total_pages, current_page, "
+            "status, started_on, finished_on, notes, created_at FROM books"
+        )
+        self.conn.execute("DROP TABLE books")
+        self.conn.execute("ALTER TABLE books_new RENAME TO books")
+        self.conn.commit()
+        self.conn.execute("PRAGMA foreign_keys = ON")
 
     def _backfill_life_skill_content(self) -> None:
         """Fill in `description`/`materials` for catalog skills seeded before
@@ -1810,15 +1866,57 @@ class Database:
         reading_level: str = "",
         total_pages: int | None = None,
         notes: str = "",
+        term: str | None = None,
+        status: str = "reading",
     ) -> int:
+        """`term` tags a book to a half of the school year
+        ('first_half'/'second_half') for a family running two books, one per
+        half; leave it `None` for an ad hoc pick with no such split -- the
+        old, still-default behavior. Pass `status='upcoming'` to add a
+        second-half book now without making it the one current_book()
+        returns yet; started_on is only stamped for a book that starts
+        reading immediately, since an upcoming book gets its own
+        started_on once promote_upcoming_book actually starts it."""
         cur = self.conn.execute(
             "INSERT INTO books "
-            "(student_id, title, author, reading_level, total_pages, notes, started_on) "
-            "VALUES (?, ?, ?, ?, ?, ?, date('now'))",
-            (student_id, title, author, reading_level, total_pages, notes),
+            "(student_id, title, author, reading_level, total_pages, notes, "
+            " term, status, started_on) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                student_id, title, author, reading_level, total_pages, notes,
+                term, status, date.today().isoformat() if status == "reading" else None,
+            ),
         )
         self.conn.commit()
         return int(cur.lastrowid)
+
+    def upcoming_book(self, student_id: int) -> dict[str, Any] | None:
+        """The book queued for later in the year, if any -- see
+        current_book for the one actually in use right now."""
+        return _row(
+            self.conn.execute(
+                "SELECT * FROM books WHERE student_id = ? AND status = 'upcoming' "
+                "ORDER BY id ASC LIMIT 1",
+                (student_id,),
+            )
+        )
+
+    def promote_upcoming_book(self, student_id: int, book_id: int) -> None:
+        """Makes `book_id` (assumed status='upcoming') the current book:
+        whatever's currently 'reading' is marked finished, and this one
+        starts. Not tied to any date -- a parent can call this the moment
+        he actually finishes the first book, whether that's early, on
+        schedule, or late."""
+        self.conn.execute(
+            "UPDATE books SET status = 'finished', finished_on = date('now') "
+            "WHERE student_id = ? AND status = 'reading'",
+            (student_id,),
+        )
+        self.conn.execute(
+            "UPDATE books SET status = 'reading', started_on = date('now') WHERE id = ?",
+            (book_id,),
+        )
+        self.conn.commit()
 
     def update_book(self, book_id: int, **fields: Any) -> None:
         allowed = {
@@ -2792,6 +2890,17 @@ class Database:
         start = date(start_year, month, day)
         end = date(start_year + 1, month, day) - timedelta(days=1)
         return start.isoformat(), end.isoformat()
+
+    def school_year_midpoint(self, on: date | None = None) -> date:
+        """Halfway between this school year's bounds -- the default nudge
+        point for switching from a first-half book to a second-half one.
+        Shifts automatically if school_year_start changes (e.g. starting a
+        week early); it's only a default, since promote_upcoming_book can
+        switch books early or late any time regardless of this date."""
+        start, end = self.school_year_bounds(on)
+        start_date = date.fromisoformat(start)
+        end_date = date.fromisoformat(end)
+        return start_date + (end_date - start_date) / 2
 
     def close(self) -> None:
         self.conn.close()
