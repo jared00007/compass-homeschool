@@ -53,6 +53,54 @@ def default_plan_target(on: date | None = None) -> date:
     return week_start(on) + timedelta(days=7)
 
 
+def planning_nudge(db: Any, student_id: int, today: date | None = None) -> tuple[str, str] | None:
+    """Whether a parent's dashboard should flag that planning got skipped,
+    and what to say -- factored out of Home.py so the date logic is
+    testable without going through a full page render (see school_calendar's
+    own injectable `on` param for the same reasoning).
+
+    Monday through Thursday only ever has a lesson waiting because someone
+    ran This Week's "Plan next week" ahead of time; nothing else says so if
+    that never happened. Two tiers, worst case first: a warning if the
+    *current* week has no lessons planned at all (an actual problem, any
+    day of it -- today's lesson may simply not exist), or an info note if
+    it's Fri/Sat/Sun and *next* week isn't set up yet (not yet a problem --
+    Friday just hasn't happened, or hasn't finished happening). Returns
+    `None` the rest of the time: everything due is already planned, or it's
+    still too early in the week to expect it.
+
+    Returns `(severity, message)` where `severity` is a literal Streamlit
+    method name ("warning" or "info") a caller can `getattr(st, severity)`
+    on directly.
+    """
+    today = today or date.today()
+    this_week_planned = bool(
+        latest_per_day(db.lessons_for_week(student_id, week_start(today).isoformat()))
+    )
+    if today.weekday() <= 3 and not this_week_planned:
+        return (
+            "warning",
+            "⚠️ This week hasn't been planned yet — Monday through Thursday's "
+            "lessons don't exist. Head to **This Week → Plan next week** (it can "
+            "target any week, not just the upcoming one).",
+        )
+
+    if today.weekday() >= 4:
+        next_week_planned = bool(
+            latest_per_day(
+                db.lessons_for_week(student_id, default_plan_target(today).isoformat())
+            )
+        )
+        if not next_week_planned:
+            return (
+                "info",
+                "📅 Next week hasn't been planned yet — usually a Friday thing. "
+                "Head to **This Week → Plan next week** when you get a chance.",
+            )
+
+    return None
+
+
 # --- batch generation ----------------------------------------------------------
 
 

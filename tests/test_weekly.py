@@ -11,13 +11,14 @@ made in the same sitting without a real graded assessment in between).
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from unittest.mock import patch
 
 import pytest
 
 from compass.agents.framework import GeneratedLesson, TopicProposal
 from compass.agents.llm import LessonGenerationError
+from compass.storage.db import Database
 from compass.weekly import (
     MATH_STAGE_NOTES,
     default_plan_target,
@@ -25,6 +26,7 @@ from compass.weekly import (
     plan_day,
     plan_math_week,
     plan_subject_week,
+    planning_nudge,
     week_dates,
     week_start,
 )
@@ -337,3 +339,67 @@ def test_plan_math_week_stops_reinforcing_when_a_later_day_fails():
     assert results[1].error == "rate limited"
     assert results[2].error == "Skipped — rate limited"
     assert results[3].error == "Skipped — rate limited"
+
+
+# --- planning_nudge ---------------------------------------------------------------
+
+
+@pytest.fixture()
+def nudge_db(tmp_path):
+    database = Database(tmp_path / "test.db")
+    yield database
+    database.close()
+
+
+@pytest.fixture()
+def nudge_student(nudge_db):
+    return nudge_db.ensure_default_student()
+
+
+def _plan_a_lesson(db, student_id, week_start_date):
+    db.save_lesson(
+        student_id=student_id, agent="math", subject="math", topic="t", title="t",
+        payload={},
+        metadata={"week_start": week_start_date.isoformat(), "planned_for": week_start_date.isoformat()},
+    )
+
+
+def test_warns_when_a_weekday_arrives_to_an_unplanned_week(nudge_db, nudge_student):
+    monday = date(2026, 8, 10)  # a Monday
+    severity, message = planning_nudge(nudge_db, nudge_student["id"], today=monday)
+    assert severity == "warning"
+    assert "hasn't been planned" in message
+
+
+@pytest.mark.parametrize("weekday_offset", [0, 1, 2, 3])  # Mon, Tue, Wed, Thu
+def test_no_nudge_on_any_weekday_once_this_week_is_planned(nudge_db, nudge_student, weekday_offset):
+    monday = date(2026, 8, 10)
+    _plan_a_lesson(nudge_db, nudge_student["id"], monday)
+    assert planning_nudge(nudge_db, nudge_student["id"], today=monday + timedelta(days=weekday_offset)) is None
+
+
+@pytest.mark.parametrize("weekday_offset", [4, 5, 6])  # Fri, Sat, Sun
+def test_gently_nudges_on_a_weekend_when_next_week_is_unplanned(nudge_db, nudge_student, weekday_offset):
+    monday = date(2026, 8, 10)
+    on = monday + timedelta(days=weekday_offset)
+    severity, message = planning_nudge(nudge_db, nudge_student["id"], today=on)
+    assert severity == "info"
+    assert "Next week hasn't been planned" in message
+
+
+def test_no_nudge_once_next_week_is_planned_ahead_of_time(nudge_db, nudge_student):
+    friday = date(2026, 8, 14)
+    _plan_a_lesson(nudge_db, nudge_student["id"], default_plan_target(friday))
+    assert planning_nudge(nudge_db, nudge_student["id"], today=friday) is None
+
+
+def test_weekend_nudge_ignores_whether_the_week_just_finished_was_ever_planned(
+    nudge_db, nudge_student
+):
+    """By Friday, Monday-Thursday is already history -- the nudge shifts to
+    being about next week specifically, not a lingering complaint about a
+    week that's effectively over."""
+    friday = date(2026, 8, 14)
+    _plan_a_lesson(nudge_db, nudge_student["id"], default_plan_target(friday))
+    # the week that just ended (starting Aug 10) was deliberately never planned
+    assert planning_nudge(nudge_db, nudge_student["id"], today=friday) is None
