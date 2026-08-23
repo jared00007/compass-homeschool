@@ -1,4 +1,8 @@
-"""English / Language Arts Agent — tied to the book he's actually reading."""
+"""English / Language Arts Agent — tied to the book he's actually reading,
+with two deliberate exceptions: an occasional nonfiction piece for genre
+variety, and a standalone grammar/writing fallback when no book is set at
+all (see ELA_FOCUS_ROTATION / STANDALONE_FOCUS_ROTATION in
+compass/agents/strategies.py)."""
 
 from __future__ import annotations
 
@@ -7,7 +11,7 @@ from datetime import date
 import streamlit as st
 
 from compass.agents import get_agent
-from compass.agents.strategies import ELA_FOCUS_ROTATION
+from compass.agents.strategies import ELA_FOCUS_ROTATION, STANDALONE_FOCUS_ROTATION
 from compass.ui import (
     api_status_banner,
     context_for,
@@ -53,25 +57,30 @@ with plan_tab:
     book = db.current_book(student["id"])
 
     if not book:
-        st.warning(
-            "No book is marked as currently being read. Add one on the **Books** tab — "
-            "this agent deliberately refuses to fall back to generic passages."
+        st.info(
+            "No book is marked as currently being read, so this will be a standalone "
+            "grammar/writing lesson instead -- add one on the **Books** tab for "
+            "lessons tied to what he's actually reading."
         )
+        focus_rotation = STANDALONE_FOCUS_ROTATION
     else:
-        columns = st.columns([2, 1, 1])
-        with columns[0]:
-            focus_labels = {key: text for key, text in ELA_FOCUS_ROTATION}
-            focus_choice = st.selectbox(
-                "Focus",
-                ["Let the agent rotate"] + list(focus_labels),
-                format_func=lambda k: k if k == "Let the agent rotate" else focus_labels[k],
-            )
-        with columns[1]:
-            minutes = st.number_input("Minutes", min_value=15, max_value=180, value=60, step=5)
-        with columns[2]:
-            due = db.vocabulary_due(student["id"])
-            st.metric("Words due", len(due))
+        focus_rotation = ELA_FOCUS_ROTATION
 
+    columns = st.columns([2, 1, 1])
+    with columns[0]:
+        focus_labels = {key: text for key, text in focus_rotation}
+        focus_choice = st.selectbox(
+            "Focus",
+            ["Let the agent rotate"] + list(focus_labels),
+            format_func=lambda k: k if k == "Let the agent rotate" else focus_labels[k],
+        )
+    with columns[1]:
+        minutes = st.number_input("Minutes", min_value=15, max_value=180, value=60, step=5)
+    with columns[2]:
+        due = db.vocabulary_due(student["id"])
+        st.metric("Words due", len(due))
+
+    if book:
         page = st.number_input(
             "Current page",
             min_value=0,
@@ -83,34 +92,44 @@ with plan_tab:
             db.update_book(book["id"], current_page=int(page))
             book["current_page"] = int(page)
 
-        parent_note = st.text_input("Note for this lesson (optional)")
-        difficulty = difficulty_override_control(db, key="english_difficulty")
+    seed_topic = st.text_input(
+        "Or point this lesson at something specific (optional)",
+        placeholder="e.g. the courtroom scene in chapter 12" if book else "e.g. writing a thank-you note",
+        help="Overrides the Focus pick above with exactly this.",
+    )
+    parent_note = st.text_input("Note for this lesson (optional)")
+    difficulty = difficulty_override_control(db, key="english_difficulty")
 
-        ctx = context_for(
-            db,
-            student,
-            minutes=minutes,
-            parent_note=parent_note,
-            focus="" if focus_choice == "Let the agent rotate" else focus_choice,
-            difficulty=difficulty,
-        )
-        proposal = agent.propose_topic(ctx)
-        render_proposal(agent, proposal)
+    ctx = context_for(
+        db,
+        student,
+        minutes=minutes,
+        parent_note=parent_note,
+        focus="" if focus_choice == "Let the agent rotate" else focus_choice,
+        seed_topic=seed_topic,
+        difficulty=difficulty,
+    )
+    proposal = agent.propose_topic(ctx)
+    render_proposal(agent, proposal)
 
-        generate_and_log(
-            db,
-            student,
-            agent,
-            ctx,
-            proposal,
-            primary_subject="reading",
-            spinner="The English Agent is writing the lesson…",
-            api_ok=api_ok,
-            after_render=(
-                "Any `VOCAB:` lines in the materials were added to his "
-                "spaced-repetition deck."
-            ),
-        )
+    generate_and_log(
+        db,
+        student,
+        agent,
+        ctx,
+        proposal,
+        # A standalone lesson (no book) is grammar/writing practice, not
+        # reading comprehension -- this is only the fallback tag used if the
+        # model's own subject_credits ever comes back empty, but it should
+        # still describe the lesson accurately when it is used.
+        primary_subject="reading" if book else "writing",
+        spinner="The English Agent is writing the lesson…",
+        api_ok=api_ok,
+        after_render=(
+            "Any `VOCAB:` lines in the materials were added to his "
+            "spaced-repetition deck."
+        ),
+    )
 
 # --- books -------------------------------------------------------------------
 

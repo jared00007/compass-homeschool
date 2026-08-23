@@ -439,7 +439,10 @@ def timeline(ctx: StudentContext) -> TopicProposal:
 
 
 # ---------------------------------------------------------------------------
-# English — tied to what he is actually reading
+# English — tied to what he is actually reading, with two deliberate
+# exceptions: a "nonfiction" rotation slot for genre variety, and a
+# standalone grammar/writing fallback (_standalone_english) when no book
+# is set at all.
 # ---------------------------------------------------------------------------
 
 ELA_FOCUS_ROTATION = (
@@ -447,23 +450,89 @@ ELA_FOCUS_ROTATION = (
     ("vocabulary", "vocabulary drawn from the current book, plus review of words that are due"),
     ("writing", "a writing task that responds to the current book"),
     ("craft", "author's craft: structure, voice, figurative language, and choices"),
+    ("nonfiction", "a short nonfiction/informational piece -- unconnected to the current "
+     "novel, for genre variety"),
 )
+
+# A no-book fallback (see reading_tied) rather than refusing to generate at
+# all -- grammar/writing skill that doesn't depend on wherever he happens to
+# be in a novel, or on a novel existing at all right now. Same rotation
+# mechanism as ELA_FOCUS_ROTATION: whichever entry wasn't used in the last
+# 3 standalone lessons, earliest in this tuple first.
+STANDALONE_FOCUS_ROTATION = (
+    ("grammar", "grammar and mechanics he actually trips on -- subject-verb agreement, "
+     "apostrophes, run-ons, comma splices"),
+    ("sentence_structure", "sentence structure: combining choppy sentences, varying length "
+     "and rhythm on purpose"),
+    ("paragraph", "paragraph structure -- a real topic sentence, actual support, a "
+     "transition that earns its place"),
+    ("narrative", "a short personal narrative writing task, not tied to any book"),
+    ("persuasive", "a short persuasive/argumentative writing task on a topic he picks"),
+)
+
+
+def _standalone_english(ctx: StudentContext) -> TopicProposal:
+    """No book is marked as currently being read -- rather than refusing to
+    generate anything (the old behavior), fall back to a grammar/writing
+    lesson that doesn't depend on a book existing. Still counts toward the
+    same subjects (writing, spelling, language) a book-tied lesson would;
+    it just isn't anchored to a specific text. Same recency-avoidance
+    rotation as the book-tied path, over a separate history of standalone
+    lessons only (mixing the two rotations would make either one skip
+    around unpredictably)."""
+    lessons = ctx.db.list_lessons(ctx.student_id, agent="english", limit=20)
+    used_focus = [
+        l["metadata"].get("standalone_focus")
+        for l in lessons
+        if l.get("metadata", {}).get("mode") == "standalone"
+    ]
+
+    requested = (ctx.inputs.get("focus") or "").strip()
+    if requested and requested in dict(STANDALONE_FOCUS_ROTATION):
+        focus_key = requested
+    else:
+        focus_key = next(
+            (key for key, _ in STANDALONE_FOCUS_ROTATION if key not in used_focus[:3]),
+            STANDALONE_FOCUS_ROTATION[0][0],
+        )
+    focus_label = dict(STANDALONE_FOCUS_ROTATION)[focus_key]
+    seed = (ctx.inputs.get("seed_topic") or "").strip()
+
+    guidance = (
+        "No book is currently marked as being read, so this is a standalone "
+        "grammar/writing lesson rather than one tied to a text -- do not invent or "
+        "reference a book that doesn't exist. It still counts toward the same subjects "
+        "(writing, spelling, language) a book-tied lesson would.\n\n"
+        "Lean on what he's into for the example material where it genuinely fits, rather "
+        "than a generic textbook sentence.\n\n"
+        "Leave `branches` empty."
+    )
+
+    context_lines = [
+        "No book is currently marked as 'reading' -- this is a standalone lesson.",
+        f"This lesson's focus: {focus_label}",
+    ]
+    if seed:
+        context_lines.append(f"Parent/student requested this specific focus: {seed}")
+
+    return TopicProposal(
+        topic=f"Standalone English: {seed}" if seed else f"Standalone English: {focus_label}",
+        rationale=(
+            "Parent or student supplied this as the specific focus." if seed else
+            ("No book is currently set, so this lesson stands on its own. "
+             f"{focus_key} is the standalone focus least recently used.")
+        ),
+        strategy="reading_tied",
+        guidance=guidance,
+        context_lines=context_lines,
+        metadata={"mode": "standalone", "standalone_focus": focus_key},
+    )
 
 
 def reading_tied(ctx: StudentContext) -> TopicProposal:
     book = ctx.db.current_book(ctx.student_id)
     if not book:
-        return TopicProposal(
-            topic="",
-            rationale="",
-            strategy="reading_tied",
-            blocked=True,
-            blocked_reason=(
-                "No book is marked as currently being read. Add what he's reading on the "
-                "English page first — this agent builds exercises off the actual book, not "
-                "a generic passage list."
-            ),
-        )
+        return _standalone_english(ctx)
 
     due = ctx.db.vocabulary_due(ctx.student_id, limit=12)
     lessons = ctx.db.list_lessons(ctx.student_id, agent="english", limit=8)
@@ -478,6 +547,41 @@ def reading_tied(ctx: StudentContext) -> TopicProposal:
             ELA_FOCUS_ROTATION[0][0],
         )
     focus_label = dict(ELA_FOCUS_ROTATION)[focus_key]
+    # Not read anywhere before this -- spiderweb()/timeline() have always
+    # honored a parent/student-supplied seed_topic, but reading_tied() never
+    # did, so the "Monday's topic" box on the weekly planner silently did
+    # nothing for English. Same override semantics as those two: a specific
+    # ask beats the rotation's automatic pick.
+    seed = (ctx.inputs.get("seed_topic") or "").strip()
+
+    if focus_key == "nonfiction":
+        guidance = (
+            "This is the one rotation slot that deliberately breaks from the book: pick a "
+            "short, real nonfiction/informational piece -- a news article, a primary source "
+            "excerpt, a short science or history explainer -- genuinely appropriate for an "
+            "8th grader, unconnected to the current novel. Lean on what he's into for the "
+            "topic where a good real piece actually exists there; a solid piece on an "
+            "unrelated topic beats a forced connection. State plainly in the lesson what "
+            "the piece is (title/source) so both of you know what he read. Build "
+            "comprehension, vocabulary, and/or writing exercises around this piece the same "
+            "way you would a book chapter.\n\n"
+            "Leave `branches` empty."
+        )
+        nonfiction_context = [f"This lesson's focus: {focus_label}"]
+        if seed:
+            nonfiction_context.append(f"Parent/student requested this specific nonfiction topic: {seed}")
+        return TopicProposal(
+            topic=f"Nonfiction interlude — {seed}" if seed else
+            "Nonfiction interlude — unconnected to the current book, for genre variety",
+            rationale=(
+                "Parent or student supplied this as the nonfiction topic." if seed else
+                "Genre variety: an occasional nonfiction piece rather than only the novel."
+            ),
+            strategy="reading_tied",
+            guidance=guidance,
+            context_lines=nonfiction_context,
+            metadata={"focus": focus_key},
+        )
 
     progress = ""
     if book.get("total_pages"):
@@ -493,6 +597,8 @@ def reading_tied(ctx: StudentContext) -> TopicProposal:
     if book.get("notes"):
         context_lines.append(f"Parent notes on this book: {book['notes']}")
     context_lines.append(f"This lesson's focus: {focus_label}")
+    if seed:
+        context_lines.append(f"Parent/student requested this specific focus: {seed}")
 
     if due:
         words = ", ".join(f"{v['word']} (box {v['box']})" for v in due)
@@ -523,10 +629,12 @@ def reading_tied(ctx: StudentContext) -> TopicProposal:
     )
 
     return TopicProposal(
-        topic=f"{book['title']}: {focus_label}",
+        topic=f"{book['title']}: {seed}" if seed else f"{book['title']}: {focus_label}",
         rationale=(
-            f"He is mid-book on \"{book['title']}\", and {focus_key} is the focus area "
-            "least recently used."
+            "Parent or student supplied this as the specific focus for today's lesson."
+            if seed else
+            (f"He is mid-book on \"{book['title']}\", and {focus_key} is the focus area "
+             "least recently used.")
         ),
         strategy="reading_tied",
         guidance=guidance,

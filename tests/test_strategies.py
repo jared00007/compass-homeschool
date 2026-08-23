@@ -140,10 +140,57 @@ def test_spiderweb_does_not_duplicate_an_existing_branch(db, student):
 # --- English: reading-tied ---------------------------------------------------
 
 
-def test_english_blocks_without_a_current_book(db, student):
+def test_english_falls_back_to_a_standalone_lesson_without_a_current_book(db, student):
+    """Used to hard-block with no book set at all; now falls back to a
+    grammar/writing lesson that doesn't need one."""
     proposal = get_agent("english").propose_topic(ctx_for(db, student))
-    assert proposal.blocked
-    assert "No book" in proposal.blocked_reason
+    assert not proposal.blocked
+    assert proposal.metadata["mode"] == "standalone"
+    assert proposal.metadata["standalone_focus"]
+    assert "book" not in proposal.topic.lower()
+
+
+def test_standalone_english_rotates_focus_areas(db, student):
+    first = get_agent("english").propose_topic(ctx_for(db, student))
+    db.save_lesson(
+        student["id"], "english", "reading", "t", "t", payload={},
+        metadata={"mode": "standalone", "standalone_focus": first.metadata["standalone_focus"]},
+    )
+    second = get_agent("english").propose_topic(ctx_for(db, student))
+    assert second.metadata["standalone_focus"] != first.metadata["standalone_focus"]
+
+
+def test_standalone_english_honors_a_requested_focus(db, student):
+    proposal = get_agent("english").propose_topic(ctx_for(db, student, focus="persuasive"))
+    assert proposal.metadata["standalone_focus"] == "persuasive"
+
+
+def test_standalone_english_honors_a_seed_topic(db, student):
+    proposal = get_agent("english").propose_topic(
+        ctx_for(db, student, seed_topic="Write a thank-you note")
+    )
+    assert "Write a thank-you note" in proposal.topic
+    assert any("Write a thank-you note" in line for line in proposal.context_lines)
+
+
+def test_book_tied_english_honors_a_seed_topic(db, student):
+    """spiderweb()/timeline() have always honored seed_topic; reading_tied()
+    never did, so the weekly planner's Monday-topic box silently did
+    nothing for English. Now it does."""
+    db.add_book(student["id"], "The Hobbit")
+    proposal = get_agent("english").propose_topic(
+        ctx_for(db, student, seed_topic="the riddles in the dark scene")
+    )
+    assert "the riddles in the dark scene" in proposal.topic
+    assert any("the riddles in the dark scene" in line for line in proposal.context_lines)
+
+
+def test_english_nonfiction_focus_breaks_from_the_book(db, student):
+    db.add_book(student["id"], "The Hobbit")
+    proposal = get_agent("english").propose_topic(ctx_for(db, student, focus="nonfiction"))
+    assert proposal.metadata["focus"] == "nonfiction"
+    assert "book_id" not in proposal.metadata
+    assert "The Hobbit" not in proposal.topic
 
 
 def test_english_anchors_on_the_current_book(db, student):
