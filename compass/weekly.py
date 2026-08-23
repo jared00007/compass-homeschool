@@ -126,11 +126,19 @@ def plan_day(
     seed_topic: str = "",
     skill_id: str = "",
     parent_note: str = "",
+    node_id: str = "",
 ) -> PlannedDay:
     """Generate and persist one subject's lesson for one specific day,
     tagging it with which week's plan it belongs to and which day it's
     meant for. The one primitive every other function in this module (and
     a page regenerating a single day later) builds on.
+
+    `node_id` points Science/History at a specific open branch already
+    sitting in their topic web (see spiderweb/timeline's own
+    `ctx.inputs.get("node_id")`) -- the same mechanism their single-lesson
+    pages use, now reachable from the batch planner too. `seed_topic` wins
+    over it if both are given, same priority those strategies already
+    apply.
     """
     inputs: dict[str, Any] = {}
     if seed_topic:
@@ -139,6 +147,8 @@ def plan_day(
         inputs["skill_id"] = skill_id
     if parent_note:
         inputs["parent_note"] = parent_note
+    if node_id:
+        inputs["node_id"] = node_id
     ctx = StudentContext(db=db, student_id=student["id"], student=student, inputs=inputs)
 
     try:

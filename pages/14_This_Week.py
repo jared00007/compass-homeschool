@@ -23,6 +23,7 @@ import streamlit as st
 
 from compass import weekly
 from compass.agents import all_agents
+from compass.agents.strategies import ERAS, SCIENCE_DOMAINS
 from compass.compliance import build_report
 from compass.ui import (
     FRIDAY_PLAN_KINDS,
@@ -59,6 +60,28 @@ def _day_label(iso_date: str) -> str:
     if not iso_date:
         return "no day set"
     return date.fromisoformat(iso_date).strftime("%A, %b %-d")
+
+
+def _idea_options(db, student_id: int, key: str) -> list[tuple[str, str]]:
+    """Monday's optional topic picker for Science/History: real open
+    branches from earlier lessons (if any exist yet -- a fresh topic web,
+    like right after the school-year reset, has none), plus the built-in
+    domain/era rotation those same strategies fall back to automatically
+    when a web is empty -- ready-made ideas at both levels of specificity,
+    rather than a blank box. Value encodes which kind of pick it is:
+    "node:<id>" for an existing branch, "domain:<index>" for a built-in
+    rotation entry, so the caller can route it to node_id or seed_topic.
+    """
+    options: list[tuple[str, str]] = [("auto", "Let the agent choose automatically")]
+    options += [
+        (f"node:{n['id']}", f"🔗 {n['topic']}")
+        for n in db.unexplored_web_nodes(student_id, key)
+    ]
+    if key == "science":
+        options += [(f"domain:{i}", f"💡 {label}") for i, label in enumerate(SCIENCE_DOMAINS)]
+    elif key == "history":
+        options += [(f"domain:{i}", f"💡 {label}") for i, (_, label) in enumerate(ERAS)]
+    return options
 
 
 review_tab, plan_tab = st.tabs(["Review this week", "Plan next week"])
@@ -138,8 +161,9 @@ with plan_tab:
         "either of which silently strands whatever hadn't been reached yet. "
         "The three spiderweb/timeline/reading-driven subjects each get four "
         "fresh topics; Math gets one skill framed across the week (see This "
-        "Week's own notes on why). Optionally point a subject's Monday at "
-        "something specific instead of its automatic pick -- this is where a "
+        "Week's own notes on why). Science and History offer Monday's topic as "
+        "a picklist -- open branches from earlier lessons, plus the built-in "
+        "domain/era rotation -- or type something new entirely; this is where a "
         "Class CrunchLabs unit would get slotted into Science on purpose. "
         "Filling in only covers days that don't have a lesson yet -- it never "
         "touches a day that's already planned, whether he's done it or not. "
@@ -166,7 +190,34 @@ with plan_tab:
         with st.container(border=True):
             st.markdown(f"**{_agent_label(key)}**")
             seed = ""
-            if monday_missing:
+            picked_node_id = ""
+            if monday_missing and key in ("science", "history"):
+                idea_options = _idea_options(db, student["id"], key)
+                idea_labels = dict(idea_options)
+                picked_idea = st.selectbox(
+                    "Monday's topic -- pick an idea, or let the agent choose",
+                    [value for value, _ in idea_options],
+                    format_func=lambda v: idea_labels[v],
+                    key=f"weekplan_idea_{key}",
+                    help="Open branches proposed by earlier lessons, plus the built-in "
+                    "topic rotation those same lessons fall back to automatically when "
+                    "there's nothing open yet.",
+                )
+                if picked_idea.startswith("node:"):
+                    picked_node_id = picked_idea.split(":", 1)[1]
+                elif picked_idea.startswith("domain:"):
+                    domain_index = int(picked_idea.split(":", 1)[1])
+                    seed = SCIENCE_DOMAINS[domain_index] if key == "science" else ERAS[domain_index][1]
+                seed_override = st.text_input(
+                    "Or type something specific instead (optional)",
+                    key=f"weekplan_seed_{key}",
+                    help="Typing here ignores the pick above and starts something new; "
+                    "the branches/domains stay available for later.",
+                )
+                if seed_override.strip():
+                    seed = seed_override.strip()
+                    picked_node_id = ""
+            elif monday_missing:
                 seed = st.text_input(
                     "Monday's topic (optional, leave blank to let the agent choose)",
                     key=f"weekplan_seed_{key}",
@@ -187,9 +238,11 @@ with plan_tab:
                         index = target_dates.index(target)
                         note = weekly.MATH_STAGE_NOTES[index] if key == "math" else ""
                         day_seed = seed.strip() if index == 0 else ""
+                        day_node_id = picked_node_id if index == 0 else ""
                         result = weekly.plan_day(
                             db, student, AGENTS[key], target_week_start, target,
                             seed_topic=day_seed, skill_id=skill_id, parent_note=note,
+                            node_id=day_node_id,
                         )
                         day_results.append(result)
                         if key == "math" and index == 0 and result.generated:

@@ -187,6 +187,41 @@ def test_plan_day_forwards_seed_topic_and_skill_id_and_parent_note():
     assert seen_inputs["parent_note"] == "Day 2 of 4."
 
 
+def test_plan_day_forwards_node_id():
+    seen_inputs = {}
+
+    def propose(ctx):
+        seen_inputs.update(ctx.inputs)
+        return a_proposal()
+
+    agent = FakeAgent(
+        propose_fn=propose,
+        generate_fn=lambda ctx, proposal: GeneratedLesson(
+            lesson_id=1, proposal=proposal, payload={}, warnings=[]
+        ),
+    )
+    plan_day(None, STUDENT, agent, date(2026, 8, 10), date(2026, 8, 10), node_id="42")
+    assert seen_inputs["node_id"] == "42"
+    assert "seed_topic" not in seen_inputs
+
+
+def test_plan_day_omits_node_id_when_not_given():
+    seen_inputs = {}
+
+    def propose(ctx):
+        seen_inputs.update(ctx.inputs)
+        return a_proposal()
+
+    agent = FakeAgent(
+        propose_fn=propose,
+        generate_fn=lambda ctx, proposal: GeneratedLesson(
+            lesson_id=1, proposal=proposal, payload={}, warnings=[]
+        ),
+    )
+    plan_day(None, STUDENT, agent, date(2026, 8, 10), date(2026, 8, 10))
+    assert "node_id" not in seen_inputs
+
+
 # --- plan_subject_week: four independent, fresh topics ----------------------------
 
 
