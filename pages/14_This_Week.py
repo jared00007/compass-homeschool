@@ -133,8 +133,9 @@ with plan_tab:
     st.caption(
         "Each subject plans on its own click -- at most four lessons at a time, "
         "never all sixteen in one shot. A batch that large can run well past "
-        "ten minutes, long enough for the browser connection to drop before it "
-        "finishes, which silently strands whatever hadn't been reached yet. "
+        "ten minutes -- long enough for the browser connection to drop, or for "
+        "clicking to another page before it finishes (see the warning below), "
+        "either of which silently strands whatever hadn't been reached yet. "
         "The three spiderweb/timeline/reading-driven subjects each get four "
         "fresh topics; Math gets one skill framed across the week (see This "
         "Week's own notes on why). Optionally point a subject's Monday at "
@@ -144,6 +145,16 @@ with plan_tab:
         "touches a day that's already planned, whether he's done it or not. "
         "To replace a specific day on purpose, open it below and use "
         "**Regenerate just this day**."
+    )
+    st.warning(
+        "⚠️ **Stay on this page until the spinner below finishes.** Clicking to "
+        "Check-In, Home, or anywhere else mid-generation stops it immediately -- "
+        "Streamlit cancels whatever a page was doing the moment you navigate "
+        "away from it. Whatever day it already reached is saved; whatever day "
+        "it hadn't gotten to yet just never happens, with no error shown. If "
+        "that happens, come back here and click **Fill in missing days** again "
+        "-- it only ever fills the actual gaps, never touches what already "
+        "planned successfully."
     )
 
     for key in AGENT_ORDER:
@@ -162,7 +173,7 @@ with plan_tab:
                 )
             button_label = "Plan this week" if not lessons else "Fill in missing days"
             if st.button(button_label, key=f"regen_week_{key}", disabled=not missing_dates):
-                with st.spinner(f"Planning {_agent_label(key)}…"):
+                with st.spinner(f"Planning {_agent_label(key)}… don't navigate away"):
                     # Math's missing days must continue the week's one
                     # shared skill rather than each proposing fresh --
                     # read it off whatever's already planned this week,
