@@ -1601,7 +1601,12 @@ def _render_first_day_contents(db: Database, student: dict[str, Any], year_start
     are explicitly labeled examples -- their content is either a starter
     catalog or just whatever's logged so far, not a fixed or complete
     assignment list, and the label is there so he doesn't mistake one for
-    the other. Reachable only from the cover's "See what's inside" button.
+    the other. Three more explainer sections (Where Everything Lives, How
+    Your Lessons Work, How The Week Comes Together) round out the same
+    "orient him to the app" job as Check-In/Morning Routine -- every other
+    feature here got its own explainer, but the core daily subjects and
+    the app's own shape never did until now. Reachable only from the
+    cover's "See what's inside" button.
     """
     student_id = student["id"]
     books = db.list_books(student_id)
@@ -1633,6 +1638,37 @@ def _render_first_day_contents(db: Database, student: dict[str, Any], year_start
         "lesson comes with explanations, examples, and videos built in — so if "
         "something doesn't click, check there first before getting stuck.\n\n"
         "Try your hardest. Grow. That's the whole goal this year.",
+    ))
+
+    sections.append((
+        "🧭 WHERE EVERYTHING LIVES",
+        _FIRST_DAY_COLORS[0],
+        "Down the left side: **Math, Science, English,** and **History** are "
+        "your daily subjects. **Choice Topics, Life Skills,** and **Big "
+        "Projects** are yours to steer. **Check-In** and **Landon's Travels** "
+        "round it out. **Home** is where your day actually starts — that's "
+        "where everything shows up.",
+    ))
+
+    sections.append((
+        "📖 HOW YOUR LESSONS WORK",
+        _FIRST_DAY_COLORS[1],
+        "Math, Science, English, and History each get their own lesson, built "
+        "just for you — not a worksheet pulled from a textbook. Open the "
+        "subject, read through it, and work through the activities. Some come "
+        "with a video, some with practice problems, some with a project. Take "
+        "your time, but take it seriously — this is the real work of the "
+        "year.",
+    ))
+
+    sections.append((
+        "🗓️ HOW THE WEEK COMES TOGETHER",
+        _FIRST_DAY_COLORS[2],
+        "Lessons don't appear out of nowhere — they get planned ahead of time "
+        "and show up on **Home** when it's time for them. Some weeks "
+        "everything's ready to go by Monday; other times a new one lands the "
+        "night before. Either way, Home is where you check each morning to "
+        "see what's next.",
     ))
 
     if books:

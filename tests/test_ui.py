@@ -1454,6 +1454,22 @@ def test_table_of_contents_explains_check_in_and_morning_routine(monkeypatch, db
     assert "start the day feeling good" in page
 
 
+def test_table_of_contents_explains_the_app_itself(monkeypatch, db, student):
+    """Every other feature in this preview got its own explainer -- the core
+    daily subjects and the app's own shape hadn't, until these three."""
+    db.set_setting("school_year_start", "09-01")
+    _fix_today(monkeypatch, date(2026, 9, 1))
+    state = {"first_day_view": "contents"}
+    page, shown, _ = render_first_day(monkeypatch, db, student, state=state)
+    assert shown is True
+    assert "WHERE EVERYTHING LIVES" in page
+    assert "Home** is where your day actually starts" in page
+    assert "HOW YOUR LESSONS WORK" in page
+    assert "built just for you" in page
+    assert "HOW THE WEEK COMES TOGETHER" in page
+    assert "show up on **Home**" in page
+
+
 def test_choice_topics_life_skills_and_travel_are_labeled_as_examples(monkeypatch, db, student):
     """These sections show either a starter catalog or just whatever's been
     logged so far -- not a fixed or complete assignment list -- so the label
