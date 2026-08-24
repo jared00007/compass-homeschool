@@ -9,16 +9,18 @@ Takes a safety snapshot (via compass.backup.snapshot, the same mechanism
 for a typed confirmation.
 
 Cleared: lessons, logged activities + their subject credits, saved books
-and vocabulary, the travel journal, math mastery progress, the
-Science/History "topics already explored" history, course/credit records,
-the Check-In feelings journal, and the morning routine log. Life Skills
-keep their curated list but have completed_on reset to not-done.
+and vocabulary, math mastery progress, the Science/History "topics
+already explored" history, course/credit records, the Check-In feelings
+journal, and the morning routine log. Life Skills keep their curated list
+but have completed_on reset to not-done.
 
 Left untouched: the student profile, Big Projects (long-term projects
-carry across school years), Tier 3 Choice topics, declarations of intent,
-and uploaded district documents -- none of those are a single year's
-assignments, and clearing them was explicitly ruled out when this script
-was scoped.
+carry across school years), the travel journal (a family record that
+stacks year over year, not a single year's assignment -- explicitly not
+a "this year's schoolwork" table the way books or lessons are), Tier 3
+Choice topics, declarations of intent, and uploaded district documents --
+none of those are a single year's assignments, and clearing them was
+explicitly ruled out when this script was scoped.
 
 Works from any working directory -- it locates the project root itself
 rather than requiring `cd` first.
@@ -40,7 +42,6 @@ CLEAR_TABLES = [
     "lessons",
     "vocabulary",
     "books",
-    "travel_entries",
     "skill_mastery",
     "topic_web",
     "courses",
@@ -49,8 +50,8 @@ CLEAR_TABLES = [
 ]
 
 KEPT = (
-    "student profile, Big Projects, Tier 3 Choice topics, declarations of "
-    "intent, and uploaded district documents"
+    "student profile, Big Projects, the travel journal, Tier 3 Choice "
+    "topics, declarations of intent, and uploaded district documents"
 )
 
 
@@ -67,7 +68,6 @@ def main() -> None:
         "\nThis will permanently clear:\n"
         "  - assignments (lessons, logged activities, subject credits)\n"
         "  - saved books and vocabulary\n"
-        "  - the travel journal\n"
         "  - math mastery progress\n"
         "  - science/history topic history\n"
         "  - course/credit records\n"

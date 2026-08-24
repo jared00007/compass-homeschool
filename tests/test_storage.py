@@ -943,6 +943,65 @@ def test_delete_big_project_cascades_to_its_steps(db, student):
     assert db.list_big_projects(student["id"]) == []
 
 
+def test_set_big_project_shelved_toggles_and_is_reversible(db, student):
+    project_id = db.add_big_project(student["id"], "Test Project")
+    db.set_big_project_shelved(project_id, True)
+    assert db.list_big_projects(student["id"])[0]["shelved"] == 1
+    db.set_big_project_shelved(project_id, False)
+    assert db.list_big_projects(student["id"])[0]["shelved"] == 0
+
+
+def test_shelving_a_project_does_not_delete_it(db, student):
+    """The whole point: unlike delete_big_project, the row (and its steps)
+    survive -- shelving is reversible, delete never was."""
+    project_id = db.add_big_project(student["id"], "Test Project")
+    db.add_project_step(project_id, "Step one")
+    db.set_big_project_shelved(project_id, True)
+    assert len(db.list_big_projects(student["id"])) == 1
+    assert len(db.list_project_steps(project_id)) == 1
+
+
+def test_shelved_catalog_projects_do_not_come_back_after_a_restart(db, student):
+    """Regression: _backfill_big_project_catalog used to be the only thing
+    standing between a deleted catalog project and it reappearing on the
+    next migrate(). Shelving instead of deleting fixes this for good --
+    the row survives, so the catalog top-up's "is this title already here"
+    check correctly finds it and leaves it alone."""
+    db.seed_big_projects(student["id"])
+    projects = db.list_big_projects(student["id"])
+    target = projects[0]
+    db.set_big_project_shelved(target["id"], True)
+
+    db._backfill_big_project_catalog()  # what migrate() runs on every restart
+
+    refreshed = db.list_big_projects(student["id"])
+    assert len(refreshed) == len(projects), "no duplicate or resurrected row"
+    matching = next(p for p in refreshed if p["title"] == target["title"])
+    assert matching["shelved"] == 1
+
+
+def test_shelving_the_active_project_clears_the_active_pick(db, student):
+    project_id = db.add_big_project(student["id"], "Test Project")
+    db.set_active_big_project(project_id)
+    assert db.active_big_project(student["id"]) is not None
+
+    db.set_big_project_shelved(project_id, True)
+
+    assert db.active_big_project(student["id"]) is None
+
+
+def test_shelving_an_inactive_project_leaves_the_active_pick_alone(db, student):
+    active_id = db.add_big_project(student["id"], "Active One")
+    other_id = db.add_big_project(student["id"], "Other One")
+    db.set_active_big_project(active_id)
+
+    db.set_big_project_shelved(other_id, True)
+
+    active = db.active_big_project(student["id"])
+    assert active is not None
+    assert active["id"] == active_id
+
+
 def test_no_active_big_project_until_one_is_chosen(db, student):
     db.add_big_project(student["id"], "Test Project")
     assert db.active_big_project(student["id"]) is None

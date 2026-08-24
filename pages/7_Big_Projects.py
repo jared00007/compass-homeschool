@@ -37,6 +37,7 @@ def _day_range(min_days: int, max_days: int) -> str:
 
 
 projects = db.list_big_projects(student["id"])
+visible_projects = [p for p in projects if not p["shelved"]]
 
 if not projects:
     st.info("No projects yet.")
@@ -44,7 +45,7 @@ if not projects:
         count = db.seed_big_projects(student["id"])
         st.success(f"Added {count} project{'s' if count != 1 else ''}.")
         st.rerun()
-elif len(projects) > 1:
+elif len(visible_projects) > 1:
     st.caption(
         "A few options on purpose -- pick **one** to actually work through this "
         "year with the button on its card below. That's also what Friday's "
@@ -83,10 +84,15 @@ div[class*="st-key-step_row_next_"] {
 with checklist_tab:
     if not projects:
         st.caption("Add the starter project above to get going.")
+    elif not visible_projects:
+        st.caption(
+            "Everything's shelved right now"
+            + (" -- check the Add / manage tab to bring one back." if is_parent() else ".")
+        )
     st.markdown(_STEP_CARD_CSS, unsafe_allow_html=True)
     active_project = db.active_big_project(student["id"])
     active_id = active_project["id"] if active_project else None
-    for project in projects:
+    for project in visible_projects:
         steps = db.list_project_steps(project["id"])
         done = sum(1 for s in steps if s["completed_on"])
         # A real st.expander can't wrap this card -- each step below is
@@ -174,9 +180,9 @@ with checklist_tab:
                             meta.append(f"Credits toward {label(step['credit_subject'])}")
                             st.caption(" · ".join(meta))
             if is_parent() and st.button(
-                "Remove this project", key=f"remove_project_{project['id']}"
+                "Not an interest -- shelve it", key=f"shelve_project_{project['id']}"
             ):
-                db.delete_big_project(project["id"])
+                db.set_big_project_shelved(project["id"], True)
                 st.rerun()
 
 if log_tab is not None:
@@ -313,3 +319,21 @@ if manage_tab is not None:
         if st.button("Remove step"):
             db.delete_project_step(target[1]["id"])
             st.rerun()
+
+    st.divider()
+
+    st.markdown("#### Shelved projects")
+    st.caption(
+        "Marked \"not an interest\" from the Checklist tab -- shelving is "
+        "reversible, and a shelved project's steps and history stay put."
+    )
+    shelved_projects = [p for p in projects if p["shelved"]]
+    if not shelved_projects:
+        st.caption("Nothing shelved right now.")
+    else:
+        for project in shelved_projects:
+            columns = st.columns([5, 1])
+            columns[0].markdown(f"**{md(project['title'])}**")
+            if columns[1].button("Bring back", key=f"unshelve_project_{project['id']}"):
+                db.set_big_project_shelved(project["id"], False)
+                st.rerun()

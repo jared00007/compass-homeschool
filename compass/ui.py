@@ -1610,7 +1610,7 @@ def _render_first_day_contents(db: Database, student: dict[str, Any], year_start
     """
     student_id = student["id"]
     books = db.list_books(student_id)
-    projects = db.list_big_projects(student_id)
+    projects = [p for p in db.list_big_projects(student_id) if not p["shelved"]]
     active_project = db.active_big_project(student_id)
     choice_topics = [
         t for t in db.list_choice_topics(student_id) if t["status"] not in ("done", "declined")

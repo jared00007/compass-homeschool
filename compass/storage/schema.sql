@@ -339,6 +339,7 @@ CREATE TABLE IF NOT EXISTS big_projects (
     title       TEXT NOT NULL,
     vision      TEXT NOT NULL DEFAULT '',
     sort_order  INTEGER NOT NULL DEFAULT 0,
+    shelved     INTEGER NOT NULL DEFAULT 0,  -- "not an interest" -- parent-only, reversible
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

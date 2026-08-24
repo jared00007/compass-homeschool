@@ -1373,6 +1373,22 @@ def test_table_of_contents_shows_every_big_project_not_just_the_active_one(monke
     assert "Birdhouse Build" in page
 
 
+def test_table_of_contents_hides_shelved_big_projects(monkeypatch, db, student):
+    """Shelved means "not an interest" -- showing it in a celebratory
+    preview of the year would contradict that."""
+    db.set_setting("school_year_start", "09-01")
+    _fix_today(monkeypatch, date(2026, 9, 1))
+    db.add_big_project(student["id"], "Wanted Project")
+    shelved_id = db.add_big_project(student["id"], "Shelved Project")
+    db.set_big_project_shelved(shelved_id, True)
+
+    state = {"first_day_view": "contents"}
+    page, shown, _ = render_first_day(monkeypatch, db, student, state=state)
+    assert shown is True
+    assert "Wanted Project" in page
+    assert "Shelved Project" not in page
+
+
 def test_table_of_contents_shows_every_book_not_just_the_one_marked_reading(monkeypatch, db, student):
     """Regression: whether a book is marked 'reading' vs 'upcoming' is the
     parent's own bookkeeping (when to switch), and shouldn't gate whether he

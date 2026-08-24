@@ -1328,6 +1328,7 @@ class Database:
         self._ensure_column("life_skills", "active", "INTEGER NOT NULL DEFAULT 1")
         self._ensure_column("project_steps", "min_days", "INTEGER NOT NULL DEFAULT 1")
         self._ensure_column("project_steps", "max_days", "INTEGER NOT NULL DEFAULT 1")
+        self._ensure_column("big_projects", "shelved", "INTEGER NOT NULL DEFAULT 0")
         self._ensure_column("activities", "course_id", "INTEGER REFERENCES courses(id) ON DELETE SET NULL")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_activities_course ON activities (course_id)")
         self._backfill_life_skill_content()
@@ -2439,6 +2440,26 @@ class Database:
         self.conn.execute("DELETE FROM big_projects WHERE id = ?", (project_id,))
         self.conn.commit()
 
+    def set_big_project_shelved(self, project_id: int, shelved: bool) -> None:
+        """"Not an interest" -- a reversible parent-only back-burner, not a
+        delete. Unlike delete_big_project, a shelved row survives migrate()'s
+        catalog top-up (_backfill_big_project_catalog matches on title
+        regardless of shelved), so shelving one of the starter catalog
+        projects actually sticks across restarts instead of it quietly
+        reappearing.
+
+        Shelving the project he's actually working on this year also clears
+        that pick -- "not an interest" and "the one you're working on" can't
+        both be true, and leaving the old pick in place would have Friday's
+        nudge (and everything else that reads active_big_project) still
+        pointing at a project he just said he doesn't want."""
+        self.conn.execute(
+            "UPDATE big_projects SET shelved = ? WHERE id = ?", (int(shelved), project_id)
+        )
+        if shelved and self.get_setting("active_big_project_id") == str(project_id):
+            self.set_setting("active_big_project_id", "")
+        self.conn.commit()
+
     def active_big_project(self, student_id: int) -> dict[str, Any] | None:
         """The one project he's actually committed to working through this
         year, chosen on Big Projects -- Friday's nudge points at this
@@ -2547,7 +2568,9 @@ class Database:
         projects they're missing -- `seed_big_projects` only fires once per
         student, so a family that seeded before the catalog grew (e.g. the
         podcast and toy photography projects, added after the Lego film)
-        would otherwise never see them at all. Matched by title; never
+        would otherwise never see them at all. Matched by title, shelved or
+        not, so a project the parent shelved (see set_big_project_shelved)
+        stays gone -- it's still a row, just not a *missing* one. Never
         touches a project that's already there."""
         for row in self.conn.execute("SELECT id FROM students"):
             student_id = row["id"]

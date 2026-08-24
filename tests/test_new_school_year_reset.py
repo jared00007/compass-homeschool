@@ -82,6 +82,9 @@ def test_clears_school_year_data_keeps_profile_and_projects(tmp_path):
     assert len(db.list_choice_topics(sid)) == 1
     assert db.declaration_status(sid, "2026-09-01")["filed_on"] is not None
     assert db.get_district_document(sid, "declaration") is not None
+    # A family record that stacks year over year, not a single year's
+    # assignment -- must survive the reset the same way Big Projects does.
+    assert len(db.list_travel_entries(sid)) == 1
 
     # cleared
     assert db.list_lessons(sid) == []
@@ -91,7 +94,6 @@ def test_clears_school_year_data_keeps_profile_and_projects(tmp_path):
     assert db.web_nodes(sid, "science") == []
     assert db.list_books(sid) == []
     assert db.list_vocabulary(sid) == []
-    assert db.list_travel_entries(sid) == []
     assert db.list_journal_entries(sid) == []
     assert db.morning_routine_for_date(sid, "2026-06-01") is None
     assert db.list_courses(sid) == []
