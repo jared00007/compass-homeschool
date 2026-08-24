@@ -1456,7 +1456,7 @@ div[class*="st-key-first_day_cover"]::before {{
   background-image: radial-gradient(circle, {_FIRST_DAY_INK} 1.6px, transparent 1.8px);
   background-size: 10px 10px;
 }}
-div[class*="st-key-first_day_blurb_"] {{
+div[class*="st-key-first_day_blurb_"], div[class*="st-key-first_day_toc_"] {{
   background: {_FIRST_DAY_CARD_PAPER};
   border: 3px solid {_FIRST_DAY_INK};
   border-radius: 4px;
@@ -1484,6 +1484,11 @@ def render_first_day_celebration(db: Database, student: dict[str, Any]) -> bool:
     months ago -- the window check is what actually gates this to "the
     first day" instead of "any day before it's dismissed."
 
+    "See what's inside" flips to _render_first_day_contents -- a real table
+    of contents (every Big Project, choice topic, life skill, and the travel
+    log so far), tracked in st.session_state so it survives the rerun that
+    button click causes. "Let's go!" dismisses from either side.
+
     Returns whether it actually rendered, so the caller can st.stop() --
     this is meant to be the whole page that render, not a banner stacked
     above the usual one.
@@ -1494,6 +1499,10 @@ def render_first_day_celebration(db: Database, student: dict[str, Any]) -> bool:
     days_since_start = (date.today() - date.fromisoformat(year_start)).days
     if not (0 <= days_since_start < _FIRST_DAY_WINDOW_DAYS):
         return False
+
+    if st.session_state.get("first_day_view") == "contents":
+        _render_first_day_contents(db, student, year_start)
+        return True
 
     first_name = student["name"].split()[0]
     book = db.current_book(student["id"])
@@ -1561,11 +1570,111 @@ def render_first_day_celebration(db: Database, student: dict[str, Any]) -> bool:
             )
             st.markdown(text)
 
-    if st.button("Let's go! →", key="first_day_go", type="primary", width="stretch"):
-        db.set_setting("first_day_celebrated_start", year_start)
-        st.rerun()
+    peek_col, go_col = st.columns(2)
+    with peek_col:
+        if st.button("📖 See what's inside →", key="first_day_peek", width="stretch"):
+            st.session_state["first_day_view"] = "contents"
+            st.rerun()
+    with go_col:
+        if st.button("Let's go! →", key="first_day_go", type="primary", width="stretch"):
+            db.set_setting("first_day_celebrated_start", year_start)
+            st.rerun()
 
     return True
+
+
+def _render_first_day_contents(db: Database, student: dict[str, Any], year_start: str) -> None:
+    """The "table of contents" flip side of the first-day cover -- a real
+    preview of the year instead of just four teaser blurbs: every Big
+    Project (not just the active one), the choice topics he's floated,
+    the life skills waiting to be unlocked, and how the travel log stands
+    so far. Reachable only from the cover's "See what's inside" button."""
+    student_id = student["id"]
+    book = db.current_book(student_id)
+    upcoming = db.upcoming_book(student_id)
+    projects = db.list_big_projects(student_id)
+    active_project = db.active_big_project(student_id)
+    choice_topics = [
+        t for t in db.list_choice_topics(student_id) if t["status"] not in ("done", "declined")
+    ]
+    life_skills = [s for s in db.list_life_skills(student_id) if s["active"] and not s["completed_on"]]
+    travel = db.list_travel_entries(student_id)
+
+    st.markdown(_FIRST_DAY_CARD_CSS, unsafe_allow_html=True)
+    st.title("COMPASS")
+    st.caption("Inside This Issue")
+
+    if st.button("← Back to the cover", key="first_day_back"):
+        st.session_state["first_day_view"] = "cover"
+        st.rerun()
+
+    sections: list[tuple[str, str, str]] = []
+
+    if book:
+        text = f"Currently reading **{md(book['title'])}**"
+        if book["author"]:
+            text += f" by {md(book['author'])}"
+        text += "."
+        if upcoming:
+            text += f" **{md(upcoming['title'])}** is queued for the second half."
+    else:
+        text = "No book started yet — the first pick is still ahead."
+    sections.append(("📚 THIS YEAR'S BOOKS", _FIRST_DAY_COLORS[0], text))
+
+    if projects:
+        lines = []
+        for project in projects:
+            steps = db.list_project_steps(project["id"])
+            done = sum(1 for s in steps if s["completed_on"])
+            is_active = bool(active_project and project["id"] == active_project["id"])
+            marker = "⭐ " if is_active else ""
+            progress = f" ({done}/{len(steps)} steps done)" if steps else ""
+            line = f"{marker}**{md(project['title'])}**{progress}"
+            if is_active:
+                next_step = next((s for s in steps if not s["completed_on"]), None)
+                if next_step:
+                    line += f" — next: {md(next_step['title'])}"
+            lines.append(line)
+        text = "  \n".join(lines)
+    else:
+        text = "Nothing picked yet — Big Projects is wide open."
+    sections.append(("🎬 BIG PROJECTS ON DECK", _FIRST_DAY_COLORS[1], text))
+
+    if choice_topics:
+        text = "  \n".join(f"- {md(t['title'])}" for t in choice_topics[:6])
+    else:
+        text = "Nothing on deck yet — Choice Topics is wide open."
+    sections.append(("⭐ THINGS HE WANTS TO LEARN", _FIRST_DAY_COLORS[2], text))
+
+    if life_skills:
+        names = ", ".join(md(s["title"]) for s in life_skills[:4])
+        more = f" and {len(life_skills) - 4} more" if len(life_skills) > 4 else ""
+        text = f"{len(life_skills)} unlocked and waiting: {names}{more}."
+    else:
+        text = "None unlocked yet."
+    sections.append(("🛠️ LIFE SKILLS UNLOCKED", _FIRST_DAY_COLORS[3], text))
+
+    if travel:
+        states = {entry["state"] for entry in travel}
+        state_word = "state" if len(states) == 1 else "states"
+        story_word = "story" if len(travel) == 1 else "stories"
+        text = f"{len(states)} {state_word} stamped, {len(travel)} {story_word} logged so far."
+    else:
+        text = "No stamps yet — the first trip of the year starts the log."
+    sections.append(("🗺️ LANDON'S TRAVELS SO FAR", _FIRST_DAY_COLORS[0], text))
+
+    for index, (eyebrow, color, text) in enumerate(sections):
+        with st.container(key=f"first_day_toc_{index}"):
+            st.markdown(
+                f'<div style="font-weight:900; font-size:12px; letter-spacing:.03em; '
+                f'color:{color};">{eyebrow}</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(text)
+
+    if st.button("Let's go! →", key="first_day_go_from_toc", type="primary", width="stretch"):
+        db.set_setting("first_day_celebrated_start", year_start)
+        st.rerun()
 
 
 def render_fun_fact() -> None:
