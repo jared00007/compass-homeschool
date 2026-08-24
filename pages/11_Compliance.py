@@ -35,11 +35,24 @@ st.caption(
 )
 
 year_start, year_end = db.school_year_bounds()
-columns = st.columns([1, 1, 2])
-with columns[0]:
-    start = st.date_input("From", value=date.fromisoformat(year_start))
-with columns[1]:
-    end = st.date_input("To", value=date.fromisoformat(year_end))
+start, end = date.fromisoformat(year_start), date.fromisoformat(year_end)
+
+# Deliberately not two equally-prominent required fields -- there is exactly
+# one real setting (school year start, in Year settings below), and the year
+# always runs the full 365 days from it. This is a temporary lens on the
+# data only, tucked away and collapsed by default so it never looks like a
+# second thing that needs maintaining alongside the real one.
+with st.expander("View a narrower date range (optional)"):
+    st.caption(
+        "This only changes the numbers shown below -- it never changes your actual "
+        "school year, pace calculations, or Declaration of Intent deadline. Those all "
+        "come from the school year start date in **Year settings**, further down this page."
+    )
+    range_columns = st.columns(2)
+    with range_columns[0]:
+        start = st.date_input("From", value=start)
+    with range_columns[1]:
+        end = st.date_input("To", value=end)
 
 report = build_report(db, student["id"], start.isoformat(), end.isoformat())
 pace = report.pace()
@@ -219,7 +232,10 @@ with columns[1]:
         st.rerun()
 with columns[2]:
     year_start_setting = st.text_input(
-        "School year starts (MM-DD)", value=db.get_setting("school_year_start") or "09-01"
+        "School year starts (MM-DD)",
+        value=db.get_setting("school_year_start") or "09-01",
+        help="The only date you set. The year always runs a full 365 days from "
+        "here -- there's no separate end date to maintain.",
     )
     if year_start_setting != db.get_setting("school_year_start"):
         db.set_setting("school_year_start", year_start_setting)
