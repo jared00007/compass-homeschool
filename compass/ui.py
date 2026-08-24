@@ -1588,10 +1588,19 @@ def _render_first_day_contents(db: Database, student: dict[str, Any], year_start
     detail instead of counts: every book on his list with its drafted
     summary (not just whichever one happens to be marked "reading" --
     marking that is the parent's job, on their own schedule, and
-    shouldn't gate whether he can see what's coming), every Big Project
-    with its actual objective, every choice topic and life skill with its
-    description, and the travel log's real entries. Reachable only from
-    the cover's "See what's inside" button."""
+    shouldn't gate whether he can see what's coming, or whether it's
+    presented as equally locked in for the year), every Big Project with
+    its actual objective, every choice topic and life skill with its
+    description, and the travel log's real entries. Two explainer
+    sections (Check-In, Morning Routine) carry no per-student data at all
+    -- they exist purely so he knows what those two daily habits are and
+    what's expected, since the rest of Home introduces them by name
+    without ever spelling that out. Choice Topics, Life Skills, and Travel
+    are explicitly labeled examples -- their content is either a starter
+    catalog or just whatever's logged so far, not a fixed or complete
+    assignment list, and the label is there so he doesn't mistake one for
+    the other. Reachable only from the cover's "See what's inside" button.
+    """
     student_id = student["id"]
     books = [b for b in db.list_books(student_id) if b["status"] in ("reading", "upcoming")]
     projects = db.list_big_projects(student_id)
@@ -1613,12 +1622,16 @@ def _render_first_day_contents(db: Database, student: dict[str, Any], year_start
     sections: list[tuple[str, str, str]] = []
 
     if books:
+        term_notes = {
+            "first_half": " — first half of the year",
+            "second_half": " — second half of the year",
+        }
         items = []
         for book in books:
             marker = "⭐ " if book["status"] == "reading" else ""
             byline = f" by {md(book['author'])}" if book["author"] else ""
-            when = "currently reading" if book["status"] == "reading" else "queued for later"
-            item = f"{marker}**{md(book['title'])}**{byline} — {when}"
+            term_note = term_notes.get(book["term"], "")
+            item = f"{marker}**{md(book['title'])}**{byline}{term_note}"
             if book["ai_summary"]:
                 item += f"  \n{md(book['ai_summary'])}"
             items.append(item)
@@ -1645,8 +1658,24 @@ def _render_first_day_contents(db: Database, student: dict[str, Any], year_start
         text = "Nothing picked yet — Big Projects is wide open."
     sections.append(("🎬 BIG PROJECTS ON DECK", _FIRST_DAY_COLORS[1], text))
 
+    sections.append((
+        "💬 CHECK-IN",
+        _FIRST_DAY_COLORS[2],
+        "Once a day, pick how you're feeling and add a note if you want to. "
+        "**Your parents can read it** — no secrets, just an honest heads-up on how "
+        "things are going. There's no wrong answer, and no grade on it either.",
+    ))
+
+    sections.append((
+        "🧘 MORNING ROUTINE",
+        _FIRST_DAY_COLORS[3],
+        "A few minutes of stretching, breathing, or a quick mindfulness moment to "
+        "start the day feeling good, before anything else. Pick whichever one "
+        "sounds good that morning.",
+    ))
+
     if choice_topics:
-        items = []
+        items = ["*A few examples — see Choice Topics to add whatever you're curious about.*"]
         for topic in choice_topics[:6]:
             item = f"**{md(topic['title'])}**"
             if topic["description"]:
@@ -1655,10 +1684,10 @@ def _render_first_day_contents(db: Database, student: dict[str, Any], year_start
         text = "\n\n".join(items)
     else:
         text = "Nothing on deck yet — Choice Topics is wide open."
-    sections.append(("⭐ THINGS HE WANTS TO LEARN", _FIRST_DAY_COLORS[2], text))
+    sections.append(("⭐ THINGS HE WANTS TO LEARN (EXAMPLES)", _FIRST_DAY_COLORS[0], text))
 
     if life_skills:
-        items = []
+        items = ["*A few examples from the catalog — see Life Skills for the whole list.*"]
         for skill in life_skills[:6]:
             item = f"**{md(skill['title'])}**"
             if skill["description"]:
@@ -1667,10 +1696,10 @@ def _render_first_day_contents(db: Database, student: dict[str, Any], year_start
         text = "\n\n".join(items)
     else:
         text = "None unlocked yet."
-    sections.append(("🛠️ LIFE SKILLS UNLOCKED", _FIRST_DAY_COLORS[3], text))
+    sections.append(("🛠️ LIFE SKILLS UNLOCKED (EXAMPLES)", _FIRST_DAY_COLORS[1], text))
 
     if travel:
-        items = []
+        items = ["*A few examples so far — see Landon's Travels for the whole log.*"]
         for entry in travel[:4]:
             item = f"**{md(entry['title'] or entry['state'])}** ({md(entry['state'])})"
             if entry["story"]:
@@ -1681,7 +1710,7 @@ def _render_first_day_contents(db: Database, student: dict[str, Any], year_start
         text = "\n\n".join(items)
     else:
         text = "No stamps yet — the first trip of the year starts the log."
-    sections.append(("🗺️ LANDON'S TRAVELS SO FAR", _FIRST_DAY_COLORS[0], text))
+    sections.append(("🗺️ LANDON'S TRAVELS SO FAR (EXAMPLES)", _FIRST_DAY_COLORS[2], text))
 
     for index, (eyebrow, color, text) in enumerate(sections):
         with st.container(key=f"first_day_toc_{index}"):

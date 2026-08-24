@@ -1401,6 +1401,62 @@ def test_table_of_contents_handles_nothing_set_up_yet(monkeypatch, db, student):
     assert "No stamps yet" in page
 
 
+def test_table_of_contents_explains_check_in_and_morning_routine(monkeypatch, db, student):
+    """These two carry no per-student data -- they exist purely so he knows
+    what those daily habits are and what's expected, since Home introduces
+    them by name without ever spelling that out."""
+    db.set_setting("school_year_start", "09-01")
+    _fix_today(monkeypatch, date(2026, 9, 1))
+    state = {"first_day_view": "contents"}
+    page, shown, _ = render_first_day(monkeypatch, db, student, state=state)
+    assert shown is True
+    assert "CHECK-IN" in page
+    assert "Your parents can read it" in page
+    assert "MORNING ROUTINE" in page
+    assert "start the day feeling good" in page
+
+
+def test_choice_topics_life_skills_and_travel_are_labeled_as_examples(monkeypatch, db, student):
+    """These sections show either a starter catalog or just whatever's been
+    logged so far -- not a fixed or complete assignment list -- so the label
+    is there to keep him from mistaking one for the other."""
+    db.set_setting("school_year_start", "09-01")
+    _fix_today(monkeypatch, date(2026, 9, 1))
+    db.add_choice_topic(student["id"], "Learn guitar chords")
+    db.add_life_skill(student["id"], "Change a tire")
+    db.add_travel_entry(student["id"], "WA", "2026-07-01", title="Olympic NP")
+
+    state = {"first_day_view": "contents"}
+    page, shown, _ = render_first_day(monkeypatch, db, student, state=state)
+    assert shown is True
+    assert "THINGS HE WANTS TO LEARN (EXAMPLES)" in page
+    assert "A few examples — see Choice Topics" in page
+    assert "LIFE SKILLS UNLOCKED (EXAMPLES)" in page
+    assert "A few examples from the catalog — see Life Skills" in page
+    assert "LANDON'S TRAVELS SO FAR (EXAMPLES)" in page
+    assert "A few examples so far — see Landon's Travels" in page
+
+
+def test_books_show_their_half_of_the_year_instead_of_reading_progress_status(monkeypatch, db, student):
+    """Both books are equally locked in for the year regardless of which one
+    is actually marked 'reading' right now -- that's just the parent's own
+    bookkeeping for the agent, not a statement about which book is real."""
+    db.set_setting("school_year_start", "09-01")
+    _fix_today(monkeypatch, date(2026, 9, 1))
+    db.add_book(student["id"], "Holes", term="first_half", status="reading")
+    db.add_book(student["id"], "Ready Player One", term="second_half", status="upcoming")
+
+    state = {"first_day_view": "contents"}
+    page, shown, _ = render_first_day(monkeypatch, db, student, state=state)
+    assert shown is True
+    assert "Holes" in page
+    assert "first half of the year" in page
+    assert "Ready Player One" in page
+    assert "second half of the year" in page
+    assert "currently reading" not in page
+    assert "queued for later" not in page
+
+
 def test_back_to_the_cover_returns_to_the_cover_view(monkeypatch, db, student):
     db.set_setting("school_year_start", "09-01")
     _fix_today(monkeypatch, date(2026, 9, 1))
