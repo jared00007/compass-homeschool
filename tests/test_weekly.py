@@ -22,6 +22,7 @@ from compass.storage.db import Database
 from compass.weekly import (
     MATH_STAGE_NOTES,
     default_plan_target,
+    due_lessons,
     latest_per_day,
     plan_day,
     plan_math_week,
@@ -101,6 +102,61 @@ def test_latest_per_day_sorts_by_planned_for_then_id():
     ]
     result = latest_per_day(lessons)
     assert [l["id"] for l in result] == [1, 3, 5]
+
+
+# --- due_lessons: "what's actually due now," not "whatever was generated most recently" ---
+
+
+def test_due_lessons_picks_todays_over_a_later_generated_id():
+    """The regression this exists to fix: batch-planning a whole week in one
+    sitting means Friday's lesson has the highest id even though today is
+    Tuesday -- id order must not win over the actual planned day."""
+    lessons = [
+        _lesson(5, "math", "2026-08-14"),  # Friday, generated last -> highest id
+        _lesson(2, "math", "2026-08-11"),  # Tuesday -- today
+    ]
+    result = due_lessons(lessons, "2026-08-11")
+    assert [l["id"] for l in result] == [2]
+
+
+def test_due_lessons_excludes_anything_planned_for_a_later_day():
+    lessons = [_lesson(1, "math", "2026-08-12")]  # Wednesday
+    assert due_lessons(lessons, "2026-08-11") == []  # today is Tuesday
+
+
+def test_due_lessons_includes_an_overdue_lesson_from_an_earlier_day():
+    lessons = [_lesson(1, "math", "2026-08-10")]  # Monday, never done
+    assert due_lessons(lessons, "2026-08-11") == lessons  # today is Tuesday
+
+
+def test_due_lessons_sorts_oldest_overdue_first():
+    lessons = [
+        _lesson(1, "math", "2026-08-11"),  # today
+        _lesson(2, "math", "2026-08-10"),  # overdue from yesterday
+    ]
+    result = due_lessons(lessons, "2026-08-11")
+    assert [l["id"] for l in result] == [2, 1]
+
+
+def test_due_lessons_puts_untagged_lessons_last():
+    """A lesson generated the ordinary on-demand way (no day attached at
+    all) is still due now -- it just yields to anything with a real day."""
+    untagged = {"id": 9, "agent": "math", "metadata": {}}
+    lessons = [untagged, _lesson(1, "math", "2026-08-11")]
+    result = due_lessons(lessons, "2026-08-11")
+    assert [l["id"] for l in result] == [1, 9]
+
+
+def test_due_lessons_on_an_all_untagged_list_preserves_input_order():
+    """No day tags anywhere (a family that's never used weekly batch
+    planning) -- behaves like the old "most recent first" selection, since
+    the caller already sorts lessons that way before calling this."""
+    lessons = [
+        {"id": 2, "agent": "math", "metadata": {}},
+        {"id": 1, "agent": "math", "metadata": {}},
+    ]
+    result = due_lessons(lessons, "2026-08-11")
+    assert [l["id"] for l in result] == [2, 1]
 
 
 # --- plan_day: the single-day primitive -------------------------------------------

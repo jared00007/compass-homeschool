@@ -17,7 +17,7 @@ from typing import Any
 
 import streamlit as st
 
-from compass import auth, config, fun_facts, subjects, theme as theming
+from compass import auth, config, fun_facts, subjects, theme as theming, weekly
 from compass.backup import auto_snapshot
 from compass.agents import (
     GeneratedLesson,
@@ -742,14 +742,22 @@ def student_lesson_view(
     on the page -- every subject page should, even ones with nothing of
     their own following it today, so a page added later doesn't have to
     remember this rule.
+
+    Picks the same lesson Home's own "Lessons ready for you" list would
+    (weekly.due_lessons -- today's, or the oldest overdue one) rather than
+    whichever lesson happens to have the highest id. Those used to
+    disagree: batch-planning a whole week in one sitting means the last
+    day generated (often Friday) has the most recent `created_at`, which
+    is a different thing entirely from "the one due today."
     """
     lessons = db.list_lessons(student["id"], agent=agent_key, limit=10)
     todo = [
         l for l in lessons
         if l["status"] != "skipped" and not (l.get("metadata") or {}).get("student_done_on")
     ]
+    due_now = weekly.due_lessons(todo, date.today().isoformat())
     done = _done_lessons(db, student["id"], agent_key)
-    current = todo[0] if todo else None
+    current = due_now[0] if due_now else None
 
     if current is None:
         if done:

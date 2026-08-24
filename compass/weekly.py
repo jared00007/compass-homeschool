@@ -217,6 +217,33 @@ def latest_per_day(lessons: list[dict[str, Any]]) -> list[dict[str, Any]]:
     )
 
 
+def due_lessons(lessons: list[dict[str, Any]], today: str) -> list[dict[str, Any]]:
+    """Filter to what's actually due now: today's, or overdue from an
+    earlier day -- sorted oldest-overdue-first, then today's, then anything
+    with no `planned_for` at all (ordinary on-demand generation, never
+    batch-planned) last. A lesson planned for a day *later* than today is
+    excluded outright, same as it doesn't belong in Home's own "Lessons
+    ready for you" list either -- a caller that also wants a "later this
+    week" count computes that separately from whatever this excluded, since
+    that split needs the week's own end date, which isn't this function's
+    business.
+
+    Shared by Home (across every agent at once) and student_lesson_view
+    (one agent's own subject page) so both pick the exact same lesson --
+    the whole reason this exists is that they used to disagree: Home was
+    already day-aware, but a subject page's own view just grabbed whichever
+    lesson happened to be generated most recently, which is a different
+    thing entirely once a whole week gets batch-planned in one sitting.
+    """
+    due = [
+        lesson
+        for lesson in lessons
+        if not ((lesson.get("metadata") or {}).get("planned_for") or "") > today
+    ]
+    due.sort(key=lambda lesson: (lesson.get("metadata") or {}).get("planned_for") or "9999-99-99")
+    return due
+
+
 MATH_STAGE_NOTES: tuple[str, ...] = (
     "",  # Day 1: no note. A fresh introduction, taught the normal way.
     "This is day 2 of 4 on this same skill this week -- additional "

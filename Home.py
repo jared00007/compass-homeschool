@@ -261,7 +261,7 @@ if not is_parent():
         # scheduled day) *nothing* dated after today can still be "later this
         # week" -- it's necessarily a future week, and mislabeling it "this
         # week" points at the wrong tab.
-        due_now = []
+        due_now = weekly.due_lessons(all_planned, today)
         later_this_week = 0
         later_week = 0
         for lesson in all_planned:
@@ -271,9 +271,6 @@ if not is_parent():
                     later_this_week += 1
                 else:
                     later_week += 1
-            else:
-                due_now.append(lesson)
-        due_now.sort(key=lambda l: (l.get("metadata") or {}).get("planned_for") or "9999-99-99")
 
         st.markdown(f"### 📚 Lessons ({len(due_now)})")
         if not due_now:

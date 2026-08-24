@@ -390,6 +390,53 @@ def test_skipped_lessons_never_show_as_his_current_lesson(monkeypatch, db, stude
     assert "No math lesson has been set up yet" in page
 
 
+def test_current_lesson_matches_the_day_not_whichever_id_is_highest(monkeypatch, db, student):
+    """Regression: batch-planning a whole week in one sitting means Friday's
+    lesson (generated last) has the highest id, even though today is
+    Tuesday -- this must show Tuesday's, the same lesson Home's own
+    "Lessons ready for you" list would show, not whichever was generated
+    most recently."""
+    _fix_today(monkeypatch, date(2026, 8, 11))  # a Tuesday
+    tuesday_id = db.save_lesson(
+        student["id"], "math", "math", "topic", "Tuesday's Lesson", payload=a_lesson(title="Tuesday's Lesson"),
+        metadata={"week_start": "2026-08-10", "planned_for": "2026-08-11"},
+    )
+    friday_id = db.save_lesson(
+        student["id"], "math", "math", "topic", "Friday's Lesson", payload=a_lesson(title="Friday's Lesson"),
+        metadata={"week_start": "2026-08-10", "planned_for": "2026-08-14"},
+    )
+    assert friday_id > tuesday_id  # generated later in the same batch
+
+    page = render_student_view(monkeypatch, db, student)
+    assert "Tuesday's Lesson" in page
+    assert "Friday's Lesson" not in page
+
+
+def test_current_lesson_falls_back_to_the_oldest_overdue_day(monkeypatch, db, student):
+    _fix_today(monkeypatch, date(2026, 8, 12))  # a Wednesday
+    db.save_lesson(
+        student["id"], "math", "math", "topic", "Monday's Lesson", payload=a_lesson(title="Monday's Lesson"),
+        metadata={"week_start": "2026-08-10", "planned_for": "2026-08-10"},
+    )
+    db.save_lesson(
+        student["id"], "math", "math", "topic", "Tuesday's Lesson", payload=a_lesson(title="Tuesday's Lesson"),
+        metadata={"week_start": "2026-08-10", "planned_for": "2026-08-11"},
+    )
+    page = render_student_view(monkeypatch, db, student)
+    assert "Monday's Lesson" in page  # oldest overdue, not Tuesday's
+
+
+def test_current_lesson_never_shows_one_planned_for_a_later_day(monkeypatch, db, student):
+    _fix_today(monkeypatch, date(2026, 8, 11))  # a Tuesday
+    db.save_lesson(
+        student["id"], "math", "math", "topic", "Friday's Lesson", payload=a_lesson(title="Friday's Lesson"),
+        metadata={"week_start": "2026-08-10", "planned_for": "2026-08-14"},
+    )
+    page = render_student_view(monkeypatch, db, student)
+    assert "Friday's Lesson" not in page
+    assert "No math lesson has been set up yet" in page
+
+
 # --- render_past_lessons: always last, a separate call so page-specific ---
 # --- content (English's Words to Review) can come between it and the      ---
 # --- current lesson above ---------------------------------------------------
