@@ -1421,6 +1421,7 @@ def test_table_of_contents_opens_with_a_note_from_the_parents(monkeypatch, db, s
     assert shown is True
     assert "FROM YOUR PARENTS" in page
     assert "first year of homeschooling" in page
+    assert "we believe in you" in page
     assert "take your time" in page
     assert "read what's given to you" in page
     assert "give it your all" in page
