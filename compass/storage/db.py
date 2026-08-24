@@ -1331,6 +1331,13 @@ class Database:
         self._ensure_column("big_projects", "shelved", "INTEGER NOT NULL DEFAULT 0")
         self._ensure_column("activities", "course_id", "INTEGER REFERENCES courses(id) ON DELETE SET NULL")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_activities_course ON activities (course_id)")
+        # Runs before the migration below, not after: that migration inserts
+        # travel_entries rows (from the old park_visits table) through
+        # add_travel_entry, which writes every one of these columns -- if
+        # they didn't exist yet, that INSERT would fail outright, the exact
+        # opposite ordering hazard from the books rebuild further down.
+        self._ensure_column("travel_entries", "favorite_moment", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column("travel_entries", "would_return", "TEXT NOT NULL DEFAULT ''")
         self._backfill_life_skill_content()
         self._backfill_life_skill_catalog()
         self._migrate_park_visits_to_travel_entries()
@@ -2333,11 +2340,14 @@ class Database:
         title: str = "",
         story: str = "",
         park_key: str | None = None,
+        favorite_moment: str = "",
+        would_return: str = "",
     ) -> int:
         cur = self.conn.execute(
-            "INSERT INTO travel_entries (student_id, state, park_key, title, story, visited_on) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (student_id, state, park_key, title, story, visited_on),
+            "INSERT INTO travel_entries "
+            "(student_id, state, park_key, title, story, favorite_moment, would_return, visited_on) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (student_id, state, park_key, title, story, favorite_moment, would_return, visited_on),
         )
         self.conn.commit()
         return cur.lastrowid  # type: ignore[return-value]
@@ -2352,7 +2362,10 @@ class Database:
         )
 
     def update_travel_entry(self, entry_id: int, **fields: Any) -> None:
-        allowed = {"state", "park_key", "title", "story", "visited_on"}
+        allowed = {
+            "state", "park_key", "title", "story", "visited_on",
+            "favorite_moment", "would_return",
+        }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
             return

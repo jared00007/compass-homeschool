@@ -296,6 +296,8 @@ CREATE TABLE IF NOT EXISTS travel_entries (
     park_key    TEXT,
     title       TEXT NOT NULL DEFAULT '',
     story       TEXT NOT NULL DEFAULT '',
+    favorite_moment TEXT NOT NULL DEFAULT '',
+    would_return    TEXT NOT NULL DEFAULT '',
     visited_on  TEXT NOT NULL,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );

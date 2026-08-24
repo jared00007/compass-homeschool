@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import html
 from datetime import date
+from functools import partial
 
 import streamlit as st
 
 from compass import config
 from compass import national_parks as parks
 from compass import theme as theming
+from compass.export import travel_journal_filename, travel_journal_to_docx
 from compass.ui import is_parent, page_setup
 
 db, student = page_setup("Landon's Travels", icon="🧭")
@@ -43,6 +45,209 @@ newest_park_key = next((e["park_key"] for e in entries if e["park_key"]), None)
 entries_by_state: dict[str, list[dict]] = {}
 for e in entries:
     entries_by_state.setdefault(e["state"], []).append(e)
+
+
+def _school_year_group(visited_on: str) -> tuple[int, str]:
+    """(sort key, label) for the school year containing this date -- e.g.
+    (2025, "2025-26"). A real year is worth grouping by once this journal
+    has stacked up several of them, the same way state already groups a
+    single year's worth of trips."""
+    start, _ = db.school_year_bounds(on=date.fromisoformat(visited_on))
+    start_year = int(start[:4])
+    return start_year, f"{start_year}-{str(start_year + 1)[-2:]}"
+
+
+entries_by_year: dict[str, list[dict]] = {}
+year_sort_keys: dict[str, int] = {}
+for e in entries:
+    sort_key, label = _school_year_group(e["visited_on"])
+    entries_by_year.setdefault(label, []).append(e)
+    year_sort_keys[label] = sort_key
+
+
+def _render_entry(entry: dict) -> None:
+    """One trip's card, plus (parent-only) its edit/log/remove/suggest
+    actions -- shared between the by-state and by-year groupings so neither
+    duplicates this whole block."""
+    park = parks.park_by_key(entry["park_key"]) if entry["park_key"] else None
+    park_tag = (
+        f'<div style="font-size:11px; color:var(--c-border); text-transform:uppercase; '
+        f'letter-spacing:.03em; margin:4px 0 8px; font-weight:700;">📍 {html.escape(park.name)}</div>'
+        if park
+        else ""
+    )
+    story_text = entry["story"].strip()
+    story_html = (
+        html.escape(story_text).replace("\n", "<br>")
+        if story_text
+        else '<span style="color:var(--c-dim);">No story written yet.</span>'
+    )
+    extra_lines = []
+    if entry["favorite_moment"].strip():
+        extra_lines.append(
+            f'<div><b>Favorite moment:</b> {html.escape(entry["favorite_moment"].strip())}</div>'
+        )
+    if entry["would_return"].strip():
+        extra_lines.append(
+            f'<div><b>Would go back?</b> {html.escape(entry["would_return"].strip())}</div>'
+        )
+    extra_html = (
+        f'<div style="font-size:13px; color:var(--c-text); margin-top:8px;">{"".join(extra_lines)}</div>'
+        if extra_lines
+        else ""
+    )
+    st.markdown(
+        f"""
+        <div style="background:var(--c-panel); border:1px solid var(--c-border);
+             border-radius:var(--c-radius); padding:16px 18px; box-shadow:var(--c-glow);
+             margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px;">
+            <div style="font-weight:800; font-size:16px;">
+              {html.escape(entry["title"]) or "Untitled trip"}
+            </div>
+            <div style="font-size:12px; color:var(--c-dim); font-family:{_MONO_FONT};
+                 white-space:nowrap;">{entry["visited_on"]}</div>
+          </div>
+          {park_tag}
+          <div style="font-size:13.5px; line-height:1.6; color:var(--c-text);
+               margin-top:{"4px" if park_tag else "10px"};">
+            {story_html}
+          </div>
+          {extra_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if is_parent():
+        editing = st.session_state.get("editing_travel_entry") == entry["id"]
+        logging_hours = st.session_state.get("logging_travel_entry") == entry["id"]
+        button_columns = st.columns([1, 1, 1, 1, 4])
+        if button_columns[0].button(
+            "Cancel" if editing else "Edit", key=f"edit_entry_{entry['id']}"
+        ):
+            st.session_state["editing_travel_entry"] = None if editing else entry["id"]
+            st.rerun()
+        if button_columns[1].button(
+            "Cancel" if logging_hours else "Log hours", key=f"log_entry_{entry['id']}"
+        ):
+            st.session_state["logging_travel_entry"] = None if logging_hours else entry["id"]
+            st.rerun()
+        if button_columns[2].button("Remove", key=f"remove_entry_{entry['id']}"):
+            db.delete_travel_entry(entry["id"])
+            st.rerun()
+        if button_columns[3].button("Suggest lesson", key=f"suggest_entry_{entry['id']}"):
+            rationale = (
+                f"A real family trip: {story_text[:400]}"
+                if story_text
+                else f"A real family trip to {entry['state']}"
+                + (f", including {park.name}" if park else "") + "."
+            )
+            db.add_web_node(
+                student["id"],
+                "history",
+                topic=entry["title"] or f"Our trip to {entry['state']}",
+                rationale=rationale,
+                location=entry["state"],
+            )
+            st.success(
+                "Added to History's open topics -- pick it up next time a "
+                "history lesson gets generated."
+            )
+
+        if logging_hours:
+            with st.form(f"log_travel_entry_{entry['id']}"):
+                st.caption(
+                    "Splits like the manual Activity Log entry does -- leave a "
+                    "subject at 0 to skip it."
+                )
+                log_columns = st.columns(3)
+                writing_minutes = log_columns[0].number_input(
+                    "Writing minutes", min_value=0, max_value=300, value=30, step=5
+                )
+                social_studies_minutes = log_columns[1].number_input(
+                    "Social Studies minutes", min_value=0, max_value=300, value=0, step=5
+                )
+                log_date = log_columns[2].date_input(
+                    "Date", value=date.fromisoformat(entry["visited_on"])
+                )
+                if st.form_submit_button("Log hours", type="primary"):
+                    credits = {
+                        k: v
+                        for k, v in {
+                            "writing": int(writing_minutes),
+                            "social_studies": int(social_studies_minutes),
+                        }.items()
+                        if v > 0
+                    }
+                    if credits:
+                        db.log_activity(
+                            student_id=student["id"],
+                            title=entry["title"] or f"Travel writing -- {entry['state']}",
+                            tier=config.TIER_CHOICE,
+                            primary_subject=next(iter(credits)),
+                            minutes=sum(credits.values()),
+                            subject_credits=credits,
+                            occurred_on=log_date.isoformat(),
+                            description=entry["story"],
+                            source="travel_journal",
+                        )
+                        st.session_state["logging_travel_entry"] = None
+                        st.success("Logged.")
+                        st.rerun()
+
+        if editing:
+            park_options = [None, *parks.PARKS]
+            park_index = park_options.index(park) if park else 0
+            state_index = (
+                parks.STATES.index(entry["state"]) if entry["state"] in parks.STATES else 0
+            )
+            with st.form(f"edit_travel_entry_{entry['id']}"):
+                edit_columns = st.columns([2, 1])
+                edit_state = edit_columns[0].selectbox(
+                    "State", parks.STATES, index=state_index
+                )
+                edit_date = edit_columns[1].date_input(
+                    "Date", value=date.fromisoformat(entry["visited_on"])
+                )
+                edit_park = st.selectbox(
+                    "National Park (optional)",
+                    park_options,
+                    index=park_index,
+                    format_func=lambda p: (
+                        "No park this trip" if p is None else f"{p.name} ({p.states})"
+                    ),
+                )
+                edit_title = st.text_input("Title", value=entry["title"])
+                edit_story = st.text_area(
+                    "The story",
+                    value=entry["story"],
+                    height=140,
+                    help=(
+                        "Who was there? What was it like? What was your favorite "
+                        "part? Real detail, not just a one-line recap."
+                    ),
+                )
+                edit_extra_columns = st.columns(2)
+                edit_favorite_moment = edit_extra_columns[0].text_input(
+                    "Favorite moment (optional)", value=entry["favorite_moment"]
+                )
+                edit_would_return = edit_extra_columns[1].text_input(
+                    "Would you go back? (optional)", value=entry["would_return"]
+                )
+                if st.form_submit_button("Save changes", type="primary") and edit_title.strip():
+                    db.update_travel_entry(
+                        entry["id"],
+                        state=edit_state,
+                        visited_on=edit_date.isoformat(),
+                        title=edit_title.strip(),
+                        story=edit_story.strip(),
+                        park_key=edit_park.key if edit_park else None,
+                        favorite_moment=edit_favorite_moment.strip(),
+                        would_return=edit_would_return.strip(),
+                    )
+                    st.session_state["editing_travel_entry"] = None
+                    st.rerun()
+
 
 map_tab, journal_tab = st.tabs(["The map", "Travel journal"])
 
@@ -140,6 +345,13 @@ with journal_tab:
             height=140,
             help="Take your time here. Details, details, details.",
         )
+        extra_columns = st.columns(2)
+        favorite_moment = extra_columns[0].text_input(
+            "Favorite moment (optional)", placeholder="e.g. Watching Old Faithful erupt"
+        )
+        would_return = extra_columns[1].text_input(
+            "Would you go back? (optional)", placeholder="e.g. Yes, in the fall next time"
+        )
 
         if st.form_submit_button("Save this entry", type="primary") and title.strip():
             db.add_travel_entry(
@@ -149,171 +361,48 @@ with journal_tab:
                 title=title.strip(),
                 story=story.strip(),
                 park_key=park_choice.key if park_choice else None,
+                favorite_moment=favorite_moment.strip(),
+                would_return=would_return.strip(),
             )
             st.session_state["travel_entry_just_saved"] = True
             st.rerun()
 
     st.divider()
 
+    if entries:
+        header_columns = st.columns([2, 2])
+        with header_columns[0]:
+            group_mode = st.radio(
+                "Group by", ["State", "School year"], horizontal=True, label_visibility="collapsed"
+            )
+        with header_columns[1]:
+            export_entries = [
+                dict(
+                    e,
+                    park_name=(parks.park_by_key(e["park_key"]).name if e["park_key"] else ""),
+                )
+                for e in entries
+            ]
+            st.download_button(
+                "📄 Export the Travel Journal",
+                data=partial(travel_journal_to_docx, export_entries, student["name"]),
+                file_name=travel_journal_filename(student["name"]),
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+
     if not entries_by_state:
         st.caption("No entries yet -- add the first trip above.")
-
-    for state_name in sorted(entries_by_state):
-        state_entries = entries_by_state[state_name]
-        count_label = "entry" if len(state_entries) == 1 else "entries"
-        with st.expander(f"{state_name} — {len(state_entries)} {count_label}"):
-            for entry in state_entries:
-                park = parks.park_by_key(entry["park_key"]) if entry["park_key"] else None
-                park_tag = (
-                    f'<div style="font-size:11px; color:var(--c-border); text-transform:uppercase; '
-                    f'letter-spacing:.03em; margin:4px 0 8px; font-weight:700;">📍 {html.escape(park.name)}</div>'
-                    if park
-                    else ""
-                )
-                story_text = entry["story"].strip()
-                story_html = (
-                    html.escape(story_text).replace("\n", "<br>")
-                    if story_text
-                    else '<span style="color:var(--c-dim);">No story written yet.</span>'
-                )
-                st.markdown(
-                    f"""
-                    <div style="background:var(--c-panel); border:1px solid var(--c-border);
-                         border-radius:var(--c-radius); padding:16px 18px; box-shadow:var(--c-glow);
-                         margin-bottom:12px;">
-                      <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px;">
-                        <div style="font-weight:800; font-size:16px;">
-                          {html.escape(entry["title"]) or "Untitled trip"}
-                        </div>
-                        <div style="font-size:12px; color:var(--c-dim); font-family:{_MONO_FONT};
-                             white-space:nowrap;">{entry["visited_on"]}</div>
-                      </div>
-                      {park_tag}
-                      <div style="font-size:13.5px; line-height:1.6; color:var(--c-text);
-                           margin-top:{"4px" if park_tag else "10px"};">
-                        {story_html}
-                      </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-                if is_parent():
-                    editing = st.session_state.get("editing_travel_entry") == entry["id"]
-                    logging_hours = st.session_state.get("logging_travel_entry") == entry["id"]
-                    button_columns = st.columns([1, 1, 1, 1, 4])
-                    if button_columns[0].button(
-                        "Cancel" if editing else "Edit", key=f"edit_entry_{entry['id']}"
-                    ):
-                        st.session_state["editing_travel_entry"] = None if editing else entry["id"]
-                        st.rerun()
-                    if button_columns[1].button(
-                        "Cancel" if logging_hours else "Log hours", key=f"log_entry_{entry['id']}"
-                    ):
-                        st.session_state["logging_travel_entry"] = None if logging_hours else entry["id"]
-                        st.rerun()
-                    if button_columns[2].button("Remove", key=f"remove_entry_{entry['id']}"):
-                        db.delete_travel_entry(entry["id"])
-                        st.rerun()
-                    if button_columns[3].button("Suggest lesson", key=f"suggest_entry_{entry['id']}"):
-                        rationale = (
-                            f"A real family trip: {story_text[:400]}"
-                            if story_text
-                            else f"A real family trip to {entry['state']}"
-                            + (f", including {park.name}" if park else "") + "."
-                        )
-                        db.add_web_node(
-                            student["id"],
-                            "history",
-                            topic=entry["title"] or f"Our trip to {entry['state']}",
-                            rationale=rationale,
-                            location=entry["state"],
-                        )
-                        st.success(
-                            "Added to History's open topics -- pick it up next time a "
-                            "history lesson gets generated."
-                        )
-
-                    if logging_hours:
-                        with st.form(f"log_travel_entry_{entry['id']}"):
-                            st.caption(
-                                "Splits like the manual Activity Log entry does -- leave a "
-                                "subject at 0 to skip it."
-                            )
-                            log_columns = st.columns(3)
-                            writing_minutes = log_columns[0].number_input(
-                                "Writing minutes", min_value=0, max_value=300, value=30, step=5
-                            )
-                            social_studies_minutes = log_columns[1].number_input(
-                                "Social Studies minutes", min_value=0, max_value=300, value=0, step=5
-                            )
-                            log_date = log_columns[2].date_input(
-                                "Date", value=date.fromisoformat(entry["visited_on"])
-                            )
-                            if st.form_submit_button("Log hours", type="primary"):
-                                credits = {
-                                    k: v
-                                    for k, v in {
-                                        "writing": int(writing_minutes),
-                                        "social_studies": int(social_studies_minutes),
-                                    }.items()
-                                    if v > 0
-                                }
-                                if credits:
-                                    db.log_activity(
-                                        student_id=student["id"],
-                                        title=entry["title"] or f"Travel writing -- {entry['state']}",
-                                        tier=config.TIER_CHOICE,
-                                        primary_subject=next(iter(credits)),
-                                        minutes=sum(credits.values()),
-                                        subject_credits=credits,
-                                        occurred_on=log_date.isoformat(),
-                                        description=entry["story"],
-                                        source="travel_journal",
-                                    )
-                                    st.session_state["logging_travel_entry"] = None
-                                    st.success("Logged.")
-                                    st.rerun()
-
-                    if editing:
-                        park_options = [None, *parks.PARKS]
-                        park_index = park_options.index(park) if park else 0
-                        state_index = (
-                            parks.STATES.index(entry["state"]) if entry["state"] in parks.STATES else 0
-                        )
-                        with st.form(f"edit_travel_entry_{entry['id']}"):
-                            edit_columns = st.columns([2, 1])
-                            edit_state = edit_columns[0].selectbox(
-                                "State", parks.STATES, index=state_index
-                            )
-                            edit_date = edit_columns[1].date_input(
-                                "Date", value=date.fromisoformat(entry["visited_on"])
-                            )
-                            edit_park = st.selectbox(
-                                "National Park (optional)",
-                                park_options,
-                                index=park_index,
-                                format_func=lambda p: (
-                                    "No park this trip" if p is None else f"{p.name} ({p.states})"
-                                ),
-                            )
-                            edit_title = st.text_input("Title", value=entry["title"])
-                            edit_story = st.text_area(
-                                "The story",
-                                value=entry["story"],
-                                height=140,
-                                help=(
-                                    "Who was there? What was it like? What was your favorite "
-                                    "part? Real detail, not just a one-line recap."
-                                ),
-                            )
-                            if st.form_submit_button("Save changes", type="primary") and edit_title.strip():
-                                db.update_travel_entry(
-                                    entry["id"],
-                                    state=edit_state,
-                                    visited_on=edit_date.isoformat(),
-                                    title=edit_title.strip(),
-                                    story=edit_story.strip(),
-                                    park_key=edit_park.key if edit_park else None,
-                                )
-                                st.session_state["editing_travel_entry"] = None
-                                st.rerun()
+    elif group_mode == "State":
+        for state_name in sorted(entries_by_state):
+            state_entries = entries_by_state[state_name]
+            count_label = "entry" if len(state_entries) == 1 else "entries"
+            with st.expander(f"{state_name} — {len(state_entries)} {count_label}"):
+                for entry in state_entries:
+                    _render_entry(entry)
+    else:
+        for year_label in sorted(entries_by_year, key=lambda label: year_sort_keys[label], reverse=True):
+            year_entries = entries_by_year[year_label]
+            count_label = "entry" if len(year_entries) == 1 else "entries"
+            with st.expander(f"{year_label} — {len(year_entries)} {count_label}"):
+                for entry in year_entries:
+                    _render_entry(entry)

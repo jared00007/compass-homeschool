@@ -481,6 +481,34 @@ def test_a_state_can_have_more_than_one_travel_entry(db, student):
     assert {e["visited_on"] for e in entries} == {"2023-07-04", "2025-06-10"}
 
 
+def test_add_travel_entry_accepts_favorite_moment_and_would_return(db, student):
+    db.add_travel_entry(
+        student["id"], "Wyoming", "2025-06-10", title="Yellowstone",
+        favorite_moment="Watching Old Faithful erupt right on schedule.",
+        would_return="Yes, in the fall next time.",
+    )
+    entry = db.list_travel_entries(student["id"])[0]
+    assert entry["favorite_moment"] == "Watching Old Faithful erupt right on schedule."
+    assert entry["would_return"] == "Yes, in the fall next time."
+
+
+def test_add_travel_entry_defaults_favorite_moment_and_would_return_to_blank(db, student):
+    db.add_travel_entry(student["id"], "Wyoming", "2025-06-10", title="Yellowstone")
+    entry = db.list_travel_entries(student["id"])[0]
+    assert entry["favorite_moment"] == ""
+    assert entry["would_return"] == ""
+
+
+def test_update_travel_entry_can_set_favorite_moment_and_would_return(db, student):
+    entry_id = db.add_travel_entry(student["id"], "Wyoming", "2025-06-10", title="Yellowstone")
+    db.update_travel_entry(
+        entry_id, favorite_moment="The bison traffic jam.", would_return="Definitely."
+    )
+    entry = db.list_travel_entries(student["id"])[0]
+    assert entry["favorite_moment"] == "The bison traffic jam."
+    assert entry["would_return"] == "Definitely."
+
+
 def test_travel_entry_park_key_is_optional(db, student):
     """The entry's required scope is the state -- a trip with no park visit
     still gets a real entry, just with no park_key attached."""

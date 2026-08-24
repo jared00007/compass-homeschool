@@ -14,7 +14,14 @@ import io
 import pytest
 from docx import Document
 
-from compass.export import course_filename, course_to_docx, lesson_to_docx, suggested_filename
+from compass.export import (
+    course_filename,
+    course_to_docx,
+    lesson_to_docx,
+    suggested_filename,
+    travel_journal_filename,
+    travel_journal_to_docx,
+)
 
 
 def a_lesson(**overrides):
@@ -268,3 +275,88 @@ def test_course_filename_is_slugged_and_dated(title, expected_prefix):
     assert name.startswith(expected_prefix)
     assert name.endswith(".docx")
     assert " " not in name
+
+
+# --- travel journal export ----------------------------------------------------
+
+
+def a_travel_entry(**overrides):
+    entry = {
+        "title": "Glaciers Before They're Gone",
+        "state": "Montana",
+        "visited_on": "2025-07-04",
+        "story": "Hiked to the lake and watched the ice calve off the glacier.",
+        "favorite_moment": "",
+        "would_return": "",
+        "park_name": "",
+    }
+    entry.update(overrides)
+    return entry
+
+
+def test_travel_journal_produces_a_valid_docx():
+    docx_bytes = travel_journal_to_docx([a_travel_entry()], "Landon")
+    assert docx_bytes[:2] == b"PK"
+    Document(io.BytesIO(docx_bytes))
+
+
+def test_travel_journal_includes_the_trip_content():
+    text = text_of(travel_journal_to_docx([a_travel_entry()], "Landon"))
+    assert "Glaciers Before They're Gone" in text
+    assert "Montana" in text
+    assert "2025-07-04" in text
+    assert "Hiked to the lake" in text
+
+
+def test_travel_journal_includes_favorite_moment_and_would_return_when_set():
+    entry = a_travel_entry(
+        favorite_moment="Watching the glacier calve.",
+        would_return="Yes, in the fall next time.",
+    )
+    text = text_of(travel_journal_to_docx([entry], "Landon"))
+    assert "Watching the glacier calve." in text
+    assert "Yes, in the fall next time." in text
+
+
+def test_travel_journal_omits_favorite_moment_and_would_return_when_blank():
+    text = text_of(travel_journal_to_docx([a_travel_entry()], "Landon"))
+    assert "Favorite moment" not in text
+    assert "Would go back" not in text
+
+
+def test_travel_journal_includes_the_park_name_when_given():
+    entry = a_travel_entry(park_name="Glacier National Park")
+    text = text_of(travel_journal_to_docx([entry], "Landon"))
+    assert "Glacier National Park" in text
+
+
+def test_travel_journal_summarizes_states_and_trip_count():
+    entries = [
+        a_travel_entry(state="Montana", visited_on="2025-07-04"),
+        a_travel_entry(state="Montana", visited_on="2024-06-01"),
+        a_travel_entry(state="Wyoming", visited_on="2023-08-15"),
+    ]
+    text = text_of(travel_journal_to_docx(entries, "Landon"))
+    assert "2 states visited" in text
+    assert "3 trips logged" in text
+
+
+def test_travel_journal_handles_no_entries_without_crashing():
+    docx_bytes = travel_journal_to_docx([], "Landon")
+    Document(io.BytesIO(docx_bytes))
+    assert "No trips logged yet" in text_of(docx_bytes)
+
+
+@pytest.mark.parametrize(
+    "name,expected_prefix",
+    [
+        ("Landon", "landon-travel-journal-"),
+        ("Mary-Jane O'Brien", "mary-jane-o-brien-travel-journal-"),
+        ("", "student-travel-journal-"),
+    ],
+)
+def test_travel_journal_filename_is_slugged_and_dated(name, expected_prefix):
+    filename = travel_journal_filename(name)
+    assert filename.startswith(expected_prefix)
+    assert filename.endswith(".docx")
+    assert " " not in filename

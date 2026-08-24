@@ -129,6 +129,63 @@ def lesson_to_docx(lesson: dict[str, Any]) -> bytes:
     return buffer.getvalue()
 
 
+def travel_journal_filename(student_name: str) -> str:
+    """A readable .docx filename: the student's name, slugged, plus today's date."""
+    slug = re.sub(r"[^a-z0-9]+", "-", student_name.lower()).strip("-") or "student"
+    return f"{slug}-travel-journal-{date.today().isoformat()}.docx"
+
+
+def travel_journal_to_docx(entries: list[dict[str, Any]], student_name: str) -> bytes:
+    """Render the whole travel journal as one printable keepsake, newest trip
+    first -- meant to be kept and added to every year, the same way the
+    journal itself is meant to, not a one-time snapshot.
+
+    Each entry may carry an optional `park_name` (already resolved by the
+    caller, since park lookups live in compass.national_parks and this
+    module deliberately stays independent of feature-specific lookups --
+    same reasoning course_to_docx keeps subject-label lookups in
+    compass.subjects rather than duplicating them here).
+    """
+    document = Document()
+    style = document.styles["Normal"]
+    style.font.size = Pt(11)
+
+    document.add_heading(f"{student_name}'s Travels", level=1)
+    if entries:
+        states = {e["state"] for e in entries}
+        summary = document.add_paragraph()
+        summary.add_run(
+            f"{len(states)} state{'s' if len(states) != 1 else ''} visited, "
+            f"{len(entries)} trip{'s' if len(entries) != 1 else ''} logged."
+        ).italic = True
+    else:
+        document.add_paragraph("No trips logged yet.")
+
+    for entry in entries:
+        document.add_heading(entry.get("title") or entry["state"], level=2)
+        subtitle = document.add_paragraph()
+        subtitle_bits = [entry["state"]]
+        if entry.get("park_name"):
+            subtitle_bits.append(entry["park_name"])
+        subtitle_bits.append(entry["visited_on"])
+        subtitle.add_run(" · ".join(subtitle_bits)).bold = True
+
+        if entry.get("story"):
+            document.add_paragraph(entry["story"])
+        if entry.get("favorite_moment"):
+            favorite = document.add_paragraph()
+            favorite.add_run("Favorite moment: ").bold = True
+            favorite.add_run(entry["favorite_moment"])
+        if entry.get("would_return"):
+            would_return = document.add_paragraph()
+            would_return.add_run("Would go back? ").bold = True
+            would_return.add_run(entry["would_return"])
+
+    buffer = io.BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
 def course_filename(course: dict[str, Any]) -> str:
     """A readable .docx filename: the course title, slugged, plus today's date."""
     title = course.get("title") or "course"
