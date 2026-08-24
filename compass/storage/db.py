@@ -1336,6 +1336,12 @@ class Database:
         self._migrate_interests_string_to_list()
         self._migrate_journal_entries_allow_multiple_per_day()
         self._migrate_books_allow_upcoming_status()
+        # Runs after the rebuild above, not before: that rebuild recreates
+        # `books` from its own hardcoded column list on a database old enough
+        # to need it, which would otherwise silently drop a column added here
+        # first, same failure shape _migrate_activities_allow_projects_tier's
+        # own comment warns about.
+        self._ensure_column("books", "ai_summary", "TEXT NOT NULL DEFAULT ''")
         self._backfill_big_project_step_content()
         self._backfill_big_project_catalog()
         self._backfill_declaration_url_default()
@@ -1928,6 +1934,7 @@ class Database:
             "status",
             "notes",
             "finished_on",
+            "ai_summary",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:

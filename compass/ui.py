@@ -1584,14 +1584,16 @@ def render_first_day_celebration(db: Database, student: dict[str, Any]) -> bool:
 
 
 def _render_first_day_contents(db: Database, student: dict[str, Any], year_start: str) -> None:
-    """The "table of contents" flip side of the first-day cover -- a real
-    preview of the year instead of just four teaser blurbs: every Big
-    Project (not just the active one), the choice topics he's floated,
-    the life skills waiting to be unlocked, and how the travel log stands
-    so far. Reachable only from the cover's "See what's inside" button."""
+    """The "table of contents" flip side of the first-day cover -- real
+    detail instead of counts: every book on his list with its drafted
+    summary (not just whichever one happens to be marked "reading" --
+    marking that is the parent's job, on their own schedule, and
+    shouldn't gate whether he can see what's coming), every Big Project
+    with its actual objective, every choice topic and life skill with its
+    description, and the travel log's real entries. Reachable only from
+    the cover's "See what's inside" button."""
     student_id = student["id"]
-    book = db.current_book(student_id)
-    upcoming = db.upcoming_book(student_id)
+    books = [b for b in db.list_books(student_id) if b["status"] in ("reading", "upcoming")]
     projects = db.list_big_projects(student_id)
     active_project = db.active_big_project(student_id)
     choice_topics = [
@@ -1610,55 +1612,73 @@ def _render_first_day_contents(db: Database, student: dict[str, Any], year_start
 
     sections: list[tuple[str, str, str]] = []
 
-    if book:
-        text = f"Currently reading **{md(book['title'])}**"
-        if book["author"]:
-            text += f" by {md(book['author'])}"
-        text += "."
-        if upcoming:
-            text += f" **{md(upcoming['title'])}** is queued for the second half."
+    if books:
+        items = []
+        for book in books:
+            marker = "⭐ " if book["status"] == "reading" else ""
+            byline = f" by {md(book['author'])}" if book["author"] else ""
+            when = "currently reading" if book["status"] == "reading" else "queued for later"
+            item = f"{marker}**{md(book['title'])}**{byline} — {when}"
+            if book["ai_summary"]:
+                item += f"  \n{md(book['ai_summary'])}"
+            items.append(item)
+        text = "\n\n".join(items)
     else:
         text = "No book started yet — the first pick is still ahead."
     sections.append(("📚 THIS YEAR'S BOOKS", _FIRST_DAY_COLORS[0], text))
 
     if projects:
-        lines = []
+        items = []
         for project in projects:
-            steps = db.list_project_steps(project["id"])
-            done = sum(1 for s in steps if s["completed_on"])
             is_active = bool(active_project and project["id"] == active_project["id"])
             marker = "⭐ " if is_active else ""
-            progress = f" ({done}/{len(steps)} steps done)" if steps else ""
-            line = f"{marker}**{md(project['title'])}**{progress}"
+            item = f"{marker}**{md(project['title'])}**"
+            item += f"  \n{md(project['vision'])}" if project["vision"] else "  \nNo objective set yet."
             if is_active:
+                steps = db.list_project_steps(project["id"])
                 next_step = next((s for s in steps if not s["completed_on"]), None)
                 if next_step:
-                    line += f" — next: {md(next_step['title'])}"
-            lines.append(line)
-        text = "  \n".join(lines)
+                    item += f"  \nNext up: {md(next_step['title'])}"
+            items.append(item)
+        text = "\n\n".join(items)
     else:
         text = "Nothing picked yet — Big Projects is wide open."
     sections.append(("🎬 BIG PROJECTS ON DECK", _FIRST_DAY_COLORS[1], text))
 
     if choice_topics:
-        text = "  \n".join(f"- {md(t['title'])}" for t in choice_topics[:6])
+        items = []
+        for topic in choice_topics[:6]:
+            item = f"**{md(topic['title'])}**"
+            if topic["description"]:
+                item += f"  \n{md(topic['description'])}"
+            items.append(item)
+        text = "\n\n".join(items)
     else:
         text = "Nothing on deck yet — Choice Topics is wide open."
     sections.append(("⭐ THINGS HE WANTS TO LEARN", _FIRST_DAY_COLORS[2], text))
 
     if life_skills:
-        names = ", ".join(md(s["title"]) for s in life_skills[:4])
-        more = f" and {len(life_skills) - 4} more" if len(life_skills) > 4 else ""
-        text = f"{len(life_skills)} unlocked and waiting: {names}{more}."
+        items = []
+        for skill in life_skills[:6]:
+            item = f"**{md(skill['title'])}**"
+            if skill["description"]:
+                item += f"  \n{md(skill['description'])}"
+            items.append(item)
+        text = "\n\n".join(items)
     else:
         text = "None unlocked yet."
     sections.append(("🛠️ LIFE SKILLS UNLOCKED", _FIRST_DAY_COLORS[3], text))
 
     if travel:
-        states = {entry["state"] for entry in travel}
-        state_word = "state" if len(states) == 1 else "states"
-        story_word = "story" if len(travel) == 1 else "stories"
-        text = f"{len(states)} {state_word} stamped, {len(travel)} {story_word} logged so far."
+        items = []
+        for entry in travel[:4]:
+            item = f"**{md(entry['title'] or entry['state'])}** ({md(entry['state'])})"
+            if entry["story"]:
+                item += f"  \n{md(entry['story'])}"
+            items.append(item)
+        if len(travel) > 4:
+            items.append(f"...and {len(travel) - 4} more stamped so far.")
+        text = "\n\n".join(items)
     else:
         text = "No stamps yet — the first trip of the year starts the log."
     sections.append(("🗺️ LANDON'S TRAVELS SO FAR", _FIRST_DAY_COLORS[0], text))

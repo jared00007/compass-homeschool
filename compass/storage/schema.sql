@@ -105,6 +105,7 @@ CREATE TABLE IF NOT EXISTS books (
     started_on   TEXT,
     finished_on  TEXT,
     notes        TEXT NOT NULL DEFAULT '',
+    ai_summary   TEXT NOT NULL DEFAULT '',  -- parent-drafted-with-AI blurb, shown to him
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

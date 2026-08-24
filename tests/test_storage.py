@@ -222,6 +222,11 @@ def test_migrate_rebuilds_books_to_allow_upcoming_status(db, student):
     assert len(books) == 1
     assert books[0]["title"] == "Old-style book"
     assert books[0]["term"] is None  # new column, backfilled to NULL
+    # Regression: this rebuild used to run *before* the ai_summary column got
+    # added, and rebuilds from its own hardcoded column list -- silently
+    # dropping any column added ahead of it in migrate() on a database old
+    # enough to actually need this rebuild.
+    assert books[0]["ai_summary"] == ""
 
     word = db.list_vocabulary(student["id"])[0]
     assert word["source_book_id"] == old_id  # the foreign key still resolves

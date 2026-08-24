@@ -10,7 +10,7 @@ from datetime import date
 
 import streamlit as st
 
-from compass.agents import get_agent
+from compass.agents import LessonGenerationError, book_summary, get_agent
 from compass.agents.strategies import ELA_FOCUS_ROTATION, STANDALONE_FOCUS_ROTATION
 from compass.ui import (
     api_status_banner,
@@ -237,6 +237,17 @@ with books_tab:
             elif columns[1].button("Resume", key=f"resume_{book['id']}"):
                 db.update_book(book["id"], status="reading")
                 st.rerun()
+
+            if book["ai_summary"]:
+                st.caption(md(book["ai_summary"]))
+            summary_label = "✨ Regenerate summary" if book["ai_summary"] else "✨ Draft a summary with AI"
+            if st.button(summary_label, key=f"summarize_{book['id']}", disabled=not api_ok):
+                with st.spinner("Drafting a summary…"):
+                    try:
+                        book_summary.generate_book_summary(db, student, book)
+                        st.rerun()
+                    except LessonGenerationError as exc:
+                        st.error(str(exc))
 
 # --- vocabulary --------------------------------------------------------------
 

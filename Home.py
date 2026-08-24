@@ -7,7 +7,7 @@ from datetime import date, timedelta
 import streamlit as st
 
 from compass import config, weekly
-from compass.agents import course_summary, life_skills
+from compass.agents import book_summary, course_summary, life_skills
 from compass.compliance import build_report
 from compass.curriculum import frontier_report
 from compass.subjects import label
@@ -244,7 +244,8 @@ if not is_parent():
             lesson
             for lesson in db.list_lessons(student["id"], limit=25)
             if lesson["status"] == "planned"
-            and lesson["agent"] not in (life_skills.AGENT_KEY, course_summary.AGENT_KEY)
+            and lesson["agent"]
+            not in (life_skills.AGENT_KEY, course_summary.AGENT_KEY, book_summary.AGENT_KEY)
             and not (lesson.get("metadata") or {}).get("student_done_on")
         ]
         # A lesson planned ahead (This Week -- Friday planning) carries which

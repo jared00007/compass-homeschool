@@ -1334,12 +1334,12 @@ def test_see_whats_inside_flips_to_a_table_of_contents(monkeypatch, db, student)
     db.set_setting("school_year_start", "09-01")
     _fix_today(monkeypatch, date(2026, 9, 1))
     db.add_book(student["id"], "Holes", status="reading")
-    project_id = db.add_big_project(student["id"], "Stop-Motion Film")
+    project_id = db.add_big_project(student["id"], "Stop-Motion Film", vision="A short stop-motion film he writes, builds, and shoots himself.")
     db.add_project_step(project_id, "Write the script")
     db.set_active_big_project(project_id)
-    db.add_choice_topic(student["id"], "Learn guitar chords")
-    db.add_life_skill(student["id"], "Change a tire")
-    db.add_travel_entry(student["id"], "WA", "2026-07-01", title="Olympic NP")
+    db.add_choice_topic(student["id"], "Learn guitar chords", description="Enough chords to play a few songs.")
+    db.add_life_skill(student["id"], "Change a tire", description="How to safely swap a flat for the spare.")
+    db.add_travel_entry(student["id"], "WA", "2026-07-01", title="Olympic NP", story="Hiked to Hurricane Ridge.")
 
     _, _, state = render_first_day(monkeypatch, db, student, button_pressed="first_day_peek")
     assert state["first_day_view"] == "contents"
@@ -1349,10 +1349,14 @@ def test_see_whats_inside_flips_to_a_table_of_contents(monkeypatch, db, student)
     assert "Inside This Issue" in page
     assert "Holes" in page
     assert "Stop-Motion Film" in page
-    assert "Write the script" in page
+    assert "A short stop-motion film he writes, builds, and shoots himself." in page
+    assert "Next up: Write the script" in page
     assert "Learn guitar chords" in page
+    assert "Enough chords to play a few songs." in page
     assert "Change a tire" in page
-    assert "1 state stamped, 1 story logged so far." in page
+    assert "How to safely swap a flat for the spare." in page
+    assert "Olympic NP" in page
+    assert "Hiked to Hurricane Ridge." in page
 
 
 def test_table_of_contents_shows_every_big_project_not_just_the_active_one(monkeypatch, db, student):
@@ -1367,6 +1371,24 @@ def test_table_of_contents_shows_every_big_project_not_just_the_active_one(monke
     assert shown is True
     assert "Stop-Motion Film" in page
     assert "Birdhouse Build" in page
+
+
+def test_table_of_contents_shows_every_book_not_just_the_one_marked_reading(monkeypatch, db, student):
+    """Regression: whether a book is marked 'reading' vs 'upcoming' is the
+    parent's own bookkeeping (when to switch), and shouldn't gate whether he
+    can see what's on his list at all -- both should show."""
+    db.set_setting("school_year_start", "09-01")
+    _fix_today(monkeypatch, date(2026, 9, 1))
+    db.add_book(student["id"], "Holes", status="reading")
+    upcoming_id = db.add_book(student["id"], "Ready Player One", status="upcoming")
+    db.update_book(upcoming_id, ai_summary="A teenager races through a virtual utopia for a hidden prize.")
+
+    state = {"first_day_view": "contents"}
+    page, shown, _ = render_first_day(monkeypatch, db, student, state=state)
+    assert shown is True
+    assert "Holes" in page
+    assert "Ready Player One" in page
+    assert "A teenager races through a virtual utopia for a hidden prize." in page
 
 
 def test_table_of_contents_handles_nothing_set_up_yet(monkeypatch, db, student):
