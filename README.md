@@ -62,6 +62,23 @@ port 8501, and a second copy will just fail to bind it.
 Check it's running: `launchctl list | grep compass`.
 Undo it: `./scripts/uninstall-autostart.sh`.
 
+### Updating
+
+Whenever there's a new version to pull, run this instead of the manual
+`cd` / `git pull` / clear caches / restart sequence — it's easy to get a step
+wrong (wrong directory, a stale `__pycache__`, restarting the wrong way):
+
+```bash
+./scripts/update.sh
+```
+
+Refuses to touch anything if there are uncommitted local changes it doesn't
+recognize. Otherwise: pulls, clears cached Python bytecode, restarts Compass
+the right way for however it's actually running (through `launchctl` if
+`install-autostart.sh` is set up, or tells you to run `./run.sh --lan`
+yourself if you start it by hand each time), then checks the app actually
+came back up before calling it done.
+
 ### macOS: "Apple could not verify Compass.command"
 
 macOS quarantines anything downloaded through a browser, so Gatekeeper blocks the
