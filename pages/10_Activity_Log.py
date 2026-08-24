@@ -24,6 +24,16 @@ st.caption(
     "automatically; anything else can be logged by hand."
 )
 
+def _lesson_date(lesson: dict) -> str:
+    """The date that actually matters for review: the day a lesson is
+    *planned for*, if it was batch-planned -- not when it happened to be
+    generated. Those agree for an ordinary on-demand lesson, but not once
+    a whole week gets batch-planned in one sitting: every lesson in that
+    batch shares the same created_at, which tells you nothing about which
+    day each one is actually for."""
+    return (lesson.get("metadata") or {}).get("planned_for") or lesson["created_at"][:10]
+
+
 all_lessons = db.list_lessons(student["id"], limit=50)
 to_review = [l for l in all_lessons if l["status"] == "planned"]
 history = [l for l in all_lessons if l["status"] != "planned"]
@@ -135,15 +145,31 @@ with lessons_tab:
     st.subheader("To review")
     st.caption(
         "Lessons nothing has been logged for yet. Lessons he's already marked done as "
-        "finished sort to the top — those are waiting on you."
+        "finished sort to the top — those are waiting on you. Dated by the day each "
+        "lesson is actually *for*, not when it happened to be generated -- a whole "
+        "week planned in one sitting would otherwise show the same date on all five."
     )
     show_history = st.checkbox("Also show completed and skipped lessons")
-    visible = to_review + history if show_history else to_review
+    unfiltered = to_review + history if show_history else to_review
+
+    filter_columns = st.columns([1, 1, 2])
+    filter_start = filter_columns[0].date_input(
+        "From", value=date.today() - timedelta(days=30), key="review_filter_start"
+    )
+    filter_end = filter_columns[1].date_input(
+        "To", value=date.today() + timedelta(days=30), key="review_filter_end"
+    )
+    visible = [
+        l for l in unfiltered
+        if filter_start.isoformat() <= _lesson_date(l) <= filter_end.isoformat()
+    ]
 
     if not all_lessons:
         st.info("No lessons generated yet.")
-    elif not visible:
+    elif not unfiltered:
         st.success("Nothing waiting on you right now.")
+    elif not visible:
+        st.caption("Nothing in that date range — widen it to see more.")
 
     badge_map = {"planned": "🕓 planned", "completed": "✅ completed", "skipped": "⏭️ skipped"}
     for lesson in visible:
@@ -152,7 +178,7 @@ with lessons_tab:
             badge = "🎓 he's done — needs logging"
         else:
             badge = badge_map[lesson["status"]]
-        with st.expander(f"{badge} · {lesson['created_at'][:10]} · {md(lesson['title'])}"):
+        with st.expander(f"{badge} · {_lesson_date(lesson)} · {md(lesson['title'])}"):
             st.caption(
                 f"{lesson['agent']} agent · strategy: {lesson['strategy']} · "
                 f"topic: {md(lesson['topic'])}"
