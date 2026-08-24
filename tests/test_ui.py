@@ -1424,7 +1424,7 @@ def test_table_of_contents_opens_with_a_note_from_the_parents(monkeypatch, db, s
     assert "take your time" in page
     assert "read what's given to you" in page
     assert "give it your all" in page
-    assert "resources you need" in page
+    assert "explanations, examples, and videos" in page
     assert page.index("FROM YOUR PARENTS") < page.index("THIS YEAR'S BOOKS")
 
 

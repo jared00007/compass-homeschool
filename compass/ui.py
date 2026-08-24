@@ -1629,9 +1629,9 @@ def _render_first_day_contents(db: Database, student: dict[str, Any], year_start
         "This is your first year of homeschooling. It's a big change — and we "
         "know it's going to be great for you.\n\n"
         "Here's what we're hoping for: **take your time** with each lesson, "
-        "actually **read what's given to you**, and **give it your all**. Every "
-        "lesson comes with the resources you need to do that — explanations, "
-        "examples, videos — so if something doesn't click, look there first.\n\n"
+        "actually **read what's given to you**, and **give it your all**. Each "
+        "lesson comes with explanations, examples, and videos built in — so if "
+        "something doesn't click, check there first before getting stuck.\n\n"
         "Try your hardest. Grow. That's the whole goal this year.",
     ))
 
