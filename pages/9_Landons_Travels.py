@@ -92,11 +92,6 @@ with journal_tab:
         "If there wasn't one that trip, just tell the state's story. Past "
         "trips count too -- write up one we've already taken."
     )
-    st.caption(
-        "Take your time on the story below -- who was there, what it was "
-        "like, what your favorite part was. Real detail, not just \"we went "
-        "here and it was cool.\""
-    )
     # The park selector lives outside the form: form widgets only report
     # their values on submit, but picking a park needs to update the state
     # dropdown's default *immediately* so Landon can't save a trip whose
