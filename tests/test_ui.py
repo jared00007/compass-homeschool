@@ -1391,6 +1391,25 @@ def test_table_of_contents_shows_every_book_not_just_the_one_marked_reading(monk
     assert "A teenager races through a virtual utopia for a hidden prize." in page
 
 
+def test_table_of_contents_shows_every_book_regardless_of_status(monkeypatch, db, student):
+    """No status filter at all -- 'in progress or not' doesn't gate this
+    list. current_book()/upcoming_book() answer a different question (which
+    one the English agent reads from right now); this is "what's on his
+    list for the year," full stop."""
+    db.set_setting("school_year_start", "09-01")
+    _fix_today(monkeypatch, date(2026, 9, 1))
+    db.add_book(student["id"], "Holes", status="finished")
+    db.add_book(student["id"], "Ready Player One", status="abandoned")
+    db.add_book(student["id"], "Ender's Game", status="reading")
+
+    state = {"first_day_view": "contents"}
+    page, shown, _ = render_first_day(monkeypatch, db, student, state=state)
+    assert shown is True
+    assert "Holes" in page
+    assert "Ready Player One" in page
+    assert "Ender's Game" in page
+
+
 def test_table_of_contents_handles_nothing_set_up_yet(monkeypatch, db, student):
     db.set_setting("school_year_start", "09-01")
     _fix_today(monkeypatch, date(2026, 9, 1))

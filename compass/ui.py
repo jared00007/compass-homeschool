@@ -1585,11 +1585,12 @@ def render_first_day_celebration(db: Database, student: dict[str, Any]) -> bool:
 
 def _render_first_day_contents(db: Database, student: dict[str, Any], year_start: str) -> None:
     """The "table of contents" flip side of the first-day cover -- real
-    detail instead of counts: every book on his list with its drafted
-    summary (not just whichever one happens to be marked "reading" --
-    marking that is the parent's job, on their own schedule, and
-    shouldn't gate whether he can see what's coming, or whether it's
-    presented as equally locked in for the year), every Big Project with
+    detail instead of counts: literally every book ever added, no status
+    filter at all (unlike current_book()/upcoming_book(), which are about
+    picking *the one* the English agent reads from right now -- this is
+    "what's on his list for the year," a different question, and internal
+    reading-progress bookkeeping shouldn't hide a book from it), every Big
+    Project with
     its actual objective, every choice topic and life skill with its
     description, and the travel log's real entries. Two explainer
     sections (Check-In, Morning Routine) carry no per-student data at all
@@ -1602,7 +1603,7 @@ def _render_first_day_contents(db: Database, student: dict[str, Any], year_start
     the other. Reachable only from the cover's "See what's inside" button.
     """
     student_id = student["id"]
-    books = [b for b in db.list_books(student_id) if b["status"] in ("reading", "upcoming")]
+    books = db.list_books(student_id)
     projects = db.list_big_projects(student_id)
     active_project = db.active_big_project(student_id)
     choice_topics = [
