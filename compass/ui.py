@@ -1425,6 +1425,149 @@ def render_school_start_countdown(db: Database) -> None:
         st.caption(f"🗓️ {remaining} day{plural} until the first day of school ({when}).")
 
 
+_FIRST_DAY_INK = "#211a14"
+_FIRST_DAY_PAPER = "#fbf1d6"
+_FIRST_DAY_CARD_PAPER = "#fffaf0"
+# Same four of the five "Sunday Funnies" week-grid colors (compass_week's own
+# red is reserved for the masthead's own shadow, below) -- deliberately the
+# same fixed printed-poster palette, not theme.py's tokens, same reasoning as
+# that styling: a printed comic page doesn't re-theme itself for the room
+# it's read in.
+_FIRST_DAY_COLORS = ("#3564c4", "#3f9450", "#f0ac1f", "#8c4fa8")
+_FIRST_DAY_WINDOW_DAYS = 14
+_FIRST_DAY_CARD_CSS = f"""
+<style>
+div[class*="st-key-first_day_cover"] {{
+  background: {_FIRST_DAY_PAPER};
+  border: 4px solid {_FIRST_DAY_INK};
+  border-radius: 4px;
+  box-shadow: 10px 10px 0 0 {_FIRST_DAY_INK};
+  padding: 28px 26px 20px;
+  position: relative;
+  margin: 4px 0 22px;
+}}
+div[class*="st-key-first_day_cover"]::before {{
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  pointer-events: none;
+  opacity: .12;
+  background-image: radial-gradient(circle, {_FIRST_DAY_INK} 1.6px, transparent 1.8px);
+  background-size: 10px 10px;
+}}
+div[class*="st-key-first_day_blurb_"] {{
+  background: {_FIRST_DAY_CARD_PAPER};
+  border: 3px solid {_FIRST_DAY_INK};
+  border-radius: 4px;
+  padding: 10px 14px;
+  box-shadow: 5px 5px 0 0 {_FIRST_DAY_INK};
+  margin-bottom: 12px;
+}}
+</style>
+"""
+
+
+def render_first_day_celebration(db: Database, student: dict[str, Any]) -> bool:
+    """A one-time "Issue #1" comic-cover celebration on the actual first day
+    of the school year. Sampled three visual directions and picked this one
+    before building -- matches the Week grid's own Sunday Funnies styling
+    on purpose, same fixed printed palette rather than theme.py's tokens.
+
+    Shown once: tracked by comparing this year's computed start date
+    (school_year_bounds) against whichever start date was last celebrated,
+    not by the literal calendar day, so opening the app a few days late
+    still gets the moment instead of silently missing it forever -- as
+    long as it's within _FIRST_DAY_WINDOW_DAYS of the real start. school_year_bounds
+    always returns a start <= today (it's "the year containing today"), so
+    that alone can't tell us whether the year *just* started or started
+    months ago -- the window check is what actually gates this to "the
+    first day" instead of "any day before it's dismissed."
+
+    Returns whether it actually rendered, so the caller can st.stop() --
+    this is meant to be the whole page that render, not a banner stacked
+    above the usual one.
+    """
+    year_start, _ = db.school_year_bounds()
+    if db.get_setting("first_day_celebrated_start", "") == year_start:
+        return False
+    days_since_start = (date.today() - date.fromisoformat(year_start)).days
+    if not (0 <= days_since_start < _FIRST_DAY_WINDOW_DAYS):
+        return False
+
+    first_name = student["name"].split()[0]
+    book = db.current_book(student["id"])
+    upcoming = db.upcoming_book(student["id"])
+    project = db.active_big_project(student["id"])
+
+    st.markdown(_FIRST_DAY_CARD_CSS, unsafe_allow_html=True)
+    st.title("COMPASS")
+    st.caption(f"A {md(student['name'])} Production")
+
+    with st.container(key="first_day_cover"):
+        st.markdown(
+            f'<div style="font-weight:900; font-size:13px; letter-spacing:.05em; '
+            f'color:{_FIRST_DAY_COLORS[0]};">ISSUE №1</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div style="font-weight:900; font-size:44px; line-height:.95; '
+            f'color:{_FIRST_DAY_INK}; text-shadow:3px 3px 0 #e14b3a; margin:2px 0 12px;">'
+            "THE FIRST DAY!</div>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f"**Grade {student['grade']} starts now, {first_name} — "
+            "let's see what this year's made of.**"
+        )
+
+    blurbs: list[tuple[str, str, str]] = []
+    if book:
+        text = f"**{md(book['title'])}**"
+        if upcoming:
+            text += f" — with **{md(upcoming['title'])}** queued up for the second half."
+        else:
+            text += " — he's mid-book, and English picks up exactly where he left off."
+        blurbs.append(("THIS ISSUE:", _FIRST_DAY_COLORS[0], text))
+    if project:
+        next_step = next(
+            (s for s in db.list_project_steps(project["id"]) if not s["completed_on"]), None
+        )
+        text = f"His **{md(project['title'])}**"
+        text += (
+            f" — {md(next_step['title'])}, whenever he's ready to dive in."
+            if next_step
+            else " — every step done so far!"
+        )
+        blurbs.append(("GUEST-STARRING:", _FIRST_DAY_COLORS[1], text))
+    blurbs.append((
+        "ALSO IN THIS ISSUE:",
+        _FIRST_DAY_COLORS[2],
+        "**Landon's Travels** — new stamps in the journal whenever the next trip happens.",
+    ))
+    blurbs.append((
+        "NEXT ISSUE:",
+        _FIRST_DAY_COLORS[3],
+        "New worlds in Science, new eras in History, and Math's next level — all waiting.",
+    ))
+
+    columns = st.columns(2)
+    for index, (eyebrow, color, text) in enumerate(blurbs):
+        with columns[index % 2], st.container(key=f"first_day_blurb_{index}"):
+            st.markdown(
+                f'<div style="font-weight:900; font-size:12px; letter-spacing:.03em; '
+                f'color:{color};">{eyebrow}</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(text)
+
+    if st.button("Let's go! →", key="first_day_go", type="primary", width="stretch"):
+        db.set_setting("first_day_celebrated_start", year_start)
+        st.rerun()
+
+    return True
+
+
 def render_fun_fact() -> None:
     """Student view only -- a small reward for showing up, not a lesson.
     Same card styling as an st.info, so it reads as part of the page rather

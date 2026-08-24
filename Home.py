@@ -17,6 +17,7 @@ from compass.ui import (
     md,
     page_setup,
     render_declaration_banner,
+    render_first_day_celebration,
     render_friday_plan,
     render_fun_fact,
     render_lesson,
@@ -35,6 +36,9 @@ db, student = page_setup("Home", icon="🧭")
 # without having to click through five separate days.
 
 if not is_parent():
+    if render_first_day_celebration(db, student):
+        st.stop()
+
     st.title(f"Hi {student['name'].split()[0]} 👋")
     st.caption("Here's what's set up for you. Work down the list, or jump around — up to you.")
     render_school_start_countdown(db)

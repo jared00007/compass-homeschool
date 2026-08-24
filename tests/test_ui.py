@@ -1219,3 +1219,111 @@ def test_render_friday_plan_only_shows_items_for_that_exact_date(monkeypatch, db
     page = "\n".join(written)
     assert "This Friday's thing" in page
     assert "Next Friday's thing" not in page
+
+
+# --- render_first_day_celebration: one-time "Issue #1" cover on the first day ---
+
+
+def _fix_today(monkeypatch, fixed):
+    """Pins both ui.date and db.date, since the guard reads date.today() in
+    ui.py and school_year_bounds() reads its own date.today() in db.py --
+    patching only one leaves the other on the real clock."""
+    from datetime import date as real_date
+
+    import compass.storage.db as db_module
+
+    class _FixedToday(real_date):
+        @classmethod
+        def today(cls):
+            return fixed
+
+    monkeypatch.setattr(ui, "date", _FixedToday)
+    monkeypatch.setattr(db_module, "date", _FixedToday)
+
+
+def render_first_day(monkeypatch, db, student, *, button_pressed=None):
+    written: list[str] = []
+    recorder = Recorder(written, {})
+    if button_pressed is not None:
+        recorder.button = button_stub(written, button_pressed)
+    monkeypatch.setattr(ui, "st", recorder)
+    shown = ui.render_first_day_celebration(db, student)
+    return "\n".join(written), shown
+
+
+def test_hidden_before_the_school_year_actually_starts(monkeypatch, db, student):
+    db.set_setting("school_year_start", "09-01")
+    _fix_today(monkeypatch, date(2026, 8, 20))
+    _, shown = render_first_day(monkeypatch, db, student)
+    assert shown is False
+
+
+def test_shown_on_the_literal_first_day(monkeypatch, db, student):
+    db.set_setting("school_year_start", "09-01")
+    _fix_today(monkeypatch, date(2026, 9, 1))
+    page, shown = render_first_day(monkeypatch, db, student)
+    assert shown is True
+    assert "THE FIRST DAY!" in page
+
+
+def test_still_shown_a_few_days_late(monkeypatch, db, student):
+    db.set_setting("school_year_start", "09-01")
+    _fix_today(monkeypatch, date(2026, 9, 8))
+    _, shown = render_first_day(monkeypatch, db, student)
+    assert shown is True
+
+
+def test_no_longer_shown_once_the_window_has_passed(monkeypatch, db, student):
+    """The bug this guards against: school_year_bounds() always returns a
+    start <= today, so without a window check this would show up any time
+    at all during the year, not just near the actual first day."""
+    db.set_setting("school_year_start", "09-01")
+    _fix_today(monkeypatch, date(2026, 12, 1))
+    _, shown = render_first_day(monkeypatch, db, student)
+    assert shown is False
+
+
+def test_not_shown_again_once_already_celebrated_for_this_years_start(monkeypatch, db, student):
+    db.set_setting("school_year_start", "09-01")
+    _fix_today(monkeypatch, date(2026, 9, 2))
+    db.set_setting("first_day_celebrated_start", "2026-09-01")
+    _, shown = render_first_day(monkeypatch, db, student)
+    assert shown is False
+
+
+def test_blurbs_mention_the_current_and_upcoming_book(monkeypatch, db, student):
+    db.set_setting("school_year_start", "09-01")
+    _fix_today(monkeypatch, date(2026, 9, 1))
+    db.add_book(student["id"], "Holes", status="reading")
+    db.add_book(student["id"], "Ready Player One", status="upcoming")
+    page, shown = render_first_day(monkeypatch, db, student)
+    assert shown is True
+    assert "Holes" in page
+    assert "Ready Player One" in page
+
+
+def test_blurbs_mention_the_active_big_project_next_step(monkeypatch, db, student):
+    db.set_setting("school_year_start", "09-01")
+    _fix_today(monkeypatch, date(2026, 9, 1))
+    project_id = db.add_big_project(student["id"], "Stop-motion film")
+    db.add_project_step(project_id, "Write the script")
+    db.set_active_big_project(project_id)
+    page, shown = render_first_day(monkeypatch, db, student)
+    assert shown is True
+    assert "Stop-motion film" in page
+    assert "Write the script" in page
+
+
+def test_still_shows_travel_log_and_next_issue_with_no_book_or_project(monkeypatch, db, student):
+    db.set_setting("school_year_start", "09-01")
+    _fix_today(monkeypatch, date(2026, 9, 1))
+    page, shown = render_first_day(monkeypatch, db, student)
+    assert shown is True
+    assert "Travel" in page
+
+
+def test_clicking_lets_go_marks_this_years_start_celebrated(monkeypatch, db, student):
+    db.set_setting("school_year_start", "09-01")
+    _fix_today(monkeypatch, date(2026, 9, 1))
+    render_first_day(monkeypatch, db, student, button_pressed="first_day_go")
+    assert db.get_setting("first_day_celebrated_start", "") == "2026-09-01"
