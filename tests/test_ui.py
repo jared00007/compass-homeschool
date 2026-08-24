@@ -437,6 +437,37 @@ def test_current_lesson_never_shows_one_planned_for_a_later_day(monkeypatch, db,
     assert "No math lesson has been set up yet" in page
 
 
+def test_current_lesson_shows_a_today_badge_when_planned_for_today(monkeypatch, db, student):
+    _fix_today(monkeypatch, date(2026, 8, 11))  # a Tuesday
+    db.save_lesson(
+        student["id"], "math", "math", "topic", "Tuesday's Lesson", payload=a_lesson(),
+        metadata={"week_start": "2026-08-10", "planned_for": "2026-08-11"},
+    )
+    page = render_student_view(monkeypatch, db, student)
+    assert "Tuesday — today's lesson" in page
+    assert "Was due" not in page
+
+
+def test_current_lesson_shows_a_was_due_badge_when_overdue(monkeypatch, db, student):
+    _fix_today(monkeypatch, date(2026, 8, 12))  # a Wednesday
+    db.save_lesson(
+        student["id"], "math", "math", "topic", "Monday's Lesson", payload=a_lesson(),
+        metadata={"week_start": "2026-08-10", "planned_for": "2026-08-10"},
+    )
+    page = render_student_view(monkeypatch, db, student)
+    assert "Was due Monday" in page
+    assert "today's lesson" not in page
+
+
+def test_current_lesson_shows_no_day_badge_for_an_ordinary_on_demand_lesson(monkeypatch, db, student):
+    """No planned_for at all -- generated the ordinary way, not through
+    weekly batch-planning -- so there's no day to badge it with."""
+    db.save_lesson(student["id"], "math", "math", "topic", "Two-Step Equations", payload=a_lesson())
+    page = render_student_view(monkeypatch, db, student)
+    assert "today's lesson" not in page
+    assert "Was due" not in page
+
+
 # --- render_past_lessons: always last, a separate call so page-specific ---
 # --- content (English's Words to Review) can come between it and the      ---
 # --- current lesson above ---------------------------------------------------

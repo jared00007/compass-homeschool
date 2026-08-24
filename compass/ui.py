@@ -748,7 +748,10 @@ def student_lesson_view(
     whichever lesson happens to have the highest id. Those used to
     disagree: batch-planning a whole week in one sitting means the last
     day generated (often Friday) has the most recent `created_at`, which
-    is a different thing entirely from "the one due today."
+    is a different thing entirely from "the one due today." A day badge
+    above the lesson (only shown when it carries a `planned_for` tag at
+    all -- an ordinary on-demand generation has no day attached) makes
+    that same fact visible here, not just inferred from being on the page.
     """
     lessons = db.list_lessons(student["id"], agent=agent_key, limit=10)
     todo = [
@@ -767,6 +770,13 @@ def student_lesson_view(
                 f"No {subject_label} lesson has been set up yet. Ask your parent to plan one."
             )
     else:
+        planned_for = (current.get("metadata") or {}).get("planned_for")
+        if planned_for:
+            weekday = date.fromisoformat(planned_for).strftime("%A")
+            if planned_for < date.today().isoformat():
+                st.caption(f"⚠️ Was due {weekday}")
+            else:
+                st.caption(f"📅 {weekday} — today's lesson")
         if current["status"] == "completed":
             st.caption("This one's already marked done — here it is again.")
         render_lesson(current["payload"], for_parent=False)
