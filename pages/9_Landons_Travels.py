@@ -92,6 +92,11 @@ with journal_tab:
         "If there wasn't one that trip, just tell the state's story. Past "
         "trips count too -- write up one we've already taken."
     )
+    st.caption(
+        "Take your time on the story below -- who was there, what it was "
+        "like, what your favorite part was. Real detail, not just \"we went "
+        "here and it was cool.\""
+    )
     # The park selector lives outside the form: form widgets only report
     # their values on submit, but picking a park needs to update the state
     # dropdown's default *immediately* so Landon can't save a trip whose
@@ -131,7 +136,15 @@ with journal_tab:
         visited_on = top_columns[1].date_input("Date", value=date.today())
 
         title = st.text_input("Title", placeholder="e.g. Glaciers Before They're Gone")
-        story = st.text_area("The story", placeholder="What happened on this trip?", height=140)
+        story = st.text_area(
+            "The story",
+            placeholder=(
+                "Who was there? What was it like? What was your favorite part? "
+                "Give real detail -- not just \"we went here and it was cool.\""
+            ),
+            height=140,
+            help="Take your time here. Details, details, details.",
+        )
 
         if st.form_submit_button("Save this entry", type="primary") and title.strip():
             db.add_travel_entry(
@@ -289,7 +302,15 @@ with journal_tab:
                                 ),
                             )
                             edit_title = st.text_input("Title", value=entry["title"])
-                            edit_story = st.text_area("The story", value=entry["story"], height=140)
+                            edit_story = st.text_area(
+                                "The story",
+                                value=entry["story"],
+                                height=140,
+                                help=(
+                                    "Who was there? What was it like? What was your favorite "
+                                    "part? Real detail, not just a one-line recap."
+                                ),
+                            )
                             if st.form_submit_button("Save changes", type="primary") and edit_title.strip():
                                 db.update_travel_entry(
                                     entry["id"],
