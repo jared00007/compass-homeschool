@@ -1585,13 +1585,14 @@ def render_first_day_celebration(db: Database, student: dict[str, Any]) -> bool:
 
 def _render_first_day_contents(db: Database, student: dict[str, Any], year_start: str) -> None:
     """The "table of contents" flip side of the first-day cover -- real
-    detail instead of counts: literally every book ever added, no status
-    filter at all (unlike current_book()/upcoming_book(), which are about
-    picking *the one* the English agent reads from right now -- this is
-    "what's on his list for the year," a different question, and internal
-    reading-progress bookkeeping shouldn't hide a book from it), every Big
-    Project with
-    its actual objective, every choice topic and life skill with its
+    detail instead of counts: a from-the-parents note first (this is his
+    first year of homeschooling, and what's expected of him), then
+    literally every book ever added, no status filter at all (unlike
+    current_book()/upcoming_book(), which are about picking *the one* the
+    English agent reads from right now -- this is "what's on his list for
+    the year," a different question, and internal reading-progress
+    bookkeeping shouldn't hide a book from it), every Big Project with its
+    actual objective, every choice topic and life skill with its
     description, and the travel log's real entries. Two explainer
     sections (Check-In, Morning Routine) carry no per-student data at all
     -- they exist purely so he knows what those two daily habits are and
@@ -1621,6 +1622,18 @@ def _render_first_day_contents(db: Database, student: dict[str, Any], year_start
         st.rerun()
 
     sections: list[tuple[str, str, str]] = []
+
+    sections.append((
+        "💛 FROM YOUR PARENTS",
+        _FIRST_DAY_COLORS[3],
+        "This is your first year of homeschooling. It's a big change — and we "
+        "know it's going to be great for you.\n\n"
+        "Here's what we're hoping for: **take your time** with each lesson, "
+        "actually **read what's given to you**, and **give it your all**. Every "
+        "lesson comes with the resources you need to do that — explanations, "
+        "examples, videos — so if something doesn't click, look there first.\n\n"
+        "Try your hardest. Grow. That's the whole goal this year.",
+    ))
 
     if books:
         term_notes = {

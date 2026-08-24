@@ -1410,6 +1410,24 @@ def test_table_of_contents_shows_every_book_regardless_of_status(monkeypatch, db
     assert "Ender's Game" in page
 
 
+def test_table_of_contents_opens_with_a_note_from_the_parents(monkeypatch, db, student):
+    """Nothing about this section reads from the database -- it's a fixed
+    message about the year itself (first year of homeschooling, what's
+    expected), so it should show even with nothing else set up at all."""
+    db.set_setting("school_year_start", "09-01")
+    _fix_today(monkeypatch, date(2026, 9, 1))
+    state = {"first_day_view": "contents"}
+    page, shown, _ = render_first_day(monkeypatch, db, student, state=state)
+    assert shown is True
+    assert "FROM YOUR PARENTS" in page
+    assert "first year of homeschooling" in page
+    assert "take your time" in page
+    assert "read what's given to you" in page
+    assert "give it your all" in page
+    assert "resources you need" in page
+    assert page.index("FROM YOUR PARENTS") < page.index("THIS YEAR'S BOOKS")
+
+
 def test_table_of_contents_handles_nothing_set_up_yet(monkeypatch, db, student):
     db.set_setting("school_year_start", "09-01")
     _fix_today(monkeypatch, date(2026, 9, 1))
