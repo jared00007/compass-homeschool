@@ -165,7 +165,7 @@ def test_record_quiz_result_is_readable_back_from_lesson_metadata(db):
         payload={},
         metadata={"skill_id": "two-step-equations"},
     )
-    db.record_quiz_result(lesson_id, correct=4, total=5, passed=True)
+    db.record_quiz_result(lesson_id, student["id"], correct=4, total=5, passed=True)
 
     lesson = db.get_lesson(lesson_id)
     assert lesson["metadata"]["quiz_result"] == {
@@ -176,3 +176,94 @@ def test_record_quiz_result_is_readable_back_from_lesson_metadata(db):
     }
     # the strategy metadata that was already there must survive the merge
     assert lesson["metadata"]["skill_id"] == "two-step-equations"
+
+
+# --- quiz attempt history ---------------------------------------------------------
+
+
+def _lesson(db, student_id):
+    return db.save_lesson(
+        student_id=student_id, agent="math", subject="math", topic="t",
+        title="Two-Step Equations", payload={},
+    )
+
+
+def test_each_recorded_attempt_gets_its_own_row(db):
+    student = db.ensure_default_student()
+    lesson_id = _lesson(db, student["id"])
+
+    db.record_quiz_result(lesson_id, student["id"], correct=3, total=5, passed=False)
+    db.record_quiz_result(lesson_id, student["id"], correct=5, total=5, passed=True)
+
+    attempts = db.list_quiz_attempts(student["id"])
+    assert len(attempts) == 2
+    assert {a["correct"] for a in attempts} == {3, 5}
+
+
+def test_list_quiz_attempts_is_newest_first(db):
+    student = db.ensure_default_student()
+    lesson_id = _lesson(db, student["id"])
+
+    db.record_quiz_result(lesson_id, student["id"], correct=1, total=5, passed=False)
+    db.record_quiz_result(lesson_id, student["id"], correct=4, total=5, passed=True)
+
+    attempts = db.list_quiz_attempts(student["id"])
+    assert [a["correct"] for a in attempts] == [4, 1]
+
+
+def test_list_quiz_attempts_can_be_narrowed_to_one_lesson(db):
+    student = db.ensure_default_student()
+    lesson_a = _lesson(db, student["id"])
+    lesson_b = _lesson(db, student["id"])
+    db.record_quiz_result(lesson_a, student["id"], correct=1, total=5, passed=False)
+    db.record_quiz_result(lesson_b, student["id"], correct=5, total=5, passed=True)
+
+    attempts = db.list_quiz_attempts(student["id"], lesson_id=lesson_a)
+    assert len(attempts) == 1
+    assert attempts[0]["lesson_id"] == lesson_a
+
+
+def test_quiz_attempt_carries_which_lesson_it_was_for(db):
+    student = db.ensure_default_student()
+    lesson_id = _lesson(db, student["id"])
+    db.record_quiz_result(lesson_id, student["id"], correct=3, total=5, passed=False)
+
+    attempt = db.list_quiz_attempts(student["id"])[0]
+    assert attempt["lesson_title"] == "Two-Step Equations"
+    assert attempt["subject"] == "math"
+
+
+def test_per_question_detail_round_trips(db):
+    student = db.ensure_default_student()
+    lesson_id = _lesson(db, student["id"])
+    detail = [
+        {
+            "question": "What is 2 + 2?",
+            "choices": ["3", "4", "5", "6"],
+            "correct_index": 1,
+            "pick": 0,
+            "explanation": "2 + 2 = 4.",
+        }
+    ]
+    db.record_quiz_result(lesson_id, student["id"], correct=0, total=1, passed=False, detail=detail)
+
+    attempt = db.list_quiz_attempts(student["id"])[0]
+    assert attempt["detail"] == detail
+
+
+def test_an_attempt_recorded_without_detail_defaults_to_an_empty_list(db):
+    student = db.ensure_default_student()
+    lesson_id = _lesson(db, student["id"])
+    db.record_quiz_result(lesson_id, student["id"], correct=1, total=1, passed=True)
+
+    attempt = db.list_quiz_attempts(student["id"])[0]
+    assert attempt["detail"] == []
+
+
+def test_passed_comes_back_as_a_real_bool(db):
+    student = db.ensure_default_student()
+    lesson_id = _lesson(db, student["id"])
+    db.record_quiz_result(lesson_id, student["id"], correct=5, total=5, passed=True)
+
+    attempt = db.list_quiz_attempts(student["id"])[0]
+    assert attempt["passed"] is True

@@ -2165,9 +2165,29 @@ class Database:
         )
         self.conn.commit()
 
-    def record_quiz_result(self, lesson_id: int, correct: int, total: int, passed: bool) -> None:
+    def record_quiz_result(
+        self,
+        lesson_id: int,
+        student_id: int,
+        correct: int,
+        total: int,
+        passed: bool,
+        detail: list[dict[str, Any]] | None = None,
+    ) -> None:
         """Stash the graded score into the lesson's metadata, alongside the
-        strategy metadata already stored there (skill_id, era, and so on)."""
+        strategy metadata already stored there (skill_id, era, and so on) --
+        a summary of the *latest* attempt only, which is all Home, This Week,
+        and Activity Log's own "today's score" captions have ever needed.
+
+        Also inserts a row into `quiz_attempts`, one per call, so a second
+        attempt at the same lesson doesn't overwrite the first the way the
+        metadata summary above does -- `detail` (question, choices,
+        correct_index, his pick, explanation, one dict per question) is what
+        makes "which questions were wrong on which try" answerable later,
+        instead of only existing in the browser's own session state for as
+        long as that browser tab stays open.
+        """
+        today = date.today().isoformat()
         self.conn.execute(
             "UPDATE lessons SET metadata = json_set(metadata, '$.quiz_result', json(?)) "
             "WHERE id = ?",
@@ -2177,13 +2197,46 @@ class Database:
                         "correct": correct,
                         "total": total,
                         "passed": passed,
-                        "graded_on": date.today().isoformat(),
+                        "graded_on": today,
                     }
                 ),
                 lesson_id,
             ),
         )
+        self.conn.execute(
+            "INSERT INTO quiz_attempts "
+            "(lesson_id, student_id, correct, total, passed, detail, attempted_on) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (lesson_id, student_id, correct, total, int(passed), json.dumps(detail or []), today),
+        )
         self.conn.commit()
+
+    def list_quiz_attempts(
+        self, student_id: int, *, lesson_id: int | None = None, limit: int = 500
+    ) -> list[dict[str, Any]]:
+        """Every graded quiz attempt, newest first, joined with enough of its
+        lesson to display without a second query -- the raw material for
+        pages/16_Quizzes.py's attempts-over-time view. `lesson_id` narrows to
+        one lesson's own history; omitted, this is every attempt he's ever
+        made across every subject.
+        """
+        sql = (
+            "SELECT qa.*, l.title AS lesson_title, l.agent AS agent, "
+            "l.subject AS subject, l.topic AS topic "
+            "FROM quiz_attempts qa JOIN lessons l ON l.id = qa.lesson_id "
+            "WHERE qa.student_id = ?"
+        )
+        params: list[Any] = [student_id]
+        if lesson_id is not None:
+            sql += " AND qa.lesson_id = ?"
+            params.append(lesson_id)
+        sql += " ORDER BY qa.created_at DESC, qa.id DESC LIMIT ?"
+        params.append(limit)
+        rows = _rows(self.conn.execute(sql, params))
+        for row in rows:
+            row["passed"] = bool(row["passed"])
+            row["detail"] = json.loads(row["detail"])
+        return rows
 
     # -- activities and multi-subject credits ---------------------------------
 

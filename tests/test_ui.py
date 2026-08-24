@@ -534,7 +534,7 @@ def test_a_quiz_score_from_today_is_included(monkeypatch, db, student):
         student["id"], "math", "math", "topic", "Two-Step Equations", payload=a_lesson()
     )
     db.mark_student_done(lesson_id)
-    db.record_quiz_result(lesson_id, correct=9, total=10, passed=True)
+    db.record_quiz_result(lesson_id, student["id"], correct=9, total=10, passed=True)
     page, _ = render_today(monkeypatch, db, student)
     assert "9/10" in page
 

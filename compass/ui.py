@@ -670,7 +670,19 @@ def render_quiz(
             threshold = db.get_int_setting("quiz_pass_percent")
             did_pass = quiz_passes(correct, total, threshold)
             st.session_state[state_key] = {"picks": picks, "correct": correct}
-            db.record_quiz_result(lesson_id, correct, total, did_pass)
+            detail = [
+                {
+                    "question": item["question"],
+                    "choices": item["choices"],
+                    "correct_index": item["correct_index"],
+                    "pick": pick,
+                    "explanation": item.get("explanation", ""),
+                }
+                for item, pick in zip(quiz, picks)
+            ]
+            db.record_quiz_result(
+                lesson_id, student["id"], correct, total, did_pass, detail=detail
+            )
 
             skill_id = metadata.get("skill_id")
             if did_pass and skill_id:

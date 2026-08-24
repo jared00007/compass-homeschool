@@ -150,6 +150,31 @@ CREATE TABLE IF NOT EXISTS lessons (
 CREATE INDEX IF NOT EXISTS idx_lessons_student
     ON lessons (student_id, created_at DESC);
 
+-- Every graded attempt at a lesson's in-app quiz, not just the latest.
+-- lessons.metadata.quiz_result (Database.record_quiz_result) still holds a
+-- summary of the most recent attempt for the places that only ever cared
+-- about "today's score" (Home, This Week, Activity Log); this is the full
+-- history behind it -- how many tries, each one's score, and which
+-- questions were missed on each -- which used to live only in the
+-- browser's own session state and vanished the moment that session ended.
+CREATE TABLE IF NOT EXISTS quiz_attempts (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    lesson_id    INTEGER NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+    student_id   INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    correct      INTEGER NOT NULL,
+    total        INTEGER NOT NULL,
+    passed       INTEGER NOT NULL,
+    detail       TEXT NOT NULL DEFAULT '[]',  -- JSON: [{question, choices, correct_index, pick, explanation}]
+    attempted_on TEXT NOT NULL DEFAULT (date('now')),
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_quiz_attempts_lesson
+    ON quiz_attempts (lesson_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_quiz_attempts_student
+    ON quiz_attempts (student_id, created_at DESC);
+
 -- ---------------------------------------------------------------------------
 -- Courses -- grades 6-12 credit documentation. Sumner-Bonney Lake requires,
 -- per course counted toward a diploma: a description, goals/objectives, an
