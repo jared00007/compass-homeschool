@@ -7,7 +7,7 @@ from functools import partial
 
 import streamlit as st
 
-from compass import config
+from compass import config, weekly
 from compass.agents.framework import GeneratedLesson, TopicProposal
 from compass.export import lesson_to_docx, suggested_filename
 from compass.subjects import SUBJECT_KEYS, label
@@ -32,6 +32,106 @@ def _lesson_date(lesson: dict) -> str:
     batch shares the same created_at, which tells you nothing about which
     day each one is actually for."""
     return (lesson.get("metadata") or {}).get("planned_for") or lesson["created_at"][:10]
+
+
+def _needs_attention(lesson: dict, today_iso: str) -> bool:
+    """Overdue, or already marked done by him and waiting on a parent to
+    log it -- either way it shouldn't be sitting quietly in a day column
+    the parent isn't currently looking at."""
+    meta = lesson.get("metadata") or {}
+    if meta.get("student_done_on"):
+        return True
+    planned_for = meta.get("planned_for")
+    return bool(planned_for and planned_for < today_iso)
+
+
+def _review_badge(lesson: dict, today_iso: str) -> str:
+    if lesson["status"] != "planned":
+        return {"completed": "✅ completed", "skipped": "⏭️ skipped"}[lesson["status"]]
+    meta = lesson.get("metadata") or {}
+    if meta.get("student_done_on"):
+        return "🎓 he's done — needs logging"
+    planned_for = meta.get("planned_for")
+    if planned_for and planned_for < today_iso:
+        return "⚠️ overdue"
+    return "🕓 planned"
+
+
+def _render_review_card(lesson: dict, today_iso: str) -> None:
+    """One lesson's expander: badge + planned date + title as the header,
+    full detail and the logging form inside. Shared by the attention
+    list, every day column, the unscheduled section, and history -- the
+    only thing that changes between them is which bucket a lesson lands
+    in, never how it's rendered once it's there."""
+    student_done_on = (lesson.get("metadata") or {}).get("student_done_on")
+    badge = _review_badge(lesson, today_iso)
+    with st.expander(f"{badge} · {_lesson_date(lesson)} · {md(lesson['title'])}"):
+        st.caption(
+            f"{lesson['agent']} agent · strategy: {lesson['strategy']} · "
+            f"topic: {md(lesson['topic'])}"
+        )
+        if lesson["rationale"]:
+            st.caption(f"Why: {md(lesson['rationale'])}")
+        if student_done_on and lesson["status"] != "completed":
+            st.caption(f"🎓 He marked this done on {student_done_on} — not logged yet.")
+        quiz_result = (lesson.get("metadata") or {}).get("quiz_result")
+        if quiz_result and quiz_result.get("total"):
+            pct = round(100 * quiz_result["correct"] / quiz_result["total"])
+            verdict = "🎯 passed" if quiz_result.get("passed") else "below the pass threshold"
+            st.caption(
+                f"📝 Quiz: {quiz_result['correct']}/{quiz_result['total']} ({pct}%) — "
+                f"{verdict}, graded {quiz_result.get('graded_on', '?')}"
+            )
+        st.write(md(lesson["payload"].get("overview", "")))
+        credits = lesson["payload"].get("subject_credits") or []
+        if credits:
+            st.markdown(
+                "Credit: "
+                + " · ".join(f"{label(c['subject'])} {c['minutes']}m" for c in credits)
+            )
+        st.download_button(
+            "📄 Download as Word doc",
+            data=partial(lesson_to_docx, lesson["payload"]),
+            file_name=suggested_filename(lesson["payload"]),
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            key=f"docx_{lesson['id']}",
+        )
+        if lesson["status"] == "planned":
+            st.divider()
+            generated = GeneratedLesson(
+                lesson_id=lesson["id"],
+                proposal=TopicProposal(
+                    topic=lesson["topic"],
+                    rationale=lesson["rationale"],
+                    strategy=lesson["strategy"],
+                ),
+                payload=lesson["payload"],
+                warnings=[],
+            )
+            tier = (
+                config.TIER_LIFE_SKILLS
+                if lesson["agent"] == "life_skills"
+                else config.TIER_CORE
+            )
+            log_lesson_form(
+                db,
+                student,
+                generated,
+                source=lesson["agent"],
+                primary_subject=lesson["subject"],
+                key_prefix=f"activitylog_{lesson['id']}",
+                tier=tier,
+            )
+            skip_col, remove_col = st.columns(2)
+            if skip_col.button("Mark skipped instead", key=f"skip_{lesson['id']}"):
+                db.set_lesson_status(lesson["id"], "skipped")
+                st.rerun()
+            # Distinct from "skipped": skipped keeps the record (he was offered
+            # this and it didn't happen); remove is for a lesson that shouldn't
+            # exist at all, like an accidental double-generate of the same topic.
+            if remove_col.button("Remove", key=f"remove_lesson_{lesson['id']}"):
+                db.delete_lesson(lesson["id"])
+                st.rerun()
 
 
 all_lessons = db.list_lessons(student["id"], limit=50)
@@ -144,104 +244,80 @@ with add_tab:
 with lessons_tab:
     st.subheader("To review")
     st.caption(
-        "Lessons nothing has been logged for yet. Lessons he's already marked done as "
-        "finished sort to the top — those are waiting on you. Dated by the day each "
-        "lesson is actually *for*, not when it happened to be generated -- a whole "
-        "week planned in one sitting would otherwise show the same date on all five."
+        "Laid out the way the week itself gets planned — Monday through Thursday, "
+        "one column each. Anything overdue or already marked done floats up top "
+        "regardless of which day or week it's for, so it's never stuck a few "
+        "columns over from where you're looking."
     )
-    show_history = st.checkbox("Also show completed and skipped lessons")
-    unfiltered = to_review + history if show_history else to_review
 
-    filter_columns = st.columns([1, 1, 2])
-    filter_start = filter_columns[0].date_input(
-        "From", value=date.today() - timedelta(days=30), key="review_filter_start"
+    today = date.today()
+    today_iso = today.isoformat()
+
+    attention = [l for l in to_review if _needs_attention(l, today_iso)]
+    attention.sort(
+        key=lambda l: (
+            0 if (l.get("metadata") or {}).get("student_done_on") else 1,
+            (l.get("metadata") or {}).get("planned_for") or "",
+        )
     )
-    filter_end = filter_columns[1].date_input(
-        "To", value=date.today() + timedelta(days=30), key="review_filter_end"
-    )
-    visible = [
-        l for l in unfiltered
-        if filter_start.isoformat() <= _lesson_date(l) <= filter_end.isoformat()
-    ]
+    attention_ids = {l["id"] for l in attention}
+    rest = [l for l in to_review if l["id"] not in attention_ids]
 
     if not all_lessons:
         st.info("No lessons generated yet.")
-    elif not unfiltered:
-        st.success("Nothing waiting on you right now.")
-    elif not visible:
-        st.caption("Nothing in that date range — widen it to see more.")
+    else:
+        if attention:
+            st.markdown(f"**⚠️ Needs your attention now** ({len(attention)})")
+            for lesson in attention:
+                _render_review_card(lesson, today_iso)
+            st.divider()
 
-    badge_map = {"planned": "🕓 planned", "completed": "✅ completed", "skipped": "⏭️ skipped"}
-    for lesson in visible:
-        student_done_on = (lesson.get("metadata") or {}).get("student_done_on")
-        if lesson["status"] == "planned" and student_done_on:
-            badge = "🎓 he's done — needs logging"
-        else:
-            badge = badge_map[lesson["status"]]
-        with st.expander(f"{badge} · {_lesson_date(lesson)} · {md(lesson['title'])}"):
-            st.caption(
-                f"{lesson['agent']} agent · strategy: {lesson['strategy']} · "
-                f"topic: {md(lesson['topic'])}"
-            )
-            if lesson["rationale"]:
-                st.caption(f"Why: {md(lesson['rationale'])}")
-            if student_done_on and lesson["status"] != "completed":
-                st.caption(f"🎓 He marked this done on {student_done_on} — not logged yet.")
-            quiz_result = (lesson.get("metadata") or {}).get("quiz_result")
-            if quiz_result and quiz_result.get("total"):
-                pct = round(100 * quiz_result["correct"] / quiz_result["total"])
-                verdict = "🎯 passed" if quiz_result.get("passed") else "below the pass threshold"
-                st.caption(
-                    f"📝 Quiz: {quiz_result['correct']}/{quiz_result['total']} ({pct}%) — "
-                    f"{verdict}, graded {quiz_result.get('graded_on', '?')}"
-                )
-            st.write(md(lesson["payload"].get("overview", "")))
-            credits = lesson["payload"].get("subject_credits") or []
-            if credits:
-                st.markdown(
-                    "Credit: "
-                    + " · ".join(f"{label(c['subject'])} {c['minutes']}m" for c in credits)
-                )
-            st.download_button(
-                "📄 Download as Word doc",
-                data=partial(lesson_to_docx, lesson["payload"]),
-                file_name=suggested_filename(lesson["payload"]),
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                key=f"docx_{lesson['id']}",
-            )
-            if lesson["status"] == "planned":
-                st.divider()
-                generated = GeneratedLesson(
-                    lesson_id=lesson["id"],
-                    proposal=TopicProposal(
-                        topic=lesson["topic"],
-                        rationale=lesson["rationale"],
-                        strategy=lesson["strategy"],
-                    ),
-                    payload=lesson["payload"],
-                    warnings=[],
-                )
-                tier = (
-                    config.TIER_LIFE_SKILLS
-                    if lesson["agent"] == "life_skills"
-                    else config.TIER_CORE
-                )
-                log_lesson_form(
-                    db,
-                    student,
-                    generated,
-                    source=lesson["agent"],
-                    primary_subject=lesson["subject"],
-                    key_prefix=f"activitylog_{lesson['id']}",
-                    tier=tier,
-                )
-                skip_col, remove_col = st.columns(2)
-                if skip_col.button("Mark skipped instead", key=f"skip_{lesson['id']}"):
-                    db.set_lesson_status(lesson["id"], "skipped")
-                    st.rerun()
-                # Distinct from "skipped": skipped keeps the record (he was offered
-                # this and it didn't happen); remove is for a lesson that shouldn't
-                # exist at all, like an accidental double-generate of the same topic.
-                if remove_col.button("Remove", key=f"remove_lesson_{lesson['id']}"):
-                    db.delete_lesson(lesson["id"])
-                    st.rerun()
+        picked_week = st.date_input(
+            "Week to review (any day in it — snapped to that week's Monday)",
+            value=today,
+            key="review_week_picker",
+        )
+        target_week_start = weekly.week_start(picked_week)
+        target_dates = weekly.week_dates(target_week_start)
+        st.caption(
+            f"{target_dates[0].strftime('%b %-d')} – {target_dates[-1].strftime('%b %-d, %Y')}"
+        )
+
+        board_buckets: dict[str, list[dict]] = {d.isoformat(): [] for d in target_dates}
+        unscheduled: list[dict] = []
+        for lesson in rest:
+            planned_for = (lesson.get("metadata") or {}).get("planned_for")
+            if planned_for in board_buckets:
+                board_buckets[planned_for].append(lesson)
+            elif not planned_for:
+                unscheduled.append(lesson)
+
+        board_columns = st.columns(len(target_dates))
+        for column, day in zip(board_columns, target_dates):
+            with column:
+                marker = " 👈" if day.isoformat() == today_iso else ""
+                st.markdown(f"**{day.strftime('%A')}**{marker}")
+                st.caption(day.strftime("%b %-d"))
+                day_lessons = board_buckets[day.isoformat()]
+                if not day_lessons:
+                    st.caption("Nothing due.")
+                for lesson in day_lessons:
+                    _render_review_card(lesson, today_iso)
+
+        if unscheduled:
+            st.divider()
+            st.markdown(f"**Not tied to a specific day** ({len(unscheduled)})")
+            for lesson in unscheduled:
+                _render_review_card(lesson, today_iso)
+
+        if not attention and not any(board_buckets.values()) and not unscheduled:
+            st.success("Nothing waiting on you right now.")
+
+    show_history = st.checkbox("Also show completed and skipped lessons")
+    if show_history:
+        st.divider()
+        st.markdown(f"**Completed & skipped** ({len(history)})")
+        if not history:
+            st.caption("Nothing logged yet.")
+        for lesson in history:
+            _render_review_card(lesson, today_iso)
