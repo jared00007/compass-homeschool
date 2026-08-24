@@ -113,6 +113,25 @@ def tier_label(tier: str, student_name: str) -> str:
     return TIER_LABELS.get(tier, tier).format(name=student_name)
 
 
+# --- Assessment verdicts -------------------------------------------------------
+# The parent's digital check on a lesson's `assessment` block, for subjects with
+# no mastery graph to hook into (Science/English/History -- Math's equivalent is
+# recording mastery directly, since it already has one). See
+# Database.record_assessment and compass.ui.render_assessment_card.
+
+ASSESSMENT_NAILED_IT = "nailed_it"
+ASSESSMENT_GETTING_THERE = "getting_there"
+ASSESSMENT_NEEDS_MORE_WORK = "needs_more_work"
+
+ASSESSMENT_VERDICTS = (ASSESSMENT_NAILED_IT, ASSESSMENT_GETTING_THERE, ASSESSMENT_NEEDS_MORE_WORK)
+
+ASSESSMENT_VERDICT_LABELS = {
+    ASSESSMENT_NAILED_IT: "🎯 Nailed it",
+    ASSESSMENT_GETTING_THERE: "🌱 Getting there",
+    ASSESSMENT_NEEDS_MORE_WORK: "🔁 Needs more work",
+}
+
+
 # --- Lesson difficulty --------------------------------------------------------
 # Family-wide by default (the `lesson_difficulty` setting above), with a
 # per-generation override each subject's Plan tab offers on top of it -- see

@@ -222,9 +222,12 @@ Everything the Math agent does depends on one thing: what you've marked mastered
 lessons generated, not hours logged — mastery.
 
 Every math lesson ends with an assessment and a specific bar, like *"8 of 10 correct,
-including at least 2 of the 3 applied problems."* Score it, then go to **Math → Record
-mastery** and set the skill to mastered or leave it in progress. A skill left in progress
-gets retaught next time rather than moving on.
+including at least 2 of the 3 applied problems."* Score it right where you're already
+logging the lesson's hours — **Activity Log → To review**, open the lesson, and the same
+status/score/notes form **Math → Record mastery** offers is sitting right there, folded
+into the same pass instead of a separate page trip. A skill left in progress gets
+retaught next time rather than moving on. (Record mastery still exists too, for a skill
+you want to set outside of any one lesson.)
 
 > **Do this before school starts.** Sit down once and mark everything he already knows. It
 > takes twenty minutes and costs nothing. Skip it and the agent will spend September
@@ -244,10 +247,17 @@ anything, so a bad day never un-masters something he already knows. You can stil
 mastery by hand at any time, and the two paths write to the same place.
 
 On Science, English, and History there's no mastery gate to hook into, so the quiz just
-shows him his score — a real check without a mechanism behind it yet.
+shows him his score. What *does* apply there is the same **Activity Log → To review**
+assessment card Math uses, just lighter: a three-way call — Nailed it / Getting there /
+Needs more work — plus a notes field, right on the lesson, the moment you're checking it.
 
 The pass bar defaults to 80% and is a family policy call, not a Washington requirement — a
 setting, not a constant, if you want it stricter or looser.
+
+**Writing assignments live in the lesson too.** A lesson with a writing activity gives him
+an actual text box on the screen instead of a prompt to write on paper — his response
+saves the moment he clicks Save, and it's what you see, right in that same Activity Log
+assessment card, when it's time to check the lesson. No separate paper to track down.
 
 **On not being able to peek.** The correct answer is never sent to the page until after he
 submits — this isn't a CSS trick, it's that Streamlit reruns the whole page from the server

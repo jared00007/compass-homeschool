@@ -351,12 +351,28 @@ def render_proposal(agent: LessonAgent, proposal) -> None:
                 st.markdown(f"- {md(line)}")
 
 
-def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> None:
+def render_lesson(
+    lesson: dict[str, Any],
+    for_parent: bool | None = None,
+    *,
+    db: Database | None = None,
+    lesson_id: int | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
     """Render a lesson. In student view the answer key never reaches the page.
 
     The redaction happens here rather than in a CSS class or an expander, because
     anything sent to the browser can be read out of it. What a student must not
     see is simply not written.
+
+    `db`/`lesson_id`/`metadata` are optional and only matter for a writing
+    activity: given all three, in student view, that activity gets an actual
+    text box instead of just instructions to write on paper -- his response
+    saves straight to this lesson (`Database.save_writing_response`), which
+    is what `render_assessment_card` later shows a parent when it's time to
+    check the lesson. Omitted (the generation-preview call in
+    `generate_and_log`, where nothing's been written yet and the viewer is
+    the parent anyway), the writing activity just renders like any other.
     """
     parent = is_parent() if for_parent is None else for_parent
 
@@ -431,6 +447,29 @@ def render_lesson(lesson: dict[str, Any], for_parent: bool | None = None) -> Non
                         unsafe_allow_html=True,
                     )
                 st.write(md(activity.get("instructions", "")))
+
+                if activity.get("kind") == "writing":
+                    activity_index = index - 1
+                    saved = ((metadata or {}).get("writing_responses") or {}).get(
+                        str(activity_index), ""
+                    )
+                    if not parent and db is not None and lesson_id is not None:
+                        draft_key = f"writing_draft_{lesson_id}_{activity_index}"
+                        response = st.text_area(
+                            "Your response",
+                            value=st.session_state.get(draft_key, saved),
+                            height=160,
+                            key=draft_key,
+                        )
+                        if st.button(
+                            "Save response", key=f"save_writing_{lesson_id}_{activity_index}"
+                        ):
+                            db.save_writing_response(lesson_id, activity_index, response)
+                            st.success("Saved.")
+                            st.rerun()
+                    elif saved:
+                        st.markdown("**His response**")
+                        st.write(md(saved))
 
     assessment = lesson.get("assessment") or {}
     if assessment and parent:
@@ -731,6 +770,100 @@ def render_quiz(
             st.rerun()
 
 
+def render_assessment_card(
+    db: Database, student: dict[str, Any], lesson: dict[str, Any], key_prefix: str
+) -> None:
+    """The parent's digital check on a lesson -- right where hours get
+    logged (Activity Log's own review card), not a separate page hop and a
+    re-type. Math (a `skill_id` in metadata) gets the exact mastery form
+    Math -> Record mastery already offers, called from here instead of a
+    different page; every other agent gets a lighter three-way call since
+    there's no mastery graph to gate. Either way, any writing response he's
+    saved (see render_lesson's own writing-activity handling) shows first,
+    since that's usually the actual evidence the check is based on.
+
+    Renders nothing at all for a lesson with no assessment, no skill_id,
+    and no writing activity -- most Life Skills/Choice lessons, say.
+    """
+    payload = lesson["payload"]
+    metadata = lesson.get("metadata") or {}
+    assessment = payload.get("assessment") or {}
+    skill_id = metadata.get("skill_id")
+    writing_activities = [
+        (index, activity)
+        for index, activity in enumerate(payload.get("activities") or [])
+        if activity.get("kind") == "writing"
+    ]
+
+    if not assessment and not skill_id and not writing_activities:
+        return
+
+    st.markdown("**Assessment**")
+    if assessment.get("description"):
+        st.caption(f"*{md(assessment.get('kind', ''))}* — {md(assessment['description'])}")
+    if assessment.get("mastery_criteria"):
+        st.caption(f"Counts as mastered when: {md(assessment['mastery_criteria'])}")
+
+    responses = metadata.get("writing_responses") or {}
+    for index, activity in writing_activities:
+        text = responses.get(str(index), "")
+        st.markdown(f"*His response — {md(activity.get('title', 'Writing'))}*")
+        if text:
+            st.write(md(text))
+        else:
+            st.caption("He hasn't written a response yet.")
+
+    if skill_id:
+        current = db.mastery_map(student["id"]).get(skill_id, {})
+        with st.form(f"{key_prefix}_assess_{lesson['id']}"):
+            status_options = ["not_started", "in_progress", "mastered"]
+            current_status = current.get("status", "not_started")
+            status = st.selectbox(
+                "Status",
+                status_options,
+                index=status_options.index(current_status)
+                if current_status in status_options
+                else 0,
+            )
+            score = st.number_input(
+                "Score (%)", min_value=0, max_value=100, value=int(current.get("score") or 0)
+            )
+            notes = st.text_area("Notes", value=current.get("notes", ""))
+            if st.form_submit_button("Save assessment", type="primary"):
+                db.set_mastery(
+                    student["id"],
+                    skill_id,
+                    status,
+                    score=float(score) if score else None,
+                    notes=notes,
+                )
+                st.success("Recorded.")
+                st.rerun()
+    elif assessment:
+        result = metadata.get("assessment_result") or {}
+        current_verdict = result.get("verdict")
+        with st.form(f"{key_prefix}_assess_{lesson['id']}"):
+            verdict = st.radio(
+                "How'd it go?",
+                config.ASSESSMENT_VERDICTS,
+                index=config.ASSESSMENT_VERDICTS.index(current_verdict)
+                if current_verdict in config.ASSESSMENT_VERDICTS
+                else 0,
+                format_func=lambda v: config.ASSESSMENT_VERDICT_LABELS[v],
+                horizontal=True,
+            )
+            notes = st.text_area("Notes (optional)", value=result.get("notes", ""))
+            if st.form_submit_button("Save assessment", type="primary"):
+                db.record_assessment(lesson["id"], verdict, notes)
+                st.success("Recorded.")
+                st.rerun()
+        if result:
+            st.caption(
+                f"Last recorded: {config.ASSESSMENT_VERDICT_LABELS.get(result.get('verdict'), '')} "
+                f"on {result.get('assessed_on', '')}"
+            )
+
+
 def _done_lessons(db: Database, student_id: int, agent_key: str) -> list[dict[str, Any]]:
     lessons = db.list_lessons(student_id, agent=agent_key, limit=10)
     return [l for l in lessons if (l.get("metadata") or {}).get("student_done_on")]
@@ -791,7 +924,13 @@ def student_lesson_view(
                 st.caption(f"📅 {weekday} — today's lesson")
         if current["status"] == "completed":
             st.caption("This one's already marked done — here it is again.")
-        render_lesson(current["payload"], for_parent=False)
+        render_lesson(
+            current["payload"],
+            for_parent=False,
+            db=db,
+            lesson_id=current["id"],
+            metadata=current.get("metadata") or {},
+        )
         render_quiz(
             db,
             student,
@@ -824,7 +963,13 @@ def render_past_lessons(db: Database, student: dict[str, Any], agent_key: str) -
     )
     if choice is not None:
         selected = done[labels.index(choice)]
-        render_lesson(selected["payload"], for_parent=False)
+        render_lesson(
+            selected["payload"],
+            for_parent=False,
+            db=db,
+            lesson_id=selected["id"],
+            metadata=selected.get("metadata") or {},
+        )
         render_quiz(
             db,
             student,

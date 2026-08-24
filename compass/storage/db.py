@@ -2238,6 +2238,46 @@ class Database:
             row["detail"] = json.loads(row["detail"])
         return rows
 
+    def save_writing_response(self, lesson_id: int, activity_index: int, text: str) -> None:
+        """His typed response to one lesson's writing activity, keyed by that
+        activity's position in the lesson -- activities have no other stable
+        id, the same indexing the quiz's own per-question detail already
+        uses. Read-modify-write rather than a single `json_set` call: the
+        target key is a *string* index inside a nested object, a path
+        `json_set` can't build from a bound parameter, only a literal.
+        """
+        lesson = self.get_lesson(lesson_id)
+        metadata = lesson["metadata"] if lesson else {}
+        responses = metadata.get("writing_responses") or {}
+        responses[str(activity_index)] = text
+        metadata["writing_responses"] = responses
+        self.conn.execute(
+            "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
+        )
+        self.conn.commit()
+
+    def record_assessment(self, lesson_id: int, verdict: str, notes: str = "") -> None:
+        """The parent's digital check on a lesson's `assessment` block, for
+        subjects with no mastery graph to hook into (Science/English/History
+        -- Math's equivalent is calling `set_mastery` directly, from the same
+        inline card). One current value per lesson, not a history table like
+        `quiz_attempts`: there's exactly one assessment to record here, not
+        repeatable attempts.
+        """
+        if verdict not in config.ASSESSMENT_VERDICTS:
+            raise ValueError(f"invalid assessment verdict: {verdict}")
+        lesson = self.get_lesson(lesson_id)
+        metadata = lesson["metadata"] if lesson else {}
+        metadata["assessment_result"] = {
+            "verdict": verdict,
+            "notes": notes,
+            "assessed_on": date.today().isoformat(),
+        }
+        self.conn.execute(
+            "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
+        )
+        self.conn.commit()
+
     # -- activities and multi-subject credits ---------------------------------
 
     def log_activity(

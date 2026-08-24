@@ -11,7 +11,7 @@ from compass import config, weekly
 from compass.agents.framework import GeneratedLesson, TopicProposal
 from compass.export import lesson_to_docx, suggested_filename
 from compass.subjects import SUBJECT_KEYS, label
-from compass.ui import log_lesson_form, md, page_setup, parent_only
+from compass.ui import log_lesson_form, md, page_setup, parent_only, render_assessment_card
 
 db, student = page_setup("Activity Log", icon="🗂️")
 
@@ -96,6 +96,7 @@ def _render_review_card(lesson: dict, today_iso: str) -> None:
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             key=f"docx_{lesson['id']}",
         )
+        render_assessment_card(db, student, lesson, key_prefix=f"activitylog_{lesson['id']}")
         if lesson["status"] == "planned":
             st.divider()
             generated = GeneratedLesson(
