@@ -190,6 +190,27 @@ def test_writing_activity_shows_a_response_box_in_student_view(monkeypatch, tmp_
     assert any(t.label == "Your response" for t in at.text_area)
 
 
+def test_writing_activity_also_shows_a_response_box_on_home(monkeypatch, tmp_path):
+    """Home's own checklist renders lessons through a separate call to
+    render_lesson than the subject pages do (Home.py:297 vs.
+    student_lesson_view in compass/ui.py) -- easy to fix one and forget the
+    other, which is exactly what happened the first time around: Home
+    never passed db/lesson_id/metadata through, so the box silently never
+    appeared for the one place he actually opens lessons from day to day."""
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Argue a Character's Choice", payload=_writing_payload(),
+    )
+    db.close()
+
+    at = _open(monkeypatch, db_path, HOME_PATH, as_parent=False)
+    assert any(t.label == "Your response" for t in at.text_area)
+
+
 def test_saving_a_writing_response_persists_it(monkeypatch, tmp_path):
     db_path = tmp_path / "a.db"
     db = Database(db_path)

@@ -294,7 +294,13 @@ if not is_parent():
                     if payload.get("overview"):
                         st.write(md(payload["overview"]))
                     with st.expander("Open this lesson", expanded=False):
-                        render_lesson(payload, for_parent=False)
+                        render_lesson(
+                            payload,
+                            for_parent=False,
+                            db=db,
+                            lesson_id=lesson["id"],
+                            metadata=lesson.get("metadata") or {},
+                        )
         if later_this_week:
             st.caption(
                 f"{later_this_week} more lesson(s) planned for later this week — "
