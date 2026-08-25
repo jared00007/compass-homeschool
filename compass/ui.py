@@ -811,6 +811,13 @@ def render_assessment_card(
             st.write(md(text))
         else:
             st.caption("He hasn't written a response yet.")
+        versions = db.list_writing_response_versions(lesson["id"], index)
+        if len(versions) > 1:
+            with st.expander(f"Earlier drafts ({len(versions) - 1})"):
+                for version in versions[:-1]:
+                    st.caption(version["saved_at"])
+                    st.write(md(version["text"]))
+                    st.divider()
 
     if skill_id:
         current = db.mastery_map(student["id"]).get(skill_id, {})

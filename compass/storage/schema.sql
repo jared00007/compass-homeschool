@@ -175,6 +175,24 @@ CREATE INDEX IF NOT EXISTS idx_quiz_attempts_lesson
 CREATE INDEX IF NOT EXISTS idx_quiz_attempts_student
     ON quiz_attempts (student_id, created_at DESC);
 
+-- Every saved version of a writing activity's response, not just the
+-- current one. lessons.metadata.writing_responses (Database.
+-- save_writing_response) still holds the current text for the places that
+-- only ever needed "what he's written so far" (render_lesson's read-back,
+-- the assessment card); this is the version history behind it, the same
+-- "never overwrite, keep every attempt" choice quiz_attempts already made.
+CREATE TABLE IF NOT EXISTS writing_response_versions (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    lesson_id      INTEGER NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+    activity_index INTEGER NOT NULL,
+    student_id     INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    text           TEXT NOT NULL,
+    saved_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_writing_response_versions_lesson
+    ON writing_response_versions (lesson_id, activity_index, saved_at);
+
 -- ---------------------------------------------------------------------------
 -- Courses -- grades 6-12 credit documentation. Sumner-Bonney Lake requires,
 -- per course counted toward a diploma: a description, goals/objectives, an

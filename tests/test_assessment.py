@@ -64,6 +64,55 @@ def test_saving_again_overwrites_the_same_activitys_response(db, student):
     assert lesson["metadata"]["writing_responses"]["0"] == "Final version."
 
 
+# --- writing response version history ------------------------------------------------
+
+
+def test_every_save_is_kept_as_its_own_version(db, student):
+    lesson_id = _lesson(db, student["id"])
+    db.save_writing_response(lesson_id, 0, "Draft one.")
+    db.save_writing_response(lesson_id, 0, "Draft two.")
+    db.save_writing_response(lesson_id, 0, "Final version.")
+
+    versions = db.list_writing_response_versions(lesson_id, 0)
+    assert [v["text"] for v in versions] == ["Draft one.", "Draft two.", "Final version."]
+
+
+def test_versions_are_scoped_to_their_own_activity(db, student):
+    lesson_id = _lesson(db, student["id"])
+    db.save_writing_response(lesson_id, 0, "First activity's draft.")
+    db.save_writing_response(lesson_id, 1, "Second activity's draft.")
+
+    assert [v["text"] for v in db.list_writing_response_versions(lesson_id, 0)] == [
+        "First activity's draft."
+    ]
+    assert [v["text"] for v in db.list_writing_response_versions(lesson_id, 1)] == [
+        "Second activity's draft."
+    ]
+
+
+def test_versions_are_scoped_to_their_own_lesson(db, student):
+    lesson_a = _lesson(db, student["id"])
+    lesson_b = _lesson(db, student["id"])
+    db.save_writing_response(lesson_a, 0, "Lesson A's draft.")
+    db.save_writing_response(lesson_b, 0, "Lesson B's draft.")
+
+    assert [v["text"] for v in db.list_writing_response_versions(lesson_a, 0)] == [
+        "Lesson A's draft."
+    ]
+
+
+def test_a_single_save_produces_exactly_one_version(db, student):
+    lesson_id = _lesson(db, student["id"])
+    db.save_writing_response(lesson_id, 0, "Only draft.")
+
+    assert len(db.list_writing_response_versions(lesson_id, 0)) == 1
+
+
+def test_no_saves_yet_means_no_versions(db, student):
+    lesson_id = _lesson(db, student["id"])
+    assert db.list_writing_response_versions(lesson_id, 0) == []
+
+
 def test_saving_a_response_preserves_other_metadata_already_there(db, student):
     lesson_id = db.save_lesson(
         student_id=student["id"], agent="math", subject="math", topic="t", title="t",

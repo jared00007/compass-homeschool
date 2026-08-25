@@ -254,6 +254,47 @@ def test_a_saved_writing_response_appears_in_the_parent_review_card(monkeypatch,
     assert "I think the character was right because..." in text
 
 
+def test_only_the_latest_draft_shows_when_theres_just_one_version(monkeypatch, tmp_path):
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Argue a Character's Choice", payload=_writing_payload(),
+    )
+    db.save_writing_response(lesson_id, 0, "Only draft.")
+    db.close()
+
+    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    assert not any("Earlier drafts" in (e.label or "") for e in at.expander)
+
+
+def test_earlier_drafts_show_up_once_hes_revised_it(monkeypatch, tmp_path):
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Argue a Character's Choice", payload=_writing_payload(),
+    )
+    db.save_writing_response(lesson_id, 0, "First draft.")
+    db.save_writing_response(lesson_id, 0, "Second draft.")
+    db.save_writing_response(lesson_id, 0, "Final version.")
+    db.close()
+
+    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    drafts_expander = next(e for e in at.expander if "Earlier drafts" in (e.label or ""))
+    assert "(2)" in drafts_expander.label
+    body_text = " ".join(m.value for m in drafts_expander.markdown)
+    assert "First draft." in body_text
+    assert "Second draft." in body_text
+    assert "Final version." not in body_text  # that's the current one, shown above
+
+    # the current (latest) version is still shown outside the expander
+    text = " ".join(m.value for m in at.markdown)
+    assert "Final version." in text
+
+
 def test_no_response_yet_says_so_in_the_parent_review_card(monkeypatch, tmp_path):
     db_path = tmp_path / "a.db"
     db = Database(db_path)

@@ -2245,6 +2245,13 @@ class Database:
         uses. Read-modify-write rather than a single `json_set` call: the
         target key is a *string* index inside a nested object, a path
         `json_set` can't build from a bound parameter, only a literal.
+
+        Also appends to `writing_response_versions` -- every save is kept,
+        not just this current one, the same "never overwrite, keep every
+        attempt" choice `quiz_attempts` already made. The metadata value
+        above stays the fast path every reader (render_lesson's read-back,
+        render_assessment_card) already uses; the version table is purely
+        additive, for whoever wants the history.
         """
         lesson = self.get_lesson(lesson_id)
         metadata = lesson["metadata"] if lesson else {}
@@ -2254,7 +2261,29 @@ class Database:
         self.conn.execute(
             "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
         )
+        self.conn.execute(
+            "INSERT INTO writing_response_versions "
+            "(lesson_id, activity_index, student_id, text) VALUES (?, ?, ?, ?)",
+            (lesson_id, activity_index, lesson["student_id"], text),
+        )
         self.conn.commit()
+
+    def list_writing_response_versions(
+        self, lesson_id: int, activity_index: int
+    ) -> list[dict[str, Any]]:
+        """Every saved version of one activity's response, oldest first --
+        reads as a timeline of drafts rather than newest-first like
+        `list_quiz_attempts`, since there's no "latest attempt matters most"
+        framing here, just watching a response develop over successive
+        saves.
+        """
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM writing_response_versions "
+                "WHERE lesson_id = ? AND activity_index = ? ORDER BY id",
+                (lesson_id, activity_index),
+            )
+        )
 
     def record_assessment(self, lesson_id: int, verdict: str, notes: str = "") -> None:
         """The parent's digital check on a lesson's `assessment` block, for
