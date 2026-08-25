@@ -223,11 +223,14 @@ lessons generated, not hours logged — mastery.
 
 Every math lesson ends with an assessment and a specific bar, like *"8 of 10 correct,
 including at least 2 of the 3 applied problems."* Score it right where you're already
-logging the lesson's hours — **Activity Log → To review**, open the lesson, and the same
-status/score/notes form **Math → Record mastery** offers is sitting right there, folded
-into the same pass instead of a separate page trip. A skill left in progress gets
-retaught next time rather than moving on. (Record mastery still exists too, for a skill
-you want to set outside of any one lesson.)
+logging the lesson's hours — **Activity Log → To review**, open the lesson, and a plain
+**✅ Approve — move to the next skill** / **🔁 Not yet — keep practicing** choice is sitting
+right there, folded into the same pass instead of a separate page trip. Approving unlocks
+the next skill at whatever score he actually got — the quiz only auto-approves a *perfect*
+score on its own, but you can approve any score you're satisfied with by hand, any time.
+A skill left "not yet" gets retaught next time rather than moving on. (**Math → Record
+mastery** still exists too, with its own status/score/notes form, for setting any skill's
+state outside of any one specific lesson.)
 
 > **Do this before school starts.** Sit down once and mark everything he already knows. It
 > takes twenty minutes and costs nothing. Skip it and the agent will spend September

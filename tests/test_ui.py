@@ -933,6 +933,66 @@ def test_matching_one_pair_does_not_reset_the_rest_of_the_round(monkeypatch, db,
     assert set(state["vocab_memory"]["round_ids"]) == original_round_ids
 
 
+# --- the "I'm done with words for today" button: a real, persisted signal ---------
+
+
+def test_the_done_button_is_offered_even_with_nothing_due(monkeypatch, db, student):
+    """No due words at all -- the early-return branch -- must still offer a
+    way to mark today done; there's no reason a light vocab day should be
+    the one day nothing gets recorded."""
+    page, _ = render_memory(monkeypatch, db, student)
+    assert "I'm done with words for today" in page
+
+
+def test_clicking_done_persists_it(monkeypatch, db, student):
+    render_memory(monkeypatch, db, student, button_pressed="vocab_done_today")
+    assert db.vocab_reviewed_on(student["id"], date.today().isoformat())
+
+
+def test_clicking_done_works_mid_round_too(monkeypatch, db, student):
+    """Not gated behind clearing every due word first -- he can call today
+    done partway through, same trust-his-click philosophy as a lesson's own
+    "I'm done for today" button."""
+    db.add_vocabulary(student["id"], "ephemeral", "lasting a very short time")
+    db.conn.execute("UPDATE vocabulary SET next_review_on = date('now')")
+    db.conn.commit()
+
+    render_memory(monkeypatch, db, student, button_pressed="vocab_done_today")
+    assert db.vocab_reviewed_on(student["id"], date.today().isoformat())
+
+
+def test_already_marked_done_shows_a_persisted_message_instead_of_the_button(
+    monkeypatch, db, student
+):
+    db.mark_vocab_reviewed(student["id"], date.today().isoformat())
+    page, _ = render_memory(monkeypatch, db, student)
+    assert "Marked done for today." in page
+    assert "I'm done with words for today" not in page
+
+
+def test_marking_done_on_an_earlier_day_does_not_carry_over_to_today(monkeypatch, db, student):
+    db.mark_vocab_reviewed(student["id"], "2020-01-01")
+    page, _ = render_memory(monkeypatch, db, student)
+    assert "I'm done with words for today" in page
+
+
+# --- render_today_checklist also reflects it -----------------------------------------
+
+
+def test_marking_vocab_done_shows_up_on_todays_checklist(monkeypatch, db, student):
+    db.mark_vocab_reviewed(student["id"], date.today().isoformat())
+    page, shown = render_today(monkeypatch, db, student)
+    assert shown is True
+    assert "Vocabulary reviewed" in page
+
+
+def test_an_earlier_days_vocab_mark_is_not_shown_as_todays(monkeypatch, db, student):
+    db.mark_vocab_reviewed(student["id"], "2020-01-01")
+    page, shown = render_today(monkeypatch, db, student)
+    assert shown is False
+    assert "Vocabulary reviewed" not in page
+
+
 # --- render_life_skill_cards: always-visible cards, a checkbox is the only action ---
 
 

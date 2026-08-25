@@ -450,6 +450,26 @@ CREATE TABLE IF NOT EXISTS morning_routine_log (
 );
 
 -- ---------------------------------------------------------------------------
+-- Vocabulary review log -- a real, persisted "he reviewed his words today"
+-- fact. The Concentration game itself (compass.ui.render_vocab_memory) only
+-- ever tracked a streak/reviewed-count in session state, gone the moment the
+-- browser session ended, so there was nothing here or on Home's own "Today"
+-- checklist to confirm it actually happened, and nothing prompting him to
+-- treat it as a real, completable task the way a lesson's own "I'm done for
+-- today" button does. One per student per day, same shape as
+-- morning_routine_log, for the same reason: a review session is one event
+-- for the day, not something that stacks.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS vocab_review_log (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id   INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    entry_date   TEXT NOT NULL,
+    completed_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (student_id, entry_date)
+);
+
+-- ---------------------------------------------------------------------------
 -- Friday plan items -- Friday is deliberately never a new-content day (see
 -- compass/weekly.py), so the Week grid's Friday cell has always shown a
 -- fixed Big Project + Travel Journal pairing. This is how a parent replaces

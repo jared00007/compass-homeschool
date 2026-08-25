@@ -825,12 +825,21 @@ def render_assessment_card(
 ) -> None:
     """The parent's digital check on a lesson -- right where hours get
     logged (Activity Log's own review card), not a separate page hop and a
-    re-type. Math (a `skill_id` in metadata) gets the exact mastery form
-    Math -> Record mastery already offers, called from here instead of a
-    different page; every other agent gets a lighter three-way call since
-    there's no mastery graph to gate. Either way, any writing response he's
-    saved (see render_lesson's own writing-activity handling) shows first,
-    since that's usually the actual evidence the check is based on.
+    re-type. Math (a `skill_id` in metadata) gets a plain approve/not-yet
+    decision -- "Approve" writes status="mastered" (unlocking the next
+    skill) at whatever score he actually got, "Not yet" writes
+    status="in_progress"; every other agent gets a lighter three-way call
+    since there's no mastery graph to gate. This is deliberately not the
+    same not_started/in_progress/mastered dropdown Math -> Record mastery
+    offers -- that page is a general "set any skill's status anytime" tool,
+    while this card is answering one narrow question about one specific
+    attempt, and a bare status picker sitting right under a caption saying
+    "mastery needs 100%" read like the parent wasn't allowed to approve
+    anything less, when the real rule is the quiz's own auto-approval, not
+    a ceiling on what a parent can decide by hand. Either way, any writing
+    response he's saved (see render_lesson's own writing-activity handling)
+    shows first, since that's usually the actual evidence the check is
+    based on.
 
     Renders nothing at all for a lesson with no assessment, no skill_id,
     and no writing activity -- most Life Skills/Choice lessons, say.
@@ -872,30 +881,35 @@ def render_assessment_card(
 
     if skill_id:
         current = db.mastery_map(student["id"]).get(skill_id, {})
+        quiz_result = metadata.get("quiz_result") or {}
+        latest_score = (
+            round(100 * quiz_result["correct"] / quiz_result["total"])
+            if quiz_result.get("total")
+            else current.get("score")
+        )
+        if current.get("status") == "mastered":
+            st.success(f"✅ Already approved — mastered at {current.get('score') or '?'}%.")
+        st.caption(
+            "The quiz only auto-approves a perfect score -- you decide here, at any "
+            "score, whether that's good enough to move on."
+        )
         with st.form(f"{key_prefix}_assess_{lesson['id']}"):
-            status_options = ["not_started", "in_progress", "mastered"]
-            current_status = current.get("status", "not_started")
-            status = st.selectbox(
-                "Status",
-                status_options,
-                index=status_options.index(current_status)
-                if current_status in status_options
-                else 0,
+            notes = st.text_area("Notes (optional)", value=current.get("notes", ""))
+            approve_col, practice_col = st.columns(2)
+            approve = approve_col.form_submit_button(
+                "✅ Approve — move to the next skill", type="primary"
             )
-            score = st.number_input(
-                "Score (%)", min_value=0, max_value=100, value=int(current.get("score") or 0)
+            keep_practicing = practice_col.form_submit_button("🔁 Not yet — keep practicing")
+        if approve:
+            db.set_mastery(student["id"], skill_id, "mastered", score=latest_score, notes=notes)
+            st.success("Approved — the next skill is unlocked.")
+            st.rerun()
+        elif keep_practicing:
+            db.set_mastery(
+                student["id"], skill_id, "in_progress", score=latest_score, notes=notes
             )
-            notes = st.text_area("Notes", value=current.get("notes", ""))
-            if st.form_submit_button("Save assessment", type="primary"):
-                db.set_mastery(
-                    student["id"],
-                    skill_id,
-                    status,
-                    score=float(score) if score else None,
-                    notes=notes,
-                )
-                st.success("Recorded.")
-                st.rerun()
+            st.success("Recorded — he'll keep practicing this one.")
+            st.rerun()
     elif assessment:
         result = metadata.get("assessment_result") or {}
         current_verdict = result.get("verdict")
@@ -1116,9 +1130,10 @@ def render_friday_plan(db: Database, student: dict[str, Any], plan_date: str) ->
 def render_today_checklist(db: Database, student: dict[str, Any]) -> bool:
     """His own "what I did today" list -- a fun accomplishment checklist, not
     a compliance record. Built entirely from his own signals (student_done_on,
-    a quiz result graded today, a life skill either of you checked off today)
-    so it never depends on the parent having logged anything yet -- that gap
-    was the exact thing that made "current lesson" confusing before.
+    a quiz result graded today, a life skill either of you checked off today,
+    the vocab review's own "I'm done for today" button) so it never depends
+    on the parent having logged anything yet -- that gap was the exact thing
+    that made "current lesson" confusing before.
 
     Returns whether anything was actually shown, so a caller can fall back to
     something else when the day hasn't started yet.
@@ -1135,11 +1150,13 @@ def render_today_checklist(db: Database, student: dict[str, Any]) -> bool:
         for skill in db.list_life_skills(student["id"])
         if skill["completed_on"] == today
     ]
+    vocab_done_today = db.vocab_reviewed_on(student["id"], today)
 
-    if not done_today and not skills_today:
+    if not done_today and not skills_today and not vocab_done_today:
         return False
 
-    st.subheader(f"✅ Today ({len(done_today) + len(skills_today)})")
+    total = len(done_today) + len(skills_today) + (1 if vocab_done_today else 0)
+    st.subheader(f"✅ Today ({total})")
     st.caption("Nice work — here's what you've knocked out today.")
 
     for lesson in done_today:
@@ -1154,6 +1171,9 @@ def render_today_checklist(db: Database, student: dict[str, Any]) -> bool:
 
     for skill in skills_today:
         st.markdown(f"- 🛠️ **{md(skill['title'])}**")
+
+    if vocab_done_today:
+        st.markdown("- 🔤 **Vocabulary reviewed**")
 
     return True
 
@@ -1443,6 +1463,25 @@ div[class*="st-key-vocab_card_"] button p strong {
 """
 
 
+def _render_vocab_done_button(db: Database, student: dict[str, Any], today: str) -> None:
+    """A real, persisted "he reviewed his words today" signal -- unlike the
+    Concentration game's own streak/reviewed-count (session state only, gone
+    the moment the browser session ends), this survives a refresh or a new
+    session, and is what render_today_checklist reads to show it alongside
+    lesson and life-skill completions. Always available, not gated behind
+    clearing every due word in one sitting -- same trust-his-click
+    philosophy as a lesson's own "I'm done for today" button, and the same
+    reason that one exists: nothing here was actually prompting him to treat
+    this as a real, completable task.
+    """
+    if db.vocab_reviewed_on(student["id"], today):
+        st.success("✅ Marked done for today.")
+        return
+    if st.button("✅ I'm done with words for today", key="vocab_done_today"):
+        db.mark_vocab_reviewed(student["id"], today)
+        st.rerun()
+
+
 def render_vocab_memory(db: Database, student: dict[str, Any]) -> None:
     """The one vocabulary review mode: classic Concentration. A shuffled grid
     of face-down cards -- half words, half definitions -- flip two, and
@@ -1485,6 +1524,7 @@ def render_vocab_memory(db: Database, student: dict[str, Any]) -> None:
     above. `vocab_best_round_seconds` is the same settings key Trading Cards
     used; it's still "fastest round," just at a different game.
     """
+    today = date.today().isoformat()
     due = db.vocabulary_due(student["id"], limit=25)
     streak = st.session_state.setdefault("vocab_streak", 0)
     best_streak = st.session_state.setdefault("vocab_best_streak", 0)
@@ -1496,6 +1536,7 @@ def render_vocab_memory(db: Database, student: dict[str, Any]) -> None:
             st.balloons()
         else:
             st.success("Nothing due for review today.")
+        _render_vocab_done_button(db, student, today)
         return
 
     due_ids = {entry["id"] for entry in due}
@@ -1627,6 +1668,9 @@ def render_vocab_memory(db: Database, student: dict[str, Any]) -> None:
             state["flipped"] = []
             state["mismatch"] = False
             st.rerun()
+
+    st.divider()
+    _render_vocab_done_button(db, student, today)
 
 
 def api_status_banner() -> bool:

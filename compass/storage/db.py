@@ -2920,6 +2920,29 @@ class Database:
             )
         )
 
+    # -- vocabulary review log ------------------------------------------------
+
+    def mark_vocab_reviewed(self, student_id: int, entry_date: str) -> None:
+        """His own "I'm done with words for today" signal -- one per student
+        per day, same shape as log_morning_routine. Idempotent: marking it
+        again the same day is a no-op, not a second row."""
+        self.conn.execute(
+            "INSERT OR IGNORE INTO vocab_review_log (student_id, entry_date) VALUES (?, ?)",
+            (student_id, entry_date),
+        )
+        self.conn.commit()
+
+    def vocab_reviewed_on(self, student_id: int, entry_date: str) -> bool:
+        return (
+            _row(
+                self.conn.execute(
+                    "SELECT 1 FROM vocab_review_log WHERE student_id = ? AND entry_date = ?",
+                    (student_id, entry_date),
+                )
+            )
+            is not None
+        )
+
     # -- Friday plan items --------------------------------------------------------
 
     def list_friday_plan_items(self, student_id: int, plan_date: str) -> list[dict[str, Any]]:

@@ -43,54 +43,87 @@ def _open(monkeypatch, db_path, page_path, *, as_parent):
 # --- the inline mastery form (Math) --------------------------------------------------
 
 
-def test_math_lesson_gets_an_inline_mastery_form_in_activity_log(monkeypatch, tmp_path):
-    db_path = tmp_path / "a.db"
-    db = Database(db_path)
-    student = db.ensure_default_student()
+def _math_lesson(db, student_id, *, quiz_result=None):
     payload = {
         "title": "Two-Step Equations", "activities": [],
         "assessment": {"kind": "check", "description": "Ten items",
                         "mastery_criteria": "8 of 10"},
     }
-    db.save_lesson(
-        student_id=student["id"], agent="math", subject="math", topic="t",
-        title="Two-Step Equations", payload=payload,
-        metadata={"skill_id": "two-step-equations"},
+    metadata = {"skill_id": "two-step-equations"}
+    if quiz_result:
+        metadata["quiz_result"] = quiz_result
+    return db.save_lesson(
+        student_id=student_id, agent="math", subject="math", topic="t",
+        title="Two-Step Equations", payload=payload, metadata=metadata,
     )
-    db.close()
-
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
-    labels = [s.label for s in at.selectbox]
-    assert "Status" in labels
 
 
-def test_submitting_the_inline_mastery_form_records_mastery(monkeypatch, tmp_path):
+def test_math_lesson_gets_the_approve_not_yet_choice_in_activity_log(monkeypatch, tmp_path):
     db_path = tmp_path / "a.db"
     db = Database(db_path)
     student = db.ensure_default_student()
-    payload = {
-        "title": "Two-Step Equations", "activities": [],
-        "assessment": {"kind": "check", "description": "Ten items",
-                        "mastery_criteria": "8 of 10"},
-    }
-    db.save_lesson(
-        student_id=student["id"], agent="math", subject="math", topic="t",
-        title="Two-Step Equations", payload=payload,
-        metadata={"skill_id": "two-step-equations"},
-    )
+    _math_lesson(db, student["id"])
     db.close()
 
     at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
-    status_select = [s for s in at.selectbox if s.label == "Status"][0]
-    status_select.set_value("mastered").run()
-    submit = [b for b in at.button if "Save assessment" in (b.label or "")][0]
-    submit.click().run()
+    labels = [b.label for b in at.button]
+    assert any("Approve" in (l or "") for l in labels)
+    assert any("Not yet" in (l or "") for l in labels)
+    assert not any((s.label or "") == "Status" for s in at.selectbox)
+
+
+def test_approving_records_mastery_at_the_actual_quiz_score(monkeypatch, tmp_path):
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    _math_lesson(db, student["id"], quiz_result={
+        "correct": 4, "total": 5, "passed": True, "graded_on": "2026-08-25",
+    })
+    db.close()
+
+    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    approve = [b for b in at.button if "Approve" in (b.label or "")][0]
+    approve.click().run()
     assert not at.exception, [e.message for e in at.exception]
 
     db2 = Database(db_path)
     mastery = db2.mastery_map(student["id"])
     db2.close()
     assert mastery["two-step-equations"]["status"] == "mastered"
+    assert mastery["two-step-equations"]["score"] == 80
+
+
+def test_not_yet_records_in_progress_not_mastered(monkeypatch, tmp_path):
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    _math_lesson(db, student["id"], quiz_result={
+        "correct": 3, "total": 5, "passed": False, "graded_on": "2026-08-25",
+    })
+    db.close()
+
+    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    keep_practicing = [b for b in at.button if "Not yet" in (b.label or "")][0]
+    keep_practicing.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db2 = Database(db_path)
+    mastery = db2.mastery_map(student["id"])
+    db2.close()
+    assert mastery["two-step-equations"]["status"] == "in_progress"
+
+
+def test_an_already_approved_skill_shows_as_such(monkeypatch, tmp_path):
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    _math_lesson(db, student["id"])
+    db.set_mastery(student["id"], "two-step-equations", "mastered", score=100.0)
+    db.close()
+
+    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    text = " ".join(s.value for s in at.success)
+    assert "Already approved" in text
 
 
 # --- the three-way verdict (non-Math) --------------------------------------------------
