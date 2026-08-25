@@ -14,7 +14,7 @@ from __future__ import annotations
 import streamlit as st
 
 from compass.subjects import label
-from compass.ui import SUBJECT_ICONS, md, page_setup, parent_only
+from compass.ui import SUBJECT_ICONS, format_duration, md, page_setup, parent_only
 
 db, student = page_setup("Quizzes", icon="📝")
 
@@ -85,9 +85,11 @@ for lesson_id in lesson_order:
         for attempt in reversed(group):
             pct = round(100 * attempt["correct"] / attempt["total"]) if attempt["total"] else 0
             verdict = "✅ passed" if attempt["passed"] else "❌ did not pass"
+            duration = attempt.get("duration_seconds")
+            took = f" — took {format_duration(duration)}" if duration is not None else ""
             with st.expander(
                 f"{attempt['attempted_on']} — {attempt['correct']}/{attempt['total']} "
-                f"({pct}%) — {verdict}"
+                f"({pct}%) — {verdict}{took}"
             ):
                 if not attempt["detail"]:
                     st.caption("No per-question detail was saved for this attempt.")

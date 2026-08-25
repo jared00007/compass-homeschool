@@ -239,7 +239,9 @@ you want to set outside of any one lesson.)
 
 Every lesson, on every subject, ends with a **"Check your understanding"** quiz he can take
 himself right on the screen: three to five multiple-choice questions on that lesson's own
-content, graded the moment he submits.
+content, graded the moment he submits. It sits in its own collapsed section rather than
+right on the page — opening it starts a clock, so the **Quizzes** page can show how long an
+attempt actually took, alongside the score and which questions he missed.
 
 **On Math, a passing score records mastery automatically** — no trip to **Record mastery**
 required. But "passed" and "mastered" aren't the same bar: passing (80% by default) is real,

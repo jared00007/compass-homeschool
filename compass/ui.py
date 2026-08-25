@@ -645,6 +645,15 @@ def log_lesson_form(
         st.balloons()
 
 
+def format_duration(seconds: int) -> str:
+    minutes, secs = divmod(max(int(seconds), 0), 60)
+    if minutes and secs:
+        return f"{minutes} min {secs} sec"
+    if minutes:
+        return f"{minutes} min"
+    return f"{secs} sec"
+
+
 def render_quiz(
     db: Database,
     student: dict[str, Any],
@@ -665,120 +674,150 @@ def render_quiz(
     The `user-select: none` below is a separate, much weaker measure against
     copying the question text out to search for it — real friction, like the
     PIN, not a lock that can't be picked.
+
+    Collapsed by default, in its own keyed expander with `on_change="rerun"`
+    -- opening it is a deliberate action (unlike the lesson content sitting
+    above it, which he's already looking at for other reasons), so the
+    moment he expands it is a real start-of-quiz signal, stashed in session
+    state and turned into `duration_seconds` at submission. Not literally
+    "time from his first click," which the quiz form can't see -- the whole
+    form lives inside one `st.form`, so nothing about individual picks
+    reaches the server until Submit either way -- but close: he can't
+    answer anything before opening it.
     """
     if not quiz:
         return
 
     state_key = f"quiz_result_{lesson_id}"
     result = st.session_state.get(state_key)
+    start_key = f"quiz_started_at_{lesson_id}"
+    expander_key = f"quiz_expander_{lesson_id}"
 
     st.divider()
-    st.markdown("### 📝 Check your understanding")
+    with st.expander("📝 Check your understanding", key=expander_key, on_change="rerun"):
+        if st.session_state.get(expander_key) and start_key not in st.session_state:
+            st.session_state[start_key] = time.time()
 
-    with st.container(key=f"quiz_nocopy_{lesson_id}"):
-        st.markdown(
-            f"<style>.st-key-quiz_nocopy_{lesson_id} "
-            "{ -webkit-user-select: none; user-select: none; }</style>",
-            unsafe_allow_html=True,
-        )
+        with st.container(key=f"quiz_nocopy_{lesson_id}"):
+            st.markdown(
+                f"<style>.st-key-quiz_nocopy_{lesson_id} "
+                "{ -webkit-user-select: none; user-select: none; }</style>",
+                unsafe_allow_html=True,
+            )
 
-        if result is None:
-            picks: list[int | None] = []
-            with st.form(f"quiz_form_{lesson_id}"):
-                for index, item in enumerate(quiz):
-                    st.markdown(f"**{index + 1}. {md(item['question'])}**")
-                    pick = st.radio(
-                        "choices",
-                        options=list(range(len(item["choices"]))),
-                        format_func=lambda i, choices=item["choices"]: md(choices[i]),
-                        index=None,
-                        label_visibility="collapsed",
-                        key=f"quiz_pick_{lesson_id}_{index}",
-                    )
-                    picks.append(pick)
-                submitted = st.form_submit_button("Submit quiz", type="primary")
+            if result is None:
+                picks: list[int | None] = []
+                with st.form(f"quiz_form_{lesson_id}"):
+                    for index, item in enumerate(quiz):
+                        st.markdown(f"**{index + 1}. {md(item['question'])}**")
+                        pick = st.radio(
+                            "choices",
+                            options=list(range(len(item["choices"]))),
+                            format_func=lambda i, choices=item["choices"]: md(choices[i]),
+                            index=None,
+                            label_visibility="collapsed",
+                            key=f"quiz_pick_{lesson_id}_{index}",
+                        )
+                        picks.append(pick)
+                    submitted = st.form_submit_button("Submit quiz", type="primary")
 
-            if not submitted:
+                if not submitted:
+                    return
+                if any(pick is None for pick in picks):
+                    st.warning("Answer every question before submitting.")
+                    return
+
+                correct, total = grade(quiz, picks)
+                threshold = db.get_int_setting("quiz_pass_percent")
+                did_pass = quiz_passes(correct, total, threshold)
+                started_at = st.session_state.pop(start_key, None)
+                duration_seconds = int(time.time() - started_at) if started_at else None
+                st.session_state[state_key] = {
+                    "picks": picks,
+                    "correct": correct,
+                    "duration_seconds": duration_seconds,
+                }
+                detail = [
+                    {
+                        "question": item["question"],
+                        "choices": item["choices"],
+                        "correct_index": item["correct_index"],
+                        "pick": pick,
+                        "explanation": item.get("explanation", ""),
+                    }
+                    for item, pick in zip(quiz, picks)
+                ]
+                db.record_quiz_result(
+                    lesson_id, student["id"], correct, total, did_pass,
+                    detail=detail, duration_seconds=duration_seconds,
+                )
+
+                skill_id = metadata.get("skill_id")
+                if skill_id:
+                    mastery_threshold = db.get_int_setting("math_mastery_percent")
+                    if quiz_passes(correct, total, mastery_threshold):
+                        db.set_mastery(
+                            student["id"],
+                            skill_id,
+                            "mastered",
+                            score=100 * correct / total,
+                            notes="Auto-graded from the in-app quiz.",
+                        )
+                st.rerun()
                 return
-            if any(pick is None for pick in picks):
-                st.warning("Answer every question before submitting.")
-                return
 
-            correct, total = grade(quiz, picks)
+            picks = result["picks"]
+            correct, total = result["correct"], len(quiz)
             threshold = db.get_int_setting("quiz_pass_percent")
             did_pass = quiz_passes(correct, total, threshold)
-            st.session_state[state_key] = {"picks": picks, "correct": correct}
-            detail = [
-                {
-                    "question": item["question"],
-                    "choices": item["choices"],
-                    "correct_index": item["correct_index"],
-                    "pick": pick,
-                    "explanation": item.get("explanation", ""),
-                }
-                for item, pick in zip(quiz, picks)
-            ]
-            db.record_quiz_result(
-                lesson_id, student["id"], correct, total, did_pass, detail=detail
-            )
-
+            pct = round(100 * correct / total)
             skill_id = metadata.get("skill_id")
-            if skill_id:
-                mastery_threshold = db.get_int_setting("math_mastery_percent")
-                if quiz_passes(correct, total, mastery_threshold):
-                    db.set_mastery(
-                        student["id"],
-                        skill_id,
-                        "mastered",
-                        score=100 * correct / total,
-                        notes="Auto-graded from the in-app quiz.",
-                    )
-            st.rerun()
-            return
+            mastery_threshold = db.get_int_setting("math_mastery_percent") if skill_id else None
+            fully_mastered = bool(skill_id) and quiz_passes(correct, total, mastery_threshold)
 
-        picks = result["picks"]
-        correct, total = result["correct"], len(quiz)
-        threshold = db.get_int_setting("quiz_pass_percent")
-        did_pass = quiz_passes(correct, total, threshold)
-        pct = round(100 * correct / total)
-        skill_id = metadata.get("skill_id")
-        mastery_threshold = db.get_int_setting("math_mastery_percent") if skill_id else None
-        fully_mastered = bool(skill_id) and quiz_passes(correct, total, mastery_threshold)
+            if not did_pass:
+                st.warning(
+                    f"**{correct} / {total} correct ({pct}%)** — under the "
+                    f"{threshold}% needed to pass. Ask your parent about another go."
+                )
+            elif skill_id and not fully_mastered:
+                st.success(
+                    f"**{correct} / {total} correct ({pct}%)** — nice work, that's a pass."
+                )
+                st.caption(
+                    f"Mastery on this skill needs {mastery_threshold}% -- try again to lock "
+                    "it in before moving on."
+                )
+            else:
+                st.success(f"**{correct} / {total} correct ({pct}%)** — nice work.")
+                if skill_id:
+                    st.caption("Counted toward mastery of this skill.")
 
-        if not did_pass:
-            st.warning(
-                f"**{correct} / {total} correct ({pct}%)** — under the "
-                f"{threshold}% needed to pass. Ask your parent about another go."
-            )
-        elif skill_id and not fully_mastered:
-            st.success(f"**{correct} / {total} correct ({pct}%)** — nice work, that's a pass.")
-            st.caption(
-                f"Mastery on this skill needs {mastery_threshold}% -- try again to lock "
-                "it in before moving on."
-            )
-        else:
-            st.success(f"**{correct} / {total} correct ({pct}%)** — nice work.")
-            if skill_id:
-                st.caption("Counted toward mastery of this skill.")
+            duration_seconds = result.get("duration_seconds")
+            if duration_seconds is not None:
+                st.caption(f"⏱️ Took {format_duration(duration_seconds)}")
 
-        for index, item in enumerate(quiz):
-            pick = picks[index]
-            right = pick == item["correct_index"]
-            marker = "✅" if right else "❌"
-            with st.expander(f"{marker} {index + 1}. {md(item['question'])}", expanded=False):
-                for choice_index, choice in enumerate(item["choices"]):
-                    tag = ""
-                    if choice_index == item["correct_index"]:
-                        tag = " — correct answer"
-                    elif choice_index == pick:
-                        tag = " — your answer"
-                    st.markdown(f"- {md(choice)}{tag}")
-                if item.get("explanation"):
-                    st.caption(md(item["explanation"]))
+            for index, item in enumerate(quiz):
+                pick = picks[index]
+                right = pick == item["correct_index"]
+                marker = "✅" if right else "❌"
+                with st.expander(
+                    f"{marker} {index + 1}. {md(item['question'])}", expanded=False
+                ):
+                    for choice_index, choice in enumerate(item["choices"]):
+                        tag = ""
+                        if choice_index == item["correct_index"]:
+                            tag = " — correct answer"
+                        elif choice_index == pick:
+                            tag = " — your answer"
+                        st.markdown(f"- {md(choice)}{tag}")
+                    if item.get("explanation"):
+                        st.caption(md(item["explanation"]))
 
-        if st.button("Try again", key=f"quiz_retry_{lesson_id}"):
-            del st.session_state[state_key]
-            st.rerun()
+            if st.button("Try again", key=f"quiz_retry_{lesson_id}"):
+                del st.session_state[state_key]
+                st.session_state.pop(start_key, None)
+                st.rerun()
 
 
 def render_assessment_card(

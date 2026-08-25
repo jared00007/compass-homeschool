@@ -267,3 +267,23 @@ def test_passed_comes_back_as_a_real_bool(db):
 
     attempt = db.list_quiz_attempts(student["id"])[0]
     assert attempt["passed"] is True
+
+
+def test_duration_seconds_round_trips(db):
+    student = db.ensure_default_student()
+    lesson_id = _lesson(db, student["id"])
+    db.record_quiz_result(
+        lesson_id, student["id"], correct=5, total=5, passed=True, duration_seconds=252
+    )
+
+    attempt = db.list_quiz_attempts(student["id"])[0]
+    assert attempt["duration_seconds"] == 252
+
+
+def test_duration_seconds_defaults_to_none_when_not_given(db):
+    student = db.ensure_default_student()
+    lesson_id = _lesson(db, student["id"])
+    db.record_quiz_result(lesson_id, student["id"], correct=5, total=5, passed=True)
+
+    attempt = db.list_quiz_attempts(student["id"])[0]
+    assert attempt["duration_seconds"] is None

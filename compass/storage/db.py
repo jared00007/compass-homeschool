@@ -1350,6 +1350,7 @@ class Database:
         # first, same failure shape _migrate_activities_allow_projects_tier's
         # own comment warns about.
         self._ensure_column("books", "ai_summary", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column("quiz_attempts", "duration_seconds", "INTEGER")
         self._backfill_big_project_step_content()
         self._backfill_big_project_catalog()
         self._backfill_declaration_url_default()
@@ -2173,6 +2174,7 @@ class Database:
         total: int,
         passed: bool,
         detail: list[dict[str, Any]] | None = None,
+        duration_seconds: int | None = None,
     ) -> None:
         """Stash the graded score into the lesson's metadata, alongside the
         strategy metadata already stored there (skill_id, era, and so on) --
@@ -2185,7 +2187,9 @@ class Database:
         correct_index, his pick, explanation, one dict per question) is what
         makes "which questions were wrong on which try" answerable later,
         instead of only existing in the browser's own session state for as
-        long as that browser tab stays open.
+        long as that browser tab stays open. `duration_seconds` is however
+        long the quiz's own collapsed container was open before this
+        submission -- `None` when that moment was never captured.
         """
         today = date.today().isoformat()
         self.conn.execute(
@@ -2205,9 +2209,12 @@ class Database:
         )
         self.conn.execute(
             "INSERT INTO quiz_attempts "
-            "(lesson_id, student_id, correct, total, passed, detail, attempted_on) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (lesson_id, student_id, correct, total, int(passed), json.dumps(detail or []), today),
+            "(lesson_id, student_id, correct, total, passed, detail, duration_seconds, "
+            "attempted_on) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                lesson_id, student_id, correct, total, int(passed),
+                json.dumps(detail or []), duration_seconds, today,
+            ),
         )
         self.conn.commit()
 

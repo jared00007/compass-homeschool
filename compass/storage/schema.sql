@@ -158,15 +158,20 @@ CREATE INDEX IF NOT EXISTS idx_lessons_student
 -- questions were missed on each -- which used to live only in the
 -- browser's own session state and vanished the moment that session ended.
 CREATE TABLE IF NOT EXISTS quiz_attempts (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    lesson_id    INTEGER NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
-    student_id   INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-    correct      INTEGER NOT NULL,
-    total        INTEGER NOT NULL,
-    passed       INTEGER NOT NULL,
-    detail       TEXT NOT NULL DEFAULT '[]',  -- JSON: [{question, choices, correct_index, pick, explanation}]
-    attempted_on TEXT NOT NULL DEFAULT (date('now')),
-    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    lesson_id       INTEGER NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+    student_id      INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    correct         INTEGER NOT NULL,
+    total           INTEGER NOT NULL,
+    passed          INTEGER NOT NULL,
+    detail          TEXT NOT NULL DEFAULT '[]',  -- JSON: [{question, choices, correct_index, pick, explanation}]
+    -- Wall-clock time from opening the quiz's own collapsed container (a
+    -- deliberate action, unlike the lesson content around it) to submitting --
+    -- NULL for an attempt where that open moment was never captured (session
+    -- state lost to a refresh mid-quiz, say), not a stand-in for zero.
+    duration_seconds INTEGER,
+    attempted_on    TEXT NOT NULL DEFAULT (date('now')),
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_quiz_attempts_lesson
