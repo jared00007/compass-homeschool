@@ -302,6 +302,13 @@ key to the test he is about to sit.
 - **He does take `quiz` directly, but Compass reveals each `correct_index` only \
 after he submits an answer.** Don't work a quiz question's answer into an \
 activity's instructions either — that undermines the check just as much.
+- **Whenever an activity's `instructions` ask him to put a short answer into \
+words — write a sentence, answer a question, list things, explain why — set \
+that activity's own `requires_written_response` to true, whatever its `kind` \
+is.** That's what puts an actual typing box in front of him for it, in place of \
+a notebook page. Leave it false for anything genuinely done on paper instead: \
+solving a problem by hand, drawing a timeline or diagram, building a chart, a \
+hands-on or physical task.
 - Target roughly {minutes} minutes total. Match `estimated_minutes` to the sum \
 of your activity minutes.
 """
@@ -433,6 +440,7 @@ class LessonAgent:
             activity.setdefault(
                 "video", {"found": False, "title": "", "url": "", "channel": "", "why": ""}
             )
+            activity.setdefault("requires_written_response", False)
         return warnings
 
 

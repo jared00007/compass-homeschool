@@ -208,6 +208,24 @@ def _writing_payload():
     }
 
 
+def _instruction_with_written_response_payload():
+    """The reported case: a short-answer question buried inside an
+    ordinary `instruction`-kind activity, same as an actual Science lesson
+    ("Read this, then answer the two questions in your notebook...") --
+    the box has to trigger off `requires_written_response`, not `kind`."""
+    return {
+        "title": "Where Does the Energy Go?",
+        "overview": "",
+        "activities": [
+            {"title": "Read and answer", "kind": "instruction", "minutes": 15,
+             "instructions": "Read this, then answer the two questions in your notebook.",
+             "requires_written_response": True,
+             "video": {"found": False, "title": "", "url": "", "channel": "", "why": ""}},
+        ],
+        "materials": [], "subject_credits": [], "branches": [],
+    }
+
+
 def test_writing_activity_shows_a_response_box_in_student_view(monkeypatch, tmp_path):
     db_path = tmp_path / "a.db"
     db = Database(db_path)
@@ -242,6 +260,60 @@ def test_writing_activity_also_shows_a_response_box_on_home(monkeypatch, tmp_pat
 
     at = _open(monkeypatch, db_path, HOME_PATH, as_parent=False)
     assert any(t.label == "Your response" for t in at.text_area)
+
+
+def test_an_instruction_activity_flagged_requires_written_response_gets_a_box(
+    monkeypatch, tmp_path
+):
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    db.save_lesson(
+        student_id=student["id"], agent="science", subject="science", topic="t",
+        title="Where Does the Energy Go?",
+        payload=_instruction_with_written_response_payload(),
+    )
+    db.close()
+
+    at = _open(monkeypatch, db_path, str(REPO_ROOT / "pages" / "2_Science.py"), as_parent=False)
+    assert any(t.label == "Your response" for t in at.text_area)
+
+
+def test_a_plain_instruction_activity_with_no_flag_gets_no_box(monkeypatch, tmp_path):
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    payload = _instruction_with_written_response_payload()
+    payload["activities"][0]["requires_written_response"] = False
+    db.save_lesson(
+        student_id=student["id"], agent="science", subject="science", topic="t",
+        title="Where Does the Energy Go?", payload=payload,
+    )
+    db.close()
+
+    at = _open(monkeypatch, db_path, str(REPO_ROOT / "pages" / "2_Science.py"), as_parent=False)
+    assert not any(t.label == "Your response" for t in at.text_area)
+
+
+def test_a_flagged_instruction_activity_response_also_shows_in_parent_review(
+    monkeypatch, tmp_path
+):
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="science", subject="science", topic="t",
+        title="Where Does the Energy Go?",
+        payload=_instruction_with_written_response_payload(),
+    )
+    db.save_writing_response(lesson_id, 0, "PE is stored energy from being lifted up.")
+    db.close()
+
+    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    text = " ".join(m.value for m in at.markdown)
+    assert "PE is stored energy from being lifted up." in text
 
 
 def test_saving_a_writing_response_persists_it(monkeypatch, tmp_path):

@@ -264,10 +264,15 @@ Needs more work — plus a notes field, right on the lesson, the moment you're c
 The pass bar defaults to 80% and is a family policy call, not a Washington requirement — a
 setting, not a constant, if you want it stricter or looser.
 
-**Writing assignments live in the lesson too.** A lesson with a writing activity gives him
-an actual text box on the screen instead of a prompt to write on paper — his response
-saves the moment he clicks Save, and it's what you see, right in that same Activity Log
-assessment card, when it's time to check the lesson. No separate paper to track down.
+**Any short-answer question gets a text box, not just full writing assignments.** This
+isn't limited to activities specifically about writing — any activity that asks him to
+answer a question, write a sentence, or list something in his own words gets an actual
+text box on the screen instead of a prompt to write in his notebook, whatever kind of
+activity it technically is. Genuinely hands-on or paper work (solving a math problem,
+drawing a timeline or diagram, building a chart) stays on paper — the model's told
+explicitly which is which. His response saves the moment he clicks Save, and it's what
+you see, right in that same Activity Log assessment card, when it's time to check the
+lesson. No separate notebook page to track down.
 
 **On not being able to peek.** The correct answer is never sent to the page until after he
 submits — this isn't a CSS trick, it's that Streamlit reruns the whole page from the server

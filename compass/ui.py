@@ -351,6 +351,23 @@ def render_proposal(agent: LessonAgent, proposal) -> None:
                 st.markdown(f"- {md(line)}")
 
 
+def _needs_written_response(activity: dict[str, Any]) -> bool:
+    """Whether this activity gets a typing box in place of a notebook page.
+
+    Not the same question as `kind` -- `kind` describes what *sort* of
+    activity this is (instruction/practice/reading/writing/...), while this
+    is about whether it ends in something typeable at all, which the model
+    is asked to flag directly via `requires_written_response` since a short
+    answer just as often turns up buried inside an "instruction" or
+    "practice" activity as inside one actually tagged `writing`. `kind ==
+    "writing"` is kept as a second, always-true path for backward
+    compatibility with lessons generated before that field existed.
+    """
+    return activity.get("kind") == "writing" or bool(
+        activity.get("requires_written_response")
+    )
+
+
 def render_lesson(
     lesson: dict[str, Any],
     for_parent: bool | None = None,
@@ -448,7 +465,7 @@ def render_lesson(
                     )
                 st.write(md(activity.get("instructions", "")))
 
-                if activity.get("kind") == "writing":
+                if _needs_written_response(activity):
                     activity_index = index - 1
                     saved = ((metadata or {}).get("writing_responses") or {}).get(
                         str(activity_index), ""
@@ -851,7 +868,7 @@ def render_assessment_card(
     writing_activities = [
         (index, activity)
         for index, activity in enumerate(payload.get("activities") or [])
-        if activity.get("kind") == "writing"
+        if _needs_written_response(activity)
     ]
 
     if not assessment and not skill_id and not writing_activities:

@@ -367,6 +367,26 @@ def test_normalize_fills_in_video_for_every_activity_that_never_had_one(db, stud
     assert payload["activities"][1]["video"] == empty
 
 
+def test_normalize_fills_in_requires_written_response_for_a_legacy_activity(db, student):
+    """Same back-compat reasoning as the video setdefault above -- a lesson
+    generated before this field existed (or hand-built in a test) still gets
+    a consistent per-activity shape, defaulting to false rather than
+    silently sprouting a text box nobody asked for."""
+    agent = get_agent("english")
+    payload = {
+        "activities": [{"minutes": 60}],
+        "estimated_minutes": 60,
+        "subject_credits": [{"subject": "reading", "minutes": 60, "justification": ""}],
+    }
+    warnings, payload = normalize(agent, payload, db, student)
+    assert payload["activities"][0]["requires_written_response"] is False
+
+
+def test_prompt_asks_the_model_to_flag_written_response_activities(db, student):
+    prompt = get_agent("science").build_system_prompt(ctx_for(db, student))
+    assert "requires_written_response" in prompt
+
+
 def test_prompt_forbids_inventing_a_video_url(db, student):
     agent = get_agent("math")
     prompt = agent.build_system_prompt(ctx_for(db, student))

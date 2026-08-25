@@ -340,6 +340,29 @@ def test_the_session_key_is_per_agent(monkeypatch, db, student):
     assert keys == {"math_lesson", "science_lesson", "english_lesson", "history_lesson"}
 
 
+# --- _needs_written_response: kind == "writing" is not the only trigger ------------
+
+
+def test_kind_writing_alone_needs_a_response():
+    assert ui._needs_written_response({"kind": "writing"}) is True
+
+
+def test_the_flag_alone_needs_a_response_regardless_of_kind():
+    assert ui._needs_written_response({"kind": "instruction", "requires_written_response": True}) is True
+
+
+def test_neither_kind_nor_flag_needs_no_response():
+    assert ui._needs_written_response({"kind": "practice", "requires_written_response": False}) is False
+
+
+def test_a_missing_flag_defaults_to_no_response():
+    """A lesson generated before this field existed -- the setdefault in
+    LessonAgent._normalize covers real generation, but render_lesson reads
+    straight off whatever's actually stored, so this has to hold on its own
+    too."""
+    assert ui._needs_written_response({"kind": "instruction"}) is False
+
+
 # --- student_lesson_view: his own "I'm done" signal, separate from `status` ---
 
 

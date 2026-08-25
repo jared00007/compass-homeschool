@@ -107,6 +107,20 @@ LESSON_SCHEMA: dict[str, Any] = _object(
                             "without further explanation."
                         ),
                     },
+                    "requires_written_response": {
+                        "type": "boolean",
+                        "description": (
+                            "True whenever `instructions` asks him to put a short answer into "
+                            "words -- write a sentence, answer a question, list things, explain "
+                            "why, argue a position -- regardless of `kind`; an `instruction` or "
+                            "`practice` activity that ends in 'write one sentence saying...' is "
+                            "just as true here as a `writing` one. False for anything genuinely "
+                            "done on paper instead: solving a math problem by hand, drawing a "
+                            "timeline or diagram, building a chart, a hands-on or physical task. "
+                            "This is what puts an actual typing box in front of him for this "
+                            "activity, in place of a notebook page -- get it right."
+                        ),
+                    },
                     "example": {
                         "type": "string",
                         "description": (
