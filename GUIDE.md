@@ -242,9 +242,14 @@ himself right on the screen: three to five multiple-choice questions on that les
 content, graded the moment he submits.
 
 **On Math, a passing score records mastery automatically** — no trip to **Record mastery**
-required. A failing score does nothing to the mastery record either way; only a pass writes
-anything, so a bad day never un-masters something he already knows. You can still record
-mastery by hand at any time, and the two paths write to the same place.
+required. But "passed" and "mastered" aren't the same bar: passing (80% by default) is real,
+encouraging feedback on its own, while mastery — which is what actually unlocks the next
+skill — needs a separate, stricter score (100% by default, `math_mastery_percent`). Land
+in between and he still passed, but the quiz nudges him to try again for full mastery
+before moving on, instead of quietly calling 80% good enough. A failing score does nothing
+to the mastery record either way; only a fully-mastered pass writes anything, so a bad day
+never un-masters something he already knows. You can still record mastery by hand at any
+time, and both paths write to the same place.
 
 On Science, English, and History there's no mastery gate to hook into, so the quiz just
 shows him his score. What *does* apply there is the same **Activity Log → To review**

@@ -723,14 +723,16 @@ def render_quiz(
             )
 
             skill_id = metadata.get("skill_id")
-            if did_pass and skill_id:
-                db.set_mastery(
-                    student["id"],
-                    skill_id,
-                    "mastered",
-                    score=100 * correct / total,
-                    notes="Auto-graded from the in-app quiz.",
-                )
+            if skill_id:
+                mastery_threshold = db.get_int_setting("math_mastery_percent")
+                if quiz_passes(correct, total, mastery_threshold):
+                    db.set_mastery(
+                        student["id"],
+                        skill_id,
+                        "mastered",
+                        score=100 * correct / total,
+                        notes="Auto-graded from the in-app quiz.",
+                    )
             st.rerun()
             return
 
@@ -739,15 +741,25 @@ def render_quiz(
         threshold = db.get_int_setting("quiz_pass_percent")
         did_pass = quiz_passes(correct, total, threshold)
         pct = round(100 * correct / total)
-        if did_pass:
-            st.success(f"**{correct} / {total} correct ({pct}%)** — nice work.")
-            if metadata.get("skill_id"):
-                st.caption("Counted toward mastery of this skill.")
-        else:
+        skill_id = metadata.get("skill_id")
+        mastery_threshold = db.get_int_setting("math_mastery_percent") if skill_id else None
+        fully_mastered = bool(skill_id) and quiz_passes(correct, total, mastery_threshold)
+
+        if not did_pass:
             st.warning(
                 f"**{correct} / {total} correct ({pct}%)** — under the "
                 f"{threshold}% needed to pass. Ask your parent about another go."
             )
+        elif skill_id and not fully_mastered:
+            st.success(f"**{correct} / {total} correct ({pct}%)** — nice work, that's a pass.")
+            st.caption(
+                f"Mastery on this skill needs {mastery_threshold}% -- try again to lock "
+                "it in before moving on."
+            )
+        else:
+            st.success(f"**{correct} / {total} correct ({pct}%)** — nice work.")
+            if skill_id:
+                st.caption("Counted toward mastery of this skill.")
 
         for index, item in enumerate(quiz):
             pick = picks[index]

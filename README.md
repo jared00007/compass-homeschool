@@ -574,15 +574,21 @@ much weaker layer against copying a question out to search for it — real frict
 the same honestly-caveated kind as the PIN, not something that stops a determined
 kid with dev tools open.
 
-**A pass on Math auto-records mastery.** `render_quiz()` reads `metadata["skill_id"]`
-— the same key `graph_walk`'s proposal already writes for every Math lesson — and on
-a passing score calls the same `db.set_mastery(..., "mastered", ...)` the parent's
-**Record mastery** form calls by hand. A failing score does nothing to the mastery
-record either way, so a bad day never un-masters something already recorded. Science,
-English, and History have no analogous mastery concept to hook into, so their quizzes
-grade and show a score without a side effect — a real check with no mechanism behind
-it yet, rather than force-fitting one. The pass bar (`quiz_pass_percent`, default 80)
-is a family policy setting, the same category as the Tier 3 guideline percent.
+**A fully-mastered pass on Math auto-records mastery.** `render_quiz()` reads
+`metadata["skill_id"]` — the same key `graph_walk`'s proposal already writes for every
+Math lesson — and on a score meeting `math_mastery_percent` (default 100, deliberately
+stricter than the general pass bar) calls the same `db.set_mastery(..., "mastered", ...)`
+the parent's **Record mastery** form calls by hand. Passing (`quiz_pass_percent`, default
+80) and being fully mastered are tracked as two separate thresholds on purpose: a passing
+score under the mastery bar still shows real, encouraging feedback ("nice work, that's a
+pass") plus a nudge to retry for full mastery, rather than either punishing an imperfect-
+but-solid score or silently treating it as good enough to unlock the next skill. A score
+under the pass bar does nothing to the mastery record either way, so a bad day never
+un-masters something already recorded. Science, English, and History have no analogous
+mastery concept to hook into, so their quizzes grade and show a score without a side
+effect — a real check with no mechanism behind it yet, rather than force-fitting one.
+Both thresholds are family policy settings, the same category as the Tier 3 guideline
+percent.
 
 ## The student's own "I'm done for today"
 

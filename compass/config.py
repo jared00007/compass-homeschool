@@ -56,9 +56,17 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "tier3_cap_percent": "20",
     # Typical instructional day length in minutes, used to size lesson requests.
     "default_lesson_minutes": "60",
-    # Score needed on the in-app quiz to count as a pass. A pass on a Math lesson
-    # auto-records mastery; other subjects just show the score.
+    # Score needed on the in-app quiz to count as a pass -- real, encouraging
+    # feedback ("nice work") on its own, distinct from mastery below.
     "quiz_pass_percent": "80",
+    # Score needed on a Math quiz specifically for the skill to auto-record as
+    # mastered -- deliberately a separate, stricter bar than quiz_pass_percent
+    # above: an 80% still passes and feels good, but Math treats "mastered"
+    # (which unlocks the next skill) as a higher bar than "passed," and nudges
+    # a retry in between rather than silently calling 80% good enough to move
+    # on. Math-only: Science/English/History have no mastery gate to hook
+    # into (see GUIDE.md), so this setting has no effect there.
+    "math_mastery_percent": "100",
     # School year start (MM-DD). Used to bucket activities into a school year.
     "school_year_start": "09-01",
     # Washington's annual Declaration of Intent filing deadline (MM-DD). Default
