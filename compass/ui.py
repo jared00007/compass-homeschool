@@ -471,6 +471,10 @@ def render_lesson(
                         st.markdown("**His response**")
                         st.write(md(saved))
 
+    # Parent-only: the actual check now happens digitally, in Activity Log's
+    # own review card (render_assessment_card), not here -- nothing for him
+    # to do with this text, so student view shows nothing at all rather than
+    # a "your parent has it" stub that no longer matches how it's checked.
     assessment = lesson.get("assessment") or {}
     if assessment and parent:
         st.markdown("**Assessment**")
@@ -483,11 +487,6 @@ def render_lesson(
         st.markdown(f"*{md(assessment.get('kind', ''))}* — {md(assessment.get('description', ''))}")
         if assessment.get("mastery_criteria"):
             st.markdown(f"**Counts as mastered when:** {md(assessment['mastery_criteria'])}")
-    elif assessment:
-        st.markdown("**Assessment**")
-        st.caption(
-            "There's a check at the end of this lesson — your parent has it."
-        )
 
     if parent:
         if lesson.get("parent_notes"):

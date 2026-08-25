@@ -170,6 +170,21 @@ def test_parent_view_shows_everything(monkeypatch):
     assert "Compass doesn't control what YouTube recommends" in page
 
 
+def test_student_view_shows_no_assessment_section_at_all(monkeypatch):
+    """The check itself now happens digitally in Activity Log's own review
+    card -- there's nothing left for him to do with this text, so student
+    view shows nothing rather than a "your parent has it" stub that no
+    longer matches how it's actually checked."""
+    page = _rendered(monkeypatch, for_parent=False)
+    assert "Assessment" not in page
+
+
+def test_parent_view_still_shows_the_assessment_description(monkeypatch):
+    page = _rendered(monkeypatch, for_parent=True)
+    assert "Assessment" in page
+    assert "Ten items, mixed representations." in page
+
+
 def test_student_view_also_sees_the_suggested_video(monkeypatch):
     """Unlike the answer key, a verified video is meant for him too -- it's
     checked against a real search result and restricted to YouTube before it
