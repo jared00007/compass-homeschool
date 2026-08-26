@@ -1,8 +1,10 @@
-"""The "Comic Panels" redesign of the English student page (`comic_layout=True`
-on render_lesson/student_lesson_view), the one Comic Panels direction chosen
-after showing three mockups. Activities become an ink-bordered panel grid with
-issue tags and kind pills instead of a stack of collapsed expanders; Math,
-Science, and History are untouched (`comic_layout` defaults to False there).
+"""The "Comic Panels" redesign, the one direction chosen after showing three
+mockups on the English page. Activities become an ink-bordered panel grid --
+each one framed, with an issue tag and a kind pill -- instead of a stack of
+collapsed expanders. Rolled out as the default for every subject's
+student-facing lesson (`comic_layout` on `render_lesson`/
+`student_lesson_view` now defaults to True), not just English, so Math,
+Science, and History get the same activity tagging.
 """
 
 from __future__ import annotations
@@ -119,10 +121,14 @@ def test_english_writing_box_still_works_inside_a_comic_panel(monkeypatch, tmp_p
     )
 
 
-def test_english_progress_dots_track_the_one_real_signal(monkeypatch, tmp_path):
-    """One dot per activity that actually needs a typed response -- there's no
-    honest "done" signal for reading/instruction activities, so those don't
-    get a dot at all rather than a fabricated one."""
+def test_english_progress_dots_cover_every_activity_not_just_writing_ones(
+    monkeypatch, tmp_path
+):
+    """One dot per activity, in order -- everything up to the next unmet
+    typed-response requirement reads as passed, since there's no honest
+    per-activity "done" signal for a reading/instruction activity on its
+    own. The Hatchet lesson has 3 activities and one requires a response
+    (index 2, unanswered), so that's 2 "done" dots then 1 "current"."""
     db_path = tmp_path / "a.db"
     db = Database(db_path)
     student = db.ensure_default_student()
@@ -136,10 +142,30 @@ def test_english_progress_dots_track_the_one_real_signal(monkeypatch, tmp_path):
     at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
     text = " ".join(m.value for m in at.markdown)
     assert "comic-progress-dots" in text
-    assert text.count('<span class="') >= 1
+    assert text.count('<span class="done"></span>') == 2
+    assert text.count('<span class="current"></span>') == 1
 
 
-def test_math_keeps_the_plain_expander_layout(monkeypatch, tmp_path):
+def test_english_lesson_gets_a_framed_eyebrow_header(monkeypatch, tmp_path):
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Brian's Turning Point", payload=_hatchet_payload(),
+    )
+    db.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    text = " ".join(m.value for m in at.markdown)
+    assert "comic-frame-title" in text
+    assert "English — Current Lesson" in text
+
+
+def test_math_now_also_gets_the_comic_panel_treatment(monkeypatch, tmp_path):
+    """Rolled out beyond English on request -- the kind pill/issue tag
+    should show up for every subject's activities, not just English's."""
     db_path = tmp_path / "a.db"
     db = Database(db_path)
     student = db.ensure_default_student()
@@ -151,6 +177,25 @@ def test_math_keeps_the_plain_expander_layout(monkeypatch, tmp_path):
     db.close()
 
     at = _open(monkeypatch, db_path, MATH_PATH, as_parent=False)
-    assert any("Practice" in (e.label or "") for e in at.expander)
     text = " ".join(m.value for m in at.markdown)
-    assert "comic-issue-tag" not in text
+    assert "comic-issue-tag" in text
+    assert "No. 1" in text
+    assert "comic-pill--neutral" in text  # "practice" has no dedicated color
+    assert "math — Current Lesson" in text
+    assert not any("Practice" in (e.label or "") for e in at.expander)
+
+
+def test_vocab_review_gets_its_own_framed_eyebrow_header(monkeypatch, tmp_path):
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    db.add_vocabulary(student["id"], "resilient", "able to recover quickly")
+    db.conn.execute("UPDATE vocabulary SET next_review_on = date('now')")
+    db.conn.commit()
+    db.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    text = " ".join(m.value for m in at.markdown)
+    assert "Words to Review" in text
+    assert "comic-frame-title" in text

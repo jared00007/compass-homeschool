@@ -421,6 +421,26 @@ div[class*="st-key-comic_panel_"] {
 }
 .comic-progress-dots span.done { background: var(--c-good); opacity: 1; }
 .comic-progress-dots span.current { background: var(--c-primary); opacity: 1; }
+div[class*="st-key-comic_frame_"] {
+  background: var(--c-panel);
+  border: 1px solid var(--c-border);
+  border-radius: var(--c-radius);
+  box-shadow: 5px 5px 0 rgba(36,28,18,.14);
+  padding: 1.5rem 1.6rem 1.3rem;
+  margin-bottom: 1.3rem;
+}
+.comic-frame-title {
+  font-family: var(--c-head);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  font-size: .78rem;
+  color: var(--c-dim);
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
 </style>
 """
 
@@ -455,21 +475,34 @@ def _comic_kind_pill_html(kind: str) -> str:
 def _comic_progress_dots_html(
     activities: list[dict[str, Any]], metadata: dict[str, Any] | None
 ) -> str:
-    """A dot per activity that actually needs a typed response -- the only
-    per-activity "done" signal that's real (a saved writing response), rather
-    than inventing completion state for kinds (reading, discussion...) that
-    have no such signal at all."""
-    required = [i for i, a in enumerate(activities) if _needs_written_response(a)]
-    if not required:
+    """One dot per activity, in order. There's no real per-activity "done"
+    signal for a reading/instruction/discussion activity -- he doesn't check
+    those off individually -- so this reads activities in sequence and
+    treats everything up to the next *unmet* typed-response requirement as
+    passed, the requirement itself as "current", and anything after as still
+    ahead. A lesson with no typed-response activity at all falls back to the
+    one real lesson-level signal instead of inventing per-activity state:
+    every dot lit once he's marked the whole lesson done, none lit before
+    that.
+    """
+    if not activities:
         return ""
-    saved = (metadata or {}).get("writing_responses") or {}
-    done = {i for i in required if (saved.get(str(i)) or "").strip()}
-    next_up = next((i for i in required if i not in done), None)
-    dots = []
-    for i in required:
-        css_class = "done" if i in done else ("current" if i == next_up else "")
-        dots.append(f'<span class="{css_class}"></span>')
-    return '<div class="comic-progress-dots">' + "".join(dots) + "</div>"
+    metadata = metadata or {}
+    required = [i for i, a in enumerate(activities) if _needs_written_response(a)]
+    if required:
+        saved = metadata.get("writing_responses") or {}
+        done = {i for i in required if (saved.get(str(i)) or "").strip()}
+        next_up = next((i for i in required if i not in done), None)
+        cutoff = next_up if next_up is not None else len(activities)
+        classes = [
+            "done" if i < cutoff else ("current" if i == cutoff else "")
+            for i in range(len(activities))
+        ]
+    else:
+        lit = bool(metadata.get("student_done_on"))
+        classes = ["done" if lit else "" for _ in activities]
+    dots = "".join(f'<span class="{c}"></span>' for c in classes)
+    return '<div class="comic-progress-dots">' + dots + "</div>"
 
 
 def _render_activity_body(
@@ -586,6 +619,7 @@ def render_lesson(
     lesson_id: int | None = None,
     metadata: dict[str, Any] | None = None,
     comic_layout: bool = False,
+    comic_frame_title: str = "📘 Current Lesson",
 ) -> None:
     """Render a lesson. In student view the answer key never reaches the page.
 
@@ -603,29 +637,60 @@ def render_lesson(
     the parent anyway), the writing activity just renders like any other.
     """
     parent = is_parent() if for_parent is None else for_parent
-
-    st.subheader(md(lesson.get("title", "Lesson")))
-    if lesson.get("overview"):
-        st.write(md(lesson["overview"]))
-
     objectives = lesson.get("learning_objectives") or []
     materials = lesson.get("materials") or []
-    if comic_layout and (objectives or materials):
-        columns = st.columns(2)
-        with columns[0]:
-            if objectives:
-                st.markdown("**Learning objectives**")
-                for objective in objectives:
-                    st.markdown(f"- {md(objective)}")
-        with columns[1]:
-            # Materials before activities on purpose -- knowing what you need
-            # is part of being set up to start, not a footnote to read after
-            # being told what to do.
-            if materials:
-                st.markdown("**Materials**")
-                for item in materials:
-                    st.markdown(f"- {md(item)}")
+    activities = lesson.get("activities") or []
+
+    if comic_layout:
+        st.markdown(_COMIC_PANEL_CSS, unsafe_allow_html=True)
+        key_prefix = str(lesson_id) if lesson_id is not None else str(id(lesson))
+        with st.container(key=f"comic_frame_lesson_{key_prefix}"):
+            st.markdown(
+                f'<div class="comic-frame-title">{html.escape(comic_frame_title)}</div>',
+                unsafe_allow_html=True,
+            )
+            dots = _comic_progress_dots_html(activities, metadata)
+            if dots:
+                st.markdown(dots, unsafe_allow_html=True)
+
+            st.markdown(f"## {md(lesson.get('title', 'Lesson'))}")
+            if lesson.get("overview"):
+                st.write(md(lesson["overview"]))
+
+            if objectives or materials:
+                columns = st.columns(2)
+                with columns[0]:
+                    if objectives:
+                        st.markdown("**Learning objectives**")
+                        for objective in objectives:
+                            st.markdown(f"- {md(objective)}")
+                with columns[1]:
+                    # Materials before activities on purpose -- knowing what
+                    # you need is part of being set up to start, not a
+                    # footnote to read after being told what to do.
+                    if materials:
+                        st.markdown("**Materials**")
+                        for item in materials:
+                            st.markdown(f"- {md(item)}")
+
+            for row in _comic_activity_rows(activities):
+                columns = st.columns(len(row))
+                for column, index in zip(columns, row):
+                    with column:
+                        _render_activity_comic_panel(
+                            activities[index],
+                            index,
+                            parent=parent,
+                            db=db,
+                            lesson_id=lesson_id,
+                            metadata=metadata,
+                            key_prefix=key_prefix,
+                        )
     else:
+        st.subheader(md(lesson.get("title", "Lesson")))
+        if lesson.get("overview"):
+            st.write(md(lesson["overview"]))
+
         if objectives:
             st.markdown("**Learning objectives**")
             for objective in objectives:
@@ -635,43 +700,22 @@ def render_lesson(
             for item in materials:
                 st.markdown(f"- {md(item)}")
 
-    activities = lesson.get("activities") or []
-    if activities and comic_layout:
-        st.markdown("**Activities**")
-        st.markdown(_COMIC_PANEL_CSS, unsafe_allow_html=True)
-        dots = _comic_progress_dots_html(activities, metadata)
-        if dots:
-            st.markdown(dots, unsafe_allow_html=True)
-        key_prefix = str(lesson_id) if lesson_id is not None else str(id(lesson))
-        for row in _comic_activity_rows(activities):
-            columns = st.columns(len(row))
-            for column, index in zip(columns, row):
-                with column:
-                    _render_activity_comic_panel(
-                        activities[index],
-                        index,
+        if activities:
+            st.markdown("**Activities**")
+            for index, activity in enumerate(activities, start=1):
+                header = (
+                    f"{index}. {md(activity.get('title', 'Activity'))} · "
+                    f"{activity.get('kind', '')} · {activity.get('minutes', 0)} min"
+                )
+                with st.expander(header, expanded=False):
+                    _render_activity_body(
+                        activity,
+                        index - 1,
                         parent=parent,
                         db=db,
                         lesson_id=lesson_id,
                         metadata=metadata,
-                        key_prefix=key_prefix,
                     )
-    elif activities:
-        st.markdown("**Activities**")
-        for index, activity in enumerate(activities, start=1):
-            header = (
-                f"{index}. {md(activity.get('title', 'Activity'))} · "
-                f"{activity.get('kind', '')} · {activity.get('minutes', 0)} min"
-            )
-            with st.expander(header, expanded=False):
-                _render_activity_body(
-                    activity,
-                    index - 1,
-                    parent=parent,
-                    db=db,
-                    lesson_id=lesson_id,
-                    metadata=metadata,
-                )
 
     # Parent-only: the actual check now happens digitally, in Activity Log's
     # own review card (render_assessment_card), not here -- nothing for him
@@ -1148,7 +1192,7 @@ def student_lesson_view(
     agent_key: str,
     subject_label: str,
     *,
-    comic_layout: bool = False,
+    comic_layout: bool = True,
 ) -> None:
     """What the student sees on a subject page: his work, and nothing else.
 
@@ -1202,6 +1246,7 @@ def student_lesson_view(
                 st.caption(f"📅 {weekday} — today's lesson")
         if current["status"] == "completed":
             st.caption("This one's already marked done — here it is again.")
+        icon = SUBJECT_ICONS.get(agent_key, "📘")
         render_lesson(
             current["payload"],
             for_parent=False,
@@ -1209,6 +1254,7 @@ def student_lesson_view(
             lesson_id=current["id"],
             metadata=current.get("metadata") or {},
             comic_layout=comic_layout,
+            comic_frame_title=f"{icon} {subject_label} — Current Lesson",
         )
         render_quiz(
             db,
@@ -1693,84 +1739,94 @@ def render_vocab_quiz(db: Database, student: dict[str, Any]) -> None:
     # showing anyway, even once `due` no longer contains it or is empty.
     mid_reveal = state.get("picked") is not None
 
-    if not due and not mid_reveal:
-        if reviewed:
-            st.success(f"🎉 All caught up! {reviewed} word(s) reviewed, best streak {best_streak}.")
-            st.balloons()
-        else:
-            st.success("Nothing due for review today.")
-        _render_vocab_done_button(db, student, today)
-        return
-
-    all_defined = [w for w in db.list_vocabulary(student["id"]) if w["definition"]]
-    if len(all_defined) < VOCAB_QUIZ_MIN_DEFINED_WORDS and not mid_reveal:
-        st.info(
-            "Add a few more words (with definitions) from his reading before he can be "
-            "quizzed on them."
-        )
-        _render_vocab_done_button(db, student, today)
-        return
-
-    if "word_id" not in state:
-        word = due[0]
-        decoy_pool = [w["definition"] for w in all_defined if w["id"] != word["id"]]
-        random.shuffle(decoy_pool)
-        choices = [word["definition"]] + decoy_pool[: VOCAB_QUIZ_CHOICES - 1]
-        random.shuffle(choices)
-        state.clear()
-        state.update(word_id=word["id"], choices=choices, picked=None)
-
-    word = next(w for w in all_defined if w["id"] == state["word_id"])
-
     st.markdown(_COMIC_PANEL_CSS, unsafe_allow_html=True)
-    with st.container(key=f"comic_panel_vocab_{word['id']}"):
-        # No issue tag here, unlike the activity panels -- the metrics row
-        # right below already shows the streak, and a badge repeating the
-        # same number just above it read as duplicative rather than styled.
-        metrics = st.columns(3)
-        metrics[0].metric("🔥 Streak", streak)
-        metrics[1].metric("✅ Reviewed", reviewed)
-        metrics[2].metric("Left today", len(due))
+    with st.container(key="comic_frame_vocab"):
+        st.markdown(
+            '<div class="comic-frame-title">🔤 Words to Review</div>', unsafe_allow_html=True
+        )
 
-        st.markdown(f"## {md(word['word'].upper())}")
+        if not due and not mid_reveal:
+            if reviewed:
+                st.success(
+                    f"🎉 All caught up! {reviewed} word(s) reviewed, best streak {best_streak}."
+                )
+                st.balloons()
+            else:
+                st.success("Nothing due for review today.")
+            _render_vocab_done_button(db, student, today)
+            return
 
-        if state["picked"] is None:
-            st.caption("Which definition is correct?")
-            for index, choice in enumerate(state["choices"]):
-                if st.button(
-                    md(choice), key=f"vocab_choice_{word['id']}_{index}", width="stretch"
-                ):
-                    correct = choice == word["definition"]
-                    state["picked"] = choice
-                    db.record_vocabulary_review(word["id"], correct=correct)
-                    st.session_state["vocab_reviewed_count"] = reviewed + 1
-                    if correct:
-                        new_streak = streak + 1
-                        st.session_state["vocab_streak"] = new_streak
-                        st.session_state["vocab_best_streak"] = max(best_streak, new_streak)
-                        if new_streak >= VOCAB_STREAK_ON_FIRE:
-                            st.balloons()
-                            st.toast(f"🚀 {new_streak} in a row — you're on fire!")
+        all_defined = [w for w in db.list_vocabulary(student["id"]) if w["definition"]]
+        if len(all_defined) < VOCAB_QUIZ_MIN_DEFINED_WORDS and not mid_reveal:
+            st.info(
+                "Add a few more words (with definitions) from his reading before he can be "
+                "quizzed on them."
+            )
+            _render_vocab_done_button(db, student, today)
+            return
+
+        if "word_id" not in state:
+            word = due[0]
+            decoy_pool = [w["definition"] for w in all_defined if w["id"] != word["id"]]
+            random.shuffle(decoy_pool)
+            choices = [word["definition"]] + decoy_pool[: VOCAB_QUIZ_CHOICES - 1]
+            random.shuffle(choices)
+            state.clear()
+            state.update(word_id=word["id"], choices=choices, picked=None)
+
+        word = next(w for w in all_defined if w["id"] == state["word_id"])
+
+        with st.container(key=f"comic_panel_vocab_{word['id']}"):
+            # No issue tag here, unlike the activity panels -- the metrics
+            # row right below already shows the streak, and a badge
+            # repeating the same number just above it read as duplicative
+            # rather than styled.
+            metrics = st.columns(3)
+            metrics[0].metric("🔥 Streak", streak)
+            metrics[1].metric("✅ Reviewed", reviewed)
+            metrics[2].metric("Left today", len(due))
+
+            st.markdown(f"## {md(word['word'].upper())}")
+
+            if state["picked"] is None:
+                st.caption("Which definition is correct?")
+                for index, choice in enumerate(state["choices"]):
+                    if st.button(
+                        md(choice), key=f"vocab_choice_{word['id']}_{index}", width="stretch"
+                    ):
+                        correct = choice == word["definition"]
+                        state["picked"] = choice
+                        db.record_vocabulary_review(word["id"], correct=correct)
+                        st.session_state["vocab_reviewed_count"] = reviewed + 1
+                        if correct:
+                            new_streak = streak + 1
+                            st.session_state["vocab_streak"] = new_streak
+                            st.session_state["vocab_best_streak"] = max(best_streak, new_streak)
+                            if new_streak >= VOCAB_STREAK_ON_FIRE:
+                                st.balloons()
+                                st.toast(f"🚀 {new_streak} in a row — you're on fire!")
+                            else:
+                                st.toast(
+                                    f"{random.choice(VOCAB_STREAK_HYPE)} 🔥 {new_streak} in a row"
+                                )
                         else:
-                            st.toast(f"{random.choice(VOCAB_STREAK_HYPE)} 🔥 {new_streak} in a row")
+                            st.session_state["vocab_streak"] = 0
+                            st.toast("❌ Not quite.")
+                        st.rerun()
+            else:
+                for choice in state["choices"]:
+                    if choice == word["definition"]:
+                        st.success(f"✅ {md(choice)}")
+                    elif choice == state["picked"]:
+                        st.error(f"❌ {md(choice)} — your pick")
                     else:
-                        st.session_state["vocab_streak"] = 0
-                        st.toast("❌ Not quite.")
+                        st.write(md(choice))
+                if st.button("Next word ▶️", type="primary", key="vocab_next_word"):
+                    state.clear()
                     st.rerun()
-        else:
-            for choice in state["choices"]:
-                if choice == word["definition"]:
-                    st.success(f"✅ {md(choice)}")
-                elif choice == state["picked"]:
-                    st.error(f"❌ {md(choice)} — your pick")
-                else:
-                    st.write(md(choice))
-            if st.button("Next word ▶️", type="primary", key="vocab_next_word"):
-                state.clear()
-                st.rerun()
 
-    st.divider()
-    _render_vocab_done_button(db, student, today)
+        st.divider()
+        _render_vocab_done_button(db, student, today)
 
 
 def api_status_banner() -> bool:

@@ -41,9 +41,7 @@ st.caption(
 # page with nothing on it -- there was no student-facing vocabulary review at
 # all, only the parent-facing tab further down, which he never reached.
 if not is_parent():
-    student_lesson_view(db, student, "english", "English", comic_layout=True)
-    st.divider()
-    st.subheader("🔤 Words to review")
+    student_lesson_view(db, student, "english", "English")
     render_vocab_quiz(db, student)
     render_past_lessons(db, student, "english")
     st.stop()

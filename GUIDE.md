@@ -491,22 +491,27 @@ materials, a suggested video when there is one, and the quiz at the end — plus
 his reading progress, vocabulary review, and his own Tier 3 topics. Enough to
 do the work without you narrating it.
 
-**The English page's activities are a "Comic Panels" grid, not a stack of
-collapsed expanders.** Every other subject still shows activities as a
-click-to-expand list (`render_lesson`'s plain layout, `comic_layout=False`);
-English opted into a redesign instead, sampled as three mockups before
-building and picked outright — an ink-bordered panel per activity, always
-open (nothing to click through), with a small "No. 1 / No. 2 / ..." tag and
-a colored kind pill (reading/writing/discussion/instruction) instead of
-plain text. A short-answer activity gets its own full-width panel with room
-for the text box; everything else pairs up two-to-a-row. The strip of dots
-above the grid is real, not decorative — one dot per activity that actually
-needs a typed response, filled in once that response is saved, since that's
-the only per-activity "done" signal that exists; reading/instruction/
-discussion activities don't get a dot at all rather than a fabricated one.
-The Words to Review card picks up the same ink-and-issue-tag styling
-(the tag shows his current streak). Opt in for any other subject page by
-passing `comic_layout=True` to `student_lesson_view`/`render_lesson`.
+**Every subject's activities render as a "Comic Panels" grid, not a stack of
+collapsed expanders.** Sampled as three mockups on the English page before
+building, picked outright, then rolled out to every subject on request
+(`comic_layout` defaults to True on `student_lesson_view`/`render_lesson`;
+pass `comic_layout=False` for the old plain click-to-expand list — nothing
+still uses it as of this writing). The whole "current lesson" section sits
+inside one bordered frame with a small uppercase eyebrow ("📖 ENGLISH —
+CURRENT LESSON", "📐 MATH — CURRENT LESSON", ...); each activity inside it
+is its own ink-bordered panel, always open (nothing to click through), with
+a "No. 1 / No. 2 / ..." tag and a colored kind pill (reading/writing/
+discussion/instruction, or a plain neutral pill for any other kind) instead
+of plain expander text. A short-answer activity gets its own full-width
+panel with room for the text box; everything else pairs up two-to-a-row.
+The strip of dots at the top of the frame is real, not decorative: it walks
+the activities in order, and everything up to the next *unmet* typed-
+response requirement reads as passed (there's no honest per-activity "done"
+signal for a reading/instruction/discussion activity taken on its own); a
+lesson with no typed-response activity at all falls back to the one real
+lesson-level signal, marking every dot once he's hit "I'm done for today"
+rather than inventing per-activity state. The English page's Words to
+Review card gets its own matching frame ("🔤 WORDS TO REVIEW").
 
 **Vocabulary review, on the English page, is his own.** One word on screen at
 a time, four possible definitions below it — the real one plus decoys pulled
