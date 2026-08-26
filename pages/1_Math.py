@@ -43,7 +43,7 @@ ready = available_skills(mastered)
 # Student view: his lesson, without the answer key or the admin surface.
 if not is_parent():
     student_lesson_view(db, student, "math", "math")
-    render_past_lessons(db, student, "math")
+    render_past_lessons(db, student, "math", "math")
     st.stop()
 
 plan_tab, mastery_tab, graph_tab = st.tabs(["Plan a lesson", "Record mastery", "The graph"])

@@ -6,13 +6,14 @@ from datetime import date, timedelta
 
 import streamlit as st
 
-from compass import config, weekly
-from compass.agents import book_summary, course_summary, life_skills
+from compass import config, theme, weekly
+from compass.agents import all_agents, book_summary, course_summary, life_skills
 from compass.compliance import build_report
 from compass.curriculum import frontier_report
 from compass.subjects import label
 from compass.ui import (
     SUBJECT_ICONS,
+    context_for,
     is_parent,
     md,
     page_setup,
@@ -38,7 +39,7 @@ if not is_parent():
     if render_first_day_celebration(db, student):
         st.stop()
 
-    st.title(f"Hi {student['name'].split()[0]} 👋")
+    st.title(f"Hi {md(student['name'].split()[0])} 👋")
     st.caption("Here's what's set up for you. Work down the list, or jump around — up to you.")
     render_fun_fact()
 
@@ -46,11 +47,13 @@ if not is_parent():
 
     # "Sunday Funnies" week-grid styling -- one of three retro comic
     # directions sampled and approved before building (see Home's own week
-    # tab). Colors are hardcoded to this one printed look on purpose, not
-    # pulled from theme.py.
-    _WEEK_DAY_COLORS = ("#e14b3a", "#f0ac1f", "#3564c4", "#3f9450", "#8c4fa8")  # Mon-Fri
-    _WEEK_INK = "#211a14"
-    _WEEK_PAPER = "#fffaf0"
+    # tab). Deliberately this one fixed printed-poster palette, not
+    # theme.py's own themed `Theme` tokens -- see compass/theme.py's own
+    # PRINTED_COMIC_* constants, shared with the first-day celebration so
+    # the two can't drift out of sync with each other.
+    _WEEK_DAY_COLORS = theme.PRINTED_COMIC_WEEKDAY_COLORS  # Mon-Fri
+    _WEEK_INK = theme.PRINTED_COMIC_INK
+    _WEEK_PAPER = theme.PRINTED_COMIC_PAPER
     _WEEK_TODAY_BURST = (
         '<div style="position:absolute; top:-14px; right:-10px; width:46px; height:46px; '
         f'border-radius:999px; background:{_WEEK_DAY_COLORS[1]}; border:2.5px solid {_WEEK_INK}; '
@@ -342,7 +345,7 @@ if not is_parent():
             st.markdown("#### 📖 Reading")
             book = db.current_book(student["id"])
             if book:
-                st.markdown(f"**{book['title']}**")
+                st.markdown(f"**{md(book['title'])}**")
                 if book["total_pages"]:
                     st.progress(
                         min((book["current_page"] or 0) / book["total_pages"], 1.0),
@@ -460,9 +463,6 @@ AGENT_PAGES = {
     "english": ("📖 English", "pages/3_English.py"),
     "history": ("🏛️ History", "pages/4_History.py"),
 }
-
-from compass.agents import all_agents  # noqa: E402
-from compass.ui import context_for  # noqa: E402
 
 agent_columns = st.columns(4)
 for column, (key, agent) in zip(agent_columns, all_agents().items()):

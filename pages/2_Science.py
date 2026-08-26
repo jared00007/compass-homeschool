@@ -30,7 +30,7 @@ st.caption(
 # Student view: his lesson, without the answer key or the admin surface.
 if not is_parent():
     student_lesson_view(db, student, "science", "science")
-    render_past_lessons(db, student, "science")
+    render_past_lessons(db, student, "science", "science")
     st.stop()
 
 plan_tab, web_tab = st.tabs(["Plan a lesson", "The web"])

@@ -47,6 +47,26 @@ BACKDROP_SIDE_TEXTURE = (
     "transparent 1.6px 9px)"
 )
 
+# --- the "Sunday Funnies" printed-comic palette --------------------------------
+# A second palette, deliberately separate from `THEME` below: a couple of
+# features (Home's own Week grid, and the first-day-of-school celebration)
+# are styled to look like an actual printed comic page, which does not
+# re-theme itself for the room it's read in -- same reasoning as the fixed
+# backdrop above. Defined once here, rather than each feature re-typing its
+# own copy of the same ink/paper/accent colors, so the two can't quietly
+# drift out of sync with each other.
+PRINTED_COMIC_INK = "#211a14"
+PRINTED_COMIC_PAPER = "#fffaf0"
+# The first-day celebration's outer cover uses a slightly warmer paper than
+# the cards sitting on top of it -- the one genuine difference between the
+# two features' otherwise-identical palette.
+PRINTED_COMIC_COVER_PAPER = "#fbf1d6"
+# Mon-Fri, in that order -- the Week grid's own five day colors. The
+# first-day celebration reuses four of these five (skipping Monday's red,
+# reserved for the cover's own masthead shadow) in a different order suited
+# to its own blurb layout; see compass/ui.py's _FIRST_DAY_COLORS.
+PRINTED_COMIC_WEEKDAY_COLORS = ("#e14b3a", "#f0ac1f", "#3564c4", "#3f9450", "#8c4fa8")
+
 
 @dataclass(frozen=True)
 class Theme:
@@ -92,6 +112,26 @@ class Theme:
     good: str = "#2F9B68"
     warn: str = "#B9791A"
     bad: str = "#C43B32"
+
+    # A kind pill's background is a light tint of an existing semantic colour
+    # (reading -> alt, writing -> warn, discussion -> good) so it stays in step
+    # with the rest of the theme automatically; "instruction" has no existing
+    # counterpart to tint, so it gets its own bespoke pair instead of
+    # borrowing one that would carry the wrong meaning elsewhere.
+    pill_reading_bg: str = "#E4ECFB"
+    pill_writing_bg: str = "#FCEFD1"
+    pill_discussion_bg: str = "#E1F0E6"
+    pill_instruction_bg: str = "#F1E7FB"
+    pill_instruction_fg: str = "#7A4FB0"
+    # The lighter highlight stop in an "earned" life-skill seal's radial-gradient
+    # shine -- a tint of `primary`, not a flat reuse of it, since a gradient
+    # needs two distinct stops to read as a shine rather than a flat circle.
+    seal_highlight: str = "#FFE9A0"
+    # The "most recently visited" state/park marker on the National Parks map --
+    # deliberately not `primary` (every other visited marker already uses that;
+    # this one needs to stand out as the newest among them) and not `bad` or
+    # `warn` (this is a highlight, not a warning).
+    newest_marker: str = "#FF5A36"
 
 
 THEME = Theme(
@@ -149,6 +189,13 @@ def css() -> str:
   --c-good: {t.good};
   --c-warn: {t.warn};
   --c-bad: {t.bad};
+  --c-pill-reading-bg: {t.pill_reading_bg};
+  --c-pill-writing-bg: {t.pill_writing_bg};
+  --c-pill-discussion-bg: {t.pill_discussion_bg};
+  --c-pill-instruction-bg: {t.pill_instruction_bg};
+  --c-pill-instruction-fg: {t.pill_instruction_fg};
+  --c-seal-highlight: {t.seal_highlight};
+  --c-newest-marker: {t.newest_marker};
   --c-head: {t.heading_font};
   --c-body: {t.body_font};
   --c-mono: {t.mono_font};

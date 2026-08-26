@@ -272,6 +272,19 @@ def test_timeline_advances_past_covered_eras(db, student):
     assert proposal.metadata["era"] == ERAS[1][0]
 
 
+def test_timeline_does_not_hijack_an_unrelated_open_thread(db, student):
+    """Regression: with no seed and no location, timeline() used to tag the
+    era proposal with an arbitrary open web_node's id (pool[0]) just because
+    a pool happened to exist -- record_spiderweb_result() would then mark
+    that unrelated thread explored and graft the era lesson's branches under
+    it, corrupting the web. The era lesson isn't that node's topic at all,
+    so node_id must be None here regardless of what's sitting in the pool."""
+    node_id = db.add_web_node(student["id"], "history", "an unrelated open thread", depth=1)
+    proposal = get_agent("history").propose_topic(ctx_for(db, student))
+    assert proposal.metadata["node_id"] is None
+    assert not db.get_web_node(node_id)["explored_on"]
+
+
 def test_timeline_lets_location_override_the_sequence(db, student):
     proposal = get_agent("history").propose_topic(
         ctx_for(db, student, location="Whitman Mission, Walla Walla WA")

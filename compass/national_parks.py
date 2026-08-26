@@ -344,10 +344,10 @@ def _marker(park: Park, x: float, y: float, visited: bool, is_newest: bool) -> s
     body_d, head_cy = _pin_path(x, y)
     if not visited:
         return (
-            f'<path d="{body_d}" fill="#FFFBF0" fill-opacity="0.5" stroke="var(--c-dim)" '
+            f'<path d="{body_d}" fill="var(--c-panel)" fill-opacity="0.5" stroke="var(--c-dim)" '
             f'stroke-width="1.3" stroke-dasharray="2 1.6"><title>{park.name}</title></path>'
         )
-    badge_color = "#FF5A36" if is_newest else "var(--c-primary)"
+    badge_color = "var(--c-newest-marker)" if is_newest else "var(--c-primary)"
     glow = (
         f'<circle cx="{x:.1f}" cy="{head_cy:.1f}" r="12" fill="none" stroke="{badge_color}" '
         f'stroke-width="1.3" opacity="0.5"/>'
@@ -356,10 +356,10 @@ def _marker(park: Park, x: float, y: float, visited: bool, is_newest: bool) -> s
     icon = icon_for(park.key)
     return (
         f"{glow}"
-        f'<path d="{body_d}" fill="{badge_color}" stroke="#241C12" stroke-width="1.4">'
+        f'<path d="{body_d}" fill="{badge_color}" stroke="var(--c-text)" stroke-width="1.4">'
         f"<title>{park.name} -- visited</title></path>"
         f'<polygon points="{_star_points(x, head_cy, 6.2, 4.2)}" '
-        f'fill="#FFFBF0" stroke="#241C12" stroke-width="0.9"/>'
+        f'fill="var(--c-panel)" stroke="var(--c-text)" stroke-width="0.9"/>'
         f'<text x="{x:.1f}" y="{head_cy + 2.6:.1f}" font-size="6.5" text-anchor="middle">{icon}</text>'
     )
 
@@ -419,9 +419,9 @@ def render_travel_map_svg(
     box = _MAP_INSETS[inset_name]
 
     states_svg = "".join(
-        f'<path d="{data["path"]}" fill="{"var(--c-primary)" if name in visited_states else "#FFFBF0"}" '
+        f'<path d="{data["path"]}" fill="{"var(--c-primary)" if name in visited_states else "var(--c-panel)"}" '
         f'fill-opacity="{"0.55" if name in visited_states else "1"}" '
-        f'stroke="#241C12" stroke-width="1"><title>{name}</title></path>'
+        f'stroke="var(--c-text)" stroke-width="1"><title>{name}</title></path>'
         for name, data in _STATE_PATHS.items()
         if data["inset"] == inset_name
     )
@@ -437,8 +437,8 @@ def render_travel_map_svg(
     placed_points, leaders = _cluster_and_place(raw_points)
     leader_svg = "".join(
         f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
-        'stroke="#241C12" stroke-width="0.8" opacity="0.45" stroke-dasharray="1.5 1.5"/>'
-        f'<circle cx="{x1:.1f}" cy="{y1:.1f}" r="1.3" fill="#241C12" opacity="0.6"/>'
+        'stroke="var(--c-text)" stroke-width="0.8" opacity="0.45" stroke-dasharray="1.5 1.5"/>'
+        f'<circle cx="{x1:.1f}" cy="{y1:.1f}" r="1.3" fill="var(--c-text)" opacity="0.6"/>'
         for x1, y1, x2, y2 in leaders
     )
     pins_svg = "".join(

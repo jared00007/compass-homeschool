@@ -1306,6 +1306,19 @@ def _row(cursor: sqlite3.Cursor) -> dict[str, Any] | None:
 
 
 class Database:
+    """One connection, one repository of typed-ish methods per domain.
+
+    Already broken into `# -- section --` banners below, in this order --
+    grep this file for `^    # --` to jump straight between them: schema
+    (migrations/backfills), settings, students, interests, math mastery,
+    topic web (spiderweb strategies), books, vocabulary (Leitner spaced
+    repetition), lessons (incl. quizzes/writing responses/assessments),
+    activities and multi-subject credits, Tier 3 choice topics, Landon's
+    Travels, Check-In (daily feelings journal), Big Projects, Core life
+    skills, Declaration of Intent, district documents, morning routine,
+    vocabulary review log, Friday plan items, courses, school-year helper.
+    """
+
     def __init__(self, db_path: str | Path | None = None):
         self.path = Path(db_path or config.DEFAULT_DB_PATH)
         self.conn = connect(self.path)

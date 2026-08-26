@@ -3,6 +3,35 @@
 Kept out of `compass/` core modules on purpose — the agents, storage, and
 compliance layers know nothing about Streamlit, so they stay testable and
 reusable if the UI is ever replaced.
+
+One large file rather than a package on purpose, for now: a fair number of
+tests replace this module's own `st` name with a recording stand-in
+(`monkeypatch.setattr(ui, "st", Recorder(...))` in tests/test_ui.py and
+tests/test_auth.py) to exercise render functions without a real Streamlit
+script context. Splitting this into submodules would give each one its own
+separate `st` binding, silently breaking every one of those patches (they'd
+patch the wrong module's name) unless the tests were rewritten in lockstep
+-- a real, worthwhile refactor, but a deliberately separate one from a
+general cleanup pass. In the meantime, the `# --- section ---` banners below
+are searchable landmarks; grep this file for `^# ---` to jump straight
+between them. In the order they appear:
+
+    md()                          escape `$` before any user/AI text render
+    parent / student mode          get_db, page_setup, sidebar chrome, auth
+    generate -> review -> log loop generate_and_log and its small helpers
+    lesson rendering                render_proposal, _needs_written_response
+    "Comic Panels" lesson layout    the activity-card grid every subject uses
+    life skills: teaching plan      render_life_skill_plan (parent-facing)
+    logging hours                   log_lesson_form
+    the in-lesson quiz              format_duration, render_quiz
+    digital assessment card         render_assessment_card (Activity Log)
+    student's own lesson view       student_lesson_view, render_past_lessons
+    subject icons / Friday / daily  SUBJECT_ICONS, checklist, morning routine
+    life skill cards                the catalog grid + its manager
+    vocabulary review               the multiple-choice quiz, auto-graded
+    API availability                api_status_banner
+    first-day-of-school celebration a once-a-year full-page takeover
+    small standalone banners        render_fun_fact, render_declaration_banner
 """
 
 from __future__ import annotations
@@ -89,7 +118,7 @@ def is_parent() -> bool:
 
 def _sidebar(db: Database, student: dict[str, Any]) -> None:
     with st.sidebar:
-        st.markdown(f"### 🧭 Compass\n**{student['name']}** · Grade {student['grade']}")
+        st.markdown(f"### 🧭 Compass\n**{md(student['name'])}** · Grade {student['grade']}")
         start, end = db.school_year_bounds()
         st.caption(f"School year {start} → {end}")
         _profile_control(db, student)
@@ -409,10 +438,10 @@ div[class*="st-key-comic_panel_"] {
   text-transform: uppercase; letter-spacing: .03em;
   padding: .2rem .55rem; border-radius: 999px;
 }
-.comic-pill--reading { background: #E4ECFB; color: var(--c-alt); }
-.comic-pill--writing { background: #FCEFD1; color: var(--c-warn); }
-.comic-pill--discussion { background: #E1F0E6; color: var(--c-good); }
-.comic-pill--instruction { background: #F1E7FB; color: #7A4FB0; }
+.comic-pill--reading { background: var(--c-pill-reading-bg); color: var(--c-alt); }
+.comic-pill--writing { background: var(--c-pill-writing-bg); color: var(--c-warn); }
+.comic-pill--discussion { background: var(--c-pill-discussion-bg); color: var(--c-good); }
+.comic-pill--instruction { background: var(--c-pill-instruction-bg); color: var(--c-pill-instruction-fg); }
 .comic-pill--neutral { background: var(--c-panel); color: var(--c-dim); border: 1px solid var(--c-border); }
 .comic-progress-dots { display: flex; gap: .4rem; margin: .1rem 0 1.1rem; }
 .comic-progress-dots span {
@@ -766,6 +795,9 @@ def render_lesson(
                         st.caption(md(item["explanation"]))
 
 
+# --- life skills: the AI-drafted teaching plan ---------------------------------
+
+
 def render_life_skill_plan(plan: dict[str, Any]) -> None:
     """Render a life-skill teaching plan. Parent-facing throughout.
 
@@ -824,6 +856,9 @@ def render_life_skill_plan(plan: dict[str, Any]) -> None:
                 f"- **{subjects.label(credit['subject'])}** — {credit['minutes']} min · "
                 f"{credit.get('justification', '')}"
             )
+
+
+# --- logging hours against a lesson --------------------------------------------
 
 
 def log_lesson_form(
@@ -889,6 +924,9 @@ def log_lesson_form(
         )
         st.success("Logged. The compliance dashboard is updated.")
         st.balloons()
+
+
+# --- the in-lesson quiz ---------------------------------------------------------
 
 
 def format_duration(seconds: int) -> str:
@@ -1066,6 +1104,9 @@ def render_quiz(
                 st.rerun()
 
 
+# --- the digital assessment card (Activity Log's review flow) ------------------
+
+
 def render_assessment_card(
     db: Database, student: dict[str, Any], lesson: dict[str, Any], key_prefix: str
 ) -> None:
@@ -1181,6 +1222,9 @@ def render_assessment_card(
             )
 
 
+# --- the student's own lesson view: current + reopenable past lessons ----------
+
+
 def _done_lessons(db: Database, student_id: int, agent_key: str) -> list[dict[str, Any]]:
     lessons = db.list_lessons(student_id, agent=agent_key, limit=10)
     return [l for l in lessons if (l.get("metadata") or {}).get("student_done_on")]
@@ -1268,14 +1312,24 @@ def student_lesson_view(
             st.rerun()
 
 
-def render_past_lessons(db: Database, student: dict[str, Any], agent_key: str) -> None:
+def render_past_lessons(
+    db: Database, student: dict[str, Any], agent_key: str, subject_label: str | None = None
+) -> None:
     """The reopenable archive of lessons he's marked done -- always the last
     thing on a subject page. See student_lesson_view's docstring for why
     this is a separate call rather than folded into it.
+
+    `subject_label` should be the same one passed to student_lesson_view --
+    optional (falling back to a title-cased `agent_key`) only because a few
+    call sites predate this parameter, not because re-deriving it here is
+    preferred; a subject with a multi-word or oddly-cased key would title-case
+    wrong here while student_lesson_view showed it correctly, a silent
+    mismatch between two views of the same subject.
     """
     done = _done_lessons(db, student["id"], agent_key)
     if not done:
         return
+    subject_label = subject_label or agent_key.title()
     st.divider()
     st.subheader("Past lessons")
     labels = [f"{l['created_at'][:10]} — {l['title']}" for l in done]
@@ -1296,7 +1350,7 @@ def render_past_lessons(db: Database, student: dict[str, Any], agent_key: str) -
             lesson_id=selected["id"],
             metadata=selected.get("metadata") or {},
             comic_layout=True,
-            comic_frame_title=f"{icon} {agent_key.title()} — Past Lesson",
+            comic_frame_title=f"{icon} {subject_label} — Past Lesson",
         )
         render_quiz(
             db,
@@ -1306,6 +1360,8 @@ def render_past_lessons(db: Database, student: dict[str, Any], agent_key: str) -
             selected["payload"].get("quiz") or [],
         )
 
+
+# --- subject icons, Friday's plan, the daily checklist, morning routine --------
 
 SUBJECT_ICONS = {"math": "📐", "science": "🔬", "english": "📖", "history": "🏛️"}
 
@@ -1498,6 +1554,8 @@ def render_morning_routine(db: Database, student: dict[str, Any]) -> bool:
     return logged is not None
 
 
+# --- life skill cards: the catalog grid and its manager -------------------------
+
 LIFE_SKILL_CATEGORY_ICONS = {
     "Money": "💵",
     "Cooking": "🍳",
@@ -1548,7 +1606,7 @@ div[class*="st-key-ls_card_"][class*="_earned"] {
 .cp-ls-seal {
   display: none; position: absolute; top: -16px; right: 14px; width: 52px; height: 52px;
   border-radius: 50%; align-items: center; justify-content: center; font-size: 19px;
-  background: radial-gradient(circle at 32% 28%, #FFE9A0, var(--c-primary) 75%);
+  background: radial-gradient(circle at 32% 28%, var(--c-seal-highlight), var(--c-primary) 75%);
   border: 3px solid var(--c-primary);
   box-shadow: 0 0 16px rgba(242, 183, 5, .45);
   transform: rotate(12deg);
@@ -1681,6 +1739,8 @@ def render_life_skill_catalog_manager(db: Database, skills: list[dict[str, Any]]
                     db.set_life_skill_active(skill["id"], active)
                     st.rerun()
 
+
+# --- vocabulary review: multiple choice, auto-graded ---------------------------
 
 VOCAB_STREAK_HYPE = ["Nice!", "Boom!", "Nailed it!", "You got it!", "Crushed it!", "Sweet!"]
 VOCAB_STREAK_ON_FIRE = 5  # streak length that earns balloons, not just a toast
@@ -1832,6 +1892,9 @@ def render_vocab_quiz(db: Database, student: dict[str, Any]) -> None:
         _render_vocab_done_button(db, student, today)
 
 
+# --- API availability (used by the generate -> review -> log loop above) -------
+
+
 def api_status_banner() -> bool:
     from compass.agents import api_available
 
@@ -1845,15 +1908,24 @@ def api_status_banner() -> bool:
     return ok
 
 
-_FIRST_DAY_INK = "#211a14"
-_FIRST_DAY_PAPER = "#fbf1d6"
-_FIRST_DAY_CARD_PAPER = "#fffaf0"
+# --- the first-day-of-school celebration ----------------------------------------
+
+_FIRST_DAY_INK = theming.PRINTED_COMIC_INK
+_FIRST_DAY_PAPER = theming.PRINTED_COMIC_COVER_PAPER
+_FIRST_DAY_CARD_PAPER = theming.PRINTED_COMIC_PAPER
 # Same four of the five "Sunday Funnies" week-grid colors (compass_week's own
-# red is reserved for the masthead's own shadow, below) -- deliberately the
-# same fixed printed-poster palette, not theme.py's tokens, same reasoning as
-# that styling: a printed comic page doesn't re-theme itself for the room
-# it's read in.
-_FIRST_DAY_COLORS = ("#3564c4", "#3f9450", "#f0ac1f", "#8c4fa8")
+# red, index 0, is reserved for the masthead's own shadow, below) -- just in
+# blue/green/gold/purple order rather than Home's Mon-Fri order, to suit this
+# feature's own blurb layout. Deliberately the same fixed printed-poster
+# palette, not theme.py's own themed `Theme` tokens, same reasoning as that
+# styling: a printed comic page doesn't re-theme itself for the room it's
+# read in.
+_FIRST_DAY_COLORS = (
+    theming.PRINTED_COMIC_WEEKDAY_COLORS[2],
+    theming.PRINTED_COMIC_WEEKDAY_COLORS[3],
+    theming.PRINTED_COMIC_WEEKDAY_COLORS[1],
+    theming.PRINTED_COMIC_WEEKDAY_COLORS[4],
+)
 _FIRST_DAY_WINDOW_DAYS = 14
 _FIRST_DAY_CARD_CSS = f"""
 <style>
@@ -2194,6 +2266,9 @@ def _render_first_day_contents(db: Database, student: dict[str, Any], year_start
     if st.button("Let's go! →", key="first_day_go_from_toc", type="primary", width="stretch"):
         db.set_setting("first_day_celebrated_start", year_start)
         st.rerun()
+
+
+# --- small standalone banners ---------------------------------------------------
 
 
 def render_fun_fact() -> None:

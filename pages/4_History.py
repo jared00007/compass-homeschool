@@ -31,7 +31,7 @@ st.caption(
 # Student view: his lesson, without the answer key or the admin surface.
 if not is_parent():
     student_lesson_view(db, student, "history", "history")
-    render_past_lessons(db, student, "history")
+    render_past_lessons(db, student, "history", "history")
     st.stop()
 
 plan_tab, timeline_tab = st.tabs(["Plan a lesson", "Timeline coverage"])

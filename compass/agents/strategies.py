@@ -433,7 +433,15 @@ def timeline(ctx: StudentContext) -> TopicProposal:
             "era": era_key,
             "era_label": era_label,
             "location": location,
-            "node_id": pool[0]["id"] if pool and not seed and not location else None,
+            # Never an existing pool node's id here -- this lesson's actual
+            # topic is `topic` above (the era, or a location override), never
+            # one of the open threads just shown as "pick up instead"
+            # context. Setting this to a pool node would make
+            # record_spiderweb_result() mark that unrelated thread explored
+            # and graft this lesson's branches under it instead of as new
+            # roots. Picking a thread from the pool is handled entirely by
+            # the `chosen_id` branch above, which returns before this point.
+            "node_id": None,
         },
     )
 

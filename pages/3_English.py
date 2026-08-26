@@ -43,7 +43,7 @@ st.caption(
 if not is_parent():
     student_lesson_view(db, student, "english", "English")
     render_vocab_quiz(db, student)
-    render_past_lessons(db, student, "english")
+    render_past_lessons(db, student, "english", "English")
     st.stop()
 
 plan_tab, books_tab, vocab_tab = st.tabs(["Plan a lesson", "Books", "Vocabulary"])
@@ -215,7 +215,9 @@ with books_tab:
             columns = st.columns([4, 1, 1])
             byline = f" — {book['author']}" if book["author"] else ""
             badge = term_badges.get(book["term"], "")
-            columns[0].markdown(f"**{book['title']}**{byline}  \n*{book['status']}{badge}*")
+            columns[0].markdown(
+                f"**{md(book['title'])}**{md(byline)}  \n*{book['status']}{badge}*"
+            )
             if book["total_pages"] and book["status"] == "reading":
                 columns[0].progress(
                     min((book["current_page"] or 0) / book["total_pages"], 1.0),
@@ -262,7 +264,7 @@ with vocab_tab:
         for entry in due:
             with st.container(border=True):
                 columns = st.columns([3, 1, 1])
-                columns[0].markdown(f"**{entry['word']}** — {entry['definition']}")
+                columns[0].markdown(f"**{md(entry['word'])}** — {md(entry['definition'])}")
                 columns[0].caption(
                     f"box {entry['box']} · {entry['times_correct']} right / "
                     f"{entry['times_missed']} missed"
@@ -289,6 +291,6 @@ with vocab_tab:
         with st.expander(f"Full deck ({len(all_words)} words)"):
             for entry in all_words:
                 st.markdown(
-                    f"- **{entry['word']}** (box {entry['box']}, next {entry['next_review_on']}) "
-                    f"— {entry['definition']}"
+                    f"- **{md(entry['word'])}** (box {entry['box']}, "
+                    f"next {entry['next_review_on']}) — {md(entry['definition'])}"
                 )
