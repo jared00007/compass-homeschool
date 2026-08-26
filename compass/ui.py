@@ -923,7 +923,6 @@ def log_lesson_form(
             lesson_id=generated.lesson_id,
         )
         st.success("Logged. The compliance dashboard is updated.")
-        st.balloons()
 
 
 # --- the in-lesson quiz ---------------------------------------------------------
@@ -1047,6 +1046,15 @@ def render_quiz(
                             score=100 * correct / total,
                             notes="Auto-graded from the in-app quiz.",
                         )
+                # A literal perfect score, not the (configurable, sometimes
+                # lower) pass/mastery threshold -- and fired here, at the
+                # moment of grading, rather than in the results branch below,
+                # which redraws on every rerun a persisted result is showing
+                # (an unrelated widget elsewhere on the page, the quiz
+                # expander toggling) and would otherwise launch balloons
+                # over and over for the same score.
+                if correct == total:
+                    st.balloons()
                 st.rerun()
                 return
 

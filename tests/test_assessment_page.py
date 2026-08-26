@@ -413,3 +413,27 @@ def test_no_response_yet_says_so_in_the_parent_review_card(monkeypatch, tmp_path
     at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
     text = " ".join(c.value for c in at.caption)
     assert "hasn't written a response yet" in text
+
+
+def test_logging_hours_does_not_launch_balloons(monkeypatch, tmp_path):
+    """The balloons were the parent's own admin action (logging hours),
+    not Landon's -- dropped on request. Landon getting a perfect quiz
+    score still gets its own celebration; see test_quiz_duration.py."""
+    import streamlit
+
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    _math_lesson(db, student["id"])
+    db.close()
+
+    calls = []
+    monkeypatch.setattr(streamlit, "balloons", lambda: calls.append(1))
+    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    log_button = [b for b in at.button if b.label == "Log hours"][0]
+    log_button.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    text = " ".join(a.value for a in at.success)
+    assert "Logged." in text
+    assert not calls

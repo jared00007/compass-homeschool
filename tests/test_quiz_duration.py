@@ -15,6 +15,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+import streamlit
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
@@ -160,6 +161,30 @@ def test_retaking_the_quiz_times_the_second_attempt_independently(monkeypatch, t
     # the first attempt's, not inherited/accumulated from it.
     assert second_duration is not None
     assert second_duration < first_duration
+
+
+def test_a_perfect_score_launches_balloons(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(streamlit, "balloons", lambda: calls.append(1))
+    db_path, student_id, lesson_id = _seed(tmp_path)
+    at = _open_math(monkeypatch, db_path)
+
+    at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(1)  # the correct choice
+    at.button(key=f"FormSubmitter:quiz_form_{lesson_id}-Submit quiz").click().run()
+
+    assert calls
+
+
+def test_a_missed_question_does_not_launch_balloons(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(streamlit, "balloons", lambda: calls.append(1))
+    db_path, student_id, lesson_id = _seed(tmp_path)
+    at = _open_math(monkeypatch, db_path)
+
+    at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(0)  # wrong
+    at.button(key=f"FormSubmitter:quiz_form_{lesson_id}-Submit quiz").click().run()
+
+    assert not calls
 
 
 def test_quizzes_page_shows_the_duration(monkeypatch, tmp_path):
