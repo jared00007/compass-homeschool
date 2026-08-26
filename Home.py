@@ -275,30 +275,36 @@ if not is_parent():
             st.caption("Nothing new is set up yet. Check back after your parent plans a lesson.")
         else:
             for lesson in due_now:
-                with st.container(border=True):
-                    payload = lesson["payload"]
-                    planned_for = (lesson.get("metadata") or {}).get("planned_for")
-                    day_badge = ""
-                    if planned_for and planned_for < today:
-                        weekday = date.fromisoformat(planned_for).strftime("%A")
-                        day_badge = f" · ⚠️ was due {weekday}"
-                    elif planned_for == today:
-                        day_badge = " · Today"
-                    st.markdown(f"⬜ **{md(payload.get('title', lesson['title']))}**")
-                    st.caption(
-                        f"{lesson['agent'].title()} · {payload.get('estimated_minutes', '?')} min"
-                        f"{day_badge}"
+                payload = lesson["payload"]
+                planned_for = (lesson.get("metadata") or {}).get("planned_for")
+                day_badge = ""
+                if planned_for and planned_for < today:
+                    weekday = date.fromisoformat(planned_for).strftime("%A")
+                    day_badge = f" ⚠️ was due {weekday}"
+                elif planned_for == today:
+                    day_badge = " · Today"
+                icon = SUBJECT_ICONS.get(lesson["agent"], "📘")
+                header = (
+                    f"⬜ {payload.get('title', lesson['title'])} — "
+                    f"{lesson['agent'].title()}{day_badge}"
+                )
+                with st.expander(header, expanded=False):
+                    # Same "Comic Panels" layout every subject page's own
+                    # student view gets -- this used to duplicate its own
+                    # plain title/caption/overview above a second, differently
+                    # styled render_lesson call, which is exactly the kind of
+                    # place a redesign silently misses (see render_lesson's
+                    # own docstring history: this call site was already
+                    # forgotten once, for the writing-response box).
+                    render_lesson(
+                        payload,
+                        for_parent=False,
+                        db=db,
+                        lesson_id=lesson["id"],
+                        metadata=lesson.get("metadata") or {},
+                        comic_layout=True,
+                        comic_frame_title=f"{icon} {lesson['agent'].title()} — Current Lesson",
                     )
-                    if payload.get("overview"):
-                        st.write(md(payload["overview"]))
-                    with st.expander("Open this lesson", expanded=False):
-                        render_lesson(
-                            payload,
-                            for_parent=False,
-                            db=db,
-                            lesson_id=lesson["id"],
-                            metadata=lesson.get("metadata") or {},
-                        )
         if later_this_week:
             st.caption(
                 f"{later_this_week} more lesson(s) planned for later this week — "

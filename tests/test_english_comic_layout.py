@@ -185,6 +185,58 @@ def test_math_now_also_gets_the_comic_panel_treatment(monkeypatch, tmp_path):
     assert not any("Practice" in (e.label or "") for e in at.expander)
 
 
+def test_reopening_a_past_lesson_also_gets_the_comic_panel_treatment(monkeypatch, tmp_path):
+    """Regression: render_past_lessons calls render_lesson directly and had
+    been left off the comic_layout rollout -- reopening a finished lesson
+    (exactly what happens once "Nothing left to do for now" shows, and he
+    picks an old one from the dropdown) silently fell back to the old plain
+    expander layout even though the current lesson above it was redesigned."""
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Brian's Turning Point", payload=_hatchet_payload(),
+    )
+    db.mark_student_done(lesson_id)
+    db.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    picker = [s for s in at.selectbox if s.label == "Look back at a finished lesson"][0]
+    picker.select_index(0).run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    text = " ".join(m.value for m in at.markdown)
+    assert "comic-issue-tag" in text
+    assert "No. 1" in text
+    assert "Past Lesson" in text
+
+
+def test_homes_own_checklist_also_gets_the_comic_panel_treatment(monkeypatch, tmp_path):
+    """Regression: Home.py calls render_lesson through its own separate code
+    path (not student_lesson_view) for the "Lessons ready for you" checklist
+    -- this is the exact call site that was already forgotten once before,
+    for the writing-response box, and had been forgotten again here."""
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Brian's Turning Point", payload=_hatchet_payload(),
+    )
+    db.close()
+
+    at = _open(monkeypatch, db_path, HOME_PATH, as_parent=False)
+    at.expander[0].expanded = True
+    at.run(timeout=30)
+    text = " ".join(m.value for m in at.markdown)
+    assert "comic-issue-tag" in text
+    assert "No. 1" in text
+    assert "Current Lesson" in text
+
+
 def test_vocab_review_gets_its_own_framed_eyebrow_header(monkeypatch, tmp_path):
     db_path = tmp_path / "a.db"
     db = Database(db_path)

@@ -1288,12 +1288,15 @@ def render_past_lessons(db: Database, student: dict[str, Any], agent_key: str) -
     )
     if choice is not None:
         selected = done[labels.index(choice)]
+        icon = SUBJECT_ICONS.get(agent_key, "📘")
         render_lesson(
             selected["payload"],
             for_parent=False,
             db=db,
             lesson_id=selected["id"],
             metadata=selected.get("metadata") or {},
+            comic_layout=True,
+            comic_frame_title=f"{icon} {agent_key.title()} — Past Lesson",
         )
         render_quiz(
             db,
