@@ -351,11 +351,17 @@ def css() -> str:
    unreadable. `--c-button-text` defaults to the theme's own dark `text`,
    checked against `primary` with a real contrast calculator (4.5:1, not
    "looks fine"). See the `button_text` field on `Theme`. */
+/* font-family/-weight set explicitly on every button below -- without it
+   they fall back to Streamlit's own default button font (not this theme's
+   `--c-head`), so a button read as a plain, off-brand bold rather than the
+   same Avenir Next every heading, pill, and comic-panel tag already uses. */
 [data-testid="stBaseButton-secondary"] {{
   background: var(--c-panel);
   color: var(--c-text);
   border: 1px solid var(--c-border);
   border-radius: var(--c-radius);
+  font-family: var(--c-head);
+  font-weight: 700;
 }}
 [data-testid="stBaseButton-secondary"]:hover {{
   border-color: var(--c-primary);
@@ -368,7 +374,8 @@ def css() -> str:
   border: 1px solid var(--c-primary);
   border-radius: var(--c-radius);
   box-shadow: var(--c-glow);
-  font-weight: 600;
+  font-family: var(--c-head);
+  font-weight: 700;
 }}
 [data-testid="stBaseButton-primary"]:hover,
 [data-testid="stBaseButton-primaryFormSubmit"]:hover {{
@@ -380,6 +387,8 @@ def css() -> str:
   color: var(--c-text);
   border: 1px solid var(--c-border);
   border-radius: var(--c-radius);
+  font-family: var(--c-head);
+  font-weight: 700;
 }}
 
 /* --- progress --------------------------------------------------------
