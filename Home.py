@@ -22,7 +22,6 @@ from compass.ui import (
     render_fun_fact,
     render_lesson,
     render_morning_routine,
-    render_school_start_countdown,
     render_today_checklist,
 )
 
@@ -41,7 +40,6 @@ if not is_parent():
 
     st.title(f"Hi {student['name'].split()[0]} 👋")
     st.caption("Here's what's set up for you. Work down the list, or jump around — up to you.")
-    render_school_start_countdown(db)
     render_fun_fact()
 
     st.divider()
@@ -398,7 +396,6 @@ st.title("🧭 Compass")
 st.caption(
     f"Multi-agent homeschool curriculum for {student['name']}, grade {student['grade']}."
 )
-render_school_start_countdown(db)
 render_declaration_banner(db, student)
 
 nudge = weekly.planning_nudge(db, student["id"])

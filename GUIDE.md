@@ -204,9 +204,6 @@ state form Compass could link you to), and a **Mark as filed** button once it's 
 missed deadline stays flagged as overdue rather than quietly resetting to a calm
 countdown for next year — it only clears once you actually mark it filed.
 
-Also on the Home page, for both of you: a plain countdown to the first day of school,
-based on the same school-year-start date used everywhere else in Compass.
-
 **Compliance → Resources** links to the two official state references this section
 draws from: OSPI's own guide to home-based instruction law (the "Pink Book"), and the
 State Board of Education's FAQ on the annual assessment requirement — a standardized
@@ -493,6 +490,23 @@ the sidebar (**Set a parent PIN**) and Compass splits into two views.
 materials, a suggested video when there is one, and the quiz at the end — plus
 his reading progress, vocabulary review, and his own Tier 3 topics. Enough to
 do the work without you narrating it.
+
+**The English page's activities are a "Comic Panels" grid, not a stack of
+collapsed expanders.** Every other subject still shows activities as a
+click-to-expand list (`render_lesson`'s plain layout, `comic_layout=False`);
+English opted into a redesign instead, sampled as three mockups before
+building and picked outright — an ink-bordered panel per activity, always
+open (nothing to click through), with a small "No. 1 / No. 2 / ..." tag and
+a colored kind pill (reading/writing/discussion/instruction) instead of
+plain text. A short-answer activity gets its own full-width panel with room
+for the text box; everything else pairs up two-to-a-row. The strip of dots
+above the grid is real, not decorative — one dot per activity that actually
+needs a typed response, filled in once that response is saved, since that's
+the only per-activity "done" signal that exists; reading/instruction/
+discussion activities don't get a dot at all rather than a fabricated one.
+The Words to Review card picks up the same ink-and-issue-tag styling
+(the tag shows his current streak). Opt in for any other subject page by
+passing `comic_layout=True` to `student_lesson_view`/`render_lesson`.
 
 **Vocabulary review, on the English page, is his own.** One word on screen at
 a time, four possible definitions below it — the real one plus decoys pulled

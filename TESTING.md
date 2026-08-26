@@ -280,10 +280,8 @@ The part a district could ask about. Worth being fussy here.
   *Pass: one row per activity, a column per credited subject, readable by someone who isn't you.*
 
 - [ ] **Declaration of Intent banner and countdown**
-  Home page, parent view. Also check the first-day-of-school countdown at the top,
-  visible in both parent and student view.
-  *Pass: a due-date countdown referencing RCW 28A.200.010; a separate plain countdown to
-  the first day of school shows on Home in both views.*
+  Home page, parent view.
+  *Pass: a due-date countdown referencing RCW 28A.200.010.*
 
 - [ ] **Marking the Declaration filed, and undoing it**
   Press "Mark as filed" on the Home banner. Then Compliance → Declaration of Intent →

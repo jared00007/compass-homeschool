@@ -664,7 +664,8 @@ def test_the_word_and_its_choices_are_shown(monkeypatch, db, student):
     _due_word(db, student, "ephemeral", "lasting a very short time")
     _due_word(db, student, "ubiquitous", "present everywhere")
     page, state = render_vocab(monkeypatch, db, student)
-    assert "ephemeral" in page or "ubiquitous" in page  # whichever came up first
+    # Shown in caps (comic-panel styling) -- whichever word came up first.
+    assert "EPHEMERAL" in page or "UBIQUITOUS" in page
     quiz_state = state["vocab_quiz"]
     word = vocab_by_id(db, student["id"], quiz_state["word_id"])
     assert word["definition"] in quiz_state["choices"]

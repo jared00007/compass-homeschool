@@ -29,7 +29,6 @@ from compass.agents.quiz import grade, passed as quiz_passes
 from compass.compliance import declaration_status
 from compass.export import lesson_to_docx, suggested_filename
 from compass.morning_routines import MORNING_ROUTINES, routine_for_date
-from compass.school_calendar import days_until, next_annual_date
 from compass.storage.db import Database
 
 
@@ -368,6 +367,217 @@ def _needs_written_response(activity: dict[str, Any]) -> bool:
     )
 
 
+# --- "Comic Panels" lesson layout ---------------------------------------------
+# Sampled three redesigns for the English page (stacked expanders felt "stale
+# and full") and this is the one picked: activities become an ink-bordered
+# panel grid instead of an accordion, each with an issue tag and a kind pill,
+# always open rather than collapsed. Reuses theme.py's own CSS custom
+# properties throughout (no new palette) -- opt-in via `comic_layout` on
+# render_lesson so Math/Science/History keep the plain expander layout they
+# already had.
+_COMIC_PANEL_CSS = """
+<style>
+div[class*="st-key-comic_panel_"] {
+  background: var(--c-panel);
+  background-image: var(--c-panel-texture);
+  background-repeat: no-repeat;
+  border: 2px solid var(--c-text);
+  border-radius: var(--c-radius);
+  box-shadow: 4px 4px 0 rgba(36,28,18,.22);
+  padding: .9rem 1.1rem .8rem;
+  position: relative;
+  margin-bottom: 1rem;
+}
+.comic-issue-tag {
+  position: absolute;
+  top: -12px;
+  left: 14px;
+  background: var(--c-primary);
+  border: 2px solid var(--c-text);
+  border-radius: 999px;
+  font-family: var(--c-head);
+  font-weight: 800;
+  font-size: .68rem;
+  padding: .15rem .55rem;
+  color: var(--c-text);
+  white-space: nowrap;
+}
+.comic-kind-icon { font-size: 1.2rem; margin-right: .35rem; }
+.comic-pill {
+  display: inline-flex; align-items: center; gap: .3rem;
+  font-family: var(--c-head); font-weight: 700; font-size: .66rem;
+  text-transform: uppercase; letter-spacing: .03em;
+  padding: .2rem .55rem; border-radius: 999px;
+}
+.comic-pill--reading { background: #E4ECFB; color: var(--c-alt); }
+.comic-pill--writing { background: #FCEFD1; color: var(--c-warn); }
+.comic-pill--discussion { background: #E1F0E6; color: var(--c-good); }
+.comic-pill--instruction { background: #F1E7FB; color: #7A4FB0; }
+.comic-pill--neutral { background: var(--c-panel); color: var(--c-dim); border: 1px solid var(--c-border); }
+.comic-progress-dots { display: flex; gap: .4rem; margin: .1rem 0 1.1rem; }
+.comic-progress-dots span {
+  width: 26px; height: 8px; border-radius: 999px; background: var(--c-border);
+  opacity: .25; display: inline-block;
+}
+.comic-progress-dots span.done { background: var(--c-good); opacity: 1; }
+.comic-progress-dots span.current { background: var(--c-primary); opacity: 1; }
+</style>
+"""
+
+_COMIC_KIND_PILL_VARIANT = {
+    "reading": "reading",
+    "writing": "writing",
+    "discussion": "discussion",
+    "instruction": "instruction",
+}
+_COMIC_KIND_ICONS = {
+    "reading": "📚",
+    "writing": "✍️",
+    "discussion": "💬",
+    "instruction": "🧭",
+    "practice": "🛠️",
+    "field": "🧳",
+    "project": "🧩",
+    "assessment": "📝",
+}
+
+
+def _comic_kind_pill_html(kind: str) -> str:
+    variant = _COMIC_KIND_PILL_VARIANT.get(kind, "neutral")
+    icon = _COMIC_KIND_ICONS.get(kind, "📌")
+    label = html.escape(kind or "activity")
+    return (
+        f'<span class="comic-kind-icon">{icon}</span>'
+        f'<span class="comic-pill comic-pill--{variant}">{label}</span>'
+    )
+
+
+def _comic_progress_dots_html(
+    activities: list[dict[str, Any]], metadata: dict[str, Any] | None
+) -> str:
+    """A dot per activity that actually needs a typed response -- the only
+    per-activity "done" signal that's real (a saved writing response), rather
+    than inventing completion state for kinds (reading, discussion...) that
+    have no such signal at all."""
+    required = [i for i, a in enumerate(activities) if _needs_written_response(a)]
+    if not required:
+        return ""
+    saved = (metadata or {}).get("writing_responses") or {}
+    done = {i for i in required if (saved.get(str(i)) or "").strip()}
+    next_up = next((i for i in required if i not in done), None)
+    dots = []
+    for i in required:
+        css_class = "done" if i in done else ("current" if i == next_up else "")
+        dots.append(f'<span class="{css_class}"></span>')
+    return '<div class="comic-progress-dots">' + "".join(dots) + "</div>"
+
+
+def _render_activity_body(
+    activity: dict[str, Any],
+    index: int,
+    *,
+    parent: bool,
+    db: Database | None,
+    lesson_id: int | None,
+    metadata: dict[str, Any] | None,
+) -> None:
+    """The inside of one activity: video, worked example, instructions, and
+    (when it applies) the typed-response box. Shared by both the plain
+    expander layout and the comic-panel layout so the two never drift apart."""
+    video = activity.get("video") or {}
+    if video.get("found") and video.get("url"):
+        st.markdown(f"▶️ **[{md(video.get('title', 'Watch'))}]({video['url']})**")
+        caption_parts = []
+        if video.get("channel"):
+            caption_parts.append(video["channel"])
+        if video.get("why"):
+            caption_parts.append(video["why"])
+        if caption_parts:
+            st.caption(" — ".join(caption_parts))
+        if parent:
+            st.caption(
+                "Checked against a real search result and restricted to "
+                "YouTube, but Compass doesn't control what YouTube "
+                "recommends once the video ends."
+            )
+
+    example = activity.get("example")
+    if example:
+        st.markdown(
+            f'<div style="background:var(--c-panel); border-left:3px solid '
+            f'var(--c-alt); border-radius:var(--c-radius); padding:10px 14px; '
+            f'margin-bottom:10px; font-size:13.5px;">'
+            f'<b>📖 Here\'s how:</b><br>{html.escape(example).replace(chr(10), "<br>")}'
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    st.write(md(activity.get("instructions", "")))
+
+    if _needs_written_response(activity):
+        saved = ((metadata or {}).get("writing_responses") or {}).get(str(index), "")
+        if not parent and db is not None and lesson_id is not None:
+            draft_key = f"writing_draft_{lesson_id}_{index}"
+            response = st.text_area(
+                "Your response",
+                value=st.session_state.get(draft_key, saved),
+                height=160,
+                key=draft_key,
+            )
+            if st.button("Save response", key=f"save_writing_{lesson_id}_{index}"):
+                db.save_writing_response(lesson_id, index, response)
+                st.success("Saved.")
+                st.rerun()
+        elif saved:
+            st.markdown("**His response**")
+            st.write(md(saved))
+
+
+def _comic_activity_rows(activities: list[dict[str, Any]]) -> list[list[int]]:
+    """Group activity indices into display rows: an activity needing a typed
+    response gets a full-width row of its own (room for the text box), plain
+    activities pair up two-to-a-row -- same shape as the approved mockup's
+    comic-grid, where the writing panel spans both columns."""
+    rows: list[list[int]] = []
+    pending: list[int] = []
+    for index, activity in enumerate(activities):
+        if _needs_written_response(activity):
+            if pending:
+                rows.append(pending)
+                pending = []
+            rows.append([index])
+        else:
+            pending.append(index)
+            if len(pending) == 2:
+                rows.append(pending)
+                pending = []
+    if pending:
+        rows.append(pending)
+    return rows
+
+
+def _render_activity_comic_panel(
+    activity: dict[str, Any],
+    index: int,
+    *,
+    parent: bool,
+    db: Database | None,
+    lesson_id: int | None,
+    metadata: dict[str, Any] | None,
+    key_prefix: str,
+) -> None:
+    with st.container(key=f"comic_panel_activity_{key_prefix}_{index}"):
+        st.markdown(f'<div class="comic-issue-tag">No. {index + 1}</div>', unsafe_allow_html=True)
+        st.markdown(
+            f"##### {md(activity.get('title', 'Activity'))}  \n"
+            f"{_comic_kind_pill_html(activity.get('kind', ''))}",
+            unsafe_allow_html=True,
+        )
+        st.caption(f"{activity.get('minutes', 0)} min")
+        _render_activity_body(
+            activity, index, parent=parent, db=db, lesson_id=lesson_id, metadata=metadata
+        )
+
+
 def render_lesson(
     lesson: dict[str, Any],
     for_parent: bool | None = None,
@@ -375,6 +585,7 @@ def render_lesson(
     db: Database | None = None,
     lesson_id: int | None = None,
     metadata: dict[str, Any] | None = None,
+    comic_layout: bool = False,
 ) -> None:
     """Render a lesson. In student view the answer key never reaches the page.
 
@@ -398,22 +609,54 @@ def render_lesson(
         st.write(md(lesson["overview"]))
 
     objectives = lesson.get("learning_objectives") or []
-    if objectives:
-        st.markdown("**Learning objectives**")
-        for objective in objectives:
-            st.markdown(f"- {md(objective)}")
-
-    # Materials before activities on purpose -- knowing what you need is part
-    # of being set up to start, not a footnote to read after being told what
-    # to do.
     materials = lesson.get("materials") or []
-    if materials:
-        st.markdown("**Materials**")
-        for item in materials:
-            st.markdown(f"- {md(item)}")
+    if comic_layout and (objectives or materials):
+        columns = st.columns(2)
+        with columns[0]:
+            if objectives:
+                st.markdown("**Learning objectives**")
+                for objective in objectives:
+                    st.markdown(f"- {md(objective)}")
+        with columns[1]:
+            # Materials before activities on purpose -- knowing what you need
+            # is part of being set up to start, not a footnote to read after
+            # being told what to do.
+            if materials:
+                st.markdown("**Materials**")
+                for item in materials:
+                    st.markdown(f"- {md(item)}")
+    else:
+        if objectives:
+            st.markdown("**Learning objectives**")
+            for objective in objectives:
+                st.markdown(f"- {md(objective)}")
+        if materials:
+            st.markdown("**Materials**")
+            for item in materials:
+                st.markdown(f"- {md(item)}")
 
     activities = lesson.get("activities") or []
-    if activities:
+    if activities and comic_layout:
+        st.markdown("**Activities**")
+        st.markdown(_COMIC_PANEL_CSS, unsafe_allow_html=True)
+        dots = _comic_progress_dots_html(activities, metadata)
+        if dots:
+            st.markdown(dots, unsafe_allow_html=True)
+        key_prefix = str(lesson_id) if lesson_id is not None else str(id(lesson))
+        for row in _comic_activity_rows(activities):
+            columns = st.columns(len(row))
+            for column, index in zip(columns, row):
+                with column:
+                    _render_activity_comic_panel(
+                        activities[index],
+                        index,
+                        parent=parent,
+                        db=db,
+                        lesson_id=lesson_id,
+                        metadata=metadata,
+                        key_prefix=key_prefix,
+                    )
+    elif activities:
         st.markdown("**Activities**")
         for index, activity in enumerate(activities, start=1):
             header = (
@@ -421,72 +664,14 @@ def render_lesson(
                 f"{activity.get('kind', '')} · {activity.get('minutes', 0)} min"
             )
             with st.expander(header, expanded=False):
-                # Video first, if this specific activity has one -- watch it
-                # explained before reading the worked example, same "entry
-                # into the lesson before the activity itself" reasoning as
-                # materials, just scoped to the one activity it actually
-                # matches instead of the lesson as a whole. Shown to both
-                # views: verified against a real search result and
-                # restricted to YouTube (see compass/agents/video.py) before
-                # it ever gets this far, so there's nothing here for the
-                # student's version to redact.
-                video = activity.get("video") or {}
-                if video.get("found") and video.get("url"):
-                    st.markdown(f"▶️ **[{md(video.get('title', 'Watch'))}]({video['url']})**")
-                    caption_parts = []
-                    if video.get("channel"):
-                        caption_parts.append(video["channel"])
-                    if video.get("why"):
-                        caption_parts.append(video["why"])
-                    if caption_parts:
-                        st.caption(" — ".join(caption_parts))
-                    if parent:
-                        st.caption(
-                            "Checked against a real search result and restricted to "
-                            "YouTube, but Compass doesn't control what YouTube "
-                            "recommends once the video ends."
-                        )
-
-                example = activity.get("example")
-                if example:
-                    # A worked example, shown before the instructions -- see
-                    # the move modeled once before being asked to do it,
-                    # same "I do, you do" order a teacher would use. Raw HTML
-                    # via unsafe_allow_html isn't run through Streamlit's
-                    # markdown/LaTeX pass, so this one doesn't need `md()` --
-                    # html.escape already makes it safe on its own terms.
-                    st.markdown(
-                        f'<div style="background:var(--c-panel); border-left:3px solid '
-                        f'var(--c-alt); border-radius:var(--c-radius); padding:10px 14px; '
-                        f'margin-bottom:10px; font-size:13.5px;">'
-                        f'<b>📖 Here\'s how:</b><br>{html.escape(example).replace(chr(10), "<br>")}'
-                        f"</div>",
-                        unsafe_allow_html=True,
-                    )
-                st.write(md(activity.get("instructions", "")))
-
-                if _needs_written_response(activity):
-                    activity_index = index - 1
-                    saved = ((metadata or {}).get("writing_responses") or {}).get(
-                        str(activity_index), ""
-                    )
-                    if not parent and db is not None and lesson_id is not None:
-                        draft_key = f"writing_draft_{lesson_id}_{activity_index}"
-                        response = st.text_area(
-                            "Your response",
-                            value=st.session_state.get(draft_key, saved),
-                            height=160,
-                            key=draft_key,
-                        )
-                        if st.button(
-                            "Save response", key=f"save_writing_{lesson_id}_{activity_index}"
-                        ):
-                            db.save_writing_response(lesson_id, activity_index, response)
-                            st.success("Saved.")
-                            st.rerun()
-                    elif saved:
-                        st.markdown("**His response**")
-                        st.write(md(saved))
+                _render_activity_body(
+                    activity,
+                    index - 1,
+                    parent=parent,
+                    db=db,
+                    lesson_id=lesson_id,
+                    metadata=metadata,
+                )
 
     # Parent-only: the actual check now happens digitally, in Activity Log's
     # own review card (render_assessment_card), not here -- nothing for him
@@ -958,7 +1143,12 @@ def _done_lessons(db: Database, student_id: int, agent_key: str) -> list[dict[st
 
 
 def student_lesson_view(
-    db: Database, student: dict[str, Any], agent_key: str, subject_label: str
+    db: Database,
+    student: dict[str, Any],
+    agent_key: str,
+    subject_label: str,
+    *,
+    comic_layout: bool = False,
 ) -> None:
     """What the student sees on a subject page: his work, and nothing else.
 
@@ -1018,6 +1208,7 @@ def student_lesson_view(
             db=db,
             lesson_id=current["id"],
             metadata=current.get("metadata") or {},
+            comic_layout=comic_layout,
         )
         render_quiz(
             db,
@@ -1531,47 +1722,51 @@ def render_vocab_quiz(db: Database, student: dict[str, Any]) -> None:
 
     word = next(w for w in all_defined if w["id"] == state["word_id"])
 
-    metrics = st.columns(3)
-    metrics[0].metric("🔥 Streak", streak)
-    metrics[1].metric("✅ Reviewed", reviewed)
-    metrics[2].metric("Left today", len(due))
+    st.markdown(_COMIC_PANEL_CSS, unsafe_allow_html=True)
+    with st.container(key=f"comic_panel_vocab_{word['id']}"):
+        st.markdown(f'<div class="comic-issue-tag">🔥 {streak}</div>', unsafe_allow_html=True)
 
-    st.markdown(f"## {md(word['word'])}")
+        metrics = st.columns(3)
+        metrics[0].metric("🔥 Streak", streak)
+        metrics[1].metric("✅ Reviewed", reviewed)
+        metrics[2].metric("Left today", len(due))
 
-    if state["picked"] is None:
-        st.caption("Which definition is correct?")
-        for index, choice in enumerate(state["choices"]):
-            if st.button(
-                md(choice), key=f"vocab_choice_{word['id']}_{index}", width="stretch"
-            ):
-                correct = choice == word["definition"]
-                state["picked"] = choice
-                db.record_vocabulary_review(word["id"], correct=correct)
-                st.session_state["vocab_reviewed_count"] = reviewed + 1
-                if correct:
-                    new_streak = streak + 1
-                    st.session_state["vocab_streak"] = new_streak
-                    st.session_state["vocab_best_streak"] = max(best_streak, new_streak)
-                    if new_streak >= VOCAB_STREAK_ON_FIRE:
-                        st.balloons()
-                        st.toast(f"🚀 {new_streak} in a row — you're on fire!")
+        st.markdown(f"## {md(word['word'].upper())}")
+
+        if state["picked"] is None:
+            st.caption("Which definition is correct?")
+            for index, choice in enumerate(state["choices"]):
+                if st.button(
+                    md(choice), key=f"vocab_choice_{word['id']}_{index}", width="stretch"
+                ):
+                    correct = choice == word["definition"]
+                    state["picked"] = choice
+                    db.record_vocabulary_review(word["id"], correct=correct)
+                    st.session_state["vocab_reviewed_count"] = reviewed + 1
+                    if correct:
+                        new_streak = streak + 1
+                        st.session_state["vocab_streak"] = new_streak
+                        st.session_state["vocab_best_streak"] = max(best_streak, new_streak)
+                        if new_streak >= VOCAB_STREAK_ON_FIRE:
+                            st.balloons()
+                            st.toast(f"🚀 {new_streak} in a row — you're on fire!")
+                        else:
+                            st.toast(f"{random.choice(VOCAB_STREAK_HYPE)} 🔥 {new_streak} in a row")
                     else:
-                        st.toast(f"{random.choice(VOCAB_STREAK_HYPE)} 🔥 {new_streak} in a row")
+                        st.session_state["vocab_streak"] = 0
+                        st.toast("❌ Not quite.")
+                    st.rerun()
+        else:
+            for choice in state["choices"]:
+                if choice == word["definition"]:
+                    st.success(f"✅ {md(choice)}")
+                elif choice == state["picked"]:
+                    st.error(f"❌ {md(choice)} — your pick")
                 else:
-                    st.session_state["vocab_streak"] = 0
-                    st.toast("❌ Not quite.")
+                    st.write(md(choice))
+            if st.button("Next word ▶️", type="primary", key="vocab_next_word"):
+                state.clear()
                 st.rerun()
-    else:
-        for choice in state["choices"]:
-            if choice == word["definition"]:
-                st.success(f"✅ {md(choice)}")
-            elif choice == state["picked"]:
-                st.error(f"❌ {md(choice)} — your pick")
-            else:
-                st.write(md(choice))
-        if st.button("Next word ▶️", type="primary", key="vocab_next_word"):
-            state.clear()
-            st.rerun()
 
     st.divider()
     _render_vocab_done_button(db, student, today)
@@ -1588,21 +1783,6 @@ def api_status_banner() -> bool:
             "choice topics, and life skills — works without it."
         )
     return ok
-
-
-# --- school-year and Declaration of Intent countdowns -------------------------
-
-
-def render_school_start_countdown(db: Database) -> None:
-    """Shown to both parent and student -- there's nothing here to redact."""
-    next_start = next_annual_date(db.get_setting("school_year_start") or "09-01")
-    remaining = days_until(next_start)
-    when = f"{next_start.strftime('%B')} {next_start.day}"
-    if remaining <= 0:
-        st.caption(f"🎉 Today's the first day of school ({when}).")
-    else:
-        plural = "s" if remaining != 1 else ""
-        st.caption(f"🗓️ {remaining} day{plural} until the first day of school ({when}).")
 
 
 _FIRST_DAY_INK = "#211a14"

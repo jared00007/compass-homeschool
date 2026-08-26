@@ -920,8 +920,7 @@ pastes into Compliance → Declaration of Intent themselves.
 
 Shown on the Home page: the parent gets the Declaration banner (with a **Mark as
 filed** button that writes straight to a small `declarations_of_intent` table,
-keyed by student and due date so each year gets its own row) and, in both parent and
-student view, a plain countdown to the first day of school.
+keyed by student and due date so each year gets its own row).
 
 ## Starting a new school year
 

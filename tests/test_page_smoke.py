@@ -150,3 +150,19 @@ def test_home_actually_renders_the_skipped_planning_nudge(monkeypatch, tmp_path)
 
     assert not at.exception
     assert any("hasn't been planned yet" in i.value for i in at.info)
+
+
+@pytest.mark.parametrize("as_parent", [True, False])
+def test_home_no_longer_shows_the_days_until_school_countdown(monkeypatch, tmp_path, as_parent):
+    """Removed on request -- "364 days until 1st day of school" read as
+    pointless noise on Home, not useful information, in both views."""
+    db_path = tmp_path / "smoke.db"
+    _seed(db_path, with_pin=not as_parent)
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+
+    at = _load(HOME_PATH, as_parent=as_parent)
+
+    assert not at.exception
+    text = " ".join(c.value for c in at.caption)
+    assert "until the first day of school" not in text
+    assert "first day of school" not in text
