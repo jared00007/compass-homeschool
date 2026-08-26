@@ -791,6 +791,37 @@ own docstring, not guessed) rather than leaving it as a ticking time bomb for wh
 machine happens to `pip install` next. This survived the mechanic revert since it was
 never specific to Memory Match.
 
+### Replacing the review mode entirely: multiple choice
+
+Whatever tile/card mechanic was current at any point above, all of them shared the same
+underlying weakness: matching two already-visible things (or flipping a face-down pair)
+mostly tests spatial memory -- where was that card, which column had that word -- and a
+"win" never actually required recalling a definition cold. On direct feedback that the
+game "def not a good product," `render_vocab_memory()` (the Concentration build that had
+been current) was replaced outright with `render_vocab_quiz()`: one word on screen at a
+time, four possible definitions below it, pick one, get graded immediately. The three
+decoys come from his own *other* vocabulary words' real definitions rather than an
+invented distractor -- no AI call needed, and a decoy that's a real definition of a real
+word he's also learning is a more honest test than a made-up one anyway.
+
+Same `db.record_vocabulary_review()` call either way, so the Leitner schedule underneath
+means the same thing regardless of which review mode came before it. The session
+`vocab_streak` / `vocab_best_streak` / `vocab_reviewed_count` carried over unchanged. The
+round timer and `vocab_best_round_seconds` personal-best did not survive this one --
+there's no natural "round" left to time once review is sequential, one word at a time,
+rather than a whole board cleared at once.
+
+**A wrong pick's reveal is the actual teaching moment**, so a picked answer stays on
+screen -- the real definition marked correct, his own wrong pick marked plainly -- until
+he clicks "Next word," rather than auto-advancing. That created its own version of the
+Trading Cards regression above: the word he'd just answered drops out of `vocabulary_due`
+immediately regardless of right or wrong (same `next_review_on`-moves-forward behavior),
+so a naive "is the current word still due" check reset the whole quiz state on the very
+next render -- before the reveal ever had a chance to show. Fixed by keying the reset
+check on whether a word is actually mid-reveal (`picked` is set) rather than on `due`
+membership at all; a mid-reveal word keeps rendering regardless of what `due` says, the
+same lesson Trading Cards' own regression already taught, applied to a new mechanic.
+
 ## Printing a lesson
 
 There are two places to get a lesson as a `.docx` (`compass/export.py`):

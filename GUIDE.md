@@ -494,29 +494,23 @@ materials, a suggested video when there is one, and the quiz at the end — plus
 his reading progress, vocabulary review, and his own Tier 3 topics. Enough to
 do the work without you narrating it.
 
-**Vocabulary review, on the English page, is his own — two ways to do it.**
-**Flashcards**: one word on screen at a time, a **Show definition** button,
-then he grades himself (knew it / missed it) — a deck to work through, not a
-wall of boxes to scroll. A streak counter tracks his run of correct answers
-for the session (🔥), balloons show up at a 5-streak or when he clears the
-whole day's list, and a miss resets the streak but keeps his best one for
-the session — it's meant to feel like a little game, not a chore. He never
-sees the definition next to the word before checking himself; otherwise the
-review would test nothing. **Trading Cards**: a lighter, game-style option
-— click a word, then click its definition from a shuffled list. (This
-briefly went through a Memory Match version — a face-down tile grid you
-flip pairs from — but a matched pair there vanished the instant it
-resolved, so there was nothing to actually see or remember it by. Back to
-cards, everything visible the whole time.) A live-feeling round timer and a
-real fill-progress bar sit above the board, and clearing a round faster
-than his best gets its own 🏆 record that sticks around across days, not
-just for the session. It shares the same streak and reviewed-count as
-Flashcards, so switching between the two mid-session doesn't reset his
-momentum, and it scores a wrong guess the same way Flashcards does — a
-guess that needed a second try still counts as "missed it" once he gets
-there. The parent-facing Vocabulary tab is separate from both — it shows
-word and definition together on purpose, built for you to quiz him out
-loud.
+**Vocabulary review, on the English page, is his own.** One word on screen at
+a time, four possible definitions below it — the real one plus decoys pulled
+from his own other vocabulary words, not invented ones — pick one and it's
+graded immediately. A wrong pick stays on screen with the real definition
+revealed right next to what he guessed until he clicks **Next word**, since
+that's the actual moment he learns something, not something to auto-advance
+past. A streak counter tracks his run of correct answers for the session
+(🔥), balloons show up at a 5-streak or when he clears the whole day's list,
+and a miss resets the streak but keeps his best one for the session — it's
+meant to feel like a little game, not a chore. (This went through a couple of
+earlier mechanics — a face-down memory-match grid, before that a word/
+definition card-matching game — both replaced because matching two
+already-visible or already-flipped things mostly tests whether he remembers
+where something was, not whether he actually knows the definition. Picking
+the right definition cold is a more honest check.) The parent-facing
+Vocabulary tab is separate — it shows word and definition together on
+purpose, built for you to quiz him out loud.
 
 **His home page leads with a "✅ Today" list** — everything he's checked off
 today, in one place: lessons he's marked done, quiz scores, life skills either

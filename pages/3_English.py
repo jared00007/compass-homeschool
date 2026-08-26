@@ -22,7 +22,7 @@ from compass.ui import (
     page_setup,
     render_past_lessons,
     render_proposal,
-    render_vocab_memory,
+    render_vocab_quiz,
     student_lesson_view,
 )
 
@@ -44,7 +44,7 @@ if not is_parent():
     student_lesson_view(db, student, "english", "English")
     st.divider()
     st.subheader("🔤 Words to review")
-    render_vocab_memory(db, student)
+    render_vocab_quiz(db, student)
     render_past_lessons(db, student, "english")
     st.stop()
 
