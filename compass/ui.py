@@ -1724,8 +1724,9 @@ def render_vocab_quiz(db: Database, student: dict[str, Any]) -> None:
 
     st.markdown(_COMIC_PANEL_CSS, unsafe_allow_html=True)
     with st.container(key=f"comic_panel_vocab_{word['id']}"):
-        st.markdown(f'<div class="comic-issue-tag">🔥 {streak}</div>', unsafe_allow_html=True)
-
+        # No issue tag here, unlike the activity panels -- the metrics row
+        # right below already shows the streak, and a badge repeating the
+        # same number just above it read as duplicative rather than styled.
         metrics = st.columns(3)
         metrics[0].metric("🔥 Streak", streak)
         metrics[1].metric("✅ Reviewed", reviewed)
