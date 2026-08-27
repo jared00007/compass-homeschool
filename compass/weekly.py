@@ -317,6 +317,38 @@ MATH_STAGE_NOTES: tuple[str, ...] = (
 )
 
 
+def math_stage_note(index: int, total: int) -> str:
+    """The same escalating note as MATH_STAGE_NOTES, generalized to
+    however many school days a week actually has -- a holiday can shrink
+    it to two or three, and "day 2 of 4" is simply wrong once the week
+    itself is only 2 or 3 days long.
+
+    The ordinary four-day case reuses MATH_STAGE_NOTES verbatim (its two
+    middle days read differently from each other -- "escalate slightly"
+    vs. "more practice, escalating further" -- which a generic formula
+    below collapses into one repeated sentence). Only a week actually
+    shortened by something like a holiday falls through to the generic
+    three-tier version: no note on day one, escalating practice through
+    the middle, weighted toward the assessment on the last day (which can
+    be the same day as the first, on a single-day week).
+    """
+    if total == 4:
+        return MATH_STAGE_NOTES[index]
+    if index == 0:
+        return ""
+    if index == total - 1:
+        return (
+            f"This is day {index + 1} of {total} on this same skill this week -- "
+            "weight this lesson toward the graded assessment that determines "
+            "whether the next skill unlocks next week."
+        )
+    return (
+        f"This is day {index + 1} of {total} on this same skill this week -- "
+        "additional practice, not a re-introduction, escalating toward the "
+        "assessment."
+    )
+
+
 def plan_math_week(db: Any, student: dict[str, Any], week_start_date: date) -> list[PlannedDay]:
     """Math gets one skill for the whole week, not four different topics.
 

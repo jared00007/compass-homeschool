@@ -24,6 +24,7 @@ from compass.weekly import (
     default_plan_target,
     due_lessons,
     latest_per_day,
+    math_stage_note,
     plan_day,
     plan_math_week,
     plan_subject_week,
@@ -336,6 +337,40 @@ def test_plan_subject_week_seed_topics_target_a_specific_day_by_index():
         seed_topics={0: "Rocks vs. Big Rigs (CrunchLabs)"},
     )
     assert seen_seeds == ["Rocks vs. Big Rigs (CrunchLabs)", "", "", ""]
+
+
+# --- math_stage_note: the same escalating note, for a holiday-shortened week -------
+
+
+def test_math_stage_note_matches_the_fixed_four_day_version():
+    """Same wording as MATH_STAGE_NOTES for the ordinary case -- this only
+    needs to differ once the week is shorter than four days."""
+    for index in range(4):
+        assert math_stage_note(index, 4) == MATH_STAGE_NOTES[index]
+
+
+def test_math_stage_note_day_one_is_always_blank():
+    assert math_stage_note(0, 1) == ""
+    assert math_stage_note(0, 3) == ""
+
+
+def test_math_stage_note_counts_against_the_actual_total():
+    note = math_stage_note(1, 3)
+    assert "day 2 of 3" in note
+    assert "day 2 of 4" not in note
+
+
+def test_math_stage_note_last_day_is_weighted_toward_the_assessment():
+    note = math_stage_note(2, 3)
+    assert "day 3 of 3" in note
+    assert "assessment" in note.lower()
+
+
+def test_math_stage_note_on_a_single_day_week_has_no_middle_tier():
+    """Day one and the last day are the same day on a one-day week --
+    the "no note yet" branch wins, since there's nothing to escalate
+    from within a single day."""
+    assert math_stage_note(0, 1) == ""
 
 
 # --- plan_math_week: one skill, framed across the week -----------------------------

@@ -342,7 +342,7 @@ compass/
   theme.py                   the one fixed theme and the CSS that applies it
   fun_facts.py               fact-of-the-day for the student home view
   national_parks.py          the 63 parks + real state borders for Landon's Travels
-tests/                       827 tests, no API key required
+tests/                       842 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 scripts/new_school_year_reset.py  wipe a finished school year's data, see below
 ```
@@ -591,6 +591,41 @@ mastery concept to hook into, so their quizzes grade and show a score without a 
 effect — a real check with no mechanism behind it yet, rather than force-fitting one.
 Both thresholds are family policy settings, the same category as the Tier 3 guideline
 percent.
+
+## Weekly batch planning, and skipping a day for a holiday
+
+`pages/14_This_Week.py`'s **Plan next week** tab is what keeps Monday through Thursday
+sitting ready instead of a parent generating each lesson the morning of. It targets a
+week (`weekly.week_start()` snaps whatever's picked to that week's Monday), then plans
+each of the four subjects independently: Science/English/History get four fresh topics
+via their own strategies, Math gets one skill framed across the week (`weekly.
+math_stage_note`, below) since its next skill only unlocks once a real assessment gets
+graded and batch-generating four calls in one sitting would just hand back the same skill
+four times. Only days that don't have a lesson yet are filled in -- regenerating a
+specific day on purpose is a separate button, right on that day's own card.
+
+**Which days actually get planned is a checkbox row, not always fixed at four.** A
+holiday can land on any weekday -- Labor Day's a Monday, Thanksgiving's a Thursday --
+so this is Monday/Tuesday/Wednesday/Thursday checkboxes (all on by default), not a bare
+day-count: a count alone can't tell "skip the first day" from "skip the last day," and a
+Monday holiday needs exactly the former. Unchecking a day removes it from every
+subject's target list for that pass -- shared across all four, not a separate control
+per subject, since a holiday affects the whole household, not one subject's schedule.
+The picker isn't persisted: it's read fresh each time the page loads and only shapes
+that one generation click, the same way the Monday topic-seed text boxes already work.
+A day that's deliberately left unplanned just never shows a lesson for it (same as a
+weekend already does on the Week grid) -- nothing elsewhere assumes exactly four lessons
+exist, so there's no separate "this day is a holiday" flag to keep in sync.
+
+**`weekly.math_stage_note(index, total)` generalizes the parent-facing note Math
+attaches to each day** ("day 2 of 4 on this same skill," escalating toward the graded
+assessment on the last day) to however many days actually got checked. The ordinary
+four-day case returns `MATH_STAGE_NOTES` verbatim, since its two middle days read
+differently from each other ("escalate slightly" vs. "more practice, escalating
+further") in a way a generic formula would flatten into one repeated sentence; only an
+actually-shortened week (a holiday) falls through to the generic three-tier version --
+no note on day one, escalating practice through the middle, assessment-weighted on the
+last day (which can be the same day as the first, on a one-day week).
 
 ## Grades
 
@@ -1009,7 +1044,7 @@ make.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 827 tests, ~95s, no API key needed
+python -m pytest tests/ -q      # 842 tests, ~85s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

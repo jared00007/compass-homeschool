@@ -140,11 +140,30 @@ with plan_tab:
         value=default_target,
     )
     target_week_start = weekly.week_start(picked)
-    target_dates = weekly.week_dates(target_week_start)
+    full_week_dates = weekly.week_dates(target_week_start)
     st.caption(
-        f"Planning {target_dates[0].strftime('%b %-d')} – "
-        f"{target_dates[-1].strftime('%b %-d, %Y')}."
+        f"Planning {full_week_dates[0].strftime('%b %-d')} – "
+        f"{full_week_dates[-1].strftime('%b %-d, %Y')}."
     )
+
+    st.markdown("**School days this week**")
+    st.caption(
+        "Uncheck a day to skip it entirely -- a holiday, a field trip, whatever. "
+        "Applies to every subject below; nothing gets generated for an unchecked "
+        "day, and Math's practice notes ('day 2 of 3', say) count against however "
+        "many days are actually checked, not always four."
+    )
+    day_columns = st.columns(len(full_week_dates))
+    target_dates = []
+    for column, day in zip(day_columns, full_week_dates):
+        with column:
+            is_school_day = st.checkbox(
+                day.strftime("%A"), value=True, key=f"weekplan_schoolday_{day.isoformat()}"
+            )
+        if is_school_day:
+            target_dates.append(day)
+    if not target_dates:
+        st.info("No school days checked above — check at least one to plan anything.")
 
     existing = weekly.latest_per_day(
         db.lessons_for_week(student["id"], target_week_start.isoformat())
@@ -185,17 +204,23 @@ with plan_tab:
         lessons = existing_by_agent.get(key, [])
         covered = {lesson["metadata"].get("planned_for") for lesson in lessons}
         missing_dates = [d for d in target_dates if d.isoformat() not in covered]
-        monday_missing = key != "math" and target_dates[0] in missing_dates
+        # Not literally "Monday" once a day's been unchecked above -- this is
+        # really "the first checked day still missing," whichever weekday
+        # that turns out to be.
+        first_day_missing = (
+            key != "math" and bool(target_dates) and target_dates[0] in missing_dates
+        )
+        first_day_label = target_dates[0].strftime("%A") if target_dates else "First day's"
 
         with st.container(border=True):
             st.markdown(f"**{_agent_label(key)}**")
             seed = ""
             picked_node_id = ""
-            if monday_missing and key in ("science", "history"):
+            if first_day_missing and key in ("science", "history"):
                 idea_options = _idea_options(db, student["id"], key)
                 idea_labels = dict(idea_options)
                 picked_idea = st.selectbox(
-                    "Monday's topic -- pick an idea, or let the agent choose",
+                    f"{first_day_label}'s topic -- pick an idea, or let the agent choose",
                     [value for value, _ in idea_options],
                     format_func=lambda v: idea_labels[v],
                     key=f"weekplan_idea_{key}",
@@ -217,9 +242,9 @@ with plan_tab:
                 if seed_override.strip():
                     seed = seed_override.strip()
                     picked_node_id = ""
-            elif monday_missing:
+            elif first_day_missing:
                 seed = st.text_input(
-                    "Monday's topic (optional, leave blank to let the agent choose)",
+                    f"{first_day_label}'s topic (optional, leave blank to let the agent choose)",
                     key=f"weekplan_seed_{key}",
                 )
             button_label = "Plan this week" if not lessons else "Fill in missing days"
@@ -236,7 +261,11 @@ with plan_tab:
                     day_results = []
                     for target in missing_dates:
                         index = target_dates.index(target)
-                        note = weekly.MATH_STAGE_NOTES[index] if key == "math" else ""
+                        note = (
+                            weekly.math_stage_note(index, len(target_dates))
+                            if key == "math"
+                            else ""
+                        )
                         day_seed = seed.strip() if index == 0 else ""
                         day_node_id = picked_node_id if index == 0 else ""
                         result = weekly.plan_day(
@@ -294,9 +323,9 @@ with plan_tab:
                             st.rerun()
 
     st.divider()
-    # target_dates only ever holds the four scheduled dates (Monday-Thursday,
-    # see weekly.week_dates) -- Friday isn't a lesson day, so its date is
-    # derived from the Monday directly rather than indexed off that list.
+    # Friday isn't a lesson day regardless of which of Monday-Thursday got
+    # checked above, so its date is derived from the Monday directly rather
+    # than indexed off target_dates (which may now hold fewer than four).
     friday_date = target_week_start + timedelta(days=4)
     st.markdown(f"**Friday's plan** — {friday_date.strftime('%b %-d')}")
     st.caption(
