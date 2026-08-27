@@ -221,12 +221,27 @@ def test_his_view_shows_strengths_and_next_moves_but_not_the_diagnostic(
 
     shown = " ".join(
         [s.value for s in at.success] + [i.value for i in at.info]
-        + [m.value for m in at.markdown]
+        + [w.value for w in at.warning] + [m.value for m in at.markdown]
     )
     assert A_REVIEW["strengths"][0] in shown
     assert A_REVIEW["next_moves"][0] in shown
     assert A_REVIEW["concerns"][0] not in shown
     assert A_REVIEW["missing"][0] not in shown
+
+
+def test_his_next_moves_read_as_rework_not_as_a_neutral_note(monkeypatch, tmp_path):
+    """A plain arrow in a blue info box reads as "here's a thought" -- these
+    are the whole reason the read exists, so they carry the same 🔁 "needs
+    more work" mark the assessment verdicts use, in amber."""
+    db_path, lesson_id = _seed_page_db(tmp_path, with_review=True)
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+
+    # Streamlit lifts a leading emoji out of an alert's body into its own
+    # `icon` field, so the mark is asserted there rather than in `.value`.
+    moves = [w for w in at.warning if A_REVIEW["next_moves"][0] in w.value]
+    assert moves, "next moves should render as a warning, not an info note"
+    assert moves[0].icon == "🔁"
+    assert "Go fix this" in moves[0].value
 
 
 def test_the_parent_card_shows_the_full_diagnostic(monkeypatch, tmp_path):

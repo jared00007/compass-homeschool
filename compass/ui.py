@@ -557,8 +557,13 @@ def _render_ai_review_for_student(review: dict[str, Any]) -> None:
     st.markdown("**🔍 A read on what you wrote**")
     for strength in review.get("strengths") or []:
         st.success(f"👍 {md(strength)}")
+    # Amber and marked "go fix", not a neutral blue note -- these are the
+    # whole reason the read exists, and a plain arrow in an info box reads
+    # as "here's a thought" rather than "this needs another pass." 🔁 is the
+    # same "needs more work" mark the assessment verdicts already use
+    # (config.ASSESSMENT_VERDICT_LABELS), so it means one thing app-wide.
     for move in review.get("next_moves") or []:
-        st.info(f"➡️ {md(move)}")
+        st.warning(f"🔁 **Go fix this:** {md(move)}")
     if not (review.get("next_moves") or review.get("strengths")):
         st.caption("Nothing flagged — give it another read yourself, then submit.")
     st.caption("This is a suggestion, not a grade. Your parent still reads it too.")
