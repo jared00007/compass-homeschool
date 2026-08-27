@@ -307,6 +307,7 @@ if not is_parent():
                         metadata=lesson.get("metadata") or {},
                         comic_layout=True,
                         comic_frame_title=f"{icon} {lesson['agent'].title()} — Current Lesson",
+                        student=student,
                     )
         if later_this_week:
             st.caption(

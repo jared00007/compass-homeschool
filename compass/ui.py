@@ -54,6 +54,7 @@ from compass.agents import (
     LessonGenerationError,
     StudentContext,
 )
+from compass.agents import writing_review
 from compass.agents.quiz import grade, passed as quiz_passes
 from compass.compliance import declaration_status
 from compass.export import lesson_to_docx, suggested_filename
@@ -535,6 +536,34 @@ def _comic_progress_dots_html(
     return '<div class="comic-progress-dots">' + dots + "</div>"
 
 
+def _stored_ai_review(metadata: dict[str, Any] | None, index: int) -> dict[str, Any] | None:
+    """The automated read of this activity's response, if one has been run.
+
+    Read straight off the metadata already in hand rather than through
+    `writing_review.existing_review`, which takes a whole lesson row --
+    the render path only ever has the metadata dict.
+    """
+    return ((metadata or {}).get("writing_ai_review") or {}).get(str(index))
+
+
+def _render_ai_review_for_student(review: dict[str, Any]) -> None:
+    """His side of the stored review: what's working, then at most two next
+    moves. The parent's own view of the same result (in
+    `render_assessment_card`) carries the fuller diagnostic -- the missing
+    requirements and any factual corrections -- deliberately not repeated
+    here, where a wall of everything wrong is the thing most likely to make
+    him give up rather than revise."""
+    st.divider()
+    st.markdown("**🔍 A read on what you wrote**")
+    for strength in review.get("strengths") or []:
+        st.success(f"👍 {md(strength)}")
+    for move in review.get("next_moves") or []:
+        st.info(f"➡️ {md(move)}")
+    if not (review.get("next_moves") or review.get("strengths")):
+        st.caption("Nothing flagged — give it another read yourself, then submit.")
+    st.caption("This is a suggestion, not a grade. Your parent still reads it too.")
+
+
 def _render_activity_body(
     activity: dict[str, Any],
     index: int,
@@ -543,6 +572,7 @@ def _render_activity_body(
     db: Database | None,
     lesson_id: int | None,
     metadata: dict[str, Any] | None,
+    student: dict[str, Any] | None = None,
 ) -> None:
     """The inside of one activity: video, worked example, instructions, and
     (when it applies) the typed-response box. Shared by both the plain
@@ -608,11 +638,30 @@ def _render_activity_body(
                 height=160,
                 key=draft_key,
             )
-            save_col, submit_col = st.columns(2)
+            ai_review = _stored_ai_review(metadata, index)
+            save_col, check_col, submit_col = st.columns(3)
             if save_col.button("Save draft", key=f"save_writing_{lesson_id}_{index}"):
                 db.save_writing_response(lesson_id, index, response)
                 st.success("Saved.")
                 st.rerun()
+            # One call per activity, ever -- the button is gone once a review
+            # exists, so a student who'd rather not write can't iterate
+            # against the reviewer in place of thinking. Deliberately not
+            # offered while there's nothing written to review.
+            if ai_review is None and response.strip():
+                if check_col.button(
+                    "🔍 Check my work", key=f"aicheck_writing_{lesson_id}_{index}"
+                ):
+                    db.save_writing_response(lesson_id, index, response)
+                    with st.spinner("Reading what you wrote…"):
+                        try:
+                            writing_review.review_writing(
+                                db, student, db.get_lesson(lesson_id), index, response
+                            )
+                        except LessonGenerationError as exc:
+                            st.error(str(exc))
+                        else:
+                            st.rerun()
             if submit_col.button(
                 "Submit for review", key=f"submit_writing_{lesson_id}_{index}", type="primary"
             ):
@@ -625,6 +674,9 @@ def _render_activity_body(
                     db.set_writing_review(lesson_id, index, config.WRITING_SUBMITTED)
                     st.success("Submitted!")
                     st.rerun()
+
+            if ai_review is not None:
+                _render_ai_review_for_student(ai_review)
         elif saved:
             st.markdown("**His response**")
             st.write(md(saved))
@@ -662,6 +714,7 @@ def _render_activity_comic_panel(
     lesson_id: int | None,
     metadata: dict[str, Any] | None,
     key_prefix: str,
+    student: dict[str, Any] | None = None,
 ) -> None:
     with st.container(key=f"comic_panel_activity_{key_prefix}_{index}"):
         st.markdown(f'<div class="comic-issue-tag">No. {index + 1}</div>', unsafe_allow_html=True)
@@ -672,7 +725,8 @@ def _render_activity_comic_panel(
         )
         st.caption(f"{activity.get('minutes', 0)} min")
         _render_activity_body(
-            activity, index, parent=parent, db=db, lesson_id=lesson_id, metadata=metadata
+            activity, index, parent=parent, db=db, lesson_id=lesson_id,
+            metadata=metadata, student=student,
         )
 
 
@@ -685,6 +739,7 @@ def render_lesson(
     metadata: dict[str, Any] | None = None,
     comic_layout: bool = False,
     comic_frame_title: str = "📘 Current Lesson",
+    student: dict[str, Any] | None = None,
 ) -> None:
     """Render a lesson. In student view the answer key never reaches the page.
 
@@ -750,6 +805,7 @@ def render_lesson(
                             lesson_id=lesson_id,
                             metadata=metadata,
                             key_prefix=key_prefix,
+                            student=student,
                         )
     else:
         st.subheader(md(lesson.get("title", "Lesson")))
@@ -780,6 +836,7 @@ def render_lesson(
                         db=db,
                         lesson_id=lesson_id,
                         metadata=metadata,
+                        student=student,
                     )
 
     # Parent-only: the actual check now happens digitally, in Activity Log's
@@ -1214,6 +1271,29 @@ def render_assessment_card(
                     st.write(md(version["text"]))
                     st.divider()
 
+        ai_review = _stored_ai_review(metadata, index)
+        if ai_review is not None:
+            # The same stored result he already saw before submitting -- his
+            # view showed strengths and next moves; yours adds what the
+            # assignment asked for that's still missing, and anything
+            # factually wrong. No second model call: this is read back, not
+            # regenerated.
+            with st.expander("🔍 What the automated read noticed"):
+                for concern in ai_review.get("concerns") or []:
+                    st.warning(f"⚠️ {md(concern)}")
+                for item in ai_review.get("missing") or []:
+                    st.markdown(f"- **Not addressed:** {md(item)}")
+                for strength in ai_review.get("strengths") or []:
+                    st.markdown(f"- **Working:** {md(strength)}")
+                if not any(
+                    ai_review.get(k) for k in ("concerns", "missing", "strengths")
+                ):
+                    st.caption("Nothing flagged.")
+                st.caption(
+                    "Advisory only, and it can be wrong -- it never approves "
+                    "anything on its own."
+                )
+
         if status == config.WRITING_APPROVED:
             st.success("✅ Approved.")
         elif status == config.WRITING_NEEDS_REVISION:
@@ -1375,6 +1455,7 @@ def student_lesson_view(
             metadata=current.get("metadata") or {},
             comic_layout=comic_layout,
             comic_frame_title=f"{icon} {subject_label} — Current Lesson",
+            student=student,
         )
         render_quiz(
             db,
@@ -1427,6 +1508,7 @@ def render_past_lessons(
             metadata=selected.get("metadata") or {},
             comic_layout=True,
             comic_frame_title=f"{icon} {subject_label} — Past Lesson",
+            student=student,
         )
         render_quiz(
             db,

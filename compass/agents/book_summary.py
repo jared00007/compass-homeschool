@@ -45,6 +45,7 @@ def generate_book_summary(db: Any, student: dict[str, Any], book: dict[str, Any]
         system=SYSTEM_PROMPT,
         user_prompt=user_prompt,
         schema=SUMMARY_SCHEMA,
+        model=config.REVIEW_MODEL,
         effort=config.EFFORT_MEDIUM,
     )
     summary = (payload.get("summary") or "").strip()

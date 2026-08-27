@@ -298,6 +298,38 @@ Older lessons generated before this existed have no stated requirements attached
 they submit freely — there's nothing to check them against. Anything generated from now
 on carries them.
 
+**And one automated read of the actual writing — once per assignment.** Word counts
+can't tell whether he answered the question, and they certainly can't catch *"the
+targets motion might have been renewing new energy"* being backwards. So there's a
+**🔍 Check my work** button next to Save draft. It reads what he wrote against the
+prompt he was given *and* the lesson's own `mastery_criteria` — the rubric that gets
+generated per lesson and that he's never shown — then hands back a short read.
+
+The same result is written once and shown two ways:
+
+- **His view** gets what's genuinely working, plus at most **two** concrete next moves.
+  Not the full list of everything missing — for a kid who already avoids writing, a wall
+  of corrections is the thing most likely to make him quit rather than revise.
+- **Your view**, in the Activity Log assessment card under *What the automated read
+  noticed*, adds the rest: every required part still unaddressed, and anything factually
+  wrong with a plain correction. No second call — it's the same stored result read back.
+
+Three deliberate limits:
+
+- **One call per assignment, ever.** The button disappears once a review exists. Without
+  that, a student who'd rather not think can just iterate against the reviewer until it
+  stops complaining, which is the opposite of the point.
+- **It never approves and never blocks.** Purely advisory. Only he can submit, only you
+  can approve, and nothing it says changes either.
+- **It can be wrong**, including about facts. It's a first read to catch the obvious, not
+  a replacement for yours.
+
+Runs on Haiku (`config.REVIEW_MODEL`), not the frontier model the lesson agents use —
+checking a response against a rubric that's already written is a much smaller job than
+authoring a lesson. Roughly a third of a cent per call; it shows up under its own
+`writing_review` line on the Model Costs page so you can watch what it actually costs.
+Book summaries were moved onto the same model for the same reason.
+
 **On not being able to peek.** The correct answer is never sent to the page until after he
 submits — this isn't a CSS trick, it's that Streamlit reruns the whole page from the server
 on every click, so the only way to leak an answer early would be to write it into the page

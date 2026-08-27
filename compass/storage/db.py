@@ -2305,6 +2305,27 @@ class Database:
             )
         )
 
+    def save_writing_ai_review(
+        self, lesson_id: int, activity_index: int, review: dict[str, Any]
+    ) -> None:
+        """The automated read of one writing response (see
+        compass/agents/writing_review.py), stored per activity index.
+
+        Written once and never regenerated -- the "one call per activity"
+        rule that keeps a student from iterating against the reviewer
+        instead of thinking lives on the read side (`existing_review` gates
+        the button), but nothing here overwrites either.
+        """
+        lesson = self.get_lesson(lesson_id)
+        metadata = lesson["metadata"] if lesson else {}
+        reviews = metadata.get("writing_ai_review") or {}
+        reviews[str(activity_index)] = review
+        metadata["writing_ai_review"] = reviews
+        self.conn.execute(
+            "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
+        )
+        self.conn.commit()
+
     def set_writing_review(
         self, lesson_id: int, activity_index: int, status: str, feedback: str = ""
     ) -> None:

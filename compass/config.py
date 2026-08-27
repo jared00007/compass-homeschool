@@ -21,6 +21,15 @@ DEFAULT_MODEL = "claude-opus-5"
 DEFAULT_EFFORT = "high"
 DEFAULT_MAX_TOKENS = 16000
 
+# Reviewing or summarizing something that already exists is a much smaller job
+# than authoring a lesson from scratch, and doesn't need the frontier model to
+# do it well: checking a response against a rubric that's already written, or
+# introducing a book from its title, is close to the cheapest useful thing a
+# model does. Named here, next to DEFAULT_MODEL, so every such feature reads
+# one constant instead of picking its own -- and so moving them all back up is
+# a one-line change if the quality ever disappoints.
+REVIEW_MODEL = "claude-haiku-4-5"
+
 # --- Washington state compliance floor ---------------------------------------
 # RCW 28A.225.010 / 28A.200.010: instruction in 11 subjects, 1,000 hours/year.
 # These are statutory, not preferences — they are not exposed as settings.
