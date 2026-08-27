@@ -1284,12 +1284,18 @@ def render_assessment_card(
             # factually wrong. No second model call: this is read back, not
             # regenerated.
             with st.expander("🔍 What the automated read noticed"):
+                # Three tiers, loudest first. This card is read to decide
+                # whether to send the assignment back, so the two reasons to
+                # do that shouldn't sit quieter than the praise -- which is
+                # what a plain bullet under a ⚠️ alert was doing. `missing`
+                # carries the same 🔁 his own view uses for the same items,
+                # so the mark means one thing on both sides of the app.
                 for concern in ai_review.get("concerns") or []:
-                    st.warning(f"⚠️ {md(concern)}")
+                    st.error(f"⚠️ **Check this** — {md(concern)}")
                 for item in ai_review.get("missing") or []:
-                    st.markdown(f"- **Not addressed:** {md(item)}")
+                    st.warning(f"🔁 **Needs rework** — {md(item)}")
                 for strength in ai_review.get("strengths") or []:
-                    st.markdown(f"- **Working:** {md(strength)}")
+                    st.markdown(f"- ✅ **Working:** {md(strength)}")
                 if not any(
                     ai_review.get(k) for k in ("concerns", "missing", "strengths")
                 ):

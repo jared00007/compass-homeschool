@@ -249,10 +249,39 @@ def test_the_parent_card_shows_the_full_diagnostic(monkeypatch, tmp_path):
     at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
 
     shown = " ".join(
-        [m.value for m in at.markdown] + [w.value for w in at.warning]
+        [m.value for m in at.markdown]
+        + [w.value for w in at.warning]
+        + [e.value for e in at.error]
     )
     assert A_REVIEW["concerns"][0] in shown
     assert A_REVIEW["missing"][0] in shown
+
+
+def test_the_parent_cards_reasons_to_send_it_back_outrank_the_praise(
+    monkeypatch, tmp_path
+):
+    """This card is read to decide whether to bounce the assignment, so a
+    factual error and an unaddressed requirement both get real alert
+    treatment -- a plain bullet under a ⚠️ alert made the praise the
+    loudest thing on screen. `missing` carries the same 🔁 his own view
+    uses for the same items."""
+    db_path, lesson_id = _seed_page_db(tmp_path, with_review=True)
+    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+
+    concerns = [e for e in at.error if A_REVIEW["concerns"][0] in e.value]
+    assert concerns, "a factual concern should be an error, not a warning"
+    assert concerns[0].icon == "⚠️"
+
+    missing = [w for w in at.warning if A_REVIEW["missing"][0] in w.value]
+    assert missing, "an unaddressed requirement should be a warning, not a bullet"
+    assert missing[0].icon == "🔁"
+    assert "Needs rework" in missing[0].value
+
+    # Praise stays a quiet bullet -- it isn't a reason to act.
+    assert any(
+        "Working" in m.value and A_REVIEW["strengths"][0] in m.value
+        for m in at.markdown
+    )
 
 
 def test_reviewing_never_approves_or_submits_on_its_own(monkeypatch, tmp_path):
