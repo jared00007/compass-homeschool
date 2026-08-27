@@ -1357,6 +1357,7 @@ class Database:
         self._migrate_interests_string_to_list()
         self._migrate_journal_entries_allow_multiple_per_day()
         self._migrate_books_allow_upcoming_status()
+        self._migrate_lessons_allow_review_states()
         # Runs after the rebuild above, not before: that rebuild recreates
         # `books` from its own hardcoded column list on a database old enough
         # to need it, which would otherwise silently drop a column added here
@@ -1598,6 +1599,71 @@ class Database:
         )
         self.conn.execute("DROP TABLE books")
         self.conn.execute("ALTER TABLE books_new RENAME TO books")
+        self.conn.commit()
+        self.conn.execute("PRAGMA foreign_keys = ON")
+
+    def _migrate_lessons_allow_review_states(self) -> None:
+        """lessons.status had a CHECK predating 'submitted'/'needs_revision' --
+        the two states in the submit-and-review gate (see GUIDE.md's
+        "Submit and review" section). SQLite can't ALTER a CHECK constraint
+        in place, so this rebuilds the table with both added, same
+        reasoning and same new-name-first order as
+        _migrate_books_allow_upcoming_status: quiz_attempts,
+        writing_response_versions, and activities.lesson_id all reference
+        `lessons(id)`, and every row keeps its original id.
+
+        Also backfills the one behavior change this introduces: a lesson
+        he'd already self-reported done (metadata.student_done_on) but
+        that was still sitting in 'planned' -- exactly Activity Log's old
+        "he's done -- needs logging" bucket -- becomes 'submitted', so it
+        lands in the new review queue instead of silently reappearing as
+        his current lesson once the old student_done_on-only check is
+        replaced by one that reads status.
+        """
+        table = _row(
+            self.conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='lessons'"
+            )
+        )
+        if table is None or "'submitted'" in (table["sql"] or ""):
+            return  # no table yet, or already rebuilt with the new states
+        self.conn.commit()
+        self.conn.execute("PRAGMA foreign_keys = OFF")
+        self.conn.execute(
+            "CREATE TABLE lessons_new ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,"
+            "agent TEXT NOT NULL,"
+            "subject TEXT NOT NULL,"
+            "topic TEXT NOT NULL,"
+            "title TEXT NOT NULL,"
+            "strategy TEXT NOT NULL DEFAULT '',"
+            "rationale TEXT NOT NULL DEFAULT '',"
+            "payload TEXT NOT NULL,"
+            "metadata TEXT NOT NULL DEFAULT '{}',"
+            "status TEXT NOT NULL DEFAULT 'planned' "
+            "CHECK (status IN ('planned', 'submitted', 'needs_revision', 'completed', 'skipped')),"
+            "created_at TEXT NOT NULL DEFAULT (datetime('now'))"
+            ")"
+        )
+        self.conn.execute(
+            "INSERT INTO lessons_new "
+            "(id, student_id, agent, subject, topic, title, strategy, rationale, "
+            " payload, metadata, status, created_at) "
+            "SELECT id, student_id, agent, subject, topic, title, strategy, rationale, "
+            "payload, metadata, status, created_at FROM lessons"
+        )
+        self.conn.execute("DROP TABLE lessons")
+        self.conn.execute("ALTER TABLE lessons_new RENAME TO lessons")
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_lessons_student "
+            "ON lessons (student_id, created_at DESC)"
+        )
+        self.conn.execute(
+            "UPDATE lessons SET status = 'submitted' "
+            "WHERE status = 'planned' "
+            "AND json_extract(metadata, '$.student_done_on') IS NOT NULL"
+        )
         self.conn.commit()
         self.conn.execute("PRAGMA foreign_keys = ON")
 
@@ -2152,7 +2218,7 @@ class Database:
         )
 
     def set_lesson_status(self, lesson_id: int, status: str) -> None:
-        if status not in ("planned", "completed", "skipped"):
+        if status not in ("planned", "submitted", "needs_revision", "completed", "skipped"):
             raise ValueError(f"invalid lesson status: {status}")
         self.conn.execute("UPDATE lessons SET status = ? WHERE id = ?", (status, lesson_id))
         self.conn.commit()
@@ -2166,16 +2232,51 @@ class Database:
         self.conn.commit()
 
     def mark_student_done(self, lesson_id: int) -> None:
-        """The student's own "I'm done for today" signal.
+        """The student's own "did work today" signal.
 
-        Deliberately separate from `status`, which only changes when the parent
-        logs actual hours: this only controls what he sees as current versus
-        past, and never touches hours, credits, or the compliance record.
+        Feeds `active_days` (the streak) and the daily checklist/progress
+        dots -- it stays true the moment he finishes his part, whether or
+        not a parent has gotten to reviewing it yet. `submit_lesson` below
+        calls this too, but the two stay separate methods: this one alone
+        is what a handful of read-only "did he do something today" call
+        sites need, without pulling in the review-gate status change.
         """
         self.conn.execute(
             "UPDATE lessons SET metadata = json_set(metadata, '$.student_done_on', ?) "
             "WHERE id = ?",
             (date.today().isoformat(), lesson_id),
+        )
+        self.conn.commit()
+
+    def submit_lesson(self, lesson_id: int) -> None:
+        """He's turned the whole lesson in. The gate that decides whether
+        the next lesson for this subject can appear at all -- nothing
+        shows in his current-lesson slot again until a parent resolves
+        this one (see ui.student_lesson_view).
+
+        Always stamps `student_done_on` too, in the same call: the streak
+        and the checklist read that whether or not review has happened
+        yet, and the two must never be able to drift out of sync.
+        """
+        self.mark_student_done(lesson_id)
+        self.set_lesson_status(lesson_id, "submitted")
+
+    def send_lesson_back(self, lesson_id: int, feedback: str = "") -> None:
+        """The parent's "not yet" on the whole lesson -- reopens it as his
+        current lesson again with `feedback` shown up top (see
+        student_lesson_view), same shape as a bounced writing response but
+        for the lesson as a whole. Passing an empty `feedback` is normal
+        when a per-activity writing bounce is what triggered this: that
+        activity already carries its own specific feedback inline, so
+        there's nothing generic worth repeating at the lesson level.
+        """
+        lesson = self.get_lesson(lesson_id)
+        metadata = lesson["metadata"] if lesson else {}
+        if feedback:
+            metadata["lesson_feedback"] = feedback
+        self.conn.execute(
+            "UPDATE lessons SET metadata = ?, status = 'needs_revision' WHERE id = ?",
+            (json.dumps(metadata), lesson_id),
         )
         self.conn.commit()
 

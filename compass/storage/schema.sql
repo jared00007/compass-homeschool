@@ -142,8 +142,11 @@ CREATE TABLE IF NOT EXISTS lessons (
     rationale    TEXT NOT NULL DEFAULT '',
     payload      TEXT NOT NULL,          -- full lesson JSON as returned by the agent
     metadata     TEXT NOT NULL DEFAULT '{}',
+    -- planned: assigned, still with him. submitted: he's turned it in,
+    -- waiting on a parent. needs_revision: sent back, his turn again.
+    -- completed: approved and logged. skipped: a parent's call, not his.
     status       TEXT NOT NULL DEFAULT 'planned'
-                 CHECK (status IN ('planned', 'completed', 'skipped')),
+                 CHECK (status IN ('planned', 'submitted', 'needs_revision', 'completed', 'skipped')),
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

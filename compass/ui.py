@@ -307,11 +307,12 @@ def generate_and_log(
     pending = [
         lesson
         for lesson in db.list_lessons(student["id"], agent=agent.key, limit=10)
-        if lesson["status"] == "planned" and (not current or lesson["id"] != current.lesson_id)
+        if lesson["status"] in ("planned", "submitted", "needs_revision")
+        and (not current or lesson["id"] != current.lesson_id)
     ]
     if pending:
         st.warning(
-            f"⚠️ **{pending[0]['title']}** is already generated and unlogged for this "
+            f"⚠️ **{pending[0]['title']}** is already generated and still open for this "
             "subject. Generating another leaves both waiting on his Home page -- review "
             "or remove the old one from Activity Log → To review."
         )
@@ -1376,6 +1377,72 @@ def render_quiz(
 # --- the digital assessment card (Activity Log's review flow) ------------------
 
 
+def _hours_inputs(payload: dict[str, Any], key_prefix: str) -> tuple[int, str, dict[str, int]]:
+    """The minutes/location/subject-credit inputs shared by every place that
+    finishes a lesson -- the same fields `log_lesson_form` collects for a
+    Life Skills lesson, reused here so approving a graded-subject lesson
+    can log its hours in the same click rather than a second form.
+
+    Must be called inside an open `st.form`.
+    """
+    columns = st.columns(2)
+    with columns[0]:
+        minutes = st.number_input(
+            "Total minutes",
+            min_value=5,
+            max_value=600,
+            value=int(payload.get("estimated_minutes") or 60),
+            step=5,
+            key=f"{key_prefix}_minutes",
+        )
+    with columns[1]:
+        where = st.text_input("Location", key=f"{key_prefix}_location")
+    credits: dict[str, int] = {}
+    subject_credits = payload.get("subject_credits") or []
+    if subject_credits:
+        st.caption("Subject credit")
+        credit_columns = st.columns(len(subject_credits))
+        for column, credit in zip(credit_columns, subject_credits):
+            with column:
+                credits[credit["subject"]] = st.number_input(
+                    subjects.label(credit["subject"]),
+                    min_value=0,
+                    max_value=600,
+                    value=int(credit["minutes"]),
+                    step=5,
+                    key=f"{key_prefix}_credit_{credit['subject']}",
+                )
+    return int(minutes), where, credits
+
+
+def _log_hours_for_lesson(
+    db: Database,
+    student: dict[str, Any],
+    lesson: dict[str, Any],
+    *,
+    minutes: int,
+    location: str,
+    credits: dict[str, int],
+) -> None:
+    """The actual db.log_activity call behind every "Approve & log hours"
+    button below -- log_activity already sets status='completed' when
+    given a lesson_id, so approving and archiving are the same act."""
+    payload = lesson["payload"]
+    db.log_activity(
+        student_id=student["id"],
+        title=lesson.get("title", "Lesson"),
+        tier=config.TIER_CORE,
+        primary_subject=lesson["subject"],
+        minutes=minutes,
+        subject_credits={k: v for k, v in credits.items() if v > 0},
+        occurred_on=date.today().isoformat(),
+        description=payload.get("overview", ""),
+        source=lesson["agent"],
+        location=location,
+        lesson_id=lesson["id"],
+    )
+
+
 def render_assessment_card(
     db: Database, student: dict[str, Any], lesson: dict[str, Any], key_prefix: str
 ) -> None:
@@ -1399,6 +1466,15 @@ def render_assessment_card(
 
     Renders nothing at all for a lesson with no assessment, no skill_id,
     and no writing activity -- most Life Skills/Choice lessons, say.
+
+    The actual decision (mastery, the 5-band verdict, a writing activity's
+    approve/bounce) only opens up once `lesson["status"] == "submitted"` --
+    he has to turn the whole lesson in first. Approving folds in logging
+    the hours in the same click (see _log_hours_for_lesson), since that's
+    the same act now: approved *is* completed. Sending anything back sets
+    the lesson to "needs_revision" and reopens it to him (see
+    student_lesson_view), with no hours logged until he resubmits and it's
+    approved for real.
     """
     payload = lesson["payload"]
     metadata = lesson.get("metadata") or {}
@@ -1494,7 +1570,7 @@ def render_assessment_card(
                 "↩️ Sent back for revision"
                 + (f": {md(review['feedback'])}" if review.get("feedback") else ".")
             )
-        elif status == config.WRITING_SUBMITTED:
+        elif status == config.WRITING_SUBMITTED and lesson["status"] == "submitted":
             st.info("⏳ He's submitted this — awaiting your review.")
             review_key = f"{key_prefix}_writing_review_{lesson['id']}_{index}"
             with st.form(review_key):
@@ -1511,9 +1587,29 @@ def render_assessment_card(
                 db.set_writing_review(
                     lesson["id"], index, config.WRITING_NEEDS_REVISION, feedback
                 )
+                # Bouncing any one piece sends the whole lesson back to him --
+                # he needs to see it and act, not just this activity. No
+                # lesson-level feedback text: this activity already carries
+                # its own, right where he'll read it.
+                db.send_lesson_back(lesson["id"])
                 st.rerun()
+        elif status == config.WRITING_SUBMITTED:
+            # Submitted at the activity level but the lesson as a whole
+            # hasn't been turned in yet -- possible on data from before this
+            # gate existed. Nothing to act on until he turns in the rest.
+            st.caption("⏳ Submitted — waiting on him to turn in the whole lesson.")
         else:
             st.caption("Still drafting — he hasn't submitted this one yet.")
+
+    # The lesson-wide decision (mastery, or the 5-band verdict) waits for
+    # every writing activity to be individually approved first -- grading
+    # the whole lesson while a piece of it still has its own pending
+    # approve/bounce call would put two "send it back" buttons on the
+    # screen for the same lesson at once.
+    writing_all_approved = all(
+        (review_map.get(str(index)) or {}).get("status") == config.WRITING_APPROVED
+        for index, _ in writing_activities
+    )
 
     if skill_id:
         current = db.mastery_map(student["id"]).get(skill_id, {})
@@ -1529,53 +1625,104 @@ def render_assessment_card(
             "The quiz only auto-approves a perfect score -- you decide here, at any "
             "score, whether that's good enough to move on."
         )
-        with st.form(f"{key_prefix}_assess_{lesson['id']}"):
-            notes = st.text_area("Notes (optional)", value=current.get("notes", ""))
-            approve_col, practice_col = st.columns(2)
-            approve = approve_col.form_submit_button(
-                "✅ Approve — move to the next skill", type="primary"
+        # The decision only opens up once he's actually turned the lesson
+        # in -- a lesson still in progress or already sent back has nothing
+        # new for a parent to act on yet (see student_lesson_view for the
+        # other side of this gate) -- and once any writing activity in it
+        # has been approved on its own.
+        if lesson["status"] == "submitted" and writing_all_approved:
+            with st.form(f"{key_prefix}_assess_{lesson['id']}"):
+                notes = st.text_area("Notes (optional)", value=current.get("notes", ""))
+                feedback = st.text_area(
+                    "Feedback (shown to him if you send it back for more practice)"
+                )
+                minutes, where, credits = _hours_inputs(
+                    lesson["payload"], f"{key_prefix}_hrs_{lesson['id']}"
+                )
+                approve_col, practice_col = st.columns(2)
+                approve = approve_col.form_submit_button(
+                    "✅ Approve & log hours", type="primary"
+                )
+                keep_practicing = practice_col.form_submit_button(
+                    "🔁 Not yet — send back for more practice"
+                )
+            if approve:
+                db.set_mastery(
+                    student["id"], skill_id, "mastered", score=latest_score, notes=notes
+                )
+                _log_hours_for_lesson(
+                    db, student, lesson, minutes=minutes, location=where, credits=credits
+                )
+                st.success("Approved and logged — the next skill is unlocked.")
+                st.rerun()
+            elif keep_practicing:
+                db.set_mastery(
+                    student["id"], skill_id, "in_progress", score=latest_score, notes=notes
+                )
+                db.send_lesson_back(lesson["id"], feedback)
+                st.success("Sent back — he'll see this again to keep practicing.")
+                st.rerun()
+        elif lesson["status"] == "submitted":
+            st.caption("Approve his response above before deciding on this skill.")
+        elif lesson["status"] == "needs_revision":
+            st.caption(
+                "↩️ Sent back — waiting on him to keep practicing and turn it in again."
             )
-            keep_practicing = practice_col.form_submit_button("🔁 Not yet — keep practicing")
-        if approve:
-            db.set_mastery(student["id"], skill_id, "mastered", score=latest_score, notes=notes)
-            st.success("Approved — the next skill is unlocked.")
-            st.rerun()
-        elif keep_practicing:
-            db.set_mastery(
-                student["id"], skill_id, "in_progress", score=latest_score, notes=notes
-            )
-            st.success("Recorded — he'll keep practicing this one.")
-            st.rerun()
+        elif lesson["status"] == "planned":
+            st.caption("Still working — nothing to review yet.")
     elif assessment:
         result = metadata.get("assessment_result") or {}
         current_verdict = result.get("verdict")
-        with st.form(f"{key_prefix}_assess_{lesson['id']}"):
-            # Vertical, not horizontal: five bands with their percentages
-            # spelled out don't fit on one row without truncating exactly the
-            # part that says what you're assigning. And no pre-selected
-            # default -- index=0 would sit on "Nailed it," so a parent who
-            # hit Save without reading would hand out a 100%.
-            verdict = st.radio(
-                "How'd it go?",
-                config.ASSESSMENT_VERDICTS,
-                index=config.ASSESSMENT_VERDICTS.index(current_verdict)
-                if current_verdict in config.ASSESSMENT_VERDICTS
-                else None,
-                format_func=lambda v: config.ASSESSMENT_VERDICT_LABELS[v],
-            )
-            st.caption(
-                "This band is part of his grade for the subject — the "
-                "percentage on each one is what it's worth."
-            )
-            notes = st.text_area("Notes (optional)", value=result.get("notes", ""))
-            save = st.form_submit_button("Save assessment", type="primary")
-        if save:
-            if verdict is None:
-                st.warning("Pick a band first.")
-            else:
-                db.record_assessment(lesson["id"], verdict, notes)
-                st.success("Recorded.")
+        if lesson["status"] == "submitted" and writing_all_approved:
+            with st.form(f"{key_prefix}_assess_{lesson['id']}"):
+                # Vertical, not horizontal: five bands with their percentages
+                # spelled out don't fit on one row without truncating exactly
+                # the part that says what you're assigning. And no
+                # pre-selected default -- index=0 would sit on "Nailed it,"
+                # so a parent who hit Save without reading would hand out a
+                # 100%.
+                verdict = st.radio(
+                    "How'd it go?",
+                    config.ASSESSMENT_VERDICTS,
+                    index=config.ASSESSMENT_VERDICTS.index(current_verdict)
+                    if current_verdict in config.ASSESSMENT_VERDICTS
+                    else None,
+                    format_func=lambda v: config.ASSESSMENT_VERDICT_LABELS[v],
+                )
+                st.caption(
+                    "This band is part of his grade for the subject — the "
+                    "percentage on each one is what it's worth."
+                )
+                notes = st.text_area("Notes (optional)", value=result.get("notes", ""))
+                feedback = st.text_area("Feedback (shown to him if you send it back)")
+                minutes, where, credits = _hours_inputs(
+                    lesson["payload"], f"{key_prefix}_hrs_{lesson['id']}"
+                )
+                approve_col, bounce_col = st.columns(2)
+                approve = approve_col.form_submit_button(
+                    "✅ Approve & log hours", type="primary"
+                )
+                bounce = bounce_col.form_submit_button("↩️ Send back for revision")
+            if approve:
+                if verdict is None:
+                    st.warning("Pick a band first.")
+                else:
+                    db.record_assessment(lesson["id"], verdict, notes)
+                    _log_hours_for_lesson(
+                        db, student, lesson, minutes=minutes, location=where, credits=credits
+                    )
+                    st.success("Approved and logged.")
+                    st.rerun()
+            elif bounce:
+                db.send_lesson_back(lesson["id"], feedback)
+                st.success("Sent back for revision.")
                 st.rerun()
+        elif lesson["status"] == "submitted":
+            st.caption("Approve his response above before grading the whole lesson.")
+        elif lesson["status"] == "needs_revision":
+            st.caption("↩️ Sent back — waiting on him to revise and turn it in again.")
+        elif lesson["status"] == "planned":
+            st.caption("Still working — nothing to review yet.")
         if result:
             st.caption(
                 f"Last recorded: {config.ASSESSMENT_VERDICT_LABELS.get(result.get('verdict'), '')} "
@@ -1588,7 +1735,27 @@ def render_assessment_card(
 
 def _done_lessons(db: Database, student_id: int, agent_key: str) -> list[dict[str, Any]]:
     lessons = db.list_lessons(student_id, agent=agent_key, limit=10)
-    return [l for l in lessons if (l.get("metadata") or {}).get("student_done_on")]
+    return [l for l in lessons if l["status"] == "completed"]
+
+
+def _lesson_ready_to_submit(lesson: dict[str, Any]) -> tuple[bool, str]:
+    """Whether "Turn it in" will actually do anything yet -- the quiz (if
+    this lesson has one) taken at least once, and every writing activity
+    at least submitted. Doesn't require anything be *approved* -- that's
+    the parent's call once it's turned in, not a bar he clears himself.
+    """
+    metadata = lesson.get("metadata") or {}
+    payload = lesson["payload"]
+    if (payload.get("quiz") or []) and not metadata.get("quiz_result"):
+        return False, "Take the quiz below before you turn this in."
+    review_map = metadata.get("writing_review") or {}
+    for index, activity in enumerate(payload.get("activities") or []):
+        if not _needs_written_response(activity):
+            continue
+        status = review_map.get(str(index), {}).get("status", config.WRITING_DRAFT)
+        if status == config.WRITING_DRAFT:
+            return False, "Submit every written response below before you turn this in."
+    return True, ""
 
 
 def student_lesson_view(
@@ -1601,11 +1768,15 @@ def student_lesson_view(
 ) -> None:
     """What the student sees on a subject page: his work, and nothing else.
 
-    "Done" here is his own signal (`metadata.student_done_on`), not the
-    parent's `status` -- logging hours is a separate act the parent still
-    controls. Marking a lesson done just moves it out of here and into
-    render_past_lessons's list, reopenable there; it never touches hours,
-    credits, or the compliance record.
+    A lesson already turned in (`status` in `submitted`/`needs_revision`)
+    takes priority over anything else and blocks a new one from taking its
+    place -- 'submitted' is waiting on a parent, 'needs_revision' is
+    waiting on him again, and either way nothing new shows for this
+    subject until it's resolved, even if a parent has already
+    batch-planned days ahead. "Turn it in" (db.submit_lesson) is what
+    moves a lesson into that state; render_assessment_card, on the
+    parent's side, is what moves it back out (approved -> completed, sent
+    back -> needs_revision).
 
     Deliberately doesn't render "Past lessons" itself -- a page with its own
     content after the current lesson (English's Words to Review, for one)
@@ -1626,9 +1797,55 @@ def student_lesson_view(
     that same fact visible here, not just inferred from being on the page.
     """
     lessons = db.list_lessons(student["id"], agent=agent_key, limit=10)
+    icon = SUBJECT_ICONS.get(agent_key, "📘")
+
+    pending = next(
+        (l for l in lessons if l["status"] in ("submitted", "needs_revision")), None
+    )
+    if pending is not None:
+        feedback = (pending.get("metadata") or {}).get("lesson_feedback")
+        if pending["status"] == "submitted":
+            st.info("📤 Submitted — waiting on your parent to check this.")
+        elif feedback:
+            st.warning(f"↩️ Sent back: {md(feedback)}")
+        else:
+            st.warning("↩️ Sent back — check below for what to fix.")
+        render_lesson(
+            pending["payload"],
+            for_parent=False,
+            db=db,
+            lesson_id=pending["id"],
+            metadata=pending.get("metadata") or {},
+            comic_layout=comic_layout,
+            comic_frame_title=f"{icon} {subject_label} — Current Lesson",
+            student=student,
+        )
+        render_quiz(
+            db,
+            student,
+            pending["id"],
+            pending.get("metadata") or {},
+            pending["payload"].get("quiz") or [],
+            agent=agent_key,
+        )
+        if pending["status"] == "needs_revision":
+            ready, why_not = _lesson_ready_to_submit(pending)
+            if st.button(
+                "📬 Turn it in for review",
+                key=f"submit_lesson_{pending['id']}",
+                type="primary",
+                disabled=not ready,
+            ):
+                db.submit_lesson(pending["id"])
+                st.rerun()
+            if not ready:
+                st.caption(why_not)
+        return
+
     todo = [
         l for l in lessons
-        if l["status"] != "skipped" and not (l.get("metadata") or {}).get("student_done_on")
+        if l["status"] not in ("skipped", "submitted", "needs_revision", "completed")
+        and not (l.get("metadata") or {}).get("student_done_on")
     ]
     due_now = weekly.due_lessons(todo, date.today().isoformat())
     done = _done_lessons(db, student["id"], agent_key)
@@ -1649,9 +1866,6 @@ def student_lesson_view(
                 st.caption(f"⚠️ Was due {weekday}")
             else:
                 st.caption(f"📅 {weekday} — today's lesson")
-        if current["status"] == "completed":
-            st.caption("This one's already marked done — here it is again.")
-        icon = SUBJECT_ICONS.get(agent_key, "📘")
         render_lesson(
             current["payload"],
             for_parent=False,
@@ -1670,17 +1884,25 @@ def student_lesson_view(
             current["payload"].get("quiz") or [],
             agent=agent_key,
         )
-        if st.button("✅ I'm done for today", key=f"student_done_{current['id']}", type="primary"):
-            db.mark_student_done(current["id"])
+        ready, why_not = _lesson_ready_to_submit(current)
+        if st.button(
+            "📬 Turn it in for review",
+            key=f"submit_lesson_{current['id']}",
+            type="primary",
+            disabled=not ready,
+        ):
+            db.submit_lesson(current["id"])
             st.rerun()
+        if not ready:
+            st.caption(why_not)
 
 
 def render_past_lessons(
     db: Database, student: dict[str, Any], agent_key: str, subject_label: str | None = None
 ) -> None:
-    """The reopenable archive of lessons he's marked done -- always the last
-    thing on a subject page. See student_lesson_view's docstring for why
-    this is a separate call rather than folded into it.
+    """The reopenable archive of lessons a parent has fully approved --
+    always the last thing on a subject page. See student_lesson_view's
+    docstring for why this is a separate call rather than folded into it.
 
     `subject_label` should be the same one passed to student_lesson_view --
     optional (falling back to a title-cased `agent_key`) only because a few

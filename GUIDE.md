@@ -343,6 +343,8 @@ Two things now stand between a first draft and a finished assignment:
    Sending it back carries your feedback straight onto his screen, above the reopened
    text box, so the next pass is aimed at something specific instead of "do it again."
    He can also pull back a submission himself if he spots a problem before you get to it.
+   Bouncing it sends the *whole lesson* back to him too, not just this one activity — see
+   "Turn it in for review" below, the outer gate this sits inside.
 
 Older lessons generated before this existed have no stated requirements attached, so
 they submit freely — there's nothing to check them against. Anything generated from now
@@ -699,7 +701,7 @@ the activities in order, and everything up to the next *unmet* typed-
 response requirement reads as passed (there's no honest per-activity "done"
 signal for a reading/instruction/discussion activity taken on its own); a
 lesson with no typed-response activity at all falls back to the one real
-lesson-level signal, marking every dot once he's hit "I'm done for today"
+lesson-level signal, marking every dot once he's hit "Turn it in for review"
 rather than inventing per-activity state. The English page's Words to
 Review card gets its own matching frame ("🔤 WORDS TO REVIEW").
 
@@ -728,16 +730,37 @@ before the list of what's still ahead. It's built entirely from his own
 actions, so it shows up the moment he finishes something — it doesn't wait on
 you logging anything.
 
-**✅ I'm done for today.** A button under his current lesson. Clicking it clears
-that lesson off his screen and drops it into a **Past lessons** picker below,
-so he can still reopen and reread one if he wants — it just isn't sitting there
-by default once he's finished it. This is his own signal, separate from you
-logging the hours: it doesn't touch anything on the compliance side, and a
-lesson he's marked done still shows up in Activity Log as not-yet-logged until
-you actually log it — and Activity Log's **To review** tab is where you
-actually do that: open the lesson, the same "Log this as completed" form you'd
-see right after generating one is right there, whether he marked it done
-yesterday or three weeks ago.
+**📬 Turn it in for review.** A button under his current lesson — replaced
+"I'm done for today" once logging hours and "he says he's done" turned out to
+be two disconnected signals, which is exactly what let a lesson sit
+self-reported-done for days with nobody told anything needed reviewing.
+
+Clicking it requires he's actually finished what the gate checks for (the
+quiz taken, if there is one; every written response at least submitted) —
+otherwise the button stays visibly disabled with a caption saying what's
+still missing, rather than silently doing nothing. Once it fires, the lesson
+locks (no more edits) and shows him **"📤 Submitted — waiting on your parent
+to check this."** Nothing new for that subject shows up in its place, even
+if you've already batch-planned days ahead — the point is that the loop has
+to close before he moves on, not that he's blocked from working elsewhere;
+Math, Science, English, and History are independent, so a stuck English
+submission never touches the other three.
+
+You resolve it in Activity Log's **To review** tab, same place as always. One
+combined action does both halves at once: **✅ Approve & log hours** grades
+the lesson (the 5-band verdict, or Math's mastery decision) *and* logs the
+hours in the same click — approved and completed are the same event now, so
+there's no second step to forget. **↩️ Send back for revision** does neither:
+it reopens the lesson to him with your feedback at the top, and nothing gets
+logged until he fixes it and turns it in again. If the lesson has its own
+writing activity awaiting review, that gets approved or bounced on its own
+first — the lesson-wide decision waits until it is, so you're never looking
+at two different "send it back" buttons for the same lesson at once.
+
+The reopenable **Past lessons** picker on his own page now means the same
+thing as **completed** does everywhere else in the app: fully approved, not
+just self-reported. A lesson still waiting on you, or sent back and waiting
+on him, stays out of it — it's still open, not finished.
 
 **What only you see:** assessments and answer keys (including the quiz's — an
 expander on your side shows every question with the correct choice marked),

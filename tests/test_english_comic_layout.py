@@ -200,6 +200,7 @@ def test_reopening_a_past_lesson_also_gets_the_comic_panel_treatment(monkeypatch
         title="Brian's Turning Point", payload=_hatchet_payload(),
     )
     db.mark_student_done(lesson_id)
+    db.set_lesson_status(lesson_id, "completed")  # fully resolved, not just self-reported
     db.close()
 
     at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)

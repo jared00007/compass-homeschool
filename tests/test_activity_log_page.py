@@ -60,11 +60,11 @@ def test_overdue_and_needs_logging_surface_regardless_of_day(monkeypatch, tmp_pa
         },
     )
     lid = db.save_lesson(
-        student_id=sid, agent="science", subject="science", topic="t", title="Needs logging",
-        payload={"title": "Needs logging", "activities": []},
+        student_id=sid, agent="science", subject="science", topic="t", title="Turned in",
+        payload={"title": "Turned in", "activities": []},
         metadata={"planned_for": today.isoformat(), "week_start": week_start.isoformat()},
     )
-    db.mark_student_done(lid)
+    db.submit_lesson(lid)
     db.close()
 
     at, review_tab = _open_review_tab(monkeypatch, db_path)
@@ -73,7 +73,7 @@ def test_overdue_and_needs_logging_surface_regardless_of_day(monkeypatch, tmp_pa
     assert any("Needs your attention now" in m and "(2)" in m for m in markdowns)
     labels = [e.label for e in review_tab.expander]
     assert any("overdue" in l and "Overdue lesson" in l for l in labels)
-    assert any("needs logging" in l and "Needs logging" in l for l in labels)
+    assert any("waiting on you to review" in l and "Turned in" in l for l in labels)
 
 
 def test_board_columns_only_show_their_own_day(monkeypatch, tmp_path):

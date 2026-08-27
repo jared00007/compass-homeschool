@@ -7,7 +7,7 @@ from functools import partial
 
 import streamlit as st
 
-from compass import config, weekly
+from compass import config, gradebook, weekly
 from compass.agents.framework import GeneratedLesson, TopicProposal
 from compass.export import lesson_to_docx, suggested_filename
 from compass.subjects import SUBJECT_KEYS, label
@@ -35,23 +35,25 @@ def _lesson_date(lesson: dict) -> str:
 
 
 def _needs_attention(lesson: dict, today_iso: str) -> bool:
-    """Overdue, or already marked done by him and waiting on a parent to
-    log it -- either way it shouldn't be sitting quietly in a day column
-    the parent isn't currently looking at."""
-    meta = lesson.get("metadata") or {}
-    if meta.get("student_done_on"):
+    """Genuinely waiting on you: he's turned it in, or it's overdue and
+    still untouched. A lesson sent back for revision ('needs_revision') is
+    waiting on HIM, not you -- it gets its own quieter section below
+    rather than being counted here."""
+    if lesson["status"] == "submitted":
         return True
-    planned_for = meta.get("planned_for")
+    planned_for = (lesson.get("metadata") or {}).get("planned_for")
     return bool(planned_for and planned_for < today_iso)
 
 
 def _review_badge(lesson: dict, today_iso: str) -> str:
     if lesson["status"] != "planned":
-        return {"completed": "✅ completed", "skipped": "⏭️ skipped"}[lesson["status"]]
-    meta = lesson.get("metadata") or {}
-    if meta.get("student_done_on"):
-        return "🎓 he's done — needs logging"
-    planned_for = meta.get("planned_for")
+        return {
+            "completed": "✅ completed",
+            "skipped": "⏭️ skipped",
+            "submitted": "📤 waiting on you to review",
+            "needs_revision": "↩️ sent back — waiting on him",
+        }[lesson["status"]]
+    planned_for = (lesson.get("metadata") or {}).get("planned_for")
     if planned_for and planned_for < today_iso:
         return "⚠️ overdue"
     return "🕓 planned"
@@ -72,8 +74,8 @@ def _render_review_card(lesson: dict, today_iso: str) -> None:
         )
         if lesson["rationale"]:
             st.caption(f"Why: {md(lesson['rationale'])}")
-        if student_done_on and lesson["status"] != "completed":
-            st.caption(f"🎓 He marked this done on {student_done_on} — not logged yet.")
+        if student_done_on and lesson["status"] == "submitted":
+            st.caption(f"🎓 He turned this in on {student_done_on}.")
         quiz_result = (lesson.get("metadata") or {}).get("quiz_result")
         if quiz_result and quiz_result.get("total"):
             pct = round(100 * quiz_result["correct"] / quiz_result["total"])
@@ -97,7 +99,12 @@ def _render_review_card(lesson: dict, today_iso: str) -> None:
             key=f"docx_{lesson['id']}",
         )
         render_assessment_card(db, student, lesson, key_prefix=f"activitylog_{lesson['id']}")
-        if lesson["status"] == "planned":
+        # For a graded subject, hours only ever get logged through the
+        # combined Approve action inside render_assessment_card above --
+        # there's nothing to log from 'planned' (nothing turned in yet).
+        # This plain form stays for Life Skills and anything else that
+        # never goes through the submit/review gate.
+        if lesson["status"] == "planned" and lesson["agent"] not in gradebook.GRADED_AGENTS:
             st.divider()
             generated = GeneratedLesson(
                 lesson_id=lesson["id"],
@@ -123,6 +130,8 @@ def _render_review_card(lesson: dict, today_iso: str) -> None:
                 key_prefix=f"activitylog_{lesson['id']}",
                 tier=tier,
             )
+        if lesson["status"] in ("planned", "submitted", "needs_revision"):
+            st.divider()
             skip_col, remove_col = st.columns(2)
             if skip_col.button("Mark skipped instead", key=f"skip_{lesson['id']}"):
                 db.set_lesson_status(lesson["id"], "skipped")
@@ -136,12 +145,12 @@ def _render_review_card(lesson: dict, today_iso: str) -> None:
 
 
 all_lessons = db.list_lessons(student["id"], limit=50)
-to_review = [l for l in all_lessons if l["status"] == "planned"]
-history = [l for l in all_lessons if l["status"] != "planned"]
-# Stable sort: lessons he's already marked done float to the top of "to review"
-# since they're the most time-sensitive -- he's waiting on you, not the other
+to_review = [l for l in all_lessons if l["status"] in ("planned", "submitted", "needs_revision")]
+history = [l for l in all_lessons if l["status"] in ("completed", "skipped")]
+# Stable sort: anything he's turned in floats to the top of "to review"
+# since it's the most time-sensitive -- he's waiting on you, not the other
 # way around. Relative order within each group (most recent first) is preserved.
-to_review.sort(key=lambda l: 0 if (l.get("metadata") or {}).get("student_done_on") else 1)
+to_review.sort(key=lambda l: 0 if l["status"] == "submitted" else 1)
 
 log_tab, add_tab, lessons_tab = st.tabs(
     ["The record", "Log something manually", f"To review ({len(to_review)})"]
@@ -246,7 +255,7 @@ with lessons_tab:
     st.subheader("To review")
     st.caption(
         "Laid out the way the week itself gets planned — Monday through Thursday, "
-        "one column each. Anything overdue or already marked done floats up top "
+        "one column each. Anything overdue or already turned in floats up top "
         "regardless of which day or week it's for, so it's never stuck a few "
         "columns over from where you're looking."
     )
@@ -257,12 +266,17 @@ with lessons_tab:
     attention = [l for l in to_review if _needs_attention(l, today_iso)]
     attention.sort(
         key=lambda l: (
-            0 if (l.get("metadata") or {}).get("student_done_on") else 1,
+            0 if l["status"] == "submitted" else 1,
             (l.get("metadata") or {}).get("planned_for") or "",
         )
     )
-    attention_ids = {l["id"] for l in attention}
-    rest = [l for l in to_review if l["id"] not in attention_ids]
+    # Sent back for revision is waiting on him, not you -- its own quieter
+    # section, pulled out of the day board entirely rather than mixed in
+    # with lessons still simply due, so what's on your plate versus his
+    # stays visually distinct.
+    sent_back = [l for l in to_review if l["status"] == "needs_revision"]
+    excluded_ids = {l["id"] for l in attention} | {l["id"] for l in sent_back}
+    rest = [l for l in to_review if l["id"] not in excluded_ids]
 
     if not all_lessons:
         st.info("No lessons generated yet.")
@@ -270,6 +284,15 @@ with lessons_tab:
         if attention:
             st.markdown(f"**⚠️ Needs your attention now** ({len(attention)})")
             for lesson in attention:
+                _render_review_card(lesson, today_iso)
+            st.divider()
+
+        if sent_back:
+            st.markdown(f"**↩️ Sent back — waiting on him** ({len(sent_back)})")
+            st.caption(
+                "Nothing to do here yet — just visible so you can see where things stand."
+            )
+            for lesson in sent_back:
                 _render_review_card(lesson, today_iso)
             st.divider()
 
@@ -311,7 +334,7 @@ with lessons_tab:
             for lesson in unscheduled:
                 _render_review_card(lesson, today_iso)
 
-        if not attention and not any(board_buckets.values()) and not unscheduled:
+        if not attention and not sent_back and not any(board_buckets.values()) and not unscheduled:
             st.success("Nothing waiting on you right now.")
 
     show_history = st.checkbox("Also show completed and skipped lessons")

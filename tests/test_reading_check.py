@@ -197,7 +197,7 @@ def test_it_never_blocks_the_rest_of_the_lesson(monkeypatch, tmp_path):
     strand him on reading he actually did."""
     db_path, lesson_id = _seed(tmp_path)
     at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
-    assert any("I'm done for today" in (b.label or "") for b in at.button)
+    assert any("Turn it in for review" in (b.label or "") for b in at.button)
 
 
 # --- the parent's view -------------------------------------------------------------

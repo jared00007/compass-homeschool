@@ -297,7 +297,7 @@ def test_nothing_renders_before_a_lesson_exists(monkeypatch, db, student):
 
 def test_no_pending_lesson_shows_no_warning(monkeypatch, db, student):
     page, _ = run(monkeypatch, db, student)
-    assert "already generated and unlogged" not in page
+    assert "already generated and still open" not in page
 
 
 def test_a_pending_planned_lesson_warns_before_generating_another(monkeypatch, db, student):
@@ -309,7 +309,7 @@ def test_a_pending_planned_lesson_warns_before_generating_another(monkeypatch, d
         student["id"], "math", "math", "topic", "Two-Step Equations", payload={"a": 1}
     )
     page, _ = run(monkeypatch, db, student)
-    assert "already generated and unlogged" in page
+    assert "already generated and still open" in page
     assert "Two-Step Equations" in page
 
 
@@ -326,7 +326,7 @@ def test_no_warning_for_the_lesson_already_held_in_session(monkeypatch, db, stud
         warnings=[],
     )
     page, _ = run(monkeypatch, db, student, generated=generated)
-    assert "already generated and unlogged" not in page
+    assert "already generated and still open" not in page
 
 
 def test_the_session_key_is_per_agent(monkeypatch, db, student):
@@ -385,12 +385,15 @@ def test_student_view_shows_current_lesson_and_a_done_button(monkeypatch, db, st
     page = render_student_view(monkeypatch, db, student)
     assert "Two-Step Equations" in page
     assert "Solve problems 1-10." in page
-    assert "I'm done for today" in page
+    assert "Turn it in for review" in page
 
 
 def test_marking_done_moves_a_lesson_out_of_current(monkeypatch, db, student):
-    """This is the whole feature: his own signal, not the parent's `status`,
-    controls what he sees as current -- and it's separate from hour logging."""
+    """`mark_student_done` alone -- not the full `submit_lesson` gate a real
+    "Turn it in" click goes through -- still does its own narrow job: the
+    lesson stops being his current one. Nothing else calls it standalone
+    anymore, so there's genuinely nothing turned in and nothing approved
+    either, hence "no lesson set up" rather than "look back below"."""
     lesson_id = db.save_lesson(
         student["id"], "math", "math", "topic", "Two-Step Equations", payload=a_lesson()
     )
@@ -398,8 +401,8 @@ def test_marking_done_moves_a_lesson_out_of_current(monkeypatch, db, student):
     assert db.get_lesson(lesson_id)["status"] == "planned"  # unaffected by his click
 
     page = render_student_view(monkeypatch, db, student)
-    assert "Nothing left to do" in page
-    assert "I'm done for today" not in page
+    assert "No math lesson has been set up yet" in page
+    assert "Turn it in for review" not in page
     assert "Two-Step Equations" not in page  # not dumped into the page unprompted
 
 
@@ -517,6 +520,7 @@ def test_a_finished_lesson_can_be_reopened_from_past_lessons(monkeypatch, db, st
         student["id"], "math", "math", "topic", "Two-Step Equations", payload=a_lesson()
     )
     db.mark_student_done(lesson_id)
+    db.set_lesson_status(lesson_id, "completed")  # fully resolved, not just self-reported
     lesson = db.get_lesson(lesson_id)
     label = f"{lesson['created_at'][:10]} — {lesson['title']}"
 

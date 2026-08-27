@@ -62,7 +62,8 @@ def test_math_lesson_gets_the_approve_not_yet_choice_in_activity_log(monkeypatch
     db_path = tmp_path / "a.db"
     db = Database(db_path)
     student = db.ensure_default_student()
-    _math_lesson(db, student["id"])
+    lesson_id = _math_lesson(db, student["id"])
+    db.submit_lesson(lesson_id)  # the decision only opens up once he's turned it in
     db.close()
 
     at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
@@ -76,9 +77,10 @@ def test_approving_records_mastery_at_the_actual_quiz_score(monkeypatch, tmp_pat
     db_path = tmp_path / "a.db"
     db = Database(db_path)
     student = db.ensure_default_student()
-    _math_lesson(db, student["id"], quiz_result={
+    lesson_id = _math_lesson(db, student["id"], quiz_result={
         "correct": 4, "total": 5, "passed": True, "graded_on": "2026-08-25",
     })
+    db.submit_lesson(lesson_id)
     db.close()
 
     at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
@@ -88,18 +90,22 @@ def test_approving_records_mastery_at_the_actual_quiz_score(monkeypatch, tmp_pat
 
     db2 = Database(db_path)
     mastery = db2.mastery_map(student["id"])
+    lesson = db2.get_lesson(lesson_id)
     db2.close()
     assert mastery["two-step-equations"]["status"] == "mastered"
     assert mastery["two-step-equations"]["score"] == 80
+    # Approving and logging hours are the same act now.
+    assert lesson["status"] == "completed"
 
 
 def test_not_yet_records_in_progress_not_mastered(monkeypatch, tmp_path):
     db_path = tmp_path / "a.db"
     db = Database(db_path)
     student = db.ensure_default_student()
-    _math_lesson(db, student["id"], quiz_result={
+    lesson_id = _math_lesson(db, student["id"], quiz_result={
         "correct": 3, "total": 5, "passed": False, "graded_on": "2026-08-25",
     })
+    db.submit_lesson(lesson_id)
     db.close()
 
     at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
@@ -109,8 +115,11 @@ def test_not_yet_records_in_progress_not_mastered(monkeypatch, tmp_path):
 
     db2 = Database(db_path)
     mastery = db2.mastery_map(student["id"])
+    lesson = db2.get_lesson(lesson_id)
     db2.close()
     assert mastery["two-step-equations"]["status"] == "in_progress"
+    # Sent back, not completed -- no hours logged until he redoes it.
+    assert lesson["status"] == "needs_revision"
 
 
 def test_an_already_approved_skill_shows_as_such(monkeypatch, tmp_path):
@@ -138,10 +147,11 @@ def test_non_math_lesson_gets_the_three_way_verdict_form(monkeypatch, tmp_path):
         "assessment": {"kind": "check", "description": "Explain the three layers",
                         "mastery_criteria": "Names all three unprompted"},
     }
-    db.save_lesson(
+    lesson_id = db.save_lesson(
         student_id=student["id"], agent="science", subject="science", topic="t",
         title="Volcanoes", payload=payload,
     )
+    db.submit_lesson(lesson_id)
     db.close()
 
     at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
@@ -161,6 +171,7 @@ def test_submitting_the_verdict_form_records_the_assessment(monkeypatch, tmp_pat
         student_id=student["id"], agent="science", subject="science", topic="t",
         title="Volcanoes", payload=payload,
     )
+    db.submit_lesson(lesson_id)
     db.close()
 
     at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
@@ -169,7 +180,7 @@ def test_submitting_the_verdict_form_records_the_assessment(monkeypatch, tmp_pat
     # the percentage each band is worth toward the grade, and a test that
     # hardcodes the display string breaks every time that wording moves.
     radio.set_value(config.ASSESSMENT_NAILED_IT).run()
-    submit = [b for b in at.button if "Save assessment" in (b.label or "")][0]
+    submit = [b for b in at.button if "Approve" in (b.label or "")][0]
     submit.click().run()
     assert not at.exception, [e.message for e in at.exception]
 
@@ -177,6 +188,7 @@ def test_submitting_the_verdict_form_records_the_assessment(monkeypatch, tmp_pat
     lesson = db2.get_lesson(lesson_id)
     db2.close()
     assert lesson["metadata"]["assessment_result"]["verdict"] == "nailed_it"
+    assert lesson["status"] == "completed"
 
 
 def test_a_lesson_with_no_assessment_skill_or_writing_gets_no_card(monkeypatch, tmp_path):
@@ -436,18 +448,24 @@ def test_logging_hours_does_not_launch_balloons(monkeypatch, tmp_path):
     db_path = tmp_path / "a.db"
     db = Database(db_path)
     student = db.ensure_default_student()
-    _math_lesson(db, student["id"])
+    lesson_id = _math_lesson(db, student["id"])
+    db.submit_lesson(lesson_id)
     db.close()
 
     calls = []
     monkeypatch.setattr(streamlit, "balloons", lambda: calls.append(1))
     at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
-    log_button = [b for b in at.button if b.label == "Log hours"][0]
+    log_button = [b for b in at.button if "Approve" in (b.label or "")][0]
     log_button.click().run()
     assert not at.exception, [e.message for e in at.exception]
 
-    text = " ".join(a.value for a in at.success)
-    assert "Logged." in text
+    # The success message flashes and immediately reruns -- AppTest's final
+    # state is past it, same as every other approve/decision flow here, so
+    # this checks the actual record instead of a message that can't survive
+    # the rerun that follows it.
+    db2 = Database(db_path)
+    assert db2.get_lesson(lesson_id)["status"] == "completed"
+    db2.close()
     assert not calls
 
 
@@ -568,10 +586,11 @@ def test_parent_sees_the_submitted_response_and_can_approve(monkeypatch, tmp_pat
     )
     db.save_writing_response(lesson_id, 0, "His finished argument.")
     db.set_writing_review(lesson_id, 0, "submitted")
+    db.set_lesson_status(lesson_id, "submitted")  # the whole lesson has to be turned in too
     db.close()
 
     at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
-    approve = [b for b in at.button if "Approve" in (b.label or "")][0]
+    approve = [b for b in at.button if b.label == "✅ Approve"][0]
     approve.click().run()
     assert not at.exception, [e.message for e in at.exception]
 
@@ -591,6 +610,7 @@ def test_parent_can_send_it_back_with_feedback(monkeypatch, tmp_path):
     )
     db.save_writing_response(lesson_id, 0, "Too thin an argument.")
     db.set_writing_review(lesson_id, 0, "submitted")
+    db.set_lesson_status(lesson_id, "submitted")  # the whole lesson has to be turned in too
     db.close()
 
     at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
@@ -608,6 +628,8 @@ def test_parent_can_send_it_back_with_feedback(monkeypatch, tmp_path):
     review = lesson["metadata"]["writing_review"]["0"]
     assert review["status"] == "needs_revision"
     assert review["feedback"] == "Back this up with a quote from the text."
+    # Bouncing one piece sends the whole lesson back too.
+    assert lesson["status"] == "needs_revision"
 
 
 def test_a_bounced_response_shows_him_the_feedback_and_reopens_the_box(monkeypatch, tmp_path):

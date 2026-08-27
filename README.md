@@ -342,7 +342,7 @@ compass/
   theme.py                   the one fixed theme and the CSS that applies it
   fun_facts.py               fact-of-the-day for the student home view
   national_parks.py          the 63 parks + real state borders for Landon's Travels
-tests/                       806 tests, no API key required
+tests/                       827 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 scripts/new_school_year_reset.py  wipe a finished school year's data, see below
 ```
@@ -633,55 +633,71 @@ thing that draws a grade, on his Grades tab and on the parent Home alike, so the
 drift. The flag changes wording and adds a pointer to the weight settings; it never
 changes a number.
 
-## The student's own "I'm done for today"
+## The submit-and-review gate
 
 `student_lesson_view()` in `compass/ui.py` shows exactly one "current" lesson per
-subject and a button: **✅ I'm done for today**. Clicking it calls
-`db.mark_student_done()`, which stamps `metadata.student_done_on` (via the same
-`json_set` pattern `record_quiz_result` already used — no schema migration needed,
-since `metadata` is already a JSON column). The lesson then drops out of "current"
-and into a **Past lessons** picker below it — a selectbox, not a list of expanders,
-because `render_lesson` already opens its own expanders for activities and video, and
-Streamlit doesn't allow nesting one expander inside another.
+subject and a button: **📬 Turn it in for review**, replacing the original **I'm done
+for today**. The difference is what the click does. The original button called
+`db.mark_student_done()` (stamps `metadata.student_done_on`) and nothing else —
+logging hours stayed a fully separate, easy-to-forget parent action, and a lesson
+could sit self-reported-done for days with no signal anywhere that said so. `lessons`
+now carries two more `status` values, `submitted` and `needs_revision` (CHECK
+constraint rebuilt the same way `_migrate_books_allow_upcoming_status` added
+`'upcoming'` — SQLite can't ALTER a CHECK in place), and `db.submit_lesson()` sets
+both at once: `mark_student_done()` (unchanged, still what the streak and daily
+checklist read) *and* `status = "submitted"` (the new gate).
 
-**This is deliberately a second, separate signal from `status`.** `status` (planned →
-completed) only changes when the parent logs actual hours through `log_lesson_form`
-— that's the compliance-relevant fact, tied to real minutes and subject credits.
-`student_done_on` is just "he says he's finished," and touches nothing else: not
-hours, not credits, not the compliance record. A lesson can be `student_done_on`-set
-and still `status: "planned"` indefinitely if the parent hasn't logged it yet — the
-two states aren't supposed to reconcile, same as the total/per-subject hours split
-elsewhere in this app. Activity Log's "To review" tab surfaces that gap two ways: a
-small note (`🎓 He marked this done on ... — not logged yet.`) inside the lesson, and
-a `🎓 he's done — needs logging` badge on its collapsed header, sorted to the top of
-the tab — see below.
+**"Submitted" and "needs_revision" take priority over anything else for that
+subject.** `student_lesson_view` checks for a lesson in either state before it even
+computes what's normally due; if one exists, that's what renders — locked and
+read-only with a "📤 Submitted — waiting on your parent" banner, or reopened with
+the parent's feedback on top — regardless of what's been batch-planned for later
+days. This is deliberate, not an oversight: the whole point is that the loop has to
+close before anything new appears, even if a parent has already planned the rest of
+the week. Subjects are independent, so a stuck lesson only stalls that one subject.
+
+**`render_assessment_card` is the other half.** Its actionable form (Math's mastery
+decision, the 5-band verdict, a writing activity's own approve/bounce) only renders
+once `lesson["status"] == "submitted"` — before that there's nothing new for a parent
+to act on. **✅ Approve & log hours** does both in the same `st.form` submit: records
+the grade (`set_mastery` / `record_assessment`) *and* calls `log_activity(...,
+lesson_id=...)`, which already sets `status = "completed"` — approved and completed
+are the same event now, via a shared `_log_hours_for_lesson` helper reusing the same
+minutes/location/subject-credit fields `log_lesson_form` collects. **↩️ Send back for
+revision** calls the new `db.send_lesson_back(lesson_id, feedback)` instead: sets
+`status = "needs_revision"`, stores `metadata.lesson_feedback`, logs nothing. If the
+lesson has its own writing activity still awaiting its own approve/bounce, the
+lesson-wide decision waits (`writing_all_approved` gate) — otherwise a parent would
+see two different "send it back" buttons for the same lesson at once. Bouncing a
+writing activity on its own calls `send_lesson_back` too (with no lesson-level
+feedback text — that activity already carries its own).
+
+**"Turn it in" itself is gated on readiness**, not just clickable at any time:
+`_lesson_ready_to_submit()` requires the quiz taken (if the lesson has one) and every
+writing activity at least submitted, and disables the button with an explanation
+(`st.button(..., disabled=not ready)`) rather than letting him turn in unfinished
+work. Life Skills, Choice Topics, and Big Projects never go through any of this —
+`student_lesson_view` is only ever called from the four graded subject pages, so
+their lessons stay exactly as self-reported and parent-logged as they always were.
 
 A skipped lesson (`status: "skipped"`) is excluded from "current" outright — there's
 no reason to hand him a lesson the parent already called off.
 
-**Closing the loop this surfaced:** before this, the only place to actually log a
-lesson's hours was `log_lesson_form` inside `generate_and_log` — which only renders
-from that page's Streamlit session state, so it was reachable exactly once, in the
-same session where the lesson was generated. Reload the page, come back tomorrow, or
-just be the parent checking what he marked done, and there was no way to log it at
-all short of the disconnected "Log something manually" form. Activity Log →
-`lessons_tab` now reconstructs a `GeneratedLesson` from the DB row (`topic`,
-`rationale`, `strategy`, and `subject` are already columns on `lessons`, so this is
-just re-assembly, not new data) and renders the same `log_lesson_form` for any
-`status == "planned"` lesson, life_skills plans included — tier picked as
-`TIER_LIFE_SKILLS` vs `TIER_CORE` off `lesson["agent"]`. Same durability fix as the
-Word-doc download button: DB-backed instead of session-state-backed.
+**Activity Log's "To review" tab reflects all three open states.** `to_review` is now
+`status in ("planned", "submitted", "needs_revision")`; `history` is `("completed",
+"skipped")`. "⚠️ Needs your attention now" only counts `submitted` (genuinely waiting
+on the parent) plus overdue `planned` lessons — a `needs_revision` lesson is waiting
+on *him*, so it gets its own quieter "↩️ Sent back — waiting on him" section instead,
+visible but not flagged as needing action. `log_lesson_form` (the old, ungated
+hours-only form) still renders for anything outside `gradebook.GRADED_AGENTS` — Life
+Skills chiefly — but never for a graded subject, where hours only ever get logged
+through the combined Approve action above.
 
-**Then the tab itself got reorganized around that gap**, once it was clear having
-"log a lesson" live in two places (the ephemeral form above, and a tab that mixed
-every lesson ever generated together regardless of status) was the actual source of
-confusion, not just the missing form. `lessons_tab` now filters to `status ==
-"planned"` by default — labeled `To review (N)` right on the tab itself — with a
-`st.checkbox("Also show completed and skipped lessons")` to pull in `history` when
-wanted. Within `to_review`, a stable sort (`key=lambda l: 0 if student_done_on else
-1`) floats lessons he's already marked done to the top without disturbing the
-most-recent-first order `list_lessons` already returns within each group — those are
-the most time-sensitive, since he's waiting on the parent, not the other way around.
+**Migrating existing data:** `_migrate_lessons_allow_review_states()` also backfills
+the one behavior change this introduces — a lesson already self-reported done
+(`student_done_on` set) but still sitting in `planned` under the old rules becomes
+`submitted`, landing in the new review queue instead of silently reappearing as his
+current lesson once the gate goes live.
 
 ### His "Today" checklist
 
@@ -993,7 +1009,7 @@ make.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 806 tests, ~100s, no API key needed
+python -m pytest tests/ -q      # 827 tests, ~95s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the
