@@ -268,8 +268,12 @@ time, and both paths write to the same place.
 
 On Science, English, and History there's no mastery gate to hook into, so the quiz just
 shows him his score. What *does* apply there is the same **Activity Log → To review**
-assessment card Math uses, just lighter: a three-way call — Nailed it / Getting there /
-Needs more work — plus a notes field, right on the lesson, the moment you're checking it.
+assessment card Math uses, just lighter: a five-band call — Nailed it (100%) / Solid (90%)
+/ Getting there (80%) / Needs more work (70%) / Not yet (55%) — plus a notes field, right
+on the lesson, the moment you're checking it. The percentage on each band is what it's
+worth toward the subject grade, printed on the label so you always know exactly what
+you're assigning. Nothing is pre-selected: hitting Save without reading can't hand out a
+100%.
 
 The pass bar defaults to 80% and is a family policy call, not a Washington requirement — a
 setting, not a constant, if you want it stricter or looser.
@@ -383,6 +387,81 @@ before he's answered, which the code simply never does. Copying a question out t
 it is blocked by ordinary browser text-selection rules on that section — real friction, but
 the same honest caveat as the PIN: it stops the casual case, not a determined kid with
 dev tools open.
+
+---
+
+## Grades
+
+Washington doesn't require grades for a homeschooled student, and Compass went most of a
+build without them on purpose. This exists because **Landon asked for one** — and a kid
+who asks to be measured is telling you something worth taking seriously.
+
+It's on his own page under **🎓 Grades**, and on your Home page under **Report card**.
+Same numbers, same source: there is deliberately no second, parent-only set. If a grade
+looks wrong to you, it looks wrong to him too.
+
+**Four grades, not one.** Math, Science, English, History each get their own letter and
+percent. There is **no overall GPA**, and that's a decision rather than an omission — one
+number for everything reads as a verdict on *him* rather than on the work, which is
+exactly the failure mode most likely to make a kid who already freezes stop trying. Four
+separate numbers are four separate, fixable things. Life skills, choice topics, and Big
+Projects carry no grade at all: they're the part of the week he actually chooses, and
+grading them would turn that into more of the part he doesn't.
+
+**Nothing new is measured.** Every input was already being recorded; this only decides
+how they combine:
+
+| Subject | Weights |
+| --- | --- |
+| Math | Quizzes 45 · Mastery 35 · Assessment 20 |
+| English | Writing 40 · Quizzes 25 · Reading checks 15 · Assessment 20 |
+| Science / History | Quizzes 40 · Writing 25 · Reading checks 15 · Assessment 20 |
+
+Editable as settings (`grade_weights_math` and friends) on the Student Profile page.
+
+**Hours logged and the streak are not part of any grade.** Effort is not achievement —
+the streak already rewards showing up, on its own terms, and folding it in would quietly
+inflate a B into an A and make the number mean less to him.
+
+**A retry is worth less than a first try, and can never hurt.** First attempt counts in
+full; each retry is worth 10% less down to a 70% floor; the grade takes the **best
+weighted** attempt. So:
+
+- 60% first try, then 100% on the retry → banks **90%**.
+- 100% first try → banks **100%**, and a careless second go can't take it away.
+- 85% thought about carefully beats 100% ground out on a fourth attempt (which caps at 70%).
+
+Best-weighted rather than latest is the load-bearing part: there is never a reason to
+avoid trying again, while the deduction keeps the incentive pointed at "think before you
+submit" — which is the exact habit the whole writing loop exists to build.
+
+**Four graded attempts, then it's practice.** That's where the 20-question pool runs out
+at five a sitting, so a fifth attempt would measure memory of the quiz rather than
+knowledge of the lesson; the deduction floor lands on the same number independently.
+Retries past four still work — **he is never blocked from practicing.** He's just told
+plainly, on the button itself, that the run won't change his grade. Same when he's
+already banked a score another attempt can't beat: *"You've already banked 95% here —
+another go is practice."* Blocking practice to protect a number would be backwards.
+
+**Writing revisions carry no penalty.** A response you send back and he fixes counts the
+same as one approved first time. This is the deliberate asymmetry with the quiz rule:
+revision is the process working exactly as designed, and docking a second draft would
+teach precisely the submit-once-and-never-revise habit the loop was built to fix. A
+response still in revision counts partial (70%) until it's approved; a draft he hasn't
+submitted isn't scored at all.
+
+**An empty component is dropped, never counted as zero.** Two weeks into the year with no
+writing turned in yet, English is graded on quizzes and reading alone — the writing
+weight redistributes across what exists. "Hasn't written anything yet" must never read as
+"failed the writing." Likewise a subject he hasn't touched shows **not graded yet**, not
+an F: an absent grade and a failed one are completely different facts.
+
+**Math mastery is scored against skills he's attempted**, not against the whole graph —
+otherwise he'd open the year at 0% for skills the curriculum simply hasn't reached.
+
+**The arithmetic is always visible.** Every subject expands to show each component's
+percent and its weight. A bare "B+" tells him nothing he can act on; *"writing 78%,
+quizzes 92%"* tells him exactly what to go fix.
 
 ---
 
@@ -595,6 +674,12 @@ the sidebar (**Set a parent PIN**) and Compass splits into two views.
 materials, a suggested video when there is one, and the quiz at the end — plus
 his reading progress, vocabulary review, and his own Tier 3 topics. Enough to
 do the work without you narrating it.
+
+His Home page has four tabs: **📅 Today** (the checklist he works down),
+**🗓️ This Week** and **🔜 Upcoming Week** (read-only week grids), and
+**🎓 Grades** (see [Grades](#grades)). Grades get their own tab rather than a
+block on Today deliberately — sitting above the checklist, his grade would be
+the first thing he read every morning, which is the opposite of the point.
 
 **Every subject's activities render as a "Comic Panels" grid, not a stack of
 collapsed expanders.** Sampled as three mockups on the English page before

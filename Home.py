@@ -23,6 +23,7 @@ from compass.ui import (
     render_fun_fact,
     render_lesson,
     render_morning_routine,
+    render_report_card,
     render_streak,
     render_today_checklist,
 )
@@ -204,8 +205,12 @@ if not is_parent():
     this_week_start = weekly.week_start()
     this_week_end = (this_week_start + timedelta(days=4)).isoformat()  # Friday
 
-    day_tab, week_tab, upcoming_tab = st.tabs(
-        ["📅 Today", "🗓️ This Week", "🔜 Upcoming Week"]
+    # Grades get their own tab rather than a block on Today: he asked to be
+    # graded, so it needs to be somewhere he can actually go and look --
+    # but sitting above the checklist it would be the first thing he reads
+    # every morning, which is the opposite of the point.
+    day_tab, week_tab, upcoming_tab, grades_tab = st.tabs(
+        ["📅 Today", "🗓️ This Week", "🔜 Upcoming Week", "🎓 Grades"]
     )
 
     # === Today ===================================================================
@@ -400,6 +405,13 @@ if not is_parent():
         _render_week_grid(next_week_start)
         _render_extra_activities()
 
+    with grades_tab:
+        st.caption(
+            "One grade per subject, and what goes into each. Nothing here is "
+            "based on how long you worked — only on what you turned in."
+        )
+        render_report_card(db, student, for_parent=False)
+
     st.stop()
 
 # --- parent view --------------------------------------------------------------
@@ -523,6 +535,17 @@ with right:
             f"Tier 3 is {report.tier3_percent:g}% of logged hours "
             f"(family guideline: {report.tier3_cap_percent}%)."
         )
+
+st.divider()
+
+# --- grades --------------------------------------------------------------------
+# The same report card he sees on his own Grades tab, read from the same
+# gradebook -- there is deliberately no second, parent-only set of numbers.
+# If a grade looks wrong here, it's wrong on his screen too.
+
+st.subheader("Report card")
+st.caption("Same numbers he sees. Hours logged and his streak are not part of any grade.")
+render_report_card(db, student, for_parent=True)
 
 st.divider()
 

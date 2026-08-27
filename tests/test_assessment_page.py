@@ -165,7 +165,10 @@ def test_submitting_the_verdict_form_records_the_assessment(monkeypatch, tmp_pat
 
     at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
     radio = [r for r in at.radio if r.label == "How'd it go?"][0]
-    radio.set_value("🎯 Nailed it").run()
+    # The raw option value, not its on-screen label -- the labels now carry
+    # the percentage each band is worth toward the grade, and a test that
+    # hardcodes the display string breaks every time that wording moves.
+    radio.set_value(config.ASSESSMENT_NAILED_IT).run()
     submit = [b for b in at.button if "Save assessment" in (b.label or "")][0]
     submit.click().run()
     assert not at.exception, [e.message for e in at.exception]

@@ -76,6 +76,24 @@ DEFAULT_SETTINGS: dict[str, str] = {
     # on. Math-only: Science/English/History have no mastery gate to hook
     # into (see GUIDE.md), so this setting has no effect there.
     "math_mastery_percent": "100",
+    # --- grading ---------------------------------------------------------
+    # How much each quiz retry is worth, relative to a first attempt: the
+    # 2nd counts for 90%, the 3rd 80%, and so on, down to the floor. The
+    # grade takes the BEST weighted attempt, so a careless retry can never
+    # lower it -- there must never be a reason to avoid trying again.
+    "quiz_retry_deduction_percent": "10",
+    # The least a retry can ever be worth. Without a floor, a tenth attempt
+    # is worth nothing and practice starts to feel punished.
+    "quiz_retry_floor_percent": "70",
+    # Per-subject grade weights, as "component:weight" pairs. Deliberately
+    # settings rather than constants: what a subject's grade should be made
+    # of is a teaching judgment, and it differs by subject -- Math leans on
+    # its mastery graph, English on what he actually wrote. Components:
+    # quizzes, writing, reading (reading checks), mastery, assessment.
+    "grade_weights_math": "quizzes:45,mastery:35,assessment:20",
+    "grade_weights_english": "writing:40,quizzes:25,reading:15,assessment:20",
+    "grade_weights_science": "quizzes:40,writing:25,reading:15,assessment:20",
+    "grade_weights_history": "quizzes:40,writing:25,reading:15,assessment:20",
     # School year start (MM-DD). Used to bucket activities into a school year.
     "school_year_start": "09-01",
     # Washington's annual Declaration of Intent filing deadline (MM-DD). Default
@@ -137,16 +155,74 @@ def tier_label(tier: str, student_name: str) -> str:
 # Database.record_assessment and compass.ui.render_assessment_card.
 
 ASSESSMENT_NAILED_IT = "nailed_it"
+ASSESSMENT_SOLID = "solid"
 ASSESSMENT_GETTING_THERE = "getting_there"
 ASSESSMENT_NEEDS_MORE_WORK = "needs_more_work"
+ASSESSMENT_NOT_YET = "not_yet"
 
-ASSESSMENT_VERDICTS = (ASSESSMENT_NAILED_IT, ASSESSMENT_GETTING_THERE, ASSESSMENT_NEEDS_MORE_WORK)
+# Five bands rather than the original three: three is too coarse to grade
+# with -- everything real lands on "getting there," which then has to mean
+# both "nearly had it" and "barely engaged." The three original keys are
+# still valid values, so nothing already recorded breaks.
+ASSESSMENT_VERDICTS = (
+    ASSESSMENT_NAILED_IT,
+    ASSESSMENT_SOLID,
+    ASSESSMENT_GETTING_THERE,
+    ASSESSMENT_NEEDS_MORE_WORK,
+    ASSESSMENT_NOT_YET,
+)
+
+# What each band is worth when it feeds a subject grade. Shown on the label
+# itself, so a parent always knows exactly what they're assigning rather
+# than discovering the mapping later.
+ASSESSMENT_VERDICT_SCORES = {
+    ASSESSMENT_NAILED_IT: 100,
+    ASSESSMENT_SOLID: 90,
+    ASSESSMENT_GETTING_THERE: 80,
+    ASSESSMENT_NEEDS_MORE_WORK: 70,
+    ASSESSMENT_NOT_YET: 55,
+}
 
 ASSESSMENT_VERDICT_LABELS = {
-    ASSESSMENT_NAILED_IT: "🎯 Nailed it",
-    ASSESSMENT_GETTING_THERE: "🌱 Getting there",
-    ASSESSMENT_NEEDS_MORE_WORK: "🔁 Needs more work",
+    ASSESSMENT_NAILED_IT: "🎯 Nailed it (100%)",
+    ASSESSMENT_SOLID: "✅ Solid (90%)",
+    ASSESSMENT_GETTING_THERE: "🌱 Getting there (80%)",
+    ASSESSMENT_NEEDS_MORE_WORK: "🔁 Needs more work (70%)",
+    ASSESSMENT_NOT_YET: "⚠️ Not yet (55%)",
 }
+
+
+# --- Grades --------------------------------------------------------------------
+# Washington does not require grades for a homeschooled student -- this exists
+# because Landon asked to be graded, and because `courses.final_grade` (already
+# in the schema, for grades 6-12 credit documentation) will want a real number
+# when a transcript starts mattering.
+
+# Letter bands, highest first. Standard US scale.
+GRADE_BANDS: tuple[tuple[float, str], ...] = (
+    (97, "A+"), (93, "A"), (90, "A-"),
+    (87, "B+"), (83, "B"), (80, "B-"),
+    (77, "C+"), (73, "C"), (70, "C-"),
+    (67, "D+"), (63, "D"), (60, "D-"),
+    (0, "F"),
+)
+
+# The most graded attempts a quiz can have. Four is where the 20-question
+# pool runs out at 5 a sitting (see compass/agents/quiz.py), so a fifth
+# attempt would be measuring memory of the quiz rather than knowledge of the
+# lesson. The deduction floor below lands on the same number independently.
+# Retries past this still work -- they're just labelled as practice and left
+# out of the grade, because blocking practice to protect a number is
+# backwards.
+GRADED_QUIZ_ATTEMPTS = 4
+
+
+def letter_for(percent: float) -> str:
+    """The letter for a 0-100 score."""
+    for floor, letter in GRADE_BANDS:
+        if percent >= floor:
+            return letter
+    return "F"
 
 
 # --- Writing review status -----------------------------------------------------

@@ -46,7 +46,16 @@ from typing import Any
 
 import streamlit as st
 
-from compass import auth, config, fun_facts, subjects, theme as theming, weekly
+from compass import (
+    auth,
+    config,
+    fun_facts,
+    grades,
+    gradebook,
+    subjects,
+    theme as theming,
+    weekly,
+)
 from compass.backup import auto_snapshot
 from compass.agents import (
     GeneratedLesson,
@@ -1102,12 +1111,49 @@ def format_duration(seconds: int) -> str:
     return f"{secs} sec"
 
 
+def _quiz_attempt_note(db: Database, student_id: int, lesson_id: int) -> tuple[str, bool]:
+    """What the *next* attempt at this quiz is worth, and whether it counts.
+
+    Returns `(sentence, graded)`. The retry stays available in every case --
+    blocking practice to protect a number is backwards -- but he should never
+    have to guess whether the run he's about to take changes anything.
+    """
+    deduction = db.get_int_setting("quiz_retry_deduction_percent")
+    floor = db.get_int_setting("quiz_retry_floor_percent")
+    limit = config.GRADED_QUIZ_ATTEMPTS
+    attempts = list(reversed(db.list_quiz_attempts(student_id, lesson_id=lesson_id)))
+    banked, used = grades.quiz_score(attempts, deduction, floor, limit)
+
+    if not grades.can_improve(attempts, deduction, floor, limit):
+        if used >= limit:
+            return (
+                f"That's all {limit} graded attempts — your grade for this quiz is "
+                f"locked in at {banked:.0f}%. Practice as much as you want.",
+                False,
+            )
+        return (
+            f"You've already banked {banked:.0f}% here — another go is practice, "
+            "it won't change your grade.",
+            False,
+        )
+
+    if used == 0:
+        return ("First try — it counts in full toward your grade.", True)
+    worth = round(100 * grades.attempt_multiplier(used + 1, deduction, floor))
+    return (
+        f"Attempt {used + 1} of {limit} — worth up to {worth}% toward your grade. "
+        "Your best attempt is the one that counts, so a rough run can't drag it down.",
+        True,
+    )
+
+
 def render_quiz(
     db: Database,
     student: dict[str, Any],
     lesson_id: int,
     metadata: dict[str, Any],
     quiz: list[dict[str, Any]],
+    agent: str | None = None,
 ) -> None:
     """The student's self-graded check on this lesson's content.
 
@@ -1153,6 +1199,11 @@ def render_quiz(
         st.session_state[asked_key] = select_questions(quiz, attempt, seed=lesson_id)
     quiz = st.session_state[asked_key]
 
+    # Only the four Tier 1 subjects carry a grade, so only they get the
+    # grade language -- a Life Skills quiz saying "worth 90% toward your
+    # grade" would be inventing a grade that doesn't exist.
+    graded_subject = agent in gradebook.GRADED_AGENTS
+
     st.divider()
     with st.expander("📝 Check your understanding", key=expander_key, on_change="rerun"):
         if st.session_state.get(expander_key) and start_key not in st.session_state:
@@ -1166,6 +1217,9 @@ def render_quiz(
             )
 
             if result is None:
+                if graded_subject:
+                    note, counts = _quiz_attempt_note(db, student["id"], lesson_id)
+                    (st.info if counts else st.caption)(note)
                 picks: list[int | None] = []
                 with st.form(f"quiz_form_{lesson_id}"):
                     for index, item in enumerate(quiz):
@@ -1266,6 +1320,26 @@ def render_quiz(
             if duration_seconds is not None:
                 st.caption(f"⏱️ Took {format_duration(duration_seconds)}")
 
+            if graded_subject:
+                # The banked number, not just this sitting's raw score. On a
+                # retry the two differ (this run is weighted, and the best
+                # attempt is what counts), and quietly showing only the raw
+                # percent after a deducted attempt would misstate the grade.
+                deduction = db.get_int_setting("quiz_retry_deduction_percent")
+                floor = db.get_int_setting("quiz_retry_floor_percent")
+                attempts = list(
+                    reversed(db.list_quiz_attempts(student["id"], lesson_id=lesson_id))
+                )
+                banked, used = grades.quiz_score(
+                    attempts, deduction, floor, config.GRADED_QUIZ_ATTEMPTS
+                )
+                if banked is not None:
+                    suffix = f" (best of {used} attempts)" if used > 1 else ""
+                    st.caption(
+                        f"📊 Toward your grade: **{banked:.0f}%**{suffix} — "
+                        f"{config.letter_for(banked)}"
+                    )
+
             for index, item in enumerate(quiz):
                 pick = picks[index]
                 right = pick == item["correct_index"]
@@ -1283,7 +1357,13 @@ def render_quiz(
                     if item.get("explanation"):
                         st.caption(md(item["explanation"]))
 
-            if st.button("Try again", key=f"quiz_retry_{lesson_id}"):
+            retry_label = "Try again"
+            if graded_subject:
+                note, counts = _quiz_attempt_note(db, student["id"], lesson_id)
+                if not counts:
+                    retry_label = "Practice again — won't change your grade"
+                st.caption(note)
+            if st.button(retry_label, key=f"quiz_retry_{lesson_id}"):
                 del st.session_state[state_key]
                 st.session_state.pop(start_key, None)
                 # Dropping the pinned set is what advances the rotation --
@@ -1470,17 +1550,29 @@ def render_assessment_card(
         result = metadata.get("assessment_result") or {}
         current_verdict = result.get("verdict")
         with st.form(f"{key_prefix}_assess_{lesson['id']}"):
+            # Vertical, not horizontal: five bands with their percentages
+            # spelled out don't fit on one row without truncating exactly the
+            # part that says what you're assigning. And no pre-selected
+            # default -- index=0 would sit on "Nailed it," so a parent who
+            # hit Save without reading would hand out a 100%.
             verdict = st.radio(
                 "How'd it go?",
                 config.ASSESSMENT_VERDICTS,
                 index=config.ASSESSMENT_VERDICTS.index(current_verdict)
                 if current_verdict in config.ASSESSMENT_VERDICTS
-                else 0,
+                else None,
                 format_func=lambda v: config.ASSESSMENT_VERDICT_LABELS[v],
-                horizontal=True,
+            )
+            st.caption(
+                "This band is part of his grade for the subject — the "
+                "percentage on each one is what it's worth."
             )
             notes = st.text_area("Notes (optional)", value=result.get("notes", ""))
-            if st.form_submit_button("Save assessment", type="primary"):
+            save = st.form_submit_button("Save assessment", type="primary")
+        if save:
+            if verdict is None:
+                st.warning("Pick a band first.")
+            else:
                 db.record_assessment(lesson["id"], verdict, notes)
                 st.success("Recorded.")
                 st.rerun()
@@ -1576,6 +1668,7 @@ def student_lesson_view(
             current["id"],
             current.get("metadata") or {},
             current["payload"].get("quiz") or [],
+            agent=agent_key,
         )
         if st.button("✅ I'm done for today", key=f"student_done_{current['id']}", type="primary"):
             db.mark_student_done(current["id"])
@@ -1629,6 +1722,7 @@ def render_past_lessons(
             selected["id"],
             selected.get("metadata") or {},
             selected["payload"].get("quiz") or [],
+            agent=agent_key,
         )
 
 
@@ -1709,6 +1803,70 @@ def render_friday_plan(db: Database, student: dict[str, Any], plan_date: str) ->
         st.markdown(f"{icon} {text}")
         if page:
             st.page_link(page, label="Open", icon="➡️")
+
+
+def render_report_card(db: Database, student: dict[str, Any], *, for_parent: bool) -> None:
+    """Subject grades, with the arithmetic showing.
+
+    Deliberately per-subject with no overall GPA: one number for everything
+    reads as a verdict on him rather than on the work, which is the failure
+    mode most likely to make a kid who already freezes stop trying. Four
+    separate numbers are four separate, fixable things.
+
+    A subject with nothing recorded shows as ungraded, never as an F -- an
+    absent grade and a failed one are completely different facts.
+    """
+    subject_grades = gradebook.all_subject_grades(db, student["id"])
+    if not any(grade.graded for grade in subject_grades):
+        st.caption(
+            "No grades yet — they'll show up here once there are quizzes and "
+            "assignments to average."
+        )
+        return
+
+    columns = st.columns(len(subject_grades))
+    for column, grade in zip(columns, subject_grades):
+        label = gradebook.AGENT_LABELS.get(grade.subject, grade.subject.title())
+        icon = SUBJECT_ICONS.get(grade.subject, "📘")
+        with column:
+            # The percent rides on the label rather than st.metric's `delta`.
+            # A delta always draws a direction arrow, and "↑ 40%" under an F
+            # reads as a gain of 40 points rather than a score of 40 (and "↑
+            # not graded yet" is nonsense in any direction); delta_color="off"
+            # greys the arrow but doesn't remove it. A caption underneath
+            # works, but lands outside the card's border and reads as
+            # detached from the letter it belongs to.
+            if grade.graded:
+                st.metric(f"{icon} {label} — {grade.percent:.0f}%", grade.letter)
+            else:
+                # "ungraded", not "not graded yet": four metrics share a row,
+                # and the longer phrase wraps the label onto a second line
+                # only on the ungraded card, leaving the row visibly ragged.
+                st.metric(f"{icon} {label} — ungraded", "—")
+
+    for grade in subject_grades:
+        if not grade.graded:
+            continue
+        label = gradebook.AGENT_LABELS.get(grade.subject, grade.subject.title())
+        heading = (
+            f"What makes up the {label} grade"
+            if for_parent
+            else f"What makes up your {label} grade"
+        )
+        with st.expander(heading):
+            for component in grade.components:
+                st.markdown(
+                    f"- **{component.label}** — {component.percent:.0f}% "
+                    f"·  {component.weight}% of the grade  \n"
+                    f"  <span style='color:var(--c-dim); font-size:12px;'>"
+                    f"{html.escape(component.detail)}</span>",
+                    unsafe_allow_html=True,
+                )
+            if for_parent:
+                st.caption(
+                    "Weights are settings — `grade_weights_"
+                    f"{grade.subject}` on the Student Profile page."
+                )
 
 
 _STREAK_MILESTONES = (3, 5, 10, 20, 30, 50)

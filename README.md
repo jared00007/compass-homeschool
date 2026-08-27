@@ -333,6 +333,8 @@ compass/
   compliance/declaration.py  Declaration of Intent due-date/filed tracking
   school_calendar.py         shared annual MM-DD date arithmetic
   costs.py                   token usage → dollars, per agent and projected
+  grades.py                  pure grade arithmetic (retry weighting, weights)
+  gradebook.py               reading the database into subject grades
   backup.py                  daily snapshots, retention, and restore
   storage/                   SQLite schema + repository
   subjects.py                the 11 WA subjects and Tier 2 folding rules
@@ -340,7 +342,7 @@ compass/
   theme.py                   the one fixed theme and the CSS that applies it
   fun_facts.py               fact-of-the-day for the student home view
   national_parks.py          the 63 parks + real state borders for Landon's Travels
-tests/                       346 tests, no API key required
+tests/                       806 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 scripts/new_school_year_reset.py  wipe a finished school year's data, see below
 ```
@@ -589,6 +591,47 @@ mastery concept to hook into, so their quizzes grade and show a score without a 
 effect — a real check with no mechanism behind it yet, rather than force-fitting one.
 Both thresholds are family policy settings, the same category as the Tier 3 guideline
 percent.
+
+## Grades
+
+Added last, and only because the student asked to be graded. Two modules, split on the
+line that makes the rules testable:
+
+* **`compass/grades.py`** — pure arithmetic. No database, no Streamlit. The retry
+  weighting, the component weighting, and the letter scale live here so each rule can be
+  asserted directly rather than through a simulated page render.
+* **`compass/gradebook.py`** — the querying. Reads lessons, quiz attempts, writing review
+  statuses, reading checks, and the mastery map, and hands the numbers to `grades.py`.
+
+**Best-weighted, not latest.** `quiz_score()` takes the maximum of
+`raw_percent * attempt_multiplier(position)` across a lesson's attempts, where the
+multiplier is 1.0 on the first try and drops by `quiz_retry_deduction_percent` per retry
+down to `quiz_retry_floor_percent`. The consequence is the point: a careless retry can
+never lower a grade, so nothing discourages practicing, while an 85% first try still beats
+a perfect fourth attempt (capped at 70%).
+
+**Attempt order is the meaning**, and it is the easiest thing here to get wrong.
+`db.list_quiz_attempts()` returns newest-first; the deduction is positional, so
+`gradebook` reverses to oldest-first before scoring. Reading it in the returned order
+would silently deduct the *first* attempt and grade the retry in full — an inversion no
+type checker catches, and the one behavior with a dedicated regression test
+(`test_a_quiz_retry_is_deducted_in_the_order_it_was_taken`).
+
+**Missing components redistribute, they don't zero.** `subject_grade()` drops any
+component with no data and divides by the surviving weight. `SubjectGrade.graded` is
+`percent is not None`, which is what lets the UI distinguish "not graded yet" from an F —
+two facts a single float can't tell apart.
+
+**The cap is a label, not a gate.** `grades.can_improve()` answers whether another attempt
+could raise the banked score — false at `config.GRADED_QUIZ_ATTEMPTS`, and false once a
+perfect next attempt would still land under what's banked. `ui.render_quiz` uses it to
+label the retry button ("Practice again — won't change your grade") and never to disable
+it. Blocking practice to protect a number would invert the whole incentive.
+
+**One renderer, both audiences.** `ui.render_report_card(..., for_parent=)` is the only
+thing that draws a grade, on his Grades tab and on the parent Home alike, so the two can't
+drift. The flag changes wording and adds a pointer to the weight settings; it never
+changes a number.
 
 ## The student's own "I'm done for today"
 
@@ -950,7 +993,7 @@ make.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 346 tests, ~9s, no API key needed
+python -m pytest tests/ -q      # 806 tests, ~100s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the
