@@ -327,7 +327,7 @@ def generate_lesson(
     max_web_searches: int = 6,
     schema: dict[str, Any] | None = None,
     model: str = config.DEFAULT_MODEL,
-    effort: str = config.DEFAULT_EFFORT,
+    effort: str | None = config.DEFAULT_EFFORT,
     max_tokens: int = config.DEFAULT_MAX_TOKENS,
     max_turns: int = 6,
 ) -> dict[str, Any]:
@@ -345,6 +345,12 @@ def generate_lesson(
     answer key — but everything else about the request path is identical, and
     duplicating the retry, refusal, and usage-capture logic to say so would be a
     poor trade.
+
+    `effort` is omitted from the request entirely when `None` rather than sent
+    as a value the API might reject -- `output_config.effort` is a frontier-model
+    tuning knob the smaller `config.REVIEW_MODEL` (writing review, book
+    summaries) doesn't support at all, and passing it there is a 400, not a
+    no-op.
     """
     import anthropic
 
@@ -370,11 +376,12 @@ def generate_lesson(
             {"type": "text", "text": system, "cache_control": {"type": "ephemeral", "ttl": "1h"}}
         ],
         "output_config": {
-            "effort": effort,
             "format": {"type": "json_schema", "schema": schema or LESSON_SCHEMA},
         },
         "messages": messages,
     }
+    if effort is not None:
+        request["output_config"]["effort"] = effort
     if tools:
         request["tools"] = tools
 

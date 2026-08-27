@@ -699,8 +699,20 @@ def _render_activity_body(
                 st.write(md(saved))
                 return
 
-            if status == config.WRITING_NEEDS_REVISION and review.get("feedback"):
-                st.warning(f"Your parent asked for another look: {md(review['feedback'])}")
+            if status == config.WRITING_NEEDS_REVISION:
+                # feedback_history is the full trail; falling back to the
+                # older single `feedback` string keeps this working on data
+                # saved before feedback_history existed.
+                history = review.get("feedback_history") or (
+                    [review["feedback"]] if review.get("feedback") else []
+                )
+                if len(history) == 1:
+                    st.warning(f"Your parent asked for another look: {md(history[0])}")
+                elif history:
+                    st.warning(
+                        "Your parent asked for another look — everything they've flagged "
+                        "so far:\n\n" + "\n".join(f"- {md(note)}" for note in history)
+                    )
 
             if status == config.WRITING_SUBMITTED:
                 st.info("⏳ Submitted — waiting on your parent to look at it.")
@@ -1566,10 +1578,18 @@ def render_assessment_card(
         if status == config.WRITING_APPROVED:
             st.success("✅ Approved.")
         elif status == config.WRITING_NEEDS_REVISION:
-            st.warning(
-                "↩️ Sent back for revision"
-                + (f": {md(review['feedback'])}" if review.get("feedback") else ".")
+            history = review.get("feedback_history") or (
+                [review["feedback"]] if review.get("feedback") else []
             )
+            if len(history) <= 1:
+                st.warning(
+                    "↩️ Sent back for revision"
+                    + (f": {md(history[0])}" if history else ".")
+                )
+            else:
+                st.warning("↩️ Sent back for revision — every note you've given so far:")
+                for note in history:
+                    st.markdown(f"- {md(note)}")
         elif status == config.WRITING_SUBMITTED and lesson["status"] == "submitted":
             st.info("⏳ He's submitted this — awaiting your review.")
             review_key = f"{key_prefix}_writing_review_{lesson['id']}_{index}"
@@ -1803,11 +1823,21 @@ def student_lesson_view(
         (l for l in lessons if l["status"] in ("submitted", "needs_revision")), None
     )
     if pending is not None:
-        feedback = (pending.get("metadata") or {}).get("lesson_feedback")
+        pending_metadata = pending.get("metadata") or {}
+        history = pending_metadata.get("lesson_feedback_history") or (
+            [pending_metadata["lesson_feedback"]]
+            if pending_metadata.get("lesson_feedback")
+            else []
+        )
         if pending["status"] == "submitted":
             st.info("📤 Submitted — waiting on your parent to check this.")
-        elif feedback:
-            st.warning(f"↩️ Sent back: {md(feedback)}")
+        elif len(history) == 1:
+            st.warning(f"↩️ Sent back: {md(history[0])}")
+        elif history:
+            st.warning(
+                "↩️ Sent back — everything your parent has flagged so far:\n\n"
+                + "\n".join(f"- {md(note)}" for note in history)
+            )
         else:
             st.warning("↩️ Sent back — check below for what to fix.")
         render_lesson(

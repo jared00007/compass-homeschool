@@ -46,7 +46,7 @@ def generate_book_summary(db: Any, student: dict[str, Any], book: dict[str, Any]
         user_prompt=user_prompt,
         schema=SUMMARY_SCHEMA,
         model=config.REVIEW_MODEL,
-        effort=config.EFFORT_MEDIUM,
+        effort=None,  # REVIEW_MODEL doesn't support the effort parameter at all
     )
     summary = (payload.get("summary") or "").strip()
     if summary:

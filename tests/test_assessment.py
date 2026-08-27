@@ -138,7 +138,9 @@ def test_setting_a_review_status_is_readable_back(db, student):
     db.set_writing_review(lesson_id, 0, "submitted")
 
     lesson = db.get_lesson(lesson_id)
-    assert lesson["metadata"]["writing_review"]["0"] == {"status": "submitted", "feedback": ""}
+    assert lesson["metadata"]["writing_review"]["0"] == {
+        "status": "submitted", "feedback": "", "feedback_history": [],
+    }
 
 
 def test_sending_back_for_revision_carries_the_feedback(db, student):
@@ -149,6 +151,34 @@ def test_sending_back_for_revision_carries_the_feedback(db, student):
     review = lesson["metadata"]["writing_review"]["0"]
     assert review["status"] == "needs_revision"
     assert review["feedback"] == "Add a quote from the text."
+    assert review["feedback_history"] == ["Add a quote from the text."]
+
+
+def test_a_second_bounce_keeps_the_first_notes_feedback_too(db, student):
+    """The actual bug report: a second bounce used to silently overwrite
+    the first note, so a student who'd fixed the first thing but not the
+    second lost the very feedback explaining the first."""
+    lesson_id = _lesson(db, student["id"])
+    db.set_writing_review(lesson_id, 0, "needs_revision", "Add a quote from the text.")
+    db.set_writing_review(lesson_id, 0, "submitted")  # he resubmits
+    db.set_writing_review(lesson_id, 0, "needs_revision", "Now the intro needs work too.")
+
+    lesson = db.get_lesson(lesson_id)
+    review = lesson["metadata"]["writing_review"]["0"]
+    assert review["feedback"] == "Now the intro needs work too."  # the latest, on its own
+    assert review["feedback_history"] == [
+        "Add a quote from the text.",
+        "Now the intro needs work too.",
+    ]
+
+
+def test_a_resubmit_with_no_new_feedback_does_not_touch_the_history(db, student):
+    lesson_id = _lesson(db, student["id"])
+    db.set_writing_review(lesson_id, 0, "needs_revision", "Add a quote from the text.")
+    db.set_writing_review(lesson_id, 0, "submitted")  # no feedback on a plain status change
+
+    review = db.get_lesson(lesson_id)["metadata"]["writing_review"]["0"]
+    assert review["feedback_history"] == ["Add a quote from the text."]
 
 
 def test_review_status_is_tracked_independently_per_activity(db, student):

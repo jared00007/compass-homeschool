@@ -153,7 +153,7 @@ def review_writing(
         ),
         schema=REVIEW_SCHEMA,
         model=config.REVIEW_MODEL,
-        effort=config.EFFORT_MEDIUM,
+        effort=None,  # REVIEW_MODEL doesn't support the effort parameter at all
     )
 
     review = {

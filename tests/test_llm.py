@@ -7,7 +7,9 @@ real URLs a search actually returned.
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -102,3 +104,41 @@ def test_an_unresolved_credential_typeerror_becomes_a_lessongenerationerror():
     with patch("compass.agents.llm._client", return_value=fake_client):
         with pytest.raises(LessonGenerationError, match="authenticate"):
             generate_lesson(system="system prompt", user_prompt="write it")
+
+
+def _fake_response(payload: dict[str, Any] | None = None):
+    payload = payload if payload is not None else {"a": 1}
+    return SimpleNamespace(
+        stop_reason="end_turn",
+        content=[SimpleNamespace(type="text", text=json.dumps(payload))],
+        usage=SimpleNamespace(
+            input_tokens=10, output_tokens=5,
+            cache_read_input_tokens=0, cache_creation_input_tokens=0,
+        ),
+        model="test-model",
+    )
+
+
+def test_effort_none_is_left_out_of_the_request_entirely():
+    """REVIEW_MODEL (writing review, book summaries) doesn't support the
+    `effort` tuning knob at all -- caught live when a real call came back
+    400 'This model does not support the effort parameter.' Sending it as
+    None instead of omitting it would still be a 400, so this has to check
+    the key is actually absent, not just falsy."""
+    fake_client = MagicMock()
+    fake_client.beta.messages.create.return_value = _fake_response()
+    with patch("compass.agents.llm._client", return_value=fake_client):
+        generate_lesson(system="s", user_prompt="u", effort=None)
+
+    request = fake_client.beta.messages.create.call_args.kwargs
+    assert "effort" not in request["output_config"]
+
+
+def test_a_real_effort_level_is_still_sent():
+    fake_client = MagicMock()
+    fake_client.beta.messages.create.return_value = _fake_response()
+    with patch("compass.agents.llm._client", return_value=fake_client):
+        generate_lesson(system="s", user_prompt="u", effort="high")
+
+    request = fake_client.beta.messages.create.call_args.kwargs
+    assert request["output_config"]["effort"] == "high"

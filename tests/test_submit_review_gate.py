@@ -83,6 +83,22 @@ def test_send_lesson_back_sets_needs_revision(db, student):
     lesson = db.get_lesson(lesson_id)
     assert lesson["status"] == "needs_revision"
     assert lesson["metadata"]["lesson_feedback"] == "Redo the second part."
+    assert lesson["metadata"]["lesson_feedback_history"] == ["Redo the second part."]
+
+
+def test_a_second_lesson_level_bounce_keeps_the_first_note_too(db, student):
+    lesson_id = _lesson(db, student["id"])
+    db.submit_lesson(lesson_id)
+    db.send_lesson_back(lesson_id, "Redo the second part.")
+    db.submit_lesson(lesson_id)  # he turns it in again
+    db.send_lesson_back(lesson_id, "Also fix the conclusion.")
+
+    lesson = db.get_lesson(lesson_id)
+    assert lesson["metadata"]["lesson_feedback"] == "Also fix the conclusion."
+    assert lesson["metadata"]["lesson_feedback_history"] == [
+        "Redo the second part.",
+        "Also fix the conclusion.",
+    ]
 
 
 def test_send_lesson_back_with_no_feedback_leaves_it_unset(db, student):

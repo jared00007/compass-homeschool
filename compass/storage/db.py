@@ -2269,10 +2269,18 @@ class Database:
         when a per-activity writing bounce is what triggered this: that
         activity already carries its own specific feedback inline, so
         there's nothing generic worth repeating at the lesson level.
+
+        `lesson_feedback_history` keeps every note ever given, oldest
+        first, same reasoning as set_writing_review's own history: a
+        second bounce shouldn't erase the first note just because he
+        hasn't fixed that part yet either.
         """
         lesson = self.get_lesson(lesson_id)
         metadata = lesson["metadata"] if lesson else {}
         if feedback:
+            history = list(metadata.get("lesson_feedback_history") or [])
+            history.append(feedback)
+            metadata["lesson_feedback_history"] = history
             metadata["lesson_feedback"] = feedback
         self.conn.execute(
             "UPDATE lessons SET metadata = ?, status = 'needs_revision' WHERE id = ?",
@@ -2485,13 +2493,28 @@ class Database:
         status only, same "fast path lives in metadata" choice as
         quiz_result/assessment_result -- the response text's own full
         history already lives in writing_response_versions.
+
+        `feedback_history` keeps every note a parent has ever given on this
+        one activity, oldest first. A second bounce used to silently
+        overwrite the first note in `feedback` -- if he'd fixed the first
+        thing but not the second, the note explaining the first was
+        already gone by the time he went looking for it. `feedback` still
+        holds just the latest on its own, for anything that only ever
+        needed "what did they just say."
         """
         if status not in config.WRITING_REVIEW_STATUSES:
             raise ValueError(f"invalid writing review status: {status}")
         lesson = self.get_lesson(lesson_id)
         metadata = lesson["metadata"] if lesson else {}
         reviews = metadata.get("writing_review") or {}
-        reviews[str(activity_index)] = {"status": status, "feedback": feedback}
+        history = list((reviews.get(str(activity_index)) or {}).get("feedback_history") or [])
+        if feedback:
+            history.append(feedback)
+        reviews[str(activity_index)] = {
+            "status": status,
+            "feedback": feedback,
+            "feedback_history": history,
+        }
         metadata["writing_review"] = reviews
         self.conn.execute(
             "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
