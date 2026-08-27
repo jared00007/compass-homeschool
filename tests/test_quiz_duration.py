@@ -22,6 +22,7 @@ from streamlit.testing.v1 import AppTest
 from compass import auth, config
 from compass.storage.db import Database
 from compass.ui import format_duration
+from tests.conftest import correct_pick, wrong_pick
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HOME_PATH = str(REPO_ROOT / "Home.py")
@@ -87,7 +88,7 @@ def test_submitting_without_opening_the_expander_records_no_duration(monkeypatch
     db_path, student_id, lesson_id = _seed(tmp_path)
     at = _open_math(monkeypatch, db_path)
 
-    at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(1)
+    at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(0)
     at.button(key=f"FormSubmitter:quiz_form_{lesson_id}-Submit quiz").click().run()
 
     db2 = Database(db_path)
@@ -107,7 +108,7 @@ def test_opening_the_expander_first_records_a_duration(monkeypatch, tmp_path):
     at.run(timeout=30)
     time.sleep(1.1)
 
-    at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(1)
+    at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(0)
     at.button(key=f"FormSubmitter:quiz_form_{lesson_id}-Submit quiz").click().run()
     assert not at.exception, [e.message for e in at.exception]
 
@@ -138,7 +139,7 @@ def test_retaking_the_quiz_times_the_second_attempt_independently(monkeypatch, t
     at.session_state[expander_key] = True
     at.run(timeout=30)
     time.sleep(1.1)
-    at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(0)  # wrong, doesn't matter
+    at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(0)  # correctness is irrelevant here
     at.button(key=f"FormSubmitter:quiz_form_{lesson_id}-Submit quiz").click().run()
 
     at.button(key=f"quiz_retry_{lesson_id}").click().run()
@@ -146,7 +147,7 @@ def test_retaking_the_quiz_times_the_second_attempt_independently(monkeypatch, t
     at.run(timeout=30)
     # No sleep here -- the retry's own timer should start fresh, not
     # inherit the first attempt's (already-elapsed) start time.
-    at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(1)
+    at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(0)
     at.button(key=f"FormSubmitter:quiz_form_{lesson_id}-Submit quiz").click().run()
 
     db2 = Database(db_path)
@@ -169,7 +170,8 @@ def test_a_perfect_score_launches_balloons(monkeypatch, tmp_path):
     db_path, student_id, lesson_id = _seed(tmp_path)
     at = _open_math(monkeypatch, db_path)
 
-    at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(1)  # the correct choice
+    right = correct_pick(_quiz_payload()["quiz"], lesson_id, 0)
+    at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(right)
     at.button(key=f"FormSubmitter:quiz_form_{lesson_id}-Submit quiz").click().run()
 
     assert calls
@@ -181,7 +183,9 @@ def test_a_missed_question_does_not_launch_balloons(monkeypatch, tmp_path):
     db_path, student_id, lesson_id = _seed(tmp_path)
     at = _open_math(monkeypatch, db_path)
 
-    at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(0)  # wrong
+    at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(
+        wrong_pick(_quiz_payload()["quiz"], lesson_id, 0)
+    )
     at.button(key=f"FormSubmitter:quiz_form_{lesson_id}-Submit quiz").click().run()
 
     assert not calls

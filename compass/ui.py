@@ -55,7 +55,7 @@ from compass.agents import (
     StudentContext,
 )
 from compass.agents import writing_review
-from compass.agents.quiz import grade, passed as quiz_passes
+from compass.agents.quiz import grade, passed as quiz_passes, select_questions
 from compass.compliance import declaration_status
 from compass.export import lesson_to_docx, suggested_filename
 from compass.morning_routines import MORNING_ROUTINES, routine_for_date
@@ -1074,6 +1074,18 @@ def render_quiz(
     start_key = f"quiz_started_at_{lesson_id}"
     expander_key = f"quiz_expander_{lesson_id}"
 
+    # The five questions this sitting actually asks, drawn from the lesson's
+    # pool and rotated by how many times he's already taken it. Pinned into
+    # session state the first time rather than recomputed: this function
+    # re-runs on every interaction, and the results view below has to grade
+    # and review the same questions he answered, not a freshly dealt set.
+    # Cleared by "Try again", which is what advances the rotation.
+    asked_key = f"quiz_asked_{lesson_id}"
+    if asked_key not in st.session_state:
+        attempt = len(db.list_quiz_attempts(student["id"], lesson_id=lesson_id))
+        st.session_state[asked_key] = select_questions(quiz, attempt, seed=lesson_id)
+    quiz = st.session_state[asked_key]
+
     st.divider()
     with st.expander("📝 Check your understanding", key=expander_key, on_change="rerun"):
         if st.session_state.get(expander_key) and start_key not in st.session_state:
@@ -1207,6 +1219,10 @@ def render_quiz(
             if st.button("Try again", key=f"quiz_retry_{lesson_id}"):
                 del st.session_state[state_key]
                 st.session_state.pop(start_key, None)
+                # Dropping the pinned set is what advances the rotation --
+                # the next render re-derives it from a now-higher attempt
+                # count and deals different questions.
+                st.session_state.pop(asked_key, None)
                 st.rerun()
 
 

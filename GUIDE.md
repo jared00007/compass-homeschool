@@ -238,10 +238,23 @@ state outside of any one specific lesson.)
 ## The in-app quiz
 
 Every lesson, on every subject, ends with a **"Check your understanding"** quiz he can take
-himself right on the screen: three to five multiple-choice questions on that lesson's own
+himself right on the screen: five multiple-choice questions on that lesson's own
 content, graded the moment he submits. It sits in its own collapsed section rather than
 right on the page — opening it starts a clock, so the **Quizzes** page can show how long an
 attempt actually took, alongside the score and which questions he missed.
+
+**Retaking it gives him a different quiz.** Each lesson generates a pool of at least 20
+questions, and a sitting only asks five of them — the next attempt takes the next five,
+walking through the pool so nothing repeats until all 20 have been used. The order of the
+questions, *and* the order of the answers inside each one, are shuffled per attempt too, so
+"the answer was the third one" doesn't survive a retry either. That's the difference
+between re-taking a quiz and actually recalling the material — the old behavior showed the
+identical five questions every time, which made a second attempt mostly a memory test of
+the screen he'd just been looking at.
+
+The rotation is tied to how many attempts he's logged, so it carries across days and
+sessions rather than resetting. Lessons generated before this change carry only their
+original three to five questions; those still work, they just have less to rotate through.
 
 **On Math, a passing score records mastery automatically** — no trip to **Record mastery**
 required. But "passed" and "mastered" aren't the same bar: passing (80% by default) is real,

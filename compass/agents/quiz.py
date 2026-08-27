@@ -1,6 +1,6 @@
 """Server-side handling for the in-app, auto-graded quiz.
 
-Two separate concerns live here:
+Three separate concerns live here:
 
   * `verify_quiz` -- the model's JSON schema enforces types, not invariants
     across fields. Nothing stops it from returning `correct_index: 4` for a
@@ -9,6 +9,11 @@ Two separate concerns live here:
     answer that can never be selected), so this drops anything malformed
     before a quiz ever reaches the student.
 
+  * `select_questions` -- a lesson carries a pool of ~20 questions but only
+    a handful are asked at a time, rotating so a retry is a genuinely
+    different quiz rather than the same five questions with the answers
+    already memorized.
+
   * `grade` / `passed` -- pure functions with no Streamlit dependency, so the
     scoring logic that decides whether a skill gets marked mastered can be
     tested directly rather than through a simulated form submission.
@@ -16,9 +21,16 @@ Two separate concerns live here:
 
 from __future__ import annotations
 
+import random
 from typing import Any
 
 CHOICE_COUNT = 4
+
+# How many of the pool get asked in any one sitting. A pool of 20 at 5 a
+# time means four straight retries before a question can repeat -- long
+# enough that re-taking is real recall, not pattern matching on a screen he
+# just saw.
+QUESTIONS_PER_ATTEMPT = 5
 
 
 def verify_quiz(payload: dict[str, Any]) -> list[str]:
@@ -61,6 +73,51 @@ def verify_quiz(payload: dict[str, Any]) -> list[str]:
 
     payload["quiz"] = kept
     return warnings
+
+
+def _shuffled_choices(item: dict[str, Any], rng: random.Random) -> dict[str, Any]:
+    """One question with its answers reordered, `correct_index` moved to
+    match. Without this a retry still shows "the answer was the third one"
+    even when the questions themselves have rotated."""
+    order = list(range(len(item["choices"])))
+    rng.shuffle(order)
+    return {
+        **item,
+        "choices": [item["choices"][i] for i in order],
+        "correct_index": order.index(item["correct_index"]),
+    }
+
+
+def select_questions(
+    quiz: list[dict[str, Any]], attempt: int, seed: int = 0
+) -> list[dict[str, Any]]:
+    """The questions to ask on attempt number `attempt` (0-based).
+
+    Walks a contiguous window through the pool -- attempt 0 takes the first
+    `QUESTIONS_PER_ATTEMPT`, attempt 1 the next, wrapping when it runs off
+    the end -- so consecutive retries are guaranteed not to repeat a
+    question until the whole pool has been used, which random sampling
+    would not give. Question order within the window, and the answer order
+    inside each question, are then shuffled.
+
+    Deterministic in `(attempt, seed)`: Streamlit re-runs the render
+    function on every interaction, so an unseeded shuffle would deal a
+    different quiz on every click. Pass the lesson id as `seed` so two
+    lessons don't rotate in lockstep.
+
+    A pool smaller than the window (every lesson generated before the pool
+    existed has 3-5 questions) just returns all of it, still shuffled.
+    """
+    if not quiz:
+        return []
+    # A single int, not a tuple -- random.Random rejects tuple seeds. The
+    # multiplier just keeps two lessons from dealing identical orders.
+    rng = random.Random(seed * 1_000_003 + attempt)
+    window = min(QUESTIONS_PER_ATTEMPT, len(quiz))
+    start = (attempt * window) % len(quiz)
+    picked = [quiz[(start + offset) % len(quiz)] for offset in range(window)]
+    rng.shuffle(picked)
+    return [_shuffled_choices(item, rng) for item in picked]
 
 
 def grade(quiz: list[dict[str, Any]], picks: list[int | None]) -> tuple[int, int]:

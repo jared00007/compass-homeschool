@@ -21,6 +21,7 @@ from streamlit.testing.v1 import AppTest
 
 from compass import auth, config
 from compass.storage.db import Database
+from tests.conftest import correct_pick, wrong_pick
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HOME_PATH = str(REPO_ROOT / "Home.py")
@@ -62,10 +63,19 @@ def _open(monkeypatch, db_path, *, as_parent):
 
 
 def _submit_quiz(at, lesson_id, *, correct_count):
-    """Answer the 5-question quiz, getting exactly `correct_count` right
-    (choice 0 is always correct; anything else is wrong)."""
+    """Answer the 5-question quiz, getting exactly `correct_count` right.
+
+    The right answer's position differs per question now that answer order
+    is shuffled per attempt (see compass/agents/quiz.py), so each pick is
+    derived rather than assumed.
+    """
+    pool = _five_question_payload()["quiz"]
     for index in range(5):
-        pick = 0 if index < correct_count else 1
+        pick = (
+            correct_pick(pool, lesson_id, index)
+            if index < correct_count
+            else wrong_pick(pool, lesson_id, index)
+        )
         at.radio(key=f"quiz_pick_{lesson_id}_{index}").set_value(pick)
     at.button(key=f"FormSubmitter:quiz_form_{lesson_id}-Submit quiz").click().run()
     assert not at.exception, [e.message for e in at.exception]

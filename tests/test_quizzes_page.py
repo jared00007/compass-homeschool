@@ -18,6 +18,7 @@ from streamlit.testing.v1 import AppTest
 
 from compass import auth, config
 from compass.storage.db import Database
+from tests.conftest import correct_pick, wrong_pick
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HOME_PATH = str(REPO_ROOT / "Home.py")
@@ -87,8 +88,10 @@ def test_submitting_the_quiz_persists_an_attempt_with_per_question_detail(
     db.close()
 
     at = _open(monkeypatch, db_path, MATH_PATH, as_parent=False)
-    at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(1)  # correct
-    at.radio(key=f"quiz_pick_{lesson_id}_1").set_value(0)  # wrong
+    pool = _quiz_payload()["quiz"]
+    right_0 = correct_pick(pool, lesson_id, 0)
+    at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(right_0)
+    at.radio(key=f"quiz_pick_{lesson_id}_1").set_value(wrong_pick(pool, lesson_id, 1))
     at.button(key=f"FormSubmitter:quiz_form_{lesson_id}-Submit quiz").click().run()
     assert not at.exception, [e.message for e in at.exception]
 
@@ -100,10 +103,8 @@ def test_submitting_the_quiz_persists_an_attempt_with_per_question_detail(
     attempt = attempts[0]
     assert (attempt["correct"], attempt["total"]) == (1, 2)
     assert attempt["passed"] is False
-    assert attempt["detail"][0]["pick"] == 1  # right
-    assert attempt["detail"][0]["correct_index"] == 1
-    assert attempt["detail"][1]["pick"] == 0  # wrong
-    assert attempt["detail"][1]["correct_index"] == 1
+    assert attempt["detail"][0]["pick"] == attempt["detail"][0]["correct_index"]
+    assert attempt["detail"][1]["pick"] != attempt["detail"][1]["correct_index"]
 
 
 def test_retaking_the_quiz_adds_a_second_attempt_not_a_replacement(monkeypatch, tmp_path):
@@ -118,13 +119,19 @@ def test_retaking_the_quiz_adds_a_second_attempt_not_a_replacement(monkeypatch, 
     db.close()
 
     at = _open(monkeypatch, db_path, MATH_PATH, as_parent=False)
-    at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(0)  # wrong
-    at.radio(key=f"quiz_pick_{lesson_id}_1").set_value(0)  # wrong
+    pool = _quiz_payload()["quiz"]
+    at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(wrong_pick(pool, lesson_id, 0))
+    at.radio(key=f"quiz_pick_{lesson_id}_1").set_value(wrong_pick(pool, lesson_id, 1))
     at.button(key=f"FormSubmitter:quiz_form_{lesson_id}-Submit quiz").click().run()
 
     at.button(key=f"quiz_retry_{lesson_id}").click().run()
-    at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(1)  # correct
-    at.radio(key=f"quiz_pick_{lesson_id}_1").set_value(1)  # correct
+    # Attempt 1, not 0 -- the retry rotates to a different deal.
+    at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(
+        correct_pick(pool, lesson_id, 0, attempt=1)
+    )
+    at.radio(key=f"quiz_pick_{lesson_id}_1").set_value(
+        correct_pick(pool, lesson_id, 1, attempt=1)
+    )
     at.button(key=f"FormSubmitter:quiz_form_{lesson_id}-Submit quiz").click().run()
     assert not at.exception, [e.message for e in at.exception]
 
@@ -219,3 +226,70 @@ def test_quizzes_page_shows_empty_state_with_no_attempts(monkeypatch, tmp_path):
 
     at = _open(monkeypatch, db_path, QUIZZES_PATH, as_parent=True)
     assert any("No quizzes taken yet" in i.value for i in at.info)
+
+
+def _twenty_question_payload():
+    return {
+        "title": "Two-Step Equations", "overview": "", "activities": [], "materials": [],
+        "assessment": {"kind": "check", "description": "", "mastery_criteria": ""},
+        "subject_credits": [], "estimated_minutes": 30, "parent_notes": "", "branches": [],
+        "quiz": [
+            {"question": f"Question number {i}?",
+             "choices": [f"a{i}", f"b{i}", f"c{i}", f"d{i}"],
+             "correct_index": i % 4, "explanation": ""}
+            for i in range(20)
+        ],
+    }
+
+
+def _questions_on_screen(at):
+    return {m.value for m in at.markdown if "Question number" in m.value}
+
+
+def test_retaking_deals_a_different_set_of_questions(monkeypatch, tmp_path):
+    """End to end: he answers five, retries, and gets five he hasn't seen --
+    the reason the lesson carries a pool of 20 rather than just five."""
+    db_path = tmp_path / "rotate.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="Two-Step Equations", payload=_twenty_question_payload(),
+    )
+    db.close()
+
+    at = _open(monkeypatch, db_path, MATH_PATH, as_parent=False)
+    first_round = _questions_on_screen(at)
+    assert len(first_round) == 5
+
+    for index in range(5):
+        at.radio(key=f"quiz_pick_{lesson_id}_{index}").set_value(0)
+    at.button(key=f"FormSubmitter:quiz_form_{lesson_id}-Submit quiz").click().run()
+    at.button(key=f"quiz_retry_{lesson_id}").click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    second_round = _questions_on_screen(at)
+    assert len(second_round) == 5
+    assert not (first_round & second_round), "a retry re-showed a question"
+
+
+def test_the_asked_set_survives_answering_without_reshuffling(monkeypatch, tmp_path):
+    """render_quiz re-runs on every widget interaction. If the deal weren't
+    pinned, picking an answer would silently swap the questions underneath
+    him mid-quiz."""
+    db_path = tmp_path / "stable.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="Two-Step Equations", payload=_twenty_question_payload(),
+    )
+    db.close()
+
+    at = _open(monkeypatch, db_path, MATH_PATH, as_parent=False)
+    before = _questions_on_screen(at)
+    at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(0).run()
+    at.radio(key=f"quiz_pick_{lesson_id}_1").set_value(1).run()
+    assert _questions_on_screen(at) == before

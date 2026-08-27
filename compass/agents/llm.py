@@ -206,9 +206,17 @@ LESSON_SCHEMA: dict[str, Any] = _object(
         "quiz": {
             "type": "array",
             "description": (
-                "Three to five multiple-choice questions checking whether he actually "
-                "learned today's content, for him to take himself and get graded "
-                "automatically. Separate from `assessment`, which the parent uses."
+                "A pool of AT LEAST 20 multiple-choice questions checking whether he "
+                "actually learned today's content, for him to take himself and get "
+                "graded automatically. Separate from `assessment`, which the parent "
+                "uses.\n\n"
+                "He is only asked five at a time, drawn from this pool and rotated on "
+                "each retry, so the pool needs real breadth: cover every part of the "
+                "lesson, at a mix of difficulties, and approach the same underlying "
+                "idea from genuinely different angles rather than rewording one "
+                "question twenty times. Two questions that would be answered correctly "
+                "by the exact same piece of knowledge, phrased differently, are one "
+                "question -- write another instead."
             ),
             "items": _object(
                 {

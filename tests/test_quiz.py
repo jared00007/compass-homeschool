@@ -11,7 +11,14 @@ from __future__ import annotations
 
 import pytest
 
-from compass.agents.quiz import CHOICE_COUNT, grade, passed, verify_quiz
+from compass.agents.quiz import (
+    CHOICE_COUNT,
+    QUESTIONS_PER_ATTEMPT,
+    grade,
+    passed,
+    select_questions,
+    verify_quiz,
+)
 from compass.storage.db import Database
 
 
@@ -287,3 +294,100 @@ def test_duration_seconds_defaults_to_none_when_not_given(db):
 
     attempt = db.list_quiz_attempts(student["id"])[0]
     assert attempt["duration_seconds"] is None
+
+
+# --- question rotation: a retry is a different quiz -----------------------------
+
+
+def _pool(n):
+    return [
+        {"question": f"Q{i}", "choices": [f"a{i}", f"b{i}", f"c{i}", f"d{i}"],
+         "correct_index": i % 4, "explanation": ""}
+        for i in range(n)
+    ]
+
+
+def test_only_a_handful_of_a_large_pool_is_asked_at_once():
+    asked = select_questions(_pool(20), attempt=0, seed=1)
+    assert len(asked) == QUESTIONS_PER_ATTEMPT
+
+
+def test_consecutive_attempts_share_no_questions():
+    """The whole point: retaking is recall, not remembering the screen he
+    just saw. A pool of 20 at 5 a time gives four clean rounds."""
+    pool = _pool(20)
+    seen = [
+        {q["question"] for q in select_questions(pool, attempt=a, seed=1)}
+        for a in range(4)
+    ]
+    for a in range(4):
+        for b in range(a + 1, 4):
+            assert not seen[a] & seen[b], f"attempts {a} and {b} overlap"
+    assert set().union(*seen) == {q["question"] for q in pool}
+
+
+def test_the_pool_wraps_round_once_it_is_exhausted():
+    pool = _pool(20)
+    first = {q["question"] for q in select_questions(pool, attempt=0, seed=1)}
+    fifth = {q["question"] for q in select_questions(pool, attempt=4, seed=1)}
+    assert first == fifth
+
+
+def test_the_same_attempt_always_deals_the_same_quiz():
+    """render_quiz re-runs on every interaction, so an unseeded shuffle
+    would deal a new quiz on every click mid-answering."""
+    pool = _pool(20)
+    once = select_questions(pool, attempt=2, seed=7)
+    twice = select_questions(pool, attempt=2, seed=7)
+    assert once == twice
+
+
+def test_two_lessons_do_not_rotate_in_lockstep():
+    pool = _pool(20)
+    assert select_questions(pool, attempt=0, seed=1) != select_questions(
+        pool, attempt=0, seed=2
+    )
+
+
+def test_answer_order_is_shuffled_but_correct_index_still_points_at_the_answer():
+    """Shuffling choices is worthless -- and actively breaks grading -- if
+    correct_index isn't moved with them."""
+    pool = _pool(20)
+    originals = {q["question"]: q for q in pool}
+    for asked in select_questions(pool, attempt=0, seed=3):
+        original = originals[asked["question"]]
+        assert sorted(asked["choices"]) == sorted(original["choices"])
+        assert (
+            asked["choices"][asked["correct_index"]]
+            == original["choices"][original["correct_index"]]
+        )
+
+
+def test_answer_order_actually_differs_across_attempts():
+    """Otherwise "the answer was the third one" survives a retry."""
+    pool = _pool(20)
+    orders = [
+        tuple(select_questions(pool, attempt=a, seed=5)[0]["choices"])
+        for a in range(8)
+    ]
+    assert len(set(orders)) > 1
+
+
+def test_a_short_legacy_pool_still_works():
+    """Every lesson generated before the pool existed has 3-5 questions --
+    those must still be askable, not silently truncated to nothing."""
+    pool = _pool(3)
+    asked = select_questions(pool, attempt=0, seed=1)
+    assert len(asked) == 3
+    assert {q["question"] for q in asked} == {q["question"] for q in pool}
+
+
+def test_an_empty_pool_is_handled():
+    assert select_questions([], attempt=0, seed=1) == []
+
+
+def test_grading_a_rotated_quiz_uses_its_own_shuffled_indexes():
+    pool = _pool(20)
+    asked = select_questions(pool, attempt=1, seed=9)
+    picks = [q["correct_index"] for q in asked]
+    assert grade(asked, picks) == (len(asked), len(asked))
