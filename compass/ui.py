@@ -776,29 +776,6 @@ def _render_activity_body(
             st.write(md(saved))
 
 
-def _comic_activity_rows(activities: list[dict[str, Any]]) -> list[list[int]]:
-    """Group activity indices into display rows: an activity needing a typed
-    response gets a full-width row of its own (room for the text box), plain
-    activities pair up two-to-a-row -- same shape as the approved mockup's
-    comic-grid, where the writing panel spans both columns."""
-    rows: list[list[int]] = []
-    pending: list[int] = []
-    for index, activity in enumerate(activities):
-        if _needs_written_response(activity):
-            if pending:
-                rows.append(pending)
-                pending = []
-            rows.append([index])
-        else:
-            pending.append(index)
-            if len(pending) == 2:
-                rows.append(pending)
-                pending = []
-    if pending:
-        rows.append(pending)
-    return rows
-
-
 def _render_activity_comic_panel(
     activity: dict[str, Any],
     index: int,
@@ -810,6 +787,21 @@ def _render_activity_comic_panel(
     key_prefix: str,
     student: dict[str, Any] | None = None,
 ) -> None:
+    """One activity's card, full width. Collapsing is his own reading
+    convenience -- a card he's tucked away as done shrinks to just the
+    title bar with a reopen button, nothing more. Parent view always
+    shows every card in full regardless of what's collapsed: a parent
+    opening a lesson to review or approve it needs to see everything, not
+    whatever the student happened to tuck away for himself while working
+    through it.
+    """
+    collapsed = (
+        not parent
+        and db is not None
+        and lesson_id is not None
+        and index in ((metadata or {}).get("collapsed_activities") or [])
+    )
+
     with st.container(key=f"comic_panel_activity_{key_prefix}_{index}"):
         st.markdown(f'<div class="comic-issue-tag">No. {index + 1}</div>', unsafe_allow_html=True)
         st.markdown(
@@ -817,11 +809,21 @@ def _render_activity_comic_panel(
             f"{_comic_kind_pill_html(activity.get('kind', ''))}",
             unsafe_allow_html=True,
         )
+        if collapsed:
+            if st.button("↩️ Done — tap to reopen", key=f"reopen_activity_{key_prefix}_{index}"):
+                db.set_activity_collapsed(lesson_id, index, False)
+                st.rerun()
+            return
+
         st.caption(f"{activity.get('minutes', 0)} min")
         _render_activity_body(
             activity, index, parent=parent, db=db, lesson_id=lesson_id,
             metadata=metadata, student=student,
         )
+        if not parent and db is not None and lesson_id is not None:
+            if st.button("✅ Mark this one done", key=f"collapse_activity_{key_prefix}_{index}"):
+                db.set_activity_collapsed(lesson_id, index, True)
+                st.rerun()
 
 
 def render_lesson(
@@ -887,20 +889,22 @@ def render_lesson(
                         for item in materials:
                             st.markdown(f"- {md(item)}")
 
-            for row in _comic_activity_rows(activities):
-                columns = st.columns(len(row))
-                for column, index in zip(columns, row):
-                    with column:
-                        _render_activity_comic_panel(
-                            activities[index],
-                            index,
-                            parent=parent,
-                            db=db,
-                            lesson_id=lesson_id,
-                            metadata=metadata,
-                            key_prefix=key_prefix,
-                            student=student,
-                        )
+            # Single column, full width -- pairing two activities per row
+            # (the original comic-grid mockup) left mismatched-height cards
+            # squeezed side by side whenever one activity had more to show
+            # than its neighbor (a video, a worked example). One card per
+            # row lets each one take exactly the room it needs.
+            for index, activity in enumerate(activities):
+                _render_activity_comic_panel(
+                    activity,
+                    index,
+                    parent=parent,
+                    db=db,
+                    lesson_id=lesson_id,
+                    metadata=metadata,
+                    key_prefix=key_prefix,
+                    student=student,
+                )
     else:
         st.subheader(md(lesson.get("title", "Lesson")))
         if lesson.get("overview"):

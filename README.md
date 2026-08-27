@@ -342,7 +342,7 @@ compass/
   theme.py                   the one fixed theme and the CSS that applies it
   fun_facts.py               fact-of-the-day for the student home view
   national_parks.py          the 63 parks + real state borders for Landon's Travels
-tests/                       842 tests, no API key required
+tests/                       846 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 scripts/new_school_year_reset.py  wipe a finished school year's data, see below
 ```
@@ -626,6 +626,25 @@ further") in a way a generic formula would flatten into one repeated sentence; o
 actually-shortened week (a holiday) falls through to the generic three-tier version --
 no note on day one, escalating practice through the middle, assessment-weighted on the
 last day (which can be the same day as the first, on a one-day week).
+
+## Comic panels: single column, and collapsing a card when it's done
+
+The activity panels on a lesson (see GUIDE.md's "Comic Panels" section for the redesign
+this replaced) used to pair two activities per row. That looked noisy in practice --
+a video or worked example sitting next to a two-line instruction produced two very
+different card heights squeezed into the same row. Activities now render one to a row,
+full width, so each one takes exactly the room it needs.
+
+In student view only, every panel -- including the writing one, right alongside its own
+text box -- gets a **"✅ Mark this one done"** button that collapses it down to just its
+title bar and a **"↩️ Done — tap to reopen"** button. `Database.set_activity_collapsed`
+stores the collapsed indices in the lesson's own metadata, so a lesson worked across two
+sittings doesn't reopen every card he already tucked away. This is deliberately just a
+manual, personal reading convenience, not a real completion signal -- the same reason the
+progress dots above the panels don't treat "collapsed" as "done" either -- so parent view
+always shows every panel in full regardless of what's collapsed. A parent checking or
+approving a lesson needs to see everything, not whatever he happened to fold away for
+himself while working through it.
 
 ## Grades
 
@@ -1044,7 +1063,7 @@ make.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 842 tests, ~85s, no API key needed
+python -m pytest tests/ -q      # 846 tests, ~85s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

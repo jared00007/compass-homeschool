@@ -2231,6 +2231,30 @@ class Database:
         self.conn.execute("DELETE FROM lessons WHERE id = ?", (lesson_id,))
         self.conn.commit()
 
+    def set_activity_collapsed(
+        self, lesson_id: int, activity_index: int, collapsed: bool
+    ) -> None:
+        """Whether he's tucked one activity's card away as done -- a
+        personal reading-comfort toggle, not a completion record. Nothing
+        else in the app reads this (see _comic_progress_dots_html's own
+        docstring on why a per-activity "done" signal isn't trustworthy
+        enough to drive anything besides what he sees on his own screen).
+        Persisted so a lesson worked across two sittings doesn't reopen
+        every card he already collapsed.
+        """
+        lesson = self.get_lesson(lesson_id)
+        metadata = lesson["metadata"] if lesson else {}
+        indices = set(metadata.get("collapsed_activities") or [])
+        if collapsed:
+            indices.add(activity_index)
+        else:
+            indices.discard(activity_index)
+        metadata["collapsed_activities"] = sorted(indices)
+        self.conn.execute(
+            "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
+        )
+        self.conn.commit()
+
     def mark_student_done(self, lesson_id: int) -> None:
         """The student's own "did work today" signal.
 

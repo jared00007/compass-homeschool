@@ -252,3 +252,146 @@ def test_vocab_review_gets_its_own_framed_eyebrow_header(monkeypatch, tmp_path):
     text = " ".join(m.value for m in at.markdown)
     assert "Words to Review" in text
     assert "comic-frame-title" in text
+
+
+# --- single column, and marking a card done collapses it -------------------------
+
+
+def test_marking_a_card_done_collapses_it(monkeypatch, tmp_path):
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Brian's Turning Point", payload=_hatchet_payload(),
+    )
+    db.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    assert "Read through the fish-spear scene." in " ".join(m.value for m in at.markdown)
+    done_button = [b for b in at.button if b.label == "✅ Mark this one done"][0]
+    done_button.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    text = " ".join(m.value for m in at.markdown)
+    assert "Read through the fish-spear scene." not in text  # tucked away
+    assert any(b.label == "↩️ Done — tap to reopen" for b in at.button)
+
+    db2 = Database(db_path)
+    lesson = db2.get_lesson(lesson_id)
+    db2.close()
+    assert lesson["metadata"]["collapsed_activities"] == [0]
+
+
+def test_reopening_a_collapsed_card_restores_it(monkeypatch, tmp_path):
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Brian's Turning Point", payload=_hatchet_payload(),
+    )
+    db.set_activity_collapsed(lesson_id, 0, True)
+    db.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    reopen_button = [b for b in at.button if b.label == "↩️ Done — tap to reopen"][0]
+    reopen_button.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    text = " ".join(m.value for m in at.markdown)
+    assert "Read through the fish-spear scene." in text
+
+    db2 = Database(db_path)
+    assert db2.get_lesson(lesson_id)["metadata"]["collapsed_activities"] == []
+    db2.close()
+
+
+def test_collapsing_is_scoped_to_its_own_card(monkeypatch, tmp_path):
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Brian's Turning Point", payload=_hatchet_payload(),
+    )
+    db.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    done_buttons = [b for b in at.button if b.label == "✅ Mark this one done"]
+    assert len(done_buttons) == 3  # all three activities, including the writing one, get a toggle
+    done_buttons[0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    text = " ".join(m.value for m in at.markdown)
+    assert "Read through the fish-spear scene." not in text
+    assert "Find the paragraph where he starts planning ahead." in text  # activity 1, untouched
+
+
+def test_a_parent_previewing_the_lesson_sees_every_card_regardless_of_collapse(
+    monkeypatch, tmp_path
+):
+    """A parent opening a lesson needs the whole thing -- collapsing is a
+    student-side reading convenience only, enforced in
+    _render_activity_comic_panel by gating on `parent` alone. Exercised
+    directly against render_lesson (the Recorder pattern from
+    test_auth.py), since no page today hands a parent the comic layout for
+    an already-collapsed lesson to click through -- the parent-facing
+    review card (render_assessment_card) is a separate summary that
+    doesn't call render_lesson at all."""
+    import compass.ui as ui
+
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Brian's Turning Point", payload=_hatchet_payload(),
+    )
+    db.set_activity_collapsed(lesson_id, 0, True)
+    lesson = db.get_lesson(lesson_id)
+
+    written: list[str] = []
+
+    class Recorder:
+        """Stands in for `st`, recording every string that would be rendered."""
+
+        def __getattr__(self, _name):
+            def record(*args, **kwargs):
+                for arg in args:
+                    if isinstance(arg, str):
+                        written.append(arg)
+                return Recorder()
+            return record
+
+        def __getitem__(self, _index):
+            return Recorder()
+
+        def __iter__(self):
+            return iter([Recorder(), Recorder(), Recorder()])
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(ui, "st", Recorder())
+    monkeypatch.setattr(ui, "is_parent", lambda: True)
+    ui.render_lesson(
+        lesson["payload"],
+        for_parent=True,
+        db=db,
+        lesson_id=lesson_id,
+        metadata=lesson["metadata"],
+        comic_layout=True,
+        student=student,
+    )
+    db.close()
+
+    page = "\n".join(written)
+    assert "Read through the fish-spear scene." in page
+    assert "↩️ Done — tap to reopen" not in page

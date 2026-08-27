@@ -691,11 +691,22 @@ pass `comic_layout=False` for the old plain click-to-expand list — nothing
 still uses it as of this writing). The whole "current lesson" section sits
 inside one bordered frame with a small uppercase eyebrow ("📖 ENGLISH —
 CURRENT LESSON", "📐 MATH — CURRENT LESSON", ...); each activity inside it
-is its own ink-bordered panel, always open (nothing to click through), with
-a "No. 1 / No. 2 / ..." tag and a colored kind pill (reading/writing/
-discussion/instruction, or a plain neutral pill for any other kind) instead
-of plain expander text. A short-answer activity gets its own full-width
-panel with room for the text box; everything else pairs up two-to-a-row.
+is its own ink-bordered panel, one to a row full-width (an earlier version
+paired two panels per row, but mismatched card heights — a video or worked
+example next to a two-line instruction — made that read as noisy; single
+column lets each panel take exactly the room it needs), with a "No. 1 /
+No. 2 / ..." tag and a colored kind pill (reading/writing/discussion/
+instruction, or a plain neutral pill for any other kind) instead of plain
+expander text. In student view only, a "✅ Mark this one done" button on
+every panel — including the writing one, alongside its text box — shrinks
+that card down to just its title bar and a "↩️ Done — tap to reopen"
+button (`Database.set_activity_collapsed`, persisted in the lesson's
+metadata so it survives a reload). This is a manual, personal reading
+convenience, not a completion record — the same reason there's no honest
+per-activity "done" signal driving the dots below — so parent view always
+renders every panel in full regardless of what's collapsed; a parent
+checking or approving a lesson needs to see everything, not whatever he
+tucked away for himself while working through it.
 The strip of dots at the top of the frame is real, not decorative: it walks
 the activities in order, and everything up to the next *unmet* typed-
 response requirement reads as passed (there's no honest per-activity "done"
