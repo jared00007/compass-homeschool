@@ -1625,6 +1625,46 @@ def render_friday_plan(db: Database, student: dict[str, Any], plan_date: str) ->
             st.page_link(page, label="Open", icon="➡️")
 
 
+_STREAK_MILESTONES = (3, 5, 10, 20, 30, 50)
+
+
+def render_streak(db: Database, student: dict[str, Any]) -> None:
+    """His run of school days in a row. Student-facing, on Home.
+
+    The one thing on his page that rewards showing up rather than scoring
+    well -- deliberately, since everything else Compass checks is about the
+    quality of one piece of work. Weekends don't break it (see
+    compass.weekly), so it survives Monday morning.
+    """
+    active = db.active_days(student["id"])
+    streak = weekly.current_streak(active)
+    if not streak:
+        if active:
+            st.caption("🔥 Finish something today to start a new streak.")
+        return
+
+    best = weekly.best_streak(active)
+    plural = "s" if streak != 1 else ""
+    line = f"🔥 **{streak} school day{plural} in a row**"
+    if streak >= best and streak > 1:
+        line += " — your best yet!"
+    elif best > streak:
+        line += f" · best: {best}"
+
+    today_done = date.today().isoformat() in active
+    if not today_done:
+        line += "  \nFinish something today to keep it alive."
+
+    st.success(line)
+
+    next_milestone = next((m for m in _STREAK_MILESTONES if m > streak), None)
+    if next_milestone:
+        st.progress(
+            streak / next_milestone,
+            text=f"{next_milestone - streak} more to reach {next_milestone}",
+        )
+
+
 def render_today_checklist(db: Database, student: dict[str, Any]) -> bool:
     """His own "what I did today" list -- a fun accomplishment checklist, not
     a compliance record. Built entirely from his own signals (student_done_on,

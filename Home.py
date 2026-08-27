@@ -23,6 +23,7 @@ from compass.ui import (
     render_fun_fact,
     render_lesson,
     render_morning_routine,
+    render_streak,
     render_today_checklist,
 )
 
@@ -41,6 +42,7 @@ if not is_parent():
 
     st.title(f"Hi {md(student['name'].split()[0])} 👋")
     st.caption("Here's what's set up for you. Work down the list, or jump around — up to you.")
+    render_streak(db, student)
     render_fun_fact()
 
     st.divider()

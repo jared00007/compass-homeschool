@@ -46,6 +46,66 @@ def week_dates(start: date) -> list[date]:
     return [start + timedelta(days=i) for i in range(len(WEEKDAY_NAMES))]
 
 
+# --- school-day streaks --------------------------------------------------------
+# A run of school days he actually did work on. Weekends are skipped rather
+# than counted as misses, which matters more than it sounds: counting them
+# would reset the streak to zero every Monday morning, turning the one
+# mechanic meant to reward showing up into a weekly reminder that he failed.
+
+
+def _school_days_back(today: date):
+    """Weekdays, today first, walking backwards. Weekends never appear."""
+    day = today
+    while True:
+        if day.weekday() < 5:
+            yield day
+        day -= timedelta(days=1)
+
+
+def current_streak(active_days: set[str], today: date | None = None) -> int:
+    """How many school days in a row, ending now, he did work on.
+
+    Today not being done *yet* doesn't break the run -- the count just picks
+    up from yesterday. Otherwise every streak would read zero each morning
+    until he finished something, which is exactly backwards: the moment you
+    most want it to say "you're on 6, keep it going" is before he's started.
+    """
+    today = today or date.today()
+    streak = 0
+    for index, day in enumerate(_school_days_back(today)):
+        if day.isoformat() in active_days:
+            streak += 1
+        elif index == 0:
+            continue  # today is simply still in progress
+        else:
+            break
+        if index > 400:  # pragma: no cover - defensive bound
+            break
+    return streak
+
+
+def best_streak(active_days: set[str], today: date | None = None) -> int:
+    """His longest run ever, for the streak to be worth protecting.
+
+    Computed from the same history rather than stored, so it can't drift out
+    of step with the days it's counting.
+    """
+    if not active_days:
+        return 0
+    today = today or date.today()
+    # Forward from the first day he ever recorded, rather than backwards from
+    # today -- `_school_days_back` is unbounded, and walking it to the start
+    # of history runs off the end of `date` itself.
+    day = date.fromisoformat(min(active_days))
+    best = run = 0
+    while day <= today:
+        if day.weekday() < 5:
+            run = run + 1 if day.isoformat() in active_days else 0
+            best = max(best, run)
+        day += timedelta(days=1)
+    return best
+
+
 def default_plan_target(on: date | None = None) -> date:
     """The Monday of *next* week relative to `on` -- the sensible default for
     "which week should Friday's planning target," since planning is always

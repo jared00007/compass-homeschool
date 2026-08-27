@@ -2305,6 +2305,28 @@ class Database:
             )
         )
 
+    def active_days(self, student_id: int) -> set[str]:
+        """Every date he did real work on, as ISO strings.
+
+        "Real work" is his own signal, not the parent's: a lesson he marked
+        done, or a life skill checked off. Deliberately *not* the vocab
+        review or the morning routine -- both are one button press, and a
+        streak a nine-year-old could farm by tapping one button a day isn't
+        measuring anything. Feeds compass.weekly's streak counting.
+        """
+        lesson_days = self.conn.execute(
+            "SELECT DISTINCT json_extract(metadata, '$.student_done_on') AS day "
+            "FROM lessons WHERE student_id = ? "
+            "AND json_extract(metadata, '$.student_done_on') IS NOT NULL",
+            (student_id,),
+        ).fetchall()
+        skill_days = self.conn.execute(
+            "SELECT DISTINCT completed_on AS day FROM life_skills "
+            "WHERE student_id = ? AND completed_on IS NOT NULL AND completed_on != ''",
+            (student_id,),
+        ).fetchall()
+        return {row["day"] for row in [*lesson_days, *skill_days] if row["day"]}
+
     def save_writing_ai_review(
         self, lesson_id: int, activity_index: int, review: dict[str, Any]
     ) -> None:
