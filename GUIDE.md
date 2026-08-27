@@ -267,9 +267,36 @@ answer a question, write a sentence, or list something in his own words gets an 
 text box on the screen instead of a prompt to write in his notebook, whatever kind of
 activity it technically is. Genuinely hands-on or paper work (solving a math problem,
 drawing a timeline or diagram, building a chart) stays on paper — the model's told
-explicitly which is which. His response saves the moment he clicks Save, and it's what
-you see, right in that same Activity Log assessment card, when it's time to check the
+explicitly which is which. His response saves the moment he clicks Save draft, and it's
+what you see, right in that same Activity Log assessment card, when it's time to check the
 lesson. No separate notebook page to track down.
+
+**Writing goes through a real submit-and-review loop, with automated checks first.**
+Built after reading back a term's worth of his actual saved responses and finding the
+pattern wasn't "can't write" — it was first-draft-and-done, with prompts asking for 200
+words coming back as 30, quotes that were told to be included simply missing, and
+"final" versions saved seconds after the draft with nothing changed.
+
+Two things now stand between a first draft and a finished assignment:
+
+1. **Automated checks, before he can submit.** Every writing prompt now carries the
+   requirements it actually stated — minimum/maximum word count, minimum sentence count,
+   whether a quote is required — as structured data alongside the prompt text, and
+   **Submit for review** refuses until they're met, naming exactly what's short
+   ("Needs at least 150 words — you have 6"). These are deliberately mechanical only.
+   Whether the argument holds up, or the physics is right, is not something a word count
+   can judge — that's still yours. **Save draft** is never gated, so he can stop
+   mid-sentence and come back without being nagged.
+2. **Then you approve it or send it back.** A submitted response locks — he can't
+   quietly keep editing, and you see it in the Activity Log assessment card marked
+   *awaiting your review*, with **Approve** and **Send back for revision** underneath.
+   Sending it back carries your feedback straight onto his screen, above the reopened
+   text box, so the next pass is aimed at something specific instead of "do it again."
+   He can also pull back a submission himself if he spots a problem before you get to it.
+
+Older lessons generated before this existed have no stated requirements attached, so
+they submit freely — there's nothing to check them against. Anything generated from now
+on carries them.
 
 **On not being able to peek.** The correct answer is never sent to the page until after he
 submits — this isn't a CSS trick, it's that Streamlit reruns the whole page from the server

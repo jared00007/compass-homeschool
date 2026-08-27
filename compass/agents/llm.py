@@ -121,6 +121,43 @@ LESSON_SCHEMA: dict[str, Any] = _object(
                             "activity, in place of a notebook page -- get it right."
                         ),
                     },
+                    "writing_requirements": _object(
+                        {
+                            "min_words": {
+                                "type": ["integer", "null"],
+                                "description": (
+                                    "The minimum word count `instructions` actually asks for, "
+                                    "e.g. 150 for '150 to 200 words' or 'about 150 words'. Null "
+                                    "if requires_written_response is false, or you didn't state "
+                                    "a word count at all (e.g. you asked for a sentence count "
+                                    "instead)."
+                                ),
+                            },
+                            "max_words": {
+                                "type": ["integer", "null"],
+                                "description": (
+                                    "The maximum word count, e.g. 200 for '150 to 200 words'. "
+                                    "Null if you gave no ceiling, or only a floor ('at least "
+                                    "150 words')."
+                                ),
+                            },
+                            "min_sentences": {
+                                "type": ["integer", "null"],
+                                "description": (
+                                    "The minimum sentence count `instructions` asks for, e.g. "
+                                    "6 for '6-8 sentences'. Null if you gave a word count "
+                                    "instead, or no count at all."
+                                ),
+                            },
+                            "requires_quote": {
+                                "type": "boolean",
+                                "description": (
+                                    "True only if `instructions` explicitly tells him to quote "
+                                    "a source or text in quotation marks. False otherwise."
+                                ),
+                            },
+                        }
+                    ),
                     "example": {
                         "type": "string",
                         "description": (

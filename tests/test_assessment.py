@@ -124,6 +124,60 @@ def test_saving_a_response_preserves_other_metadata_already_there(db, student):
     assert lesson["metadata"]["skill_id"] == "two-step-equations"
 
 
+# --- writing review: draft -> submitted -> parent decision ---------------------------
+
+
+def test_a_response_defaults_to_draft_status(db, student):
+    lesson_id = _lesson(db, student["id"])
+    lesson = db.get_lesson(lesson_id)
+    assert (lesson["metadata"].get("writing_review") or {}) == {}
+
+
+def test_setting_a_review_status_is_readable_back(db, student):
+    lesson_id = _lesson(db, student["id"])
+    db.set_writing_review(lesson_id, 0, "submitted")
+
+    lesson = db.get_lesson(lesson_id)
+    assert lesson["metadata"]["writing_review"]["0"] == {"status": "submitted", "feedback": ""}
+
+
+def test_sending_back_for_revision_carries_the_feedback(db, student):
+    lesson_id = _lesson(db, student["id"])
+    db.set_writing_review(lesson_id, 0, "needs_revision", "Add a quote from the text.")
+
+    lesson = db.get_lesson(lesson_id)
+    review = lesson["metadata"]["writing_review"]["0"]
+    assert review["status"] == "needs_revision"
+    assert review["feedback"] == "Add a quote from the text."
+
+
+def test_review_status_is_tracked_independently_per_activity(db, student):
+    lesson_id = _lesson(db, student["id"])
+    db.set_writing_review(lesson_id, 0, "approved")
+    db.set_writing_review(lesson_id, 1, "needs_revision", "Too short.")
+
+    lesson = db.get_lesson(lesson_id)
+    assert lesson["metadata"]["writing_review"]["0"]["status"] == "approved"
+    assert lesson["metadata"]["writing_review"]["1"]["status"] == "needs_revision"
+
+
+def test_an_invalid_status_is_rejected(db, student):
+    lesson_id = _lesson(db, student["id"])
+    with pytest.raises(ValueError):
+        db.set_writing_review(lesson_id, 0, "not_a_real_status")
+
+
+def test_setting_review_status_preserves_other_metadata_already_there(db, student):
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t", title="t",
+        payload={}, metadata={"skill_id": "two-step-equations"},
+    )
+    db.set_writing_review(lesson_id, 0, "submitted")
+
+    lesson = db.get_lesson(lesson_id)
+    assert lesson["metadata"]["skill_id"] == "two-step-equations"
+
+
 # --- assessment verdicts -------------------------------------------------------------
 
 

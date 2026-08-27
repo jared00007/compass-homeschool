@@ -226,6 +226,15 @@ def _instruction_with_written_response_payload():
     }
 
 
+def _writing_payload_with_requirements(min_words=None, requires_quote=False):
+    payload = _writing_payload()
+    payload["activities"][0]["writing_requirements"] = {
+        "min_words": min_words, "max_words": None, "min_sentences": None,
+        "requires_quote": requires_quote,
+    }
+    return payload
+
+
 def test_writing_activity_shows_a_response_box_in_student_view(monkeypatch, tmp_path):
     db_path = tmp_path / "a.db"
     db = Database(db_path)
@@ -330,7 +339,7 @@ def test_saving_a_writing_response_persists_it(monkeypatch, tmp_path):
     at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
     response_box = [t for t in at.text_area if t.label == "Your response"][0]
     response_box.set_value("I think the character was right because...").run()
-    save_button = [b for b in at.button if b.label == "Save response"][0]
+    save_button = [b for b in at.button if b.label == "Save draft"][0]
     save_button.click().run()
     assert not at.exception, [e.message for e in at.exception]
 
@@ -437,3 +446,200 @@ def test_logging_hours_does_not_launch_balloons(monkeypatch, tmp_path):
     text = " ".join(a.value for a in at.success)
     assert "Logged." in text
     assert not calls
+
+
+# --- writing review: the draft -> submit -> parent decision loop ----------------------
+
+
+def test_submitting_below_the_word_count_is_blocked_with_a_reason(monkeypatch, tmp_path):
+    """The whole point of the checks: a 50-word assignment can't be
+    submitted as four words, and he's told exactly why rather than having
+    a parent notice by eye days later."""
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Argue a Character's Choice",
+        payload=_writing_payload_with_requirements(min_words=50),
+    )
+    db.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    at.text_area(key=f"writing_draft_{lesson_id}_0").set_value("way too short").run()
+    at.button(key=f"submit_writing_{lesson_id}_0").click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    errors = " ".join(e.value for e in at.error)
+    assert "at least 50 words" in errors
+
+    db2 = Database(db_path)
+    lesson = db2.get_lesson(lesson_id)
+    db2.close()
+    assert (lesson["metadata"].get("writing_review") or {}) == {}
+
+
+def test_submitting_without_a_required_quote_is_blocked(monkeypatch, tmp_path):
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Argue a Character's Choice",
+        payload=_writing_payload_with_requirements(requires_quote=True),
+    )
+    db.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    at.text_area(key=f"writing_draft_{lesson_id}_0").set_value(
+        "I have plenty of words here but no quotation marks anywhere at all."
+    ).run()
+    at.button(key=f"submit_writing_{lesson_id}_0").click().run()
+
+    errors = " ".join(e.value for e in at.error)
+    assert "quote" in errors.lower()
+
+
+def test_a_passing_response_submits_and_locks_for_review(monkeypatch, tmp_path):
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Argue a Character's Choice",
+        payload=_writing_payload_with_requirements(min_words=5),
+    )
+    db.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    at.text_area(key=f"writing_draft_{lesson_id}_0").set_value(
+        "This response is comfortably over the required word count."
+    ).run()
+    at.button(key=f"submit_writing_{lesson_id}_0").click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db2 = Database(db_path)
+    lesson = db2.get_lesson(lesson_id)
+    db2.close()
+    assert lesson["metadata"]["writing_review"]["0"]["status"] == "submitted"
+    # He can no longer edit it -- the box is replaced by a waiting message.
+    assert not any(t.label == "Your response" for t in at.text_area)
+
+
+def test_saving_a_draft_never_runs_the_checks(monkeypatch, tmp_path):
+    """Saving is for work-in-progress -- only submitting is gated, so he
+    can stop mid-sentence and come back without being nagged."""
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Argue a Character's Choice",
+        payload=_writing_payload_with_requirements(min_words=500),
+    )
+    db.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    at.text_area(key=f"writing_draft_{lesson_id}_0").set_value("barely started").run()
+    at.button(key=f"save_writing_{lesson_id}_0").click().run()
+    assert not at.exception, [e.message for e in at.exception]
+    assert not at.error
+
+    db2 = Database(db_path)
+    lesson = db2.get_lesson(lesson_id)
+    db2.close()
+    assert lesson["metadata"]["writing_responses"]["0"] == "barely started"
+
+
+def test_parent_sees_the_submitted_response_and_can_approve(monkeypatch, tmp_path):
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Argue a Character's Choice", payload=_writing_payload(),
+    )
+    db.save_writing_response(lesson_id, 0, "His finished argument.")
+    db.set_writing_review(lesson_id, 0, "submitted")
+    db.close()
+
+    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    approve = [b for b in at.button if "Approve" in (b.label or "")][0]
+    approve.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db2 = Database(db_path)
+    lesson = db2.get_lesson(lesson_id)
+    db2.close()
+    assert lesson["metadata"]["writing_review"]["0"]["status"] == "approved"
+
+
+def test_parent_can_send_it_back_with_feedback(monkeypatch, tmp_path):
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Argue a Character's Choice", payload=_writing_payload(),
+    )
+    db.save_writing_response(lesson_id, 0, "Too thin an argument.")
+    db.set_writing_review(lesson_id, 0, "submitted")
+    db.close()
+
+    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    feedback_box = [
+        t for t in at.text_area if "Feedback" in (t.label or "")
+    ][0]
+    feedback_box.set_value("Back this up with a quote from the text.").run()
+    bounce = [b for b in at.button if "Send back" in (b.label or "")][0]
+    bounce.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db2 = Database(db_path)
+    lesson = db2.get_lesson(lesson_id)
+    db2.close()
+    review = lesson["metadata"]["writing_review"]["0"]
+    assert review["status"] == "needs_revision"
+    assert review["feedback"] == "Back this up with a quote from the text."
+
+
+def test_a_bounced_response_shows_him_the_feedback_and_reopens_the_box(monkeypatch, tmp_path):
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Argue a Character's Choice", payload=_writing_payload(),
+    )
+    db.save_writing_response(lesson_id, 0, "Too thin an argument.")
+    db.set_writing_review(lesson_id, 0, "needs_revision", "Add a quote from the text.")
+    db.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    warnings = " ".join(w.value for w in at.warning)
+    assert "Add a quote from the text." in warnings
+    assert any(t.label == "Your response" for t in at.text_area)
+
+
+def test_an_approved_response_is_read_only_for_him(monkeypatch, tmp_path):
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Argue a Character's Choice", payload=_writing_payload(),
+    )
+    db.save_writing_response(lesson_id, 0, "His finished argument.")
+    db.set_writing_review(lesson_id, 0, "approved")
+    db.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    assert not any(t.label == "Your response" for t in at.text_area)
+    successes = " ".join(s.value for s in at.success)
+    assert "approved" in successes.lower()

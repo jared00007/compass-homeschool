@@ -108,7 +108,7 @@ def test_english_writing_box_still_works_inside_a_comic_panel(monkeypatch, tmp_p
     at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
     response_box = [t for t in at.text_area if t.label == "Your response"][0]
     response_box.set_value("He starts planning instead of just reacting.").run()
-    save_button = [b for b in at.button if b.label == "Save response"][0]
+    save_button = [b for b in at.button if b.label == "Save draft"][0]
     save_button.click().run()
     assert not at.exception, [e.message for e in at.exception]
 

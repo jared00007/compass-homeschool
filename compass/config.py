@@ -140,6 +140,23 @@ ASSESSMENT_VERDICT_LABELS = {
 }
 
 
+# --- Writing review status -----------------------------------------------------
+# The draft -> submitted -> parent-decision loop a writing response moves
+# through, tracked separately from the assessment verdict above -- this is
+# about one specific typed answer meeting the assignment, not the lesson as
+# a whole. See Database.set_writing_review and compass.ui's writing-box and
+# assessment-card handling.
+
+WRITING_DRAFT = "draft"
+WRITING_SUBMITTED = "submitted"
+WRITING_NEEDS_REVISION = "needs_revision"
+WRITING_APPROVED = "approved"
+
+WRITING_REVIEW_STATUSES = (
+    WRITING_DRAFT, WRITING_SUBMITTED, WRITING_NEEDS_REVISION, WRITING_APPROVED,
+)
+
+
 # --- Lesson difficulty --------------------------------------------------------
 # Family-wide by default (the `lesson_difficulty` setting above), with a
 # per-generation override each subject's Plan tab offers on top of it -- see

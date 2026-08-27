@@ -59,6 +59,7 @@ from compass.compliance import declaration_status
 from compass.export import lesson_to_docx, suggested_filename
 from compass.morning_routines import MORNING_ROUTINES, routine_for_date
 from compass.storage.db import Database
+from compass.writing_checks import check_writing
 
 
 def md(text: str | None) -> str:
@@ -578,6 +579,28 @@ def _render_activity_body(
     if _needs_written_response(activity):
         saved = ((metadata or {}).get("writing_responses") or {}).get(str(index), "")
         if not parent and db is not None and lesson_id is not None:
+            review = ((metadata or {}).get("writing_review") or {}).get(str(index), {})
+            status = review.get("status", config.WRITING_DRAFT)
+
+            if status == config.WRITING_APPROVED:
+                st.success("✅ Your parent approved this one.")
+                st.write(md(saved))
+                return
+
+            if status == config.WRITING_NEEDS_REVISION and review.get("feedback"):
+                st.warning(f"Your parent asked for another look: {md(review['feedback'])}")
+
+            if status == config.WRITING_SUBMITTED:
+                st.info("⏳ Submitted — waiting on your parent to look at it.")
+                st.write(md(saved))
+                if st.button(
+                    "✏️ Actually, let me revise it",
+                    key=f"reopen_writing_{lesson_id}_{index}",
+                ):
+                    db.set_writing_review(lesson_id, index, config.WRITING_DRAFT)
+                    st.rerun()
+                return
+
             draft_key = f"writing_draft_{lesson_id}_{index}"
             response = st.text_area(
                 "Your response",
@@ -585,10 +608,23 @@ def _render_activity_body(
                 height=160,
                 key=draft_key,
             )
-            if st.button("Save response", key=f"save_writing_{lesson_id}_{index}"):
+            save_col, submit_col = st.columns(2)
+            if save_col.button("Save draft", key=f"save_writing_{lesson_id}_{index}"):
                 db.save_writing_response(lesson_id, index, response)
                 st.success("Saved.")
                 st.rerun()
+            if submit_col.button(
+                "Submit for review", key=f"submit_writing_{lesson_id}_{index}", type="primary"
+            ):
+                problems = check_writing(response, activity.get("writing_requirements"))
+                if problems:
+                    for problem in problems:
+                        st.error(problem)
+                else:
+                    db.save_writing_response(lesson_id, index, response)
+                    db.set_writing_review(lesson_id, index, config.WRITING_SUBMITTED)
+                    st.success("Submitted!")
+                    st.rerun()
         elif saved:
             st.markdown("**His response**")
             st.write(md(saved))
@@ -1159,8 +1195,12 @@ def render_assessment_card(
         st.caption(f"Counts as mastered when: {md(assessment['mastery_criteria'])}")
 
     responses = metadata.get("writing_responses") or {}
+    review_map = metadata.get("writing_review") or {}
     for index, activity in writing_activities:
         text = responses.get(str(index), "")
+        review = review_map.get(str(index), {})
+        status = review.get("status", config.WRITING_DRAFT)
+
         st.markdown(f"*His response — {md(activity.get('title', 'Writing'))}*")
         if text:
             st.write(md(text))
@@ -1173,6 +1213,34 @@ def render_assessment_card(
                     st.caption(version["saved_at"])
                     st.write(md(version["text"]))
                     st.divider()
+
+        if status == config.WRITING_APPROVED:
+            st.success("✅ Approved.")
+        elif status == config.WRITING_NEEDS_REVISION:
+            st.warning(
+                "↩️ Sent back for revision"
+                + (f": {md(review['feedback'])}" if review.get("feedback") else ".")
+            )
+        elif status == config.WRITING_SUBMITTED:
+            st.info("⏳ He's submitted this — awaiting your review.")
+            review_key = f"{key_prefix}_writing_review_{lesson['id']}_{index}"
+            with st.form(review_key):
+                feedback = st.text_area(
+                    "Feedback (shown to him if you send it back)", key=f"{review_key}_feedback"
+                )
+                approve_col, bounce_col = st.columns(2)
+                approve = approve_col.form_submit_button("✅ Approve", type="primary")
+                bounce = bounce_col.form_submit_button("↩️ Send back for revision")
+            if approve:
+                db.set_writing_review(lesson["id"], index, config.WRITING_APPROVED)
+                st.rerun()
+            elif bounce:
+                db.set_writing_review(
+                    lesson["id"], index, config.WRITING_NEEDS_REVISION, feedback
+                )
+                st.rerun()
+        else:
+            st.caption("Still drafting — he hasn't submitted this one yet.")
 
     if skill_id:
         current = db.mastery_map(student["id"]).get(skill_id, {})

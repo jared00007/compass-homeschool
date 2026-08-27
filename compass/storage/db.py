@@ -2305,6 +2305,30 @@ class Database:
             )
         )
 
+    def set_writing_review(
+        self, lesson_id: int, activity_index: int, status: str, feedback: str = ""
+    ) -> None:
+        """Where one writing response sits in the draft -> submitted ->
+        parent-decision loop: 'draft' (his to edit, the default before
+        anything is recorded), 'submitted' (passed the automated checks,
+        waiting on a parent), 'needs_revision' (a parent sent it back,
+        with `feedback`), or 'approved' (a parent signed off). Current
+        status only, same "fast path lives in metadata" choice as
+        quiz_result/assessment_result -- the response text's own full
+        history already lives in writing_response_versions.
+        """
+        if status not in config.WRITING_REVIEW_STATUSES:
+            raise ValueError(f"invalid writing review status: {status}")
+        lesson = self.get_lesson(lesson_id)
+        metadata = lesson["metadata"] if lesson else {}
+        reviews = metadata.get("writing_review") or {}
+        reviews[str(activity_index)] = {"status": status, "feedback": feedback}
+        metadata["writing_review"] = reviews
+        self.conn.execute(
+            "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
+        )
+        self.conn.commit()
+
     def record_assessment(self, lesson_id: int, verdict: str, notes: str = "") -> None:
         """The parent's digital check on a lesson's `assessment` block, for
         subjects with no mastery graph to hook into (Science/English/History

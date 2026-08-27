@@ -309,6 +309,16 @@ is.** That's what puts an actual typing box in front of him for it, in place of 
 a notebook page. Leave it false for anything genuinely done on paper instead: \
 solving a problem by hand, drawing a timeline or diagram, building a chart, a \
 hands-on or physical task.
+- **Whenever `requires_written_response` is true, also fill in that activity's \
+`writing_requirements` with real numbers pulled from `instructions` itself** — \
+min_words/max_words (or leave one null if you only gave a floor or a ceiling), \
+min_sentences (when you asked for a sentence count instead of a word count), \
+and requires_quote (true only if you explicitly told him to quote something in \
+quotation marks). Compass checks these automatically before he can submit, so \
+they must actually match what `instructions` asked for — never stricter, never \
+looser than your own prompt. Leave every field null/false when \
+`requires_written_response` is false, or when you genuinely didn't ask for a \
+specific count.
 - Target roughly {minutes} minutes total. Match `estimated_minutes` to the sum \
 of your activity minutes.
 """
@@ -441,6 +451,11 @@ class LessonAgent:
                 "video", {"found": False, "title": "", "url": "", "channel": "", "why": ""}
             )
             activity.setdefault("requires_written_response", False)
+            activity.setdefault(
+                "writing_requirements",
+                {"min_words": None, "max_words": None, "min_sentences": None,
+                 "requires_quote": False},
+            )
         return warnings
 
 
