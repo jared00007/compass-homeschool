@@ -121,6 +121,38 @@ LESSON_SCHEMA: dict[str, Any] = _object(
                             "activity, in place of a notebook page -- get it right."
                         ),
                     },
+                    "reading_check": {
+                        "type": "array",
+                        "description": (
+                            "Two or three multiple-choice questions confirming he "
+                            "actually read the assigned text -- ONLY for an activity that "
+                            "sends him to read something that is NOT printed on this "
+                            "screen: chapters of his book, a named article, a source "
+                            "document he has to go find. Leave EMPTY for everything else, "
+                            "including a passage you have written out inside "
+                            "`instructions` itself (he already has that in front of him) "
+                            "and any non-reading activity.\n\n"
+                            "Ask about concrete specifics that only someone who read it "
+                            "would know -- an object used, a decision made, where a scene "
+                            "happens. Not theme, not interpretation, not anything "
+                            "answerable from the lesson text or a plot summary. Never go "
+                            "past the pages he was assigned. Only write these if you are "
+                            "confident of the actual content: a question with a wrong "
+                            "answer key punishes him for reading correctly, which is "
+                            "worse than not asking at all."
+                        ),
+                        "items": _object(
+                            {
+                                "question": {"type": "string"},
+                                "choices": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Exactly four, one correct.",
+                                },
+                                "correct_index": {"type": "integer"},
+                            }
+                        ),
+                    },
                     "writing_requirements": _object(
                         {
                             "min_words": {

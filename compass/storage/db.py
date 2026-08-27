@@ -2305,6 +2305,31 @@ class Database:
             )
         )
 
+    def save_reading_check(
+        self, lesson_id: int, activity_index: int, correct: int, total: int
+    ) -> None:
+        """His score on one activity's "did you actually read it" check.
+
+        Stored per activity index, current value only -- this is evidence
+        about one sitting, not a history worth trending. Deliberately does
+        not gate anything: a reading check exists to tell a parent whether
+        the reading happened, and locking a lesson behind one would strand
+        him on a book he genuinely did read if a question came out wrong.
+        """
+        lesson = self.get_lesson(lesson_id)
+        metadata = lesson["metadata"] if lesson else {}
+        results = metadata.get("reading_checks") or {}
+        results[str(activity_index)] = {
+            "correct": correct,
+            "total": total,
+            "checked_on": date.today().isoformat(),
+        }
+        metadata["reading_checks"] = results
+        self.conn.execute(
+            "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
+        )
+        self.conn.commit()
+
     def active_days(self, student_id: int) -> set[str]:
         """Every date he did real work on, as ISO strings.
 

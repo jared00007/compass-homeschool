@@ -536,6 +536,68 @@ def _comic_progress_dots_html(
     return '<div class="comic-progress-dots">' + dots + "</div>"
 
 
+def _render_reading_check(
+    activity: dict[str, Any],
+    index: int,
+    *,
+    db: Database,
+    lesson_id: int,
+    metadata: dict[str, Any] | None,
+) -> None:
+    """"Did you actually read it?" -- two or three specifics from the text,
+    graded on the spot.
+
+    Every English lesson opens with "read chapters 9-10" and, before this,
+    nothing ever checked that it happened -- which is plausibly upstream of
+    a lot of thin writing, since you can't write 200 words about a chapter
+    you skimmed. Deliberately ungated: it reports, it doesn't block. A
+    question the model got wrong about an obscure book would otherwise
+    strand him on reading he actually did.
+    """
+    questions = activity.get("reading_check") or []
+    if not questions:
+        return
+
+    stored = ((metadata or {}).get("reading_checks") or {}).get(str(index))
+    if stored:
+        correct, total = stored.get("correct", 0), stored.get("total", 0)
+        if total and correct == total:
+            st.success(f"📖 Reading check: {correct}/{total} — you read it.")
+        else:
+            st.warning(
+                f"📖 Reading check: {correct}/{total}. Worth going back over that "
+                "part before you keep going."
+            )
+        return
+
+    with st.form(f"reading_check_{lesson_id}_{index}"):
+        st.markdown("**📖 Quick check — did you read it?**")
+        picks: list[int | None] = []
+        for question_index, item in enumerate(questions):
+            st.markdown(f"{question_index + 1}. {md(item['question'])}")
+            picks.append(
+                st.radio(
+                    "choices",
+                    options=list(range(len(item["choices"]))),
+                    format_func=lambda i, choices=item["choices"]: md(choices[i]),
+                    index=None,
+                    label_visibility="collapsed",
+                    key=f"reading_pick_{lesson_id}_{index}_{question_index}",
+                )
+            )
+        submitted = st.form_submit_button("Check")
+
+    if submitted:
+        if any(pick is None for pick in picks):
+            st.warning("Answer all of them first.")
+            return
+        correct = sum(
+            1 for item, pick in zip(questions, picks) if pick == item["correct_index"]
+        )
+        db.save_reading_check(lesson_id, index, correct, len(questions))
+        st.rerun()
+
+
 def _stored_ai_review(metadata: dict[str, Any] | None, index: int) -> dict[str, Any] | None:
     """The automated read of this activity's response, if one has been run.
 
@@ -610,6 +672,11 @@ def _render_activity_body(
             unsafe_allow_html=True,
         )
     st.write(md(activity.get("instructions", "")))
+
+    if not parent and db is not None and lesson_id is not None:
+        _render_reading_check(
+            activity, index, db=db, lesson_id=lesson_id, metadata=metadata
+        )
 
     if _needs_written_response(activity):
         saved = ((metadata or {}).get("writing_responses") or {}).get(str(index), "")
@@ -1263,7 +1330,12 @@ def render_assessment_card(
         if _needs_written_response(activity)
     ]
 
-    if not assessment and not skill_id and not writing_activities:
+    # Reading-check results count as something to show: a lesson that's only
+    # "read these chapters" has no assessment, no skill, and nothing typed,
+    # but whether the reading happened is exactly what a parent opens this
+    # card to find out.
+    reading_checks = metadata.get("reading_checks") or {}
+    if not assessment and not skill_id and not writing_activities and not reading_checks:
         return
 
     st.markdown("**Assessment**")
@@ -1271,6 +1343,20 @@ def render_assessment_card(
         st.caption(f"*{md(assessment.get('kind', ''))}* — {md(assessment['description'])}")
     if assessment.get("mastery_criteria"):
         st.caption(f"Counts as mastered when: {md(assessment['mastery_criteria'])}")
+
+    # Whether the reading actually happened, before any judgment about what
+    # he wrote about it -- a thin response to a chapter he skimmed is a
+    # different problem from a thin response to one he read.
+    for activity_index, activity in enumerate(payload.get("activities") or []):
+        stored = reading_checks.get(str(activity_index))
+        if not stored:
+            continue
+        correct, total = stored.get("correct", 0), stored.get("total", 0)
+        label = f"📖 Reading check — {md(activity.get('title', 'Reading'))}: {correct}/{total}"
+        if total and correct == total:
+            st.caption(f"{label} ✅")
+        else:
+            st.warning(f"{label} — worth asking whether he actually did the reading.")
 
     responses = metadata.get("writing_responses") or {}
     review_map = metadata.get("writing_review") or {}

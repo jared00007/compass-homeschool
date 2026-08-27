@@ -43,35 +43,73 @@ def verify_quiz(payload: dict[str, Any]) -> list[str]:
     warnings: list[str] = []
     kept: list[dict[str, Any]] = []
     for item in raw:
-        if not isinstance(item, dict):
+        verified = _well_formed(item)
+        if verified is None:
+            text = item.get("question") if isinstance(item, dict) else None
+            warnings.append(f"Dropped a malformed quiz question: {text or '(no text)'}")
             continue
-        question = (item.get("question") or "").strip()
-        choices = item.get("choices")
-        correct_index = item.get("correct_index")
-
-        malformed = (
-            not question
-            or not isinstance(choices, list)
-            or len(choices) != CHOICE_COUNT
-            or any(not isinstance(c, str) or not c.strip() for c in choices)
-            or not isinstance(correct_index, int)
-            or isinstance(correct_index, bool)
-            or not (0 <= correct_index < CHOICE_COUNT)
-        )
-        if malformed:
-            warnings.append(f"Dropped a malformed quiz question: {question or '(no text)'}")
-            continue
-
-        kept.append(
-            {
-                "question": question,
-                "choices": [c.strip() for c in choices],
-                "correct_index": correct_index,
-                "explanation": (item.get("explanation") or "").strip(),
-            }
-        )
+        kept.append(verified)
 
     payload["quiz"] = kept
+    return warnings
+
+
+def _well_formed(item: Any) -> dict[str, Any] | None:
+    """One question, normalized, or None if it isn't answerable.
+
+    The JSON schema enforces types but not invariants across fields --
+    nothing stops `correct_index: 4` on a four-choice question, which is a
+    correct answer that can never be selected.
+    """
+    if not isinstance(item, dict):
+        return None
+    question = (item.get("question") or "").strip()
+    choices = item.get("choices")
+    correct_index = item.get("correct_index")
+    if (
+        not question
+        or not isinstance(choices, list)
+        or len(choices) != CHOICE_COUNT
+        or any(not isinstance(c, str) or not c.strip() for c in choices)
+        or not isinstance(correct_index, int)
+        or isinstance(correct_index, bool)
+        or not (0 <= correct_index < CHOICE_COUNT)
+    ):
+        return None
+    return {
+        "question": question,
+        "choices": [c.strip() for c in choices],
+        "correct_index": correct_index,
+        "explanation": (item.get("explanation") or "").strip(),
+    }
+
+
+def verify_reading_checks(payload: dict[str, Any]) -> list[str]:
+    """Drop any malformed reading-check question, per activity.
+
+    Same reasoning as `verify_quiz`, but these are graded against a book
+    the model is recalling rather than content it just wrote, so a
+    half-formed question here is if anything more likely.
+    """
+    warnings: list[str] = []
+    for activity in payload.get("activities") or []:
+        if not isinstance(activity, dict):
+            continue
+        raw = activity.get("reading_check")
+        if not isinstance(raw, list):
+            activity["reading_check"] = []
+            continue
+        kept = []
+        for item in raw:
+            verified = _well_formed(item)
+            if verified is None:
+                warnings.append(
+                    "Dropped a malformed reading-check question in "
+                    f"{activity.get('title', 'an activity')}."
+                )
+                continue
+            kept.append(verified)
+        activity["reading_check"] = kept
     return warnings
 
 

@@ -20,7 +20,7 @@ from typing import Any, Callable, Protocol
 from compass import config, subjects
 from compass.agents.credits import normalize_credits
 from compass.agents.llm import LessonGenerationError, generate_lesson
-from compass.agents.quiz import verify_quiz
+from compass.agents.quiz import verify_quiz, verify_reading_checks
 from compass.agents.video import channels_for_prompt, verify_video
 from compass.storage.db import Database
 
@@ -309,6 +309,13 @@ is.** That's what puts an actual typing box in front of him for it, in place of 
 a notebook page. Leave it false for anything genuinely done on paper instead: \
 solving a problem by hand, drawing a timeline or diagram, building a chart, a \
 hands-on or physical task.
+- **When an activity sends him to read something that is not printed on this \
+screen** — chapters of his book, a named article, a source document he has to go \
+find — fill in that activity's `reading_check` with two or three multiple-choice \
+questions on concrete specifics only a reader would know. Leave it empty \
+otherwise, including for a passage you wrote out inside `instructions` itself. \
+Only write these if you are confident of the real content: a wrong answer key \
+punishes him for reading correctly, which is worse than not asking.
 - **Whenever `requires_written_response` is true, also fill in that activity's \
 `writing_requirements` with real numbers pulled from `instructions` itself** — \
 min_words/max_words (or leave one null if you only gave a floor or a ceiling), \
@@ -439,6 +446,7 @@ class LessonAgent:
         )
         warnings += verify_video(payload, self.spec.key)
         warnings += verify_quiz(payload)
+        warnings += verify_reading_checks(payload)
         payload.setdefault("branches", [])
         payload.setdefault("materials", [])
         payload.setdefault("learning_objectives", [])
@@ -451,6 +459,7 @@ class LessonAgent:
                 "video", {"found": False, "title": "", "url": "", "channel": "", "why": ""}
             )
             activity.setdefault("requires_written_response", False)
+            activity.setdefault("reading_check", [])
             activity.setdefault(
                 "writing_requirements",
                 {"min_words": None, "max_words": None, "min_sentences": None,

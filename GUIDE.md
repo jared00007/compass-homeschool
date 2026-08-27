@@ -274,6 +274,39 @@ Needs more work — plus a notes field, right on the lesson, the moment you're c
 The pass bar defaults to 80% and is a family policy call, not a Washington requirement — a
 setting, not a constant, if you want it stricter or looser.
 
+**Reading he does off-screen gets checked.** Every English lesson opens with something
+like "read chapters 9–10," and nothing used to confirm that it happened — which is
+plausibly upstream of a lot of thin writing, since you can't write 200 words about a
+chapter you skimmed. Any activity that sends him to read something *not* printed on the
+screen — his book, a named article, a source document — now carries two or three
+multiple-choice questions on concrete specifics only a reader would know: an object used,
+a decision made, where a scene happens. Not theme, not interpretation, and nothing
+answerable from a plot summary.
+
+It grades on the spot, he sees the result, and you see it at the top of the Activity Log
+assessment card — a passed check as a quiet caption, a failed one as a warning worth
+following up on. A passage printed inside the lesson itself doesn't get one; he already
+has that in front of him.
+
+**It deliberately doesn't block anything.** The questions come from the model's knowledge
+of the book, which is solid for something well-known and shakier for something obscure —
+and a check that marks him wrong for reading correctly would be worse than no check at
+all. So it reports rather than gates, and the answer key is on your side of the app,
+where a bad question is catchable rather than silent. Malformed questions (three choices,
+an answer that can't be picked) are dropped before they ever reach him.
+
+**A streak, on his home page.** Consecutive school days he actually did work on — a lesson
+marked done or a life skill checked off. Weekends are skipped rather than counted as
+misses, so it survives Monday morning instead of resetting every week, and today being
+unfinished doesn't break it: the count picks up from yesterday, which is exactly when
+you want it saying "you're on 6, keep it going." His current run, his best ever, and the
+next milestone. Deliberately not farmable — the vocabulary review and morning routine are
+one button press each and don't count toward it.
+
+It's the one thing on his page that rewards showing up rather than scoring well, which is
+worth having when everything else Compass checks is about the quality of a single piece of
+work.
+
 **Any short-answer question gets a text box, not just full writing assignments.** This
 isn't limited to activities specifically about writing — any activity that asks him to
 answer a question, write a sentence, or list something in his own words gets an actual
