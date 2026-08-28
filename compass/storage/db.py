@@ -1370,6 +1370,7 @@ class Database:
         self._ensure_column("travel_entries", "status", "TEXT NOT NULL DEFAULT 'completed'")
         self._ensure_column("travel_entries", "scheduled_for", "TEXT")
         self._ensure_column("travel_entries", "revision_note", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column("travel_entries", "parent_feedback", "TEXT NOT NULL DEFAULT ''")
         self._backfill_life_skill_content()
         self._backfill_life_skill_catalog()
         self._migrate_park_visits_to_travel_entries()
@@ -2891,14 +2892,19 @@ class Database:
         )
         self.conn.commit()
 
-    def approve_travel_entry(self, entry_id: int) -> None:
+    def approve_travel_entry(self, entry_id: int, feedback: str = "") -> None:
         """Marks the entry completed and logs its flat Writing + Social
         Studies credit in the same action -- one click does both, the same
         way approving a lesson (`log_activity(..., lesson_id=...)`) flips
         its status as a side effect of logging the credit rather than as a
         separate step. The existing manual "Log hours" flow on the journal
         page stays available afterward for anything that earned more than
-        the flat default."""
+        the flat default.
+
+        `feedback` is optional praise/comments shown alongside the approved
+        entry -- unlike `revision_note`, it isn't asking him to fix
+        anything, so it doesn't change the review outcome or block
+        approval the way a missing revision note would."""
         entry = _row(
             self.conn.execute("SELECT * FROM travel_entries WHERE id = ?", (entry_id,))
         )
@@ -2919,7 +2925,8 @@ class Database:
             source="travel_journal",
         )
         self.conn.execute(
-            "UPDATE travel_entries SET status = 'completed' WHERE id = ?", (entry_id,)
+            "UPDATE travel_entries SET status = 'completed', parent_feedback = ? WHERE id = ?",
+            (feedback, entry_id),
         )
         self.conn.commit()
 

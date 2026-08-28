@@ -132,6 +132,15 @@ def _render_entry(entry: dict) -> None:
                 f'border-left:3px solid {badge_color}; padding:4px 8px; margin-bottom:6px;">'
                 f'{html.escape(entry["revision_note"].strip())}</div>'
             )
+    # Feedback left when approving -- unlike revision_note, it's praise,
+    # not a fix request, so it only ever shows on a completed entry and
+    # never blocks or changes the review outcome.
+    if entry["status"] == "completed" and entry["parent_feedback"].strip():
+        badge_tag += (
+            f'<div style="font-size:12.5px; color:var(--c-text); background:var(--c-panel); '
+            f'border-left:3px solid var(--c-good); padding:4px 8px; margin-bottom:6px;">'
+            f'💬 {html.escape(entry["parent_feedback"].strip())}</div>'
+        )
     story_text = entry["story"].strip()
     story_html = (
         html.escape(story_text).replace("\n", "<br>")
@@ -256,9 +265,19 @@ def _render_entry(entry: dict) -> None:
 
     if is_parent() and entry["status"] == "submitted":
         reviewing = st.session_state.get("reviewing_travel_entry") == entry["id"]
+        # Outside a form, same reasoning as park_choice/assign_day above --
+        # this needs to be readable the moment Approve is clicked, not just
+        # on some later form submit. Optional and shown to him alongside
+        # the approved entry -- not a fix request like revision_note, so it
+        # doesn't gate approval the way a missing revision note would.
+        feedback_note = st.text_input(
+            "Feedback (optional, shown to him)",
+            key=f"approve_feedback_{entry['id']}",
+            placeholder="e.g. Great detail about the hike -- loved reading this one.",
+        )
         review_columns = st.columns([1, 1, 4])
         if review_columns[0].button("✅ Approve", key=f"approve_entry_{entry['id']}", type="primary"):
-            db.approve_travel_entry(entry["id"])
+            db.approve_travel_entry(entry["id"], feedback_note.strip())
             st.rerun()
         if review_columns[1].button(
             "Cancel" if reviewing else "↩️ Send back", key=f"reviewbounce_entry_{entry['id']}"

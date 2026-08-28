@@ -253,6 +253,63 @@ def test_a_parent_approving_a_submitted_entry_completes_it_and_logs_credit(monke
     assert activities[0]["source"] == "travel_journal"
 
 
+def test_approving_with_feedback_stores_it_on_the_entry(monkeypatch, tmp_path):
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    entry_id = database.add_travel_entry(
+        s["id"], "Arizona", "2025-06-10", title="Grand Canyon",
+        story="We hiked to the rim.", status="submitted",
+    )
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=True)
+    tab = _journal_tab(at)
+    feedback_input = [
+        w for w in tab.text_input if w.label == "Feedback (optional, shown to him)"
+    ][0]
+    feedback_input.set_value("Great detail about the hike!")
+    approve = [b for b in tab.button if b.key == f"approve_entry_{entry_id}"][0]
+    approve.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    entry = database.list_travel_entries(s["id"])[0]
+    database.close()
+    assert entry["status"] == "completed"
+    assert entry["parent_feedback"] == "Great detail about the hike!"
+
+    tab = _journal_tab(at)
+    # The card itself shows it back, same as a revision note does.
+    markdowns = [m.value for m in tab.markdown]
+    assert any("Great detail about the hike!" in m for m in markdowns)
+
+
+def test_approving_with_no_feedback_leaves_it_blank(monkeypatch, tmp_path):
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    entry_id = database.add_travel_entry(
+        s["id"], "Arizona", "2025-06-10", title="Grand Canyon",
+        story="We hiked to the rim.", status="submitted",
+    )
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=True)
+    tab = _journal_tab(at)
+    approve = [b for b in tab.button if b.key == f"approve_entry_{entry_id}"][0]
+    approve.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    entry = database.list_travel_entries(s["id"])[0]
+    database.close()
+    assert entry["status"] == "completed"
+    assert entry["parent_feedback"] == ""
+
+
 # --- Assigning him to pick his own trips (open picks) --------------------------
 
 

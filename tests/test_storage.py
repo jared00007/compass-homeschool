@@ -633,6 +633,27 @@ def test_approve_travel_entry_completes_it_and_logs_the_flat_credit(db, student)
     )
 
 
+def test_approve_travel_entry_can_store_optional_feedback(db, student):
+    entry_id = db.add_travel_entry(
+        student["id"], "Wyoming", "2025-06-10", title="Yellowstone",
+        story="We watched Old Faithful erupt.", status="submitted",
+    )
+    db.approve_travel_entry(entry_id, "Great detail about the geyser!")
+    entry = db.list_travel_entries(student["id"])[0]
+    assert entry["status"] == "completed"
+    assert entry["parent_feedback"] == "Great detail about the geyser!"
+
+
+def test_approve_travel_entry_defaults_feedback_to_blank(db, student):
+    entry_id = db.add_travel_entry(
+        student["id"], "Wyoming", "2025-06-10", title="Yellowstone",
+        story="We watched Old Faithful erupt.", status="submitted",
+    )
+    db.approve_travel_entry(entry_id)
+    entry = db.list_travel_entries(student["id"])[0]
+    assert entry["parent_feedback"] == ""
+
+
 def test_scheduling_a_travel_entry_makes_it_due_on_and_after_that_day(db, student):
     entry_id = db.add_travel_entry(
         student["id"], "Wyoming", "2025-06-10", title="Yellowstone", status="planned"
@@ -770,6 +791,7 @@ def test_a_database_created_before_the_travel_review_gate_columns_gets_migrated(
         assert entry["status"] == "completed"
         assert entry["scheduled_for"] is None
         assert entry["revision_note"] == ""
+        assert entry["parent_feedback"] == ""
         migrated.schedule_travel_entry(entry["id"], "2026-08-24")
     finally:
         migrated.close()

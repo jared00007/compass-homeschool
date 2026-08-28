@@ -164,11 +164,16 @@ def _render_travel_review_card(entry: dict) -> None:
         if entry["status"] == "needs_revision" and entry["revision_note"].strip():
             st.caption(f"You sent this back: {md(entry['revision_note'].strip())}")
         if entry["status"] == "submitted":
+            feedback_note = st.text_input(
+                "Feedback (optional, shown to him)",
+                key=f"activitylog_approve_feedback_{entry['id']}",
+                placeholder="e.g. Great detail about the hike -- loved reading this one.",
+            )
             review_columns = st.columns([1, 1, 4])
             if review_columns[0].button(
                 "✅ Approve", key=f"activitylog_approve_travel_{entry['id']}", type="primary"
             ):
-                db.approve_travel_entry(entry["id"])
+                db.approve_travel_entry(entry["id"], feedback_note.strip())
                 st.rerun()
             reviewing = st.session_state.get("activitylog_reviewing_travel") == entry["id"]
             if review_columns[1].button(

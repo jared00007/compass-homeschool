@@ -257,6 +257,32 @@ def test_approving_a_travel_entry_from_activity_log_completes_it_and_logs_credit
     assert activities[0]["source"] == "travel_journal"
 
 
+def test_approving_with_feedback_from_activity_log_stores_it(monkeypatch, tmp_path):
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    entry_id = db.add_travel_entry(
+        student["id"], "Arizona", "2025-06-10", title="Grand Canyon",
+        story="We hiked to the rim.", status="submitted",
+    )
+    db.close()
+
+    at, review_tab = _open_review_tab(monkeypatch, db_path)
+    feedback_input = [
+        w for w in review_tab.text_input if w.label == "Feedback (optional, shown to him)"
+    ][0]
+    feedback_input.set_value("Loved reading this one.")
+    approve = [b for b in review_tab.button if b.key == f"activitylog_approve_travel_{entry_id}"][0]
+    approve.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db = Database(db_path)
+    entry = db.list_travel_entries(student["id"])[0]
+    db.close()
+    assert entry["status"] == "completed"
+    assert entry["parent_feedback"] == "Loved reading this one."
+
+
 def test_sending_a_travel_entry_back_from_activity_log_sets_needs_revision(monkeypatch, tmp_path):
     db_path = tmp_path / "review.db"
     db = Database(db_path)
