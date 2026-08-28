@@ -160,6 +160,42 @@ def test_switching_the_week_picker_changes_the_board(monkeypatch, tmp_path):
     assert any("Next week's lesson" in l for l in labels)
 
 
+def test_a_lesson_planned_for_another_week_is_not_silently_dropped(monkeypatch, tmp_path):
+    """A real bug, found live: a lesson that's neither overdue/submitted
+    (so not in 'attention') nor unscheduled (it does have a planned_for)
+    but scheduled for a week other than the one on screen used to fall
+    through every bucket and vanish -- still counted in the tab's header
+    total, but rendered nowhere, so the header number and what was
+    actually visible silently stopped matching."""
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    sid = student["id"]
+    today = date.today()
+    # Two weeks out -- guaranteed not to be "this week" (the picker's
+    # default) and not overdue no matter when this test runs.
+    other_week_start = weekly.week_start(today) + timedelta(days=14)
+    db.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t", title="Later week's lesson",
+        payload={"title": "Later week's lesson", "activities": []},
+        metadata={"planned_for": other_week_start.isoformat(), "week_start": other_week_start.isoformat()},
+    )
+    db.close()
+
+    at, review_tab = _open_review_tab(monkeypatch, db_path)
+    assert review_tab.label == "To review (1)"
+    labels = [e.label for e in review_tab.expander]
+    assert not any("Later week's lesson" in l for l in labels)
+    captions = [c.value for c in review_tab.caption]
+    assert any(
+        "1 more lesson" in c and "different week" in c and other_week_start.isoformat() in c
+        for c in captions
+    )
+    # Not "Nothing waiting on you" either -- something genuinely is, it's
+    # just not on this week's board.
+    assert not any("Nothing waiting on you" in s.value for s in review_tab.success)
+
+
 # --- Travel Journal entries share the same "To review" queue -------------------
 
 

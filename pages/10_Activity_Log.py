@@ -376,12 +376,22 @@ with lessons_tab:
 
         board_buckets: dict[str, list[dict]] = {d.isoformat(): [] for d in target_dates}
         unscheduled: list[dict] = []
+        # Not overdue, not submitted, so it isn't in `attention` -- just an
+        # ordinary planned lesson that happens to be scheduled for a week
+        # other than the one on screen. A real bug, found by testing this
+        # live: this used to fall through both branches below and vanish
+        # entirely -- still counted in the tab's header total, but never
+        # rendered anywhere on the page, so the header count and what was
+        # actually visible silently stopped matching.
+        other_week: list[dict] = []
         for lesson in rest:
             planned_for = (lesson.get("metadata") or {}).get("planned_for")
             if planned_for in board_buckets:
                 board_buckets[planned_for].append(lesson)
             elif not planned_for:
                 unscheduled.append(lesson)
+            else:
+                other_week.append(lesson)
 
         board_columns = st.columns(len(target_dates))
         for column, day in zip(board_columns, target_dates):
@@ -401,9 +411,24 @@ with lessons_tab:
             for lesson in unscheduled:
                 _render_review_card(lesson, today_iso)
 
+        if other_week:
+            other_weeks = sorted({
+                weekly.week_start(
+                    date.fromisoformat((l.get("metadata") or {})["planned_for"])
+                ).isoformat()
+                for l in other_week
+            })
+            plural = "s" if len(other_week) != 1 else ""
+            st.divider()
+            st.caption(
+                f"{len(other_week)} more lesson{plural} waiting on you, planned for "
+                f"a different week (week of {', '.join(other_weeks)}) — change the "
+                "date above to see them."
+            )
+
         if (
             not attention and not sent_back and not any(board_buckets.values())
-            and not unscheduled and not travel_to_review
+            and not unscheduled and not travel_to_review and not other_week
         ):
             st.success("Nothing waiting on you right now.")
 
