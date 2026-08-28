@@ -452,6 +452,14 @@ with journal_tab:
     if msg := st.session_state.pop("travel_entry_needs_more_detail", None):
         st.warning(msg)
 
+    if open_pick_entries:
+        count_label = "trip" if len(open_pick_entries) == 1 else "trips"
+        st.subheader(f"🎯 Assigned: pick {len(open_pick_entries)} {count_label} of your own")
+        st.caption("Choose where, write it up, submit for review -- same as any other entry.")
+        for entry in open_pick_entries:
+            _render_entry(entry)
+        st.divider()
+
     st.subheader("Add a travel entry")
     st.caption(
         "Every trip gets its own entry -- it doesn't have to be about a park. "
@@ -599,14 +607,6 @@ with journal_tab:
                     '"Write it up" to keep going.'
                 )
             st.rerun()
-
-    if open_pick_entries:
-        st.divider()
-        count_label = "trip" if len(open_pick_entries) == 1 else "trips"
-        st.subheader(f"🎯 Assigned: pick {len(open_pick_entries)} {count_label} of your own")
-        st.caption("Choose where, write it up, submit for review -- same as any other entry.")
-        for entry in open_pick_entries:
-            _render_entry(entry)
 
     st.divider()
 

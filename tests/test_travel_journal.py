@@ -292,11 +292,13 @@ def test_composing_an_open_pick_lets_him_choose_the_trip_and_submits_it(monkeypa
     compose_button.click().run()
     tab = _journal_tab(at)
 
-    state_select = [w for w in tab.selectbox if w.label == "State"][-1]
+    # The open-pick section renders above the always-present "Add a travel
+    # entry" form, so its widgets come first in document order -- `[0]`.
+    state_select = [w for w in tab.selectbox if w.label == "State"][0]
     state_select.set_value("Wyoming")
-    title_input = [w for w in tab.text_input if w.label == "Title"][-1]
+    title_input = [w for w in tab.text_input if w.label == "Title"][0]
     title_input.set_value("Yellowstone Adventure")
-    story_input = [w for w in tab.text_area if w.label == "The story"][-1]
+    story_input = [w for w in tab.text_area if w.label == "The story"][0]
     long_story = " ".join(["We", "explored", "the", "park", "together"] * 15)
     story_input.set_value(long_story)
     submit = [b for b in tab.button if b.label == "Submit for review"][0]
@@ -327,11 +329,11 @@ def test_a_too_short_open_pick_story_does_not_submit(monkeypatch, tmp_path):
     compose_button.click().run()
     tab = _journal_tab(at)
 
-    state_select = [w for w in tab.selectbox if w.label == "State"][-1]
+    state_select = [w for w in tab.selectbox if w.label == "State"][0]
     state_select.set_value("Wyoming")
-    title_input = [w for w in tab.text_input if w.label == "Title"][-1]
+    title_input = [w for w in tab.text_input if w.label == "Title"][0]
     title_input.set_value("Corner store run")
-    story_input = [w for w in tab.text_area if w.label == "The story"][-1]
+    story_input = [w for w in tab.text_area if w.label == "The story"][0]
     story_input.set_value("We went there.")
     submit = [b for b in tab.button if b.label == "Submit for review"][0]
     submit.click().run()
