@@ -388,51 +388,30 @@ if not is_parent():
                     "**Upcoming Week**."
                 )
 
-        # 2b. Life skills assigned to a specific day -- only when there's
-        # actually something assigned (due or upcoming), so a family that
-        # never assigns a day (the default) never sees this card at all.
-        # `due_skills` includes anything assigned for today or earlier and
-        # still not done, same "never silently drops it" rule an unfinished
-        # lesson already gets; `upcoming_skills` (assigned later, not due
-        # yet) gets the same "N more planned" hint the Lessons card above
-        # gives, split the same way, so a skill assigned for Thursday
-        # doesn't look like it was never scheduled until Thursday arrives.
+        # 3. Words to Review, Reading, Life Skills, and Choice Topics all in
+        # one row of four equal columns -- four small, single-purpose tiles
+        # that each just say what's outstanding and link to where it's
+        # actually done, rather than each getting its own full-width or
+        # half-width row. Cuts the page's overall length versus stacking
+        # them, and every tile always renders (even with nothing due) so
+        # the row never shifts shape depending on what's assigned.
         due_skills = db.due_life_skills(student["id"], today)
         upcoming_skills = db.upcoming_life_skills(student["id"], today)
         later_skills_this_week = sum(
             1 for s in upcoming_skills if s["scheduled_for"] <= this_week_end
         )
         later_skills_week = len(upcoming_skills) - later_skills_this_week
-        if due_skills or upcoming_skills:
-            with st.container(border=True):
-                render_card_heading(f"🛠️ Life Skills ({len(due_skills)})")
-                for skill in due_skills:
-                    when = "today" if skill["scheduled_for"] == today else f"since {skill['scheduled_for']}"
-                    st.page_link(
-                        "pages/6_Life_Skills.py",
-                        label=f"{md(skill['title'])} — assigned {when}",
-                        icon="🛠️",
-                    )
-                if not due_skills:
-                    st.caption("Nothing due today.")
-                if later_skills_this_week:
-                    st.caption(
-                        f"{later_skills_this_week} more life skill(s) assigned for later "
-                        "this week — see **This Week**."
-                    )
-                if later_skills_week:
-                    st.caption(
-                        f"{later_skills_week} more life skill(s) assigned for a later "
-                        "week — see **Upcoming Week**."
-                    )
 
-        # 3. Vocabulary review and 4. Reading, side by side; Choice Topics
-        # spans the full width below (its list can run a few items long).
-        # Same limit render_vocab_review uses for "words due," so this count
-        # matches what he'll actually see when he clicks through.
         due = db.vocabulary_due(student["id"], limit=25)
-        grid_columns_2 = st.columns(2)
-        with grid_columns_2[0]:
+        book = db.current_book(student["id"])
+        topics = [
+            t
+            for t in db.list_choice_topics(student["id"])
+            if t["status"] in ("active", "approved")
+        ]
+
+        extras_columns = st.columns(4)
+        with extras_columns[0]:
             with st.container(border=True):
                 render_card_heading("🔤 Words to Review")
                 if due:
@@ -440,10 +419,9 @@ if not is_parent():
                     st.page_link("pages/3_English.py", label="Review them", icon="➡️")
                 else:
                     st.success("✅ Nothing due today.")
-        with grid_columns_2[1]:
+        with extras_columns[1]:
             with st.container(border=True):
                 render_card_heading("📖 Reading")
-                book = db.current_book(student["id"])
                 if book:
                     st.markdown(f"**{md(book['title'])}**")
                     if book["total_pages"]:
@@ -451,22 +429,43 @@ if not is_parent():
                             min((book["current_page"] or 0) / book["total_pages"], 1.0),
                             text=f"page {book['current_page']} of {book['total_pages']}",
                         )
+                    st.page_link("pages/3_English.py", label="Open English", icon="➡️")
                 else:
                     st.caption("No book set up yet.")
-
-        with st.container(border=True):
-            render_card_heading("⭐ Your Choice Topics")
-            topics = [
-                t
-                for t in db.list_choice_topics(student["id"])
-                if t["status"] in ("active", "approved")
-            ]
-            if topics:
-                for topic in topics[:4]:
-                    st.markdown(f"- {md(topic['title'])}")
-            else:
-                st.caption("Nothing yet — add something you want to learn.")
-            st.page_link("pages/5_Choice_Topics.py", label="Add a topic", icon="➡️")
+        with extras_columns[2]:
+            with st.container(border=True):
+                render_card_heading(f"🛠️ Life Skills ({len(due_skills)})")
+                # `due_life_skills`/`upcoming_life_skills` -- see those
+                # docstrings for why "assigned" is `<=`/`>` today, not `==`:
+                # a family that never assigns a day never sees anything
+                # here but the plain "nothing assigned" state.
+                if due_skills:
+                    for skill in due_skills:
+                        when = (
+                            "today" if skill["scheduled_for"] == today
+                            else f"since {skill['scheduled_for']}"
+                        )
+                        st.page_link(
+                            "pages/6_Life_Skills.py",
+                            label=f"{md(skill['title'])} — {when}",
+                            icon="🛠️",
+                        )
+                else:
+                    st.caption("Nothing due today.")
+                    st.page_link("pages/6_Life_Skills.py", label="Open Life Skills", icon="➡️")
+                if later_skills_this_week:
+                    st.caption(f"+{later_skills_this_week} later this week")
+                if later_skills_week:
+                    st.caption(f"+{later_skills_week} later")
+        with extras_columns[3]:
+            with st.container(border=True):
+                render_card_heading("⭐ Choice Topics")
+                if topics:
+                    for topic in topics[:3]:
+                        st.markdown(f"- {md(topic['title'])}")
+                else:
+                    st.caption("Nothing yet — add something you want to learn.")
+                st.page_link("pages/5_Choice_Topics.py", label="Add a topic", icon="➡️")
 
         render_today_checklist(db, student)
 

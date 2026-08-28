@@ -725,9 +725,15 @@ it and showed up as an empty gap below the greeting; moving the streak under
 the greeting balances the two columns' heights instead. Morning Routine and
 Check-In sit right below that header, side by side — moved up from further
 down the page on request, for the same reason: leaving them lower down left
-that gap unfilled regardless of what balanced the header itself. Lessons,
-Words to Review/Reading, and Choice Topics keep their original order
-underneath.
+that gap unfilled regardless of what balanced the header itself. Lessons
+comes next, still its own full-width card. Below that, Words to Review,
+Reading, Life Skills, and Choice Topics all sit in one row of four equal
+columns rather than each getting a half- or full-width row of its own —
+four small, single-purpose tiles, each linking straight to where that thing
+actually gets done, which cuts the page's overall length. All four always
+render, even with nothing outstanding (a plain "nothing due"/"add a topic"
+state), so the row never changes shape depending on what's assigned that
+day.
 
 The greeting and every card's title on this page (Lessons, Morning Routine,
 Check-In, ...) are deliberately plain, normal-case text rather than a real

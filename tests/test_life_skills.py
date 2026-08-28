@@ -300,9 +300,12 @@ def test_scheduling_a_locked_skill_in_the_master_list_keeps_it_unlocked(monkeypa
     assert skill["active"] == 1
 
 
-def test_home_shows_no_life_skills_card_when_nothing_is_assigned(monkeypatch, tmp_path):
-    """The default (no skill ever scheduled) has to look exactly like it did
-    before this feature existed."""
+def test_home_life_skills_tile_shows_the_empty_state_when_nothing_is_assigned(
+    monkeypatch, tmp_path
+):
+    """The Life Skills tile always renders (it's one of four fixed columns
+    in that row), but a family that never assigns a day should see its
+    plain empty state, not a due item that was never actually assigned."""
     db_path = tmp_path / "home.db"
     database = Database(db_path)
     s = database.ensure_default_student()
@@ -312,7 +315,10 @@ def test_home_shows_no_life_skills_card_when_nothing_is_assigned(monkeypatch, tm
 
     at = _open_home(monkeypatch, db_path)
     text = " ".join(m.value for m in at.markdown)
-    assert "Life Skills" not in text
+    assert "Life Skills (0)" in text
+    labels = [pl.label for pl in at.get("page_link")]
+    assert any("Open Life Skills" in label for label in labels)
+    assert not any("Bake bread" in label for label in labels)
 
 
 def test_a_skill_assigned_for_later_shows_an_upcoming_hint_on_home(monkeypatch, tmp_path):
@@ -334,7 +340,7 @@ def test_a_skill_assigned_for_later_shows_an_upcoming_hint_on_home(monkeypatch, 
 
     at = _open_home(monkeypatch, db_path)
     text = " ".join(c.value for c in at.caption)
-    assert "more life skill(s) assigned for a later week" in text
+    assert "+1 later" in text
     # Not due yet -- shouldn't show as a direct "assigned since/today" link.
     labels = [pl.label for pl in at.get("page_link")]
     assert not any("Read a map" in label for label in labels)
