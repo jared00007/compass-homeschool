@@ -69,13 +69,21 @@ def current_streak(active_days: set[str], today: date | None = None) -> int:
     up from yesterday. Otherwise every streak would read zero each morning
     until he finished something, which is exactly backwards: the moment you
     most want it to say "you're on 6, keep it going" is before he's started.
+
+    Checks `day == today` rather than `index == 0` for that forgiveness,
+    because they're not the same thing on a weekend: `_school_days_back`
+    skips Saturday/Sunday entirely, so when `today` itself is a weekend day
+    the first day it yields is last Friday -- an already-elapsed school day,
+    not "today, still in progress." `index == 0` used to forgive that Friday
+    the same way it forgives an actual today, silently letting a missed
+    Friday slide every single weekend that followed it.
     """
     today = today or date.today()
     streak = 0
     for index, day in enumerate(_school_days_back(today)):
         if day.isoformat() in active_days:
             streak += 1
-        elif index == 0:
+        elif day == today:
             continue  # today is simply still in progress
         else:
             break
@@ -223,35 +231,6 @@ def plan_day(
         return PlannedDay(target_date, agent.key, None, str(exc))
 
 
-def plan_subject_week(
-    db: Any,
-    student: dict[str, Any],
-    agent: LessonAgent,
-    week_start_date: date,
-    *,
-    seed_topics: dict[int, str] | None = None,
-) -> list[PlannedDay]:
-    """One fresh topic per day for Science, English, and History.
-
-    Unlike math, each of these agents' own state updates the moment a
-    lesson is generated -- a new branch gets added to science's web, an era
-    gets marked touched -- so calling propose-then-generate four times in
-    the same sitting genuinely produces four different days; no special
-    handling needed. A day's failure doesn't block the rest, since none of
-    these three depend on a prior day succeeding the way math's reinforcement
-    sequence does.
-
-    `seed_topics` points a specific day (0 = the week's first day) at an
-    explicit topic instead of the agent's own automatic pick -- the hook for
-    slotting in something specific, like a Class CrunchLabs unit for Science
-    on a chosen day.
-    """
-    results: list[PlannedDay] = []
-    for index, target_date in enumerate(week_dates(week_start_date)):
-        seed = (seed_topics or {}).get(index, "")
-        results.append(plan_day(db, student, agent, week_start_date, target_date, seed_topic=seed))
-    return results
-
 
 def latest_per_day(lessons: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Regenerating a day inserts a fresh lesson rather than replacing the
@@ -349,44 +328,78 @@ def math_stage_note(index: int, total: int) -> str:
     )
 
 
-def plan_math_week(db: Any, student: dict[str, Any], week_start_date: date) -> list[PlannedDay]:
-    """Math gets one skill for the whole week, not four different topics.
+def plan_missing_days(
+    db: Any,
+    student: dict[str, Any],
+    agent: LessonAgent,
+    week_start_date: date,
+    target_dates: list[date],
+    missing_dates: list[date],
+    *,
+    is_math: bool = False,
+    skill_id: str = "",
+    seed_topics: dict[int, str] | None = None,
+    node_ids: dict[int, str] | None = None,
+) -> list[PlannedDay]:
+    """Generate whichever of `target_dates` are still missing a lesson
+    (`missing_dates`, always a subset) for one subject/agent.
 
-    The reason lives one level down, in `graph_walk` (compass/agents/
-    strategies.py): the next skill only unlocks once the parent has
-    actually graded this week's assessment against real performance.
-    Nothing changes between four calls made in the same Friday sitting, so
-    batch-generating math the way the other three agents do would just
-    hand back the same skill four times over -- not a bug, the mastery gate
-    working as designed, but not a useful week's plan either.
+    `target_dates` is the full checked-days list for the week (see the
+    school-days picker on pages/14_This_Week.py) -- `math_stage_note` and
+    `seed_topics`/`node_ids` both need a day's position in the *whole*
+    week, not just its position among the days still missing a lesson, so
+    both lists are taken separately rather than one being inferred from
+    the other.
 
-    Instead: Monday introduces the skill the strategy would naturally pick
-    next, Tuesday-Wednesday escalate practice on that same skill, and
-    Thursday leans toward the graded assessment. If Monday itself fails or
-    the graph is fully mastered, the rest of the week is reported as
-    skipped rather than attempted -- there's nothing to reinforce yet.
+    Math (`is_math=True`) reuses one skill for the whole week rather than
+    a fresh topic each day. The reason lives one level down, in
+    `graph_walk` (compass/agents/strategies.py): the next skill only
+    unlocks once the parent has actually graded this week's assessment
+    against real performance, so calling propose-then-generate several
+    times in the same sitting would just hand back the same skill every
+    time -- not a bug, the mastery gate working as designed, but not a
+    useful week's plan either. Instead, the first missing day introduces
+    the skill (or continues `skill_id`, when an earlier day this week
+    already picked one and only later days are being filled in);
+    `math_stage_note` escalates the framing on each day after that toward
+    the graded assessment. Once any day fails -- a real error, or the
+    graph turning out to already be fully mastered -- every day after it
+    in this call is reported as skipped rather than attempted: continuing
+    to reinforce a skill that never got confirmed would frame the rest of
+    the week around whatever the agent's own automatic pick happened to
+    be at that moment, not the skill that actually failed.
+
+    Non-math subjects have no such dependency -- each of their own
+    agents' state updates the moment a lesson is generated (a new branch
+    added to Science's web, an era marked touched in History) -- so one
+    day's failure never blocks the rest.
+
+    `seed_topics`/`node_ids` point a specific day (keyed by its index in
+    `target_dates`) at an explicit topic or an already-open branch instead
+    of the agent's own automatic pick -- the hook for slotting in
+    something specific, like a Class CrunchLabs unit for Science on a
+    chosen day.
     """
-    from compass.agents import get_agent
-
-    agent = get_agent("math")
-    dates = week_dates(week_start_date)
     results: list[PlannedDay] = []
-    skill_id = ""
     stopped_reason = ""
-
-    for index, target_date in enumerate(dates):
-        if stopped_reason:
+    for target_date in missing_dates:
+        index = target_dates.index(target_date)
+        if is_math and stopped_reason:
             results.append(
                 PlannedDay(target_date, agent.key, None, f"Skipped — {stopped_reason}")
             )
             continue
         day = plan_day(
             db, student, agent, week_start_date, target_date,
-            skill_id=skill_id, parent_note=MATH_STAGE_NOTES[index],
+            seed_topic=(seed_topics or {}).get(index, ""),
+            skill_id=skill_id,
+            parent_note=math_stage_note(index, len(target_dates)) if is_math else "",
+            node_id=(node_ids or {}).get(index, ""),
         )
         results.append(day)
-        if day.error:
-            stopped_reason = day.error
-        elif index == 0 and day.generated:
-            skill_id = day.generated.proposal.metadata.get("skill_id", "")
+        if is_math:
+            if day.error:
+                stopped_reason = day.error
+            elif index == 0 and day.generated:
+                skill_id = day.generated.proposal.metadata.get("skill_id", "")
     return results

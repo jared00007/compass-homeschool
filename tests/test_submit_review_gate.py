@@ -215,6 +215,32 @@ def test_ready_once_the_writing_activity_is_submitted():
     assert _lesson_ready_to_submit(lesson) == (True, "")
 
 
+def test_ready_once_the_writing_activity_is_approved():
+    from compass.ui import _lesson_ready_to_submit
+
+    lesson = {
+        "payload": {"activities": [{"kind": "writing", "title": "Essay"}]},
+        "metadata": {"writing_review": {"0": {"status": config.WRITING_APPROVED}}},
+    }
+    assert _lesson_ready_to_submit(lesson) == (True, "")
+
+
+def test_not_ready_while_a_bounced_writing_activity_hasnt_been_resubmitted():
+    """A parent's "send back for revision" leaves the activity at
+    needs_revision, not draft -- the lesson-level gate has to check for
+    that too, or "Turn it in for review" comes back enabled the instant a
+    bounce lands, with nothing actually revised or resubmitted."""
+    from compass.ui import _lesson_ready_to_submit
+
+    lesson = {
+        "payload": {"activities": [{"kind": "writing", "title": "Essay"}]},
+        "metadata": {"writing_review": {"0": {"status": config.WRITING_NEEDS_REVISION}}},
+    }
+    ready, why = _lesson_ready_to_submit(lesson)
+    assert ready is False
+    assert "written response" in why.lower()
+
+
 # --- student_lesson_view: the gate itself, end to end ----------------------------
 
 
@@ -275,6 +301,34 @@ def test_a_sent_back_lesson_reopens_with_feedback(monkeypatch, tmp_path):
     text = "\n".join(w.value for w in at.warning)
     assert "Add more detail to your second paragraph." in text
     assert "Essay" in "\n".join(m.value for m in at.markdown)
+
+
+def test_a_bounced_writing_activity_with_no_feedback_still_gets_a_warning(
+    monkeypatch, tmp_path
+):
+    """A parent can send a writing activity back with the feedback box left
+    blank -- send_lesson_back's own test (below) checks that's allowed at
+    the lesson level. Either way, the activity itself must still visibly
+    read as "sent back" to him, not silently fall through to a plain,
+    unmarked draft box indistinguishable from one he simply hasn't started."""
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Essay", payload=_writing_lesson_payload(),
+    )
+    db.submit_lesson(lesson_id)
+    db.set_writing_review(lesson_id, 0, config.WRITING_NEEDS_REVISION, "")
+    db.send_lesson_back(lesson_id)
+    auth.set_pin(db, "1234")
+    db.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    text = "\n".join(w.value for w in at.warning)
+    assert "asked for another look" in text
+    # And the draft box he's meant to revise is still right there.
+    assert any(t.label == "Your response" for t in at.text_area)
 
 
 def test_turn_it_in_is_disabled_until_ready(monkeypatch, tmp_path):

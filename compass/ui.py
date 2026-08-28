@@ -608,6 +608,19 @@ def _render_reading_check(
         st.rerun()
 
 
+def _feedback_history(source: dict[str, Any], *, history_key: str, single_key: str) -> list[str]:
+    """Every note given so far on one piece of feedback, oldest first --
+    falls back to a single legacy field for data saved before `history_key`
+    existed. Shared by every place that reads a feedback trail (per-activity
+    writing review, student and parent side, and the whole-lesson banner)
+    so a future change to the fallback rule can't be applied to two of the
+    three copies and forgotten on the third -- exactly what happened once
+    already, when a second bounce silently overwrote the first note."""
+    return source.get(history_key) or (
+        [source[single_key]] if source.get(single_key) else []
+    )
+
+
 def _stored_ai_review(metadata: dict[str, Any] | None, index: int) -> dict[str, Any] | None:
     """The automated read of this activity's response, if one has been run.
 
@@ -700,11 +713,8 @@ def _render_activity_body(
                 return
 
             if status == config.WRITING_NEEDS_REVISION:
-                # feedback_history is the full trail; falling back to the
-                # older single `feedback` string keeps this working on data
-                # saved before feedback_history existed.
-                history = review.get("feedback_history") or (
-                    [review["feedback"]] if review.get("feedback") else []
+                history = _feedback_history(
+                    review, history_key="feedback_history", single_key="feedback"
                 )
                 if len(history) == 1:
                     st.warning(f"Your parent asked for another look: {md(history[0])}")
@@ -713,6 +723,8 @@ def _render_activity_body(
                         "Your parent asked for another look — everything they've flagged "
                         "so far:\n\n" + "\n".join(f"- {md(note)}" for note in history)
                     )
+                else:
+                    st.warning("Your parent asked for another look — revise it below.")
 
             if status == config.WRITING_SUBMITTED:
                 st.info("⏳ Submitted — waiting on your parent to look at it.")
@@ -1582,8 +1594,8 @@ def render_assessment_card(
         if status == config.WRITING_APPROVED:
             st.success("✅ Approved.")
         elif status == config.WRITING_NEEDS_REVISION:
-            history = review.get("feedback_history") or (
-                [review["feedback"]] if review.get("feedback") else []
+            history = _feedback_history(
+                review, history_key="feedback_history", single_key="feedback"
             )
             if len(history) <= 1:
                 st.warning(
@@ -1767,6 +1779,16 @@ def _lesson_ready_to_submit(lesson: dict[str, Any]) -> tuple[bool, str]:
     this lesson has one) taken at least once, and every writing activity
     at least submitted. Doesn't require anything be *approved* -- that's
     the parent's call once it's turned in, not a bar he clears himself.
+
+    A writing activity still sitting at `needs_revision` -- a parent
+    bounced it and he hasn't clicked "Submit for review" again yet, with
+    or without actually editing it -- is just as not-ready as one still at
+    the untouched `draft` default. Checking for "not draft" instead of "is
+    submitted or approved" used to let this slip through: the lesson-level
+    gate would read the whole lesson as ready the instant it came back
+    from a bounce, even though the one thing that was flagged was
+    untouched, letting him hand the whole lesson straight back to
+    "Needs your attention now" with nothing actually revised.
     """
     metadata = lesson.get("metadata") or {}
     payload = lesson["payload"]
@@ -1777,7 +1799,7 @@ def _lesson_ready_to_submit(lesson: dict[str, Any]) -> tuple[bool, str]:
         if not _needs_written_response(activity):
             continue
         status = review_map.get(str(index), {}).get("status", config.WRITING_DRAFT)
-        if status == config.WRITING_DRAFT:
+        if status not in (config.WRITING_SUBMITTED, config.WRITING_APPROVED):
             return False, "Submit every written response below before you turn this in."
     return True, ""
 
@@ -1828,10 +1850,8 @@ def student_lesson_view(
     )
     if pending is not None:
         pending_metadata = pending.get("metadata") or {}
-        history = pending_metadata.get("lesson_feedback_history") or (
-            [pending_metadata["lesson_feedback"]]
-            if pending_metadata.get("lesson_feedback")
-            else []
+        history = _feedback_history(
+            pending_metadata, history_key="lesson_feedback_history", single_key="lesson_feedback"
         )
         if pending["status"] == "submitted":
             st.info("📤 Submitted — waiting on your parent to check this.")

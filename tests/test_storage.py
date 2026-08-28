@@ -73,6 +73,34 @@ def test_migrate_carries_old_interests_string_into_the_list(db, student):
     assert "interests" not in columns
 
 
+def test_migrate_interests_is_idempotent_even_if_drop_column_is_unsupported(db, student):
+    """On a SQLite build too old for DROP COLUMN, the ALTER silently no-ops
+    (caught in _migrate_interests_string_to_list) and the `interests` column
+    sticks around forever. migrate() runs on every app start, so without its
+    own idempotency guard (blanking the column's *content*, not relying on
+    the DROP to have removed it), the same leftover blob would get re-split
+    and re-inserted into student_interests on every single restart.
+
+    This sandbox's SQLite is new enough that the DROP always succeeds, so
+    the failure is reproduced directly instead: put the column back exactly
+    as the migration would have left it had the DROP silently failed
+    (present, but already blanked out by that same run) and migrate again."""
+    db.conn.execute("ALTER TABLE students ADD COLUMN interests TEXT NOT NULL DEFAULT ''")
+    db.conn.execute(
+        "UPDATE students SET interests = ? WHERE id = ?",
+        ("Legos, Minecraft", student["id"]),
+    )
+    db.conn.commit()
+    db._migrate_interests_string_to_list()
+
+    db.conn.execute("ALTER TABLE students ADD COLUMN interests TEXT NOT NULL DEFAULT ''")
+    db.conn.commit()
+    db._migrate_interests_string_to_list()  # a second app start, DROP still "failing"
+
+    interests = db.list_interests(student["id"])
+    assert sorted(i["text"] for i in interests) == ["Legos", "Minecraft"]
+
+
 def test_migrate_drops_old_journal_entries_unique_constraint(db, student):
     """journal_entries originally had UNIQUE (student_id, entry_date), which
     forced a second same-day check-in to silently overwrite the first.

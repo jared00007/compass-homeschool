@@ -26,8 +26,7 @@ from compass.weekly import (
     latest_per_day,
     math_stage_note,
     plan_day,
-    plan_math_week,
-    plan_subject_week,
+    plan_missing_days,
     planning_nudge,
     week_dates,
     week_start,
@@ -279,10 +278,10 @@ def test_plan_day_omits_node_id_when_not_given():
     assert "node_id" not in seen_inputs
 
 
-# --- plan_subject_week: four independent, fresh topics ----------------------------
+# --- plan_missing_days, non-math: independent, fresh topics -----------------------
 
 
-def test_plan_subject_week_produces_four_days():
+def test_plan_missing_days_produces_one_result_per_missing_day():
     calls = {"n": 0}
 
     def propose(ctx):
@@ -295,14 +294,15 @@ def test_plan_subject_week_produces_four_days():
             lesson_id=calls["n"], proposal=proposal, payload={"title": proposal.topic}, warnings=[]
         ),
     )
-    results = plan_subject_week(None, STUDENT, agent, date(2026, 8, 10))
-    assert [r.target_date for r in results] == week_dates(date(2026, 8, 10))
+    dates = week_dates(date(2026, 8, 10))
+    results = plan_missing_days(None, STUDENT, agent, date(2026, 8, 10), dates, dates)
+    assert [r.target_date for r in results] == dates
     assert [r.generated.payload["title"] for r in results] == [
         "Topic 1", "Topic 2", "Topic 3", "Topic 4",
     ]
 
 
-def test_plan_subject_week_one_days_failure_does_not_block_the_others():
+def test_plan_missing_days_one_days_failure_does_not_block_the_others_when_not_math():
     calls = {"n": 0}
 
     def propose(ctx):
@@ -315,11 +315,12 @@ def test_plan_subject_week_one_days_failure_does_not_block_the_others():
         return GeneratedLesson(lesson_id=calls["n"], proposal=proposal, payload={}, warnings=[])
 
     agent = FakeAgent(propose_fn=propose, generate_fn=generate)
-    results = plan_subject_week(None, STUDENT, agent, date(2026, 8, 10))
+    dates = week_dates(date(2026, 8, 10))
+    results = plan_missing_days(None, STUDENT, agent, date(2026, 8, 10), dates, dates)
     assert [r.error for r in results] == [None, "rate limited", None, None]
 
 
-def test_plan_subject_week_seed_topics_target_a_specific_day_by_index():
+def test_plan_missing_days_seed_topics_target_a_specific_day_by_index():
     seen_seeds = []
 
     def propose(ctx):
@@ -332,11 +333,40 @@ def test_plan_subject_week_seed_topics_target_a_specific_day_by_index():
             lesson_id=1, proposal=proposal, payload={}, warnings=[]
         ),
     )
-    plan_subject_week(
-        None, STUDENT, agent, date(2026, 8, 10),
+    dates = week_dates(date(2026, 8, 10))
+    plan_missing_days(
+        None, STUDENT, agent, date(2026, 8, 10), dates, dates,
         seed_topics={0: "Rocks vs. Big Rigs (CrunchLabs)"},
     )
     assert seen_seeds == ["Rocks vs. Big Rigs (CrunchLabs)", "", "", ""]
+
+
+def test_plan_missing_days_only_generates_the_missing_subset():
+    """The whole reason `target_dates` and `missing_dates` are separate
+    lists: a day already planned in an earlier session must be skipped
+    entirely (no call at all), while a later day's index -- for seed
+    targeting, and for math's stage note -- is still its position in the
+    full week, not its position among the days actually being filled in."""
+    seen_seeds = []
+
+    def propose(ctx):
+        seen_seeds.append(ctx.inputs.get("seed_topic", ""))
+        return a_proposal()
+
+    agent = FakeAgent(
+        propose_fn=propose,
+        generate_fn=lambda ctx, proposal: GeneratedLesson(
+            lesson_id=1, proposal=proposal, payload={}, warnings=[]
+        ),
+    )
+    dates = week_dates(date(2026, 8, 10))  # Mon-Thu
+    missing = dates[1:]  # Tue-Thu only -- Monday already planned
+    results = plan_missing_days(
+        None, STUDENT, agent, date(2026, 8, 10), dates, missing,
+        seed_topics={0: "should never be used -- day 0 isn't missing"},
+    )
+    assert [r.target_date for r in results] == missing
+    assert seen_seeds == ["", "", ""]
 
 
 # --- math_stage_note: the same escalating note, for a holiday-shortened week -------
@@ -373,7 +403,7 @@ def test_math_stage_note_on_a_single_day_week_has_no_middle_tier():
     assert math_stage_note(0, 1) == ""
 
 
-# --- plan_math_week: one skill, framed across the week -----------------------------
+# --- plan_missing_days, is_math=True: one skill, framed across the week -----------
 
 
 def a_math_agent(propose_fn, generate_fn):
@@ -382,23 +412,21 @@ def a_math_agent(propose_fn, generate_fn):
     return agent
 
 
-def test_plan_math_week_reuses_the_same_skill_across_all_four_days():
+def test_plan_missing_days_math_reuses_the_same_skill_across_all_four_days():
     seen_skill_ids = []
 
     def propose(ctx):
         seen_skill_ids.append(ctx.inputs.get("skill_id", ""))
         return a_proposal(metadata={"skill_id": "integer_operations"})
 
-    with patch(
-        "compass.agents.get_agent",
-        return_value=a_math_agent(
-            propose_fn=propose,
-            generate_fn=lambda ctx, proposal: GeneratedLesson(
-                lesson_id=1, proposal=proposal, payload={}, warnings=[]
-            ),
+    agent = a_math_agent(
+        propose_fn=propose,
+        generate_fn=lambda ctx, proposal: GeneratedLesson(
+            lesson_id=1, proposal=proposal, payload={}, warnings=[]
         ),
-    ):
-        results = plan_math_week(None, STUDENT, date(2026, 8, 10))
+    )
+    dates = week_dates(date(2026, 8, 10))
+    results = plan_missing_days(None, STUDENT, agent, date(2026, 8, 10), dates, dates, is_math=True)
 
     assert len(results) == 4
     assert all(r.error is None for r in results)
@@ -406,23 +434,21 @@ def test_plan_math_week_reuses_the_same_skill_across_all_four_days():
     assert seen_skill_ids == ["", "integer_operations", "integer_operations", "integer_operations"]
 
 
-def test_plan_math_week_escalates_the_parent_note_each_day():
+def test_plan_missing_days_math_escalates_the_parent_note_each_day():
     seen_notes = []
 
     def propose(ctx):
         seen_notes.append(ctx.inputs.get("parent_note", ""))
         return a_proposal(metadata={"skill_id": "integer_operations"})
 
-    with patch(
-        "compass.agents.get_agent",
-        return_value=a_math_agent(
-            propose_fn=propose,
-            generate_fn=lambda ctx, proposal: GeneratedLesson(
-                lesson_id=1, proposal=proposal, payload={}, warnings=[]
-            ),
+    agent = a_math_agent(
+        propose_fn=propose,
+        generate_fn=lambda ctx, proposal: GeneratedLesson(
+            lesson_id=1, proposal=proposal, payload={}, warnings=[]
         ),
-    ):
-        plan_math_week(None, STUDENT, date(2026, 8, 10))
+    )
+    dates = week_dates(date(2026, 8, 10))
+    plan_missing_days(None, STUDENT, agent, date(2026, 8, 10), dates, dates, is_math=True)
 
     assert tuple(seen_notes) == MATH_STAGE_NOTES
     assert seen_notes[0] == ""
@@ -431,19 +457,19 @@ def test_plan_math_week_escalates_the_parent_note_each_day():
     assert "assessment" in seen_notes[3].lower()  # day 4 leans toward grading
 
 
-def test_plan_math_week_stops_reinforcing_when_the_first_day_is_blocked():
+def test_plan_missing_days_math_stops_reinforcing_when_the_first_day_is_blocked():
     agent = a_math_agent(
         propose_fn=lambda ctx: a_proposal(blocked=True, blocked_reason="Every skill mastered."),
         generate_fn=lambda ctx, proposal: pytest.fail("should not generate"),
     )
-    with patch("compass.agents.get_agent", return_value=agent):
-        results = plan_math_week(None, STUDENT, date(2026, 8, 10))
+    dates = week_dates(date(2026, 8, 10))
+    results = plan_missing_days(None, STUDENT, agent, date(2026, 8, 10), dates, dates, is_math=True)
 
     assert results[0].error == "Every skill mastered."
     assert all("Skipped" in r.error for r in results[1:])
 
 
-def test_plan_math_week_stops_reinforcing_when_a_later_day_fails():
+def test_plan_missing_days_math_stops_reinforcing_when_a_later_day_fails():
     """Day 1 succeeds, day 2 fails -- days 3 and 4 must not blindly continue
     reinforcing a skill using state that never got confirmed."""
     calls = {"n": 0}
@@ -458,13 +484,42 @@ def test_plan_math_week_stops_reinforcing_when_a_later_day_fails():
         return GeneratedLesson(lesson_id=calls["n"], proposal=proposal, payload={}, warnings=[])
 
     agent = a_math_agent(propose_fn=propose, generate_fn=generate)
-    with patch("compass.agents.get_agent", return_value=agent):
-        results = plan_math_week(None, STUDENT, date(2026, 8, 10))
+    dates = week_dates(date(2026, 8, 10))
+    results = plan_missing_days(None, STUDENT, agent, date(2026, 8, 10), dates, dates, is_math=True)
 
     assert results[0].error is None
     assert results[1].error == "rate limited"
     assert results[2].error == "Skipped — rate limited"
     assert results[3].error == "Skipped — rate limited"
+
+
+def test_plan_missing_days_math_stops_across_a_missing_subset_too():
+    """The same stop-on-failure rule, exercised through the actual "fill in
+    missing days" path This_Week.py uses: Tuesday (already planned earlier)
+    isn't in `missing_dates` at all, Wednesday fails, so Thursday -- also
+    missing -- must come back skipped rather than reinforcing a skill that
+    was never confirmed."""
+    calls = {"n": 0}
+
+    def propose(ctx):
+        calls["n"] += 1
+        return a_proposal(metadata={"skill_id": "integer_operations"})
+
+    def generate(ctx, proposal):
+        raise LessonGenerationError("rate limited")
+
+    agent = a_math_agent(propose_fn=propose, generate_fn=generate)
+    dates = week_dates(date(2026, 8, 10))  # Mon-Thu
+    missing = dates[2:]  # Wed-Thu only
+    results = plan_missing_days(
+        None, STUDENT, agent, date(2026, 8, 10), dates, missing,
+        is_math=True, skill_id="integer_operations",
+    )
+
+    assert results[0].target_date == dates[2]
+    assert results[0].error == "rate limited"
+    assert results[1].target_date == dates[3]
+    assert results[1].error == "Skipped — rate limited"
 
 
 # --- planning_nudge ---------------------------------------------------------------

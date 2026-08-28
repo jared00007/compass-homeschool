@@ -258,26 +258,14 @@ with plan_tab:
                     skill_id = lessons[0]["metadata"].get("skill_id", "") if (
                         key == "math" and lessons
                     ) else ""
-                    day_results = []
-                    for target in missing_dates:
-                        index = target_dates.index(target)
-                        note = (
-                            weekly.math_stage_note(index, len(target_dates))
-                            if key == "math"
-                            else ""
-                        )
-                        day_seed = seed.strip() if index == 0 else ""
-                        day_node_id = picked_node_id if index == 0 else ""
-                        result = weekly.plan_day(
-                            db, student, AGENTS[key], target_week_start, target,
-                            seed_topic=day_seed, skill_id=skill_id, parent_note=note,
-                            node_id=day_node_id,
-                        )
-                        day_results.append(result)
-                        if key == "math" and index == 0 and result.generated:
-                            skill_id = result.generated.proposal.metadata.get(
-                                "skill_id", ""
-                            )
+                    day_results = weekly.plan_missing_days(
+                        db, student, AGENTS[key], target_week_start,
+                        target_dates, missing_dates,
+                        is_math=(key == "math"),
+                        skill_id=skill_id,
+                        seed_topics={0: seed.strip()} if seed.strip() else None,
+                        node_ids={0: picked_node_id} if picked_node_id else None,
+                    )
                 day_errors = [d for d in day_results if d.error]
                 for day in day_errors:
                     st.error(f"{day.target_date}: {day.error}")

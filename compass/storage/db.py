@@ -1491,7 +1491,17 @@ class Database:
         """`students.interests` used to be one free-text blob typed into a
         small textarea; carry any existing text into student_interests
         (split on commas, or kept whole if there weren't any) before the
-        column is retired, so nothing a family already typed in is lost."""
+        column is retired, so nothing a family already typed in is lost.
+
+        Clearing the column's *content* is what actually makes this
+        idempotent, not the DROP COLUMN below -- on a SQLite build too old
+        to support dropping a column, the DROP silently no-ops (caught
+        below) and the column sticks around forever, but every column blob
+        having already been blanked out means the next `migrate()` (every
+        app start) reads nothing but empty strings and re-inserts nothing,
+        rather than duplicating the same rows into student_interests once
+        per restart.
+        """
         existing_columns = {
             row["name"] for row in self.conn.execute("PRAGMA table_info(students)")
         }
@@ -1506,6 +1516,7 @@ class Database:
                         "INSERT INTO student_interests (student_id, text) VALUES (?, ?)",
                         (row["id"], item),
                     )
+        self.conn.execute("UPDATE students SET interests = ''")
         try:
             self.conn.execute("ALTER TABLE students DROP COLUMN interests")
         except sqlite3.OperationalError:

@@ -342,7 +342,7 @@ compass/
   theme.py                   the one fixed theme and the CSS that applies it
   fun_facts.py               fact-of-the-day for the student home view
   national_parks.py          the 63 parks + real state borders for Landon's Travels
-tests/                       846 tests, no API key required
+tests/                       853 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 scripts/new_school_year_reset.py  wipe a finished school year's data, see below
 ```
@@ -1063,7 +1063,7 @@ make.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 846 tests, ~85s, no API key needed
+python -m pytest tests/ -q      # 853 tests, ~60s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

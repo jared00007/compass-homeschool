@@ -63,6 +63,19 @@ def test_a_missed_yesterday_with_nothing_today_is_zero():
     assert current_streak({"2026-08-24"}, WED) == 0
 
 
+def test_a_missed_friday_is_not_forgiven_just_because_today_is_the_weekend():
+    """`today` being a non-school day is not the same thing as "today is
+    still in progress" -- only an actual today gets that forgiveness. A
+    Saturday `today` should read Friday the same way a Monday `today`
+    would: as an already-elapsed school day, broken if it was missed."""
+    saturday = date(2026, 8, 22)
+    days = {"2026-08-20", "2026-08-21"}  # Thu, Fri both done
+    assert current_streak(days, saturday) == 2
+
+    missed_friday = {"2026-08-19", "2026-08-20"}  # Wed, Thu done, Fri skipped
+    assert current_streak(missed_friday, saturday) == 0
+
+
 def test_no_history_is_zero():
     assert current_streak(set(), WED) == 0
     assert best_streak(set(), WED) == 0
