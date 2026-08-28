@@ -522,11 +522,41 @@ def test_a_finished_lesson_can_be_reopened_from_past_lessons(monkeypatch, db, st
     db.mark_student_done(lesson_id)
     db.set_lesson_status(lesson_id, "completed")  # fully resolved, not just self-reported
     lesson = db.get_lesson(lesson_id)
-    label = f"{lesson['created_at'][:10]} — {lesson['title']}"
+    label = f"{lesson['metadata']['student_done_on']} — {lesson['title']}"
 
     page = render_past(monkeypatch, db, student, selectbox_return=label)
     assert "Past lessons" in page
     assert "Solve problems 1-10." in page  # reopened, read-only
+
+
+def test_past_lessons_label_uses_the_day_he_finished_it_not_when_it_was_generated(
+    monkeypatch, db, student
+):
+    """A lesson can sit around for days before he gets to it -- generated
+    Friday in a week batch-plan, done the following Tuesday -- or a whole
+    week of lessons can get generated in one sitting and finished on
+    different days after. Either way the picker must read by
+    `student_done_on`, not `created_at`, or every lesson from one planning
+    session would show the same date regardless of when he actually did
+    each one."""
+    lesson_id = db.save_lesson(
+        student["id"], "math", "math", "topic", "Two-Step Equations", payload=a_lesson()
+    )
+    db.conn.execute(
+        "UPDATE lessons SET created_at = '2026-08-20 09:00:00' WHERE id = ?", (lesson_id,)
+    )
+    db.conn.commit()
+    db.mark_student_done(lesson_id)  # stamps student_done_on = today, not Aug 20
+    db.set_lesson_status(lesson_id, "completed")
+    lesson = db.get_lesson(lesson_id)
+    done_on = lesson["metadata"]["student_done_on"]
+    assert done_on != "2026-08-20"  # sanity: the two dates really do differ
+
+    page = render_past(
+        monkeypatch, db, student, selectbox_return=f"{done_on} — Two-Step Equations"
+    )
+    assert "Past lessons" in page
+    assert "Solve problems 1-10." in page
 
 
 # --- render_today_checklist: his own accomplishment list, not a compliance one ---

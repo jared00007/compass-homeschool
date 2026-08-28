@@ -1971,7 +1971,17 @@ def render_past_lessons(
     subject_label = subject_label or agent_key.title()
     st.divider()
     st.subheader("Past lessons")
-    labels = [f"{l['created_at'][:10]} — {l['title']}" for l in done]
+    # The date he actually finished it, not when it was generated -- those
+    # can be days apart (a lesson sitting there over a weekend, or a whole
+    # week batch-planned in one sitting on Friday), and `created_at` would
+    # silently show every lesson from one planning session under the same
+    # date. Falls back to `created_at` only for data old enough to predate
+    # `student_done_on` existing at all.
+    labels = [
+        f"{(l.get('metadata') or {}).get('student_done_on') or l['created_at'][:10]} "
+        f"— {l['title']}"
+        for l in done
+    ]
     choice = st.selectbox(
         "Look back at a finished lesson",
         labels,
