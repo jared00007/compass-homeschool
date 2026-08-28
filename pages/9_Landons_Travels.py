@@ -26,7 +26,7 @@ from compass import config
 from compass import national_parks as parks
 from compass import theme as theming
 from compass.export import travel_journal_filename, travel_journal_to_docx
-from compass.ui import is_parent, page_setup
+from compass.ui import is_parent, md, page_setup
 
 db, student = page_setup("Landon's Travels", icon="🧭")
 
@@ -132,15 +132,6 @@ def _render_entry(entry: dict) -> None:
                 f'border-left:3px solid {badge_color}; padding:4px 8px; margin-bottom:6px;">'
                 f'{html.escape(entry["revision_note"].strip())}</div>'
             )
-    # Feedback left when approving -- unlike revision_note, it's praise,
-    # not a fix request, so it only ever shows on a completed entry and
-    # never blocks or changes the review outcome.
-    if entry["status"] == "completed" and entry["parent_feedback"].strip():
-        badge_tag += (
-            f'<div style="font-size:12.5px; color:var(--c-text); background:var(--c-panel); '
-            f'border-left:3px solid var(--c-good); padding:4px 8px; margin-bottom:6px;">'
-            f'💬 {html.escape(entry["parent_feedback"].strip())}</div>'
-        )
     story_text = entry["story"].strip()
     story_html = (
         html.escape(story_text).replace("\n", "<br>")
@@ -184,6 +175,16 @@ def _render_entry(entry: dict) -> None:
         """,
         unsafe_allow_html=True,
     )
+
+    # A real st.markdown call, not folded into the raw-HTML card above --
+    # feedback is often a whole paragraph or two with its own formatting
+    # (bold, bullets, a line per point), and that only renders properly
+    # through Streamlit's actual markdown engine, not the html.escape'd
+    # plain text the story/revision_note get.
+    if entry["status"] == "completed" and entry["parent_feedback"].strip():
+        with st.container(border=True):
+            st.markdown("💬 **Feedback from your parent**")
+            st.markdown(md(entry["parent_feedback"]))
 
     # Writing it up (a parent-assigned stub) or revising it (sent back) is
     # every family member's to do, not just a parent's -- shown before the
@@ -270,9 +271,10 @@ def _render_entry(entry: dict) -> None:
         # on some later form submit. Optional and shown to him alongside
         # the approved entry -- not a fix request like revision_note, so it
         # doesn't gate approval the way a missing revision note would.
-        feedback_note = st.text_input(
+        feedback_note = st.text_area(
             "Feedback (optional, shown to him)",
             key=f"approve_feedback_{entry['id']}",
+            height=200,
             placeholder="e.g. Great detail about the hike -- loved reading this one.",
         )
         review_columns = st.columns([1, 1, 4])

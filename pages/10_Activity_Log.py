@@ -164,9 +164,10 @@ def _render_travel_review_card(entry: dict) -> None:
         if entry["status"] == "needs_revision" and entry["revision_note"].strip():
             st.caption(f"You sent this back: {md(entry['revision_note'].strip())}")
         if entry["status"] == "submitted":
-            feedback_note = st.text_input(
+            feedback_note = st.text_area(
                 "Feedback (optional, shown to him)",
                 key=f"activitylog_approve_feedback_{entry['id']}",
+                height=200,
                 placeholder="e.g. Great detail about the hike -- loved reading this one.",
             )
             review_columns = st.columns([1, 1, 4])

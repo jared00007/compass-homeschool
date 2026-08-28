@@ -267,7 +267,7 @@ def test_approving_with_feedback_stores_it_on_the_entry(monkeypatch, tmp_path):
     at = _open_travels(monkeypatch, db_path, as_parent=True)
     tab = _journal_tab(at)
     feedback_input = [
-        w for w in tab.text_input if w.label == "Feedback (optional, shown to him)"
+        w for w in tab.text_area if w.label == "Feedback (optional, shown to him)"
     ][0]
     feedback_input.set_value("Great detail about the hike!")
     approve = [b for b in tab.button if b.key == f"approve_entry_{entry_id}"][0]

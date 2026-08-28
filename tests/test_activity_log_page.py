@@ -269,7 +269,7 @@ def test_approving_with_feedback_from_activity_log_stores_it(monkeypatch, tmp_pa
 
     at, review_tab = _open_review_tab(monkeypatch, db_path)
     feedback_input = [
-        w for w in review_tab.text_input if w.label == "Feedback (optional, shown to him)"
+        w for w in review_tab.text_area if w.label == "Feedback (optional, shown to him)"
     ][0]
     feedback_input.set_value("Loved reading this one.")
     approve = [b for b in review_tab.button if b.key == f"activitylog_approve_travel_{entry_id}"][0]
