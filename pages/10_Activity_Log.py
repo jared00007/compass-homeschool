@@ -144,6 +144,56 @@ def _render_review_card(lesson: dict, today_iso: str) -> None:
                 st.rerun()
 
 
+_TRAVEL_REVIEW_BADGES = {
+    "submitted": "📤 waiting on you to review",
+    "needs_revision": "↩️ sent back — waiting on him",
+}
+
+
+def _render_travel_review_card(entry: dict) -> None:
+    """A submitted (or sent-back) travel entry, reviewable right here --
+    same Approve/Send back actions as pages/9_Landons_Travels.py, so a
+    trip waiting on you doesn't only show up if you happen to visit that
+    page. Approving logs the same flat Writing/Social Studies credit it
+    always has."""
+    badge = _TRAVEL_REVIEW_BADGES[entry["status"]]
+    title = entry["title"] or entry["state"] or "Untitled trip"
+    with st.expander(f"{badge} · {entry['visited_on']} · 🧭 {md(title)}"):
+        if entry["story"]:
+            st.write(md(entry["story"]))
+        if entry["status"] == "needs_revision" and entry["revision_note"].strip():
+            st.caption(f"You sent this back: {md(entry['revision_note'].strip())}")
+        if entry["status"] == "submitted":
+            review_columns = st.columns([1, 1, 4])
+            if review_columns[0].button(
+                "✅ Approve", key=f"activitylog_approve_travel_{entry['id']}", type="primary"
+            ):
+                db.approve_travel_entry(entry["id"])
+                st.rerun()
+            reviewing = st.session_state.get("activitylog_reviewing_travel") == entry["id"]
+            if review_columns[1].button(
+                "Cancel" if reviewing else "↩️ Send back",
+                key=f"activitylog_bounce_travel_{entry['id']}",
+            ):
+                st.session_state["activitylog_reviewing_travel"] = (
+                    None if reviewing else entry["id"]
+                )
+                st.rerun()
+            if reviewing:
+                with st.form(f"activitylog_send_back_travel_{entry['id']}"):
+                    note = st.text_input(
+                        "What should he fix or add?",
+                        placeholder="e.g. more detail on what you actually did there",
+                    )
+                    if st.form_submit_button("Send back", type="primary"):
+                        db.send_travel_entry_back(entry["id"], note.strip())
+                        st.session_state["activitylog_reviewing_travel"] = None
+                        st.rerun()
+        st.page_link(
+            "pages/9_Landons_Travels.py", label="Open in Landon's Travels", icon="🧭"
+        )
+
+
 all_lessons = db.list_lessons(student["id"], limit=50)
 to_review = [l for l in all_lessons if l["status"] in ("planned", "submitted", "needs_revision")]
 history = [l for l in all_lessons if l["status"] in ("completed", "skipped")]
@@ -152,8 +202,19 @@ history = [l for l in all_lessons if l["status"] in ("completed", "skipped")]
 # way around. Relative order within each group (most recent first) is preserved.
 to_review.sort(key=lambda l: 0 if l["status"] == "submitted" else 1)
 
+# Travel Journal entries go through the exact same submit/review gate as a
+# lesson, so a trip waiting on you belongs in the same queue as everything
+# else waiting on you -- not only visible if you happen to open Landon's
+# Travels. A 'planned' (not-yet-written) stub isn't included here the way a
+# 'planned' lesson is: there's nothing yet to *review* about a trip he
+# hasn't written up, unlike an overdue lesson, which is itself the thing
+# needing your attention.
+all_travel_entries = db.list_travel_entries(student["id"])
+travel_to_review = [t for t in all_travel_entries if t["status"] in ("submitted", "needs_revision")]
+travel_to_review.sort(key=lambda t: 0 if t["status"] == "submitted" else 1)
+
 log_tab, add_tab, lessons_tab = st.tabs(
-    ["The record", "Log something manually", f"To review ({len(to_review)})"]
+    ["The record", "Log something manually", f"To review ({len(to_review) + len(travel_to_review)})"]
 )
 
 with log_tab:
@@ -260,6 +321,12 @@ with lessons_tab:
         "columns over from where you're looking."
     )
 
+    if travel_to_review:
+        st.markdown(f"**🧭 Travel Journal** ({len(travel_to_review)})")
+        for entry in travel_to_review:
+            _render_travel_review_card(entry)
+        st.divider()
+
     today = date.today()
     today_iso = today.isoformat()
 
@@ -334,7 +401,10 @@ with lessons_tab:
             for lesson in unscheduled:
                 _render_review_card(lesson, today_iso)
 
-        if not attention and not sent_back and not any(board_buckets.values()) and not unscheduled:
+        if (
+            not attention and not sent_back and not any(board_buckets.values())
+            and not unscheduled and not travel_to_review
+        ):
             st.success("Nothing waiting on you right now.")
 
     show_history = st.checkbox("Also show completed and skipped lessons")

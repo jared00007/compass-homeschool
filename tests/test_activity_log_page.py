@@ -160,6 +160,95 @@ def test_switching_the_week_picker_changes_the_board(monkeypatch, tmp_path):
     assert any("Next week's lesson" in l for l in labels)
 
 
+# --- Travel Journal entries share the same "To review" queue -------------------
+
+
+def test_a_submitted_travel_entry_shows_up_in_to_review(monkeypatch, tmp_path):
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    db.add_travel_entry(
+        student["id"], "Arizona", "2025-06-10", title="Grand Canyon",
+        story="We hiked to the rim.", status="submitted",
+    )
+    db.close()
+
+    at, review_tab = _open_review_tab(monkeypatch, db_path)
+    assert review_tab.label == "To review (1)"
+    markdowns = [m.value for m in review_tab.markdown]
+    assert any("Travel Journal" in m and "(1)" in m for m in markdowns)
+    labels = [e.label for e in review_tab.expander]
+    assert any("waiting on you to review" in l and "Grand Canyon" in l for l in labels)
+
+
+def test_a_planned_unwritten_travel_stub_does_not_show_up_to_review(monkeypatch, tmp_path):
+    """Nothing to review yet about a trip he hasn't written -- unlike an
+    overdue lesson, an assigned-but-blank stub isn't itself the thing
+    waiting on a parent."""
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    db.add_travel_entry(student["id"], "Arizona", "2025-06-10", title="Grand Canyon", status="planned")
+    db.close()
+
+    at, review_tab = _open_review_tab(monkeypatch, db_path)
+    assert review_tab.label == "To review (0)"
+    markdowns = [m.value for m in review_tab.markdown]
+    assert not any("Travel Journal" in m for m in markdowns)
+
+
+def test_approving_a_travel_entry_from_activity_log_completes_it_and_logs_credit(monkeypatch, tmp_path):
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    entry_id = db.add_travel_entry(
+        student["id"], "Arizona", "2025-06-10", title="Grand Canyon",
+        story="We hiked to the rim.", status="submitted",
+    )
+    db.close()
+
+    at, review_tab = _open_review_tab(monkeypatch, db_path)
+    approve = [b for b in review_tab.button if b.key == f"activitylog_approve_travel_{entry_id}"][0]
+    approve.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db = Database(db_path)
+    entry = db.list_travel_entries(student["id"])[0]
+    activities = db.list_activities(student["id"])
+    db.close()
+    assert entry["status"] == "completed"
+    assert len(activities) == 1
+    assert activities[0]["source"] == "travel_journal"
+
+
+def test_sending_a_travel_entry_back_from_activity_log_sets_needs_revision(monkeypatch, tmp_path):
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    entry_id = db.add_travel_entry(
+        student["id"], "Arizona", "2025-06-10", title="Grand Canyon",
+        story="We went there.", status="submitted",
+    )
+    db.close()
+
+    at, review_tab = _open_review_tab(monkeypatch, db_path)
+    bounce = [b for b in review_tab.button if b.key == f"activitylog_bounce_travel_{entry_id}"][0]
+    bounce.click().run()
+    review_tab = [t for t in at.tabs if t.label.startswith("To review")][0]
+
+    note_input = [w for w in review_tab.text_input if w.label == "What should he fix or add?"][0]
+    note_input.set_value("Add more detail.")
+    send = [b for b in review_tab.button if b.label == "Send back"][0]
+    send.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db = Database(db_path)
+    entry = db.list_travel_entries(student["id"])[0]
+    db.close()
+    assert entry["status"] == "needs_revision"
+    assert "more detail" in entry["revision_note"]
+
+
 def test_history_stays_hidden_until_the_checkbox_is_checked(monkeypatch, tmp_path):
     db_path = tmp_path / "review.db"
     db = Database(db_path)
