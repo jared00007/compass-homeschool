@@ -92,30 +92,30 @@ if not is_parent():
                 st.session_state["home_view"] = view_key
                 st.rerun()
 
-    # Compact header: greeting and streak stacked in the left column, fun
-    # fact alone in the right. Streak used to sit stacked on top of fun fact
-    # on the right, which left the left column (just the greeting) shorter
-    # than the right one -- the gap between the greeting and whatever came
-    # next was exactly that height difference. Moving the streak under the
-    # greeting instead makes the two columns closer in height and removes
-    # that gap, per a sketch of the wanted layout.
-    header_columns = st.columns([2, 1])
+    # A plain styled div, not `st.title` -- the fixed theme reserves the
+    # loud, gold, all-caps h1 treatment for a page's one real title (see
+    # theme.py), and Landon said the giant shouted version of this looked
+    # bad next to everything else now packed onto Home. This sidesteps that
+    # global rule the same way render_card_heading does below, since it
+    # isn't a real `<h1>` for the theme's CSS to catch.
+    st.markdown(
+        f'<div style="font-size:30px; font-weight:700; color:var(--c-text); '
+        f'margin-bottom:2px;">Hi {md(student["name"].split()[0])} 👋</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption("Here's what's set up for you. Work down the list, or jump around — up to you.")
+
+    # Streak and fun fact are a matched pair, side by side, same width and
+    # height -- not the streak tucked under the greeting with fun fact off
+    # on its own. Bordered containers opt both into the same balance CSS
+    # (theme.py) that equalizes a row of `st.container(border=True)` cards.
+    header_columns = st.columns(2)
     with header_columns[0]:
-        # A plain styled div, not `st.title` -- the fixed theme reserves the
-        # loud, gold, all-caps h1 treatment for a page's one real title (see
-        # theme.py), and Landon said the giant shouted version of this
-        # looked bad next to everything else now packed onto Home. This
-        # sidesteps that global rule the same way render_card_heading does
-        # below, since it isn't a real `<h1>` for the theme's CSS to catch.
-        st.markdown(
-            f'<div style="font-size:30px; font-weight:700; color:var(--c-text); '
-            f'margin-bottom:2px;">Hi {md(student["name"].split()[0])} 👋</div>',
-            unsafe_allow_html=True,
-        )
-        st.caption("Here's what's set up for you. Work down the list, or jump around — up to you.")
-        render_streak(db, student)
+        with st.container(border=True):
+            render_streak(db, student)
     with header_columns[1]:
-        render_fun_fact()
+        with st.container(border=True):
+            render_fun_fact()
 
     st.divider()
 

@@ -279,7 +279,7 @@ def css() -> str:
    Every themed surface: expanders, alerts, metric tiles. All four get the
    same treatment -- panel colour, texture, glow, and (mostly no-op) top
    bar -- so a theme only has to say what its containers look like once. */
-[data-testid="stVerticalBlockBorderWrapper"]:has(> div > [data-testid="stVerticalBlock"]) {{
+[data-testid="stLayoutWrapper"] > [data-testid="stVerticalBlock"] {{
   border-radius: var(--c-radius);
 }}
 
@@ -341,25 +341,21 @@ def css() -> str:
    container sits inside `st.columns()`, not just Home's own rows, since
    this is a layout rule, not a Home-specific fix -- new rows built this
    way get it for free without repeating the CSS. */
-[data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:has([data-testid="stVerticalBlockBorderWrapper"]) {{
+[data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:has([data-testid="stLayoutWrapper"]) {{
   display: flex;
 }}
-[data-testid="stColumn"] > [data-testid="stVerticalBlock"]:has(> [data-testid="stElementContainer"] > [data-testid="stVerticalBlockBorderWrapper"]) {{
+[data-testid="stColumn"] > [data-testid="stVerticalBlock"]:has(> [data-testid="stLayoutWrapper"]) {{
   display: flex;
   flex-direction: column;
+  flex: 1;
   width: 100%;
 }}
-[data-testid="stElementContainer"]:has(> [data-testid="stVerticalBlockBorderWrapper"]) {{
-  display: flex;
-  flex: 1;
-}}
-[data-testid="stVerticalBlockBorderWrapper"]:has(> div > [data-testid="stVerticalBlock"]) {{
+[data-testid="stColumn"] > [data-testid="stVerticalBlock"] > [data-testid="stLayoutWrapper"] {{
   display: flex;
   flex-direction: column;
   flex: 1;
 }}
-[data-testid="stVerticalBlockBorderWrapper"]:has(> div > [data-testid="stVerticalBlock"]) > div,
-[data-testid="stVerticalBlockBorderWrapper"]:has(> div > [data-testid="stVerticalBlock"]) > div > [data-testid="stVerticalBlock"] {{
+[data-testid="stColumn"] > [data-testid="stVerticalBlock"] > [data-testid="stLayoutWrapper"] > [data-testid="stVerticalBlock"] {{
   display: flex;
   flex-direction: column;
   flex: 1;
