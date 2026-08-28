@@ -697,6 +697,16 @@ His streak and the day's fun fact sit side by side in two small cards below
 the buttons, rather than each spanning the full page width, freeing up the
 space for the actual checklist underneath.
 
+The greeting and every card's title on this page (Lessons, Morning Routine,
+Check-In, ...) are deliberately plain, normal-case text rather than a real
+`#`-level heading. The fixed theme uppercases and bolds every literal heading
+site-wide (right for a page's one loud title elsewhere in the app), but Home
+now stacks half a dozen of these on screen at once, and the shouted version of
+all of them together read as noisy rather than lively. `compass.ui.
+render_card_heading` renders a plain styled line instead, once per card, so
+this is the one page in Compass whose section titles don't follow the global
+heading rule.
+
 **Today's lesson roster links out to each subject's own page rather than
 showing the lesson itself.** Home used to embed the whole thing — objectives,
 activities, quiz — inline for whichever subjects had something due, through

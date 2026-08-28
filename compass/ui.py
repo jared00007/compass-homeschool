@@ -2323,7 +2323,7 @@ def render_morning_routine(db: Database, student: dict[str, Any]) -> bool:
     default_key = logged["routine_key"] if logged else routine_for_date(today)[0]
     default_routine = catalog.get(default_key, MORNING_ROUTINES[0])
 
-    st.markdown("### 🧘 Morning Routine")
+    render_card_heading("🧘 Morning Routine")
     if logged:
         done_routine = catalog.get(logged["routine_key"])
         title = done_routine[1] if done_routine else logged["routine_key"]
@@ -3085,6 +3085,23 @@ def _render_first_day_contents(db: Database, student: dict[str, Any], year_start
 
 
 # --- small standalone banners ---------------------------------------------------
+
+
+def render_card_heading(text: str) -> None:
+    """A card-section heading that reads as a normal title, not a shout --
+    Home stacks several of these on screen at once (Lessons, Morning
+    Routine, Check-In, ...), and the fixed theme's global rule for every
+    literal `#`-heading (`.stApp h1-h4`, see theme.py) is bold, uppercase,
+    and letter-spaced -- right for a page's one real heading, wrong
+    repeated across half a dozen small cards on the same busy dashboard.
+    A plain styled div sidesteps that rule entirely, since it was never a
+    real `<h*>` element for the theme's selectors to catch.
+    """
+    st.markdown(
+        f'<div style="font-size:16px; font-weight:700; color:var(--c-text); '
+        f'margin-bottom:6px;">{text}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def render_fun_fact() -> None:

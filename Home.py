@@ -17,6 +17,7 @@ from compass.ui import (
     is_parent,
     md,
     page_setup,
+    render_card_heading,
     render_declaration_banner,
     render_first_day_celebration,
     render_friday_plan,
@@ -54,6 +55,22 @@ if not is_parent():
         ("upcoming", "🔜", "Upcoming Week"),
         ("grades", "🎓", "Grades"),
     )
+    # A Streamlit button's default padding is sized for one button standing
+    # alone, not four in a row acting as a nav bar -- slimmed down here,
+    # scoped to just these four keys, so it reads as a compact tab strip
+    # rather than four separate full-size buttons stacked side by side.
+    st.markdown(
+        """
+        <style>
+        div[class*="st-key-home_nav_"] button {
+          padding-top: 0.35rem;
+          padding-bottom: 0.35rem;
+          font-size: 14px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     active_view = st.session_state.get("home_view", "today")
     nav_columns = st.columns(4)
     for nav_column, (view_key, view_icon, view_label) in zip(nav_columns, _HOME_VIEWS):
@@ -80,7 +97,17 @@ if not is_parent():
     # streak don't need a whole banner's width each to read fine.
     header_columns = st.columns([2, 1, 1])
     with header_columns[0]:
-        st.title(f"Hi {md(student['name'].split()[0])} 👋")
+        # A plain styled div, not `st.title` -- the fixed theme reserves the
+        # loud, gold, all-caps h1 treatment for a page's one real title (see
+        # theme.py), and Landon said the giant shouted version of this
+        # looked bad next to everything else now packed onto Home. This
+        # sidesteps that global rule the same way render_card_heading does
+        # below, since it isn't a real `<h1>` for the theme's CSS to catch.
+        st.markdown(
+            f'<div style="font-size:30px; font-weight:700; color:var(--c-text); '
+            f'margin-bottom:2px;">Hi {md(student["name"].split()[0])} 👋</div>',
+            unsafe_allow_html=True,
+        )
         st.caption("Here's what's set up for you. Work down the list, or jump around — up to you.")
     with header_columns[1]:
         render_streak(db, student)
@@ -288,7 +315,7 @@ if not is_parent():
                         later_week += 1
 
         with st.container(border=True):
-            st.markdown(f"#### 📚 Lessons ({len(roster)})")
+            render_card_heading(f"📚 Lessons ({len(roster)})")
             if not roster:
                 st.caption(
                     "Nothing new is set up yet. Check back after your parent plans a lesson."
@@ -321,7 +348,7 @@ if not is_parent():
         with grid_columns[1]:
             with st.container(border=True):
                 checked_in = db.journal_entry_for_date(student["id"], today) is not None
-                st.markdown("#### 💬 Check-In")
+                render_card_heading("💬 Check-In")
                 if checked_in:
                     st.success("✅ You've checked in today.")
                 else:
@@ -340,7 +367,7 @@ if not is_parent():
         grid_columns_2 = st.columns(2)
         with grid_columns_2[0]:
             with st.container(border=True):
-                st.markdown("#### 🔤 Words to Review")
+                render_card_heading("🔤 Words to Review")
                 if due:
                     st.caption(f"{len(due)} word(s) due today.")
                     st.page_link("pages/3_English.py", label="Review them", icon="➡️")
@@ -348,7 +375,7 @@ if not is_parent():
                     st.success("✅ Nothing due today.")
         with grid_columns_2[1]:
             with st.container(border=True):
-                st.markdown("#### 📖 Reading")
+                render_card_heading("📖 Reading")
                 book = db.current_book(student["id"])
                 if book:
                     st.markdown(f"**{md(book['title'])}**")
@@ -361,7 +388,7 @@ if not is_parent():
                     st.caption("No book set up yet.")
 
         with st.container(border=True):
-            st.markdown("#### ⭐ Your Choice Topics")
+            render_card_heading("⭐ Your Choice Topics")
             topics = [
                 t
                 for t in db.list_choice_topics(student["id"])
