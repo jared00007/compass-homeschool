@@ -1111,7 +1111,9 @@ def test_unlocking_a_skill_flips_it_active(monkeypatch, db, student):
     locked = next(s for s in skills if s["title"] == "Lock down your privacy settings")
     assert locked["active"] == 0
 
-    render_catalog_manager(monkeypatch, db, skills, checkbox_pressed=f"ls_active_{locked['id']}")
+    render_catalog_manager(
+        monkeypatch, db, skills, checkbox_pressed=f"ls_active_{locked['id']}_{locked['active']}"
+    )
     updated = next(s for s in db.list_life_skills(student["id"]) if s["id"] == locked["id"])
     assert updated["active"] == 1
 
@@ -1122,7 +1124,9 @@ def test_relocking_an_active_skill_flips_it_back(monkeypatch, db, student):
     budget = next(s for s in skills if s["title"] == "Build and follow a monthly budget")
     assert budget["active"] == 1
 
-    render_catalog_manager(monkeypatch, db, skills, checkbox_pressed=f"ls_active_{budget['id']}")
+    render_catalog_manager(
+        monkeypatch, db, skills, checkbox_pressed=f"ls_active_{budget['id']}_{budget['active']}"
+    )
     updated = next(s for s in db.list_life_skills(student["id"]) if s["id"] == budget["id"])
     assert updated["active"] == 0
 

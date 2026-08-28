@@ -2487,12 +2487,18 @@ def render_life_skill_cards(db: Database, skills: list[dict[str, Any]], can_edit
                         if skill["materials"]
                         else ""
                     )
+                    assigned = (
+                        f'<div class="cp-ls-needs">📅 <b>Assigned:</b> {skill["scheduled_for"]}</div>'
+                        if skill["scheduled_for"] and not earned
+                        else ""
+                    )
                     st.markdown(
                         f'<div class="cp-ls-seal">{icon}</div>'
                         f'<div class="cp-ls-title">{html.escape(skill["title"])}</div>'
                         f'<div class="cp-ls-cat">{html.escape(category)}</div>'
                         f'<div class="cp-ls-story">{story}</div>'
-                        f"{needs}",
+                        f"{needs}"
+                        f"{assigned}",
                         unsafe_allow_html=True,
                     )
                     checked = st.checkbox(
@@ -2520,6 +2526,13 @@ def render_life_skill_catalog_manager(db: Database, skills: list[dict[str, Any]]
     even though the checklist shows it either way (see the `active OR
     completed_on` filter at the call site) -- re-locking a finished skill
     just stops it counting toward "what's next," it never hides the badge.
+
+    Each row also gets a date picker to assign the skill to a specific day
+    -- purely a due-date, layered on top of `active`/`completed_on` rather
+    than replacing either: a skill still needs unlocking to be visible at
+    all, and assigning a day just adds a "do this one on Wednesday" pin on
+    top of that. Left on "No specific day" (the default, and what every
+    skill starts as), nothing changes from before this existed.
     """
     by_category: dict[str, list[dict[str, Any]]] = {}
     for skill in skills:
@@ -2532,6 +2545,8 @@ def render_life_skill_catalog_manager(db: Database, skills: list[dict[str, Any]]
         st.subheader(category)
         for skill in items:
             status = "✅ earned" if skill["completed_on"] else ("🔓 unlocked" if skill["active"] else "🔒 locked")
+            if skill["scheduled_for"] and not skill["completed_on"]:
+                status += f" · 📅 assigned {skill['scheduled_for']}"
             with st.expander(f"{skill['title']} — {status}"):
                 columns = st.columns([5, 1])
                 if skill["description"]:
@@ -2541,11 +2556,43 @@ def render_life_skill_catalog_manager(db: Database, skills: list[dict[str, Any]]
                 columns[0].caption(f"Credits toward {subjects.label(skill['credit_subject'])}")
                 if skill["completed_on"]:
                     columns[0].caption(f"✅ Earned {skill['completed_on']}")
+                # Keyed on `skill["active"]` itself, not just the skill's id --
+                # `schedule_life_skill` below can flip `active` as a side
+                # effect of a *different* widget's write. A fixed key would
+                # keep this checkbox's old session_state value across that
+                # change (Streamlit ignores `value=` once a key already has
+                # state), read the now-stale value as a fresh user click on
+                # the next run, and write the lock straight back, silently
+                # undoing the unlock. Folding the current value into the key
+                # forces a brand-new widget -- freshly seeded from `value=`
+                # -- any time `active` changes for any reason at all.
                 active = columns[1].checkbox(
-                    "Unlocked", value=bool(skill["active"]), key=f"ls_active_{skill['id']}"
+                    "Unlocked",
+                    value=bool(skill["active"]),
+                    key=f"ls_active_{skill['id']}_{skill['active']}",
                 )
                 if active != bool(skill["active"]):
                     db.set_life_skill_active(skill["id"], active)
+                    st.rerun()
+
+                assign = columns[0].checkbox(
+                    "Assign this to a specific day",
+                    value=bool(skill["scheduled_for"]),
+                    key=f"ls_assign_toggle_{skill['id']}",
+                )
+                if assign:
+                    picked = columns[0].date_input(
+                        "Day",
+                        value=date.fromisoformat(skill["scheduled_for"])
+                        if skill["scheduled_for"]
+                        else date.today(),
+                        key=f"ls_assign_date_{skill['id']}",
+                    )
+                    if picked.isoformat() != skill["scheduled_for"]:
+                        db.schedule_life_skill(skill["id"], picked.isoformat())
+                        st.rerun()
+                elif skill["scheduled_for"]:
+                    db.schedule_life_skill(skill["id"], None)
                     st.rerun()
 
 

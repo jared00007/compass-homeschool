@@ -348,6 +348,23 @@ if not is_parent():
                     "**Upcoming Week**."
                 )
 
+        # 1b. Life skills assigned to a specific day -- only when there's
+        # actually one due, so a family that never assigns a day (the
+        # default) never sees this card at all. Includes anything assigned
+        # for today or earlier and still not done, same "never silently
+        # drops it" rule an unfinished lesson already gets.
+        due_skills = db.due_life_skills(student["id"], today)
+        if due_skills:
+            with st.container(border=True):
+                render_card_heading(f"🛠️ Life Skills ({len(due_skills)})")
+                for skill in due_skills:
+                    when = "today" if skill["scheduled_for"] == today else f"since {skill['scheduled_for']}"
+                    st.page_link(
+                        "pages/6_Life_Skills.py",
+                        label=f"{md(skill['title'])} — assigned {when}",
+                        icon="🛠️",
+                    )
+
         # 2 & 3. Morning routine and Check-In, side by side.
         grid_columns = st.columns(2)
         with grid_columns[0]:

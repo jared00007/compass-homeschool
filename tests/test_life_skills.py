@@ -8,12 +8,20 @@ land in the same compliance record either way.
 
 from __future__ import annotations
 
+from datetime import date
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import streamlit as st
+from streamlit.testing.v1 import AppTest
 
+from compass import auth, config
 from compass.agents import life_skills
 from compass.storage.db import Database
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+HOME_PATH = str(REPO_ROOT / "Home.py")
 
 
 @pytest.fixture()
@@ -221,3 +229,87 @@ def test_plans_do_not_reach_the_students_home_page(db, student, skill):
     lessons = db.list_lessons(student["id"], limit=25)
     visible = [l for l in lessons if l["agent"] != life_skills.AGENT_KEY]
     assert lessons and not visible
+
+
+# --- assigning a skill to a specific day, and Home's card for it ----------------
+
+
+def _open_home(monkeypatch, db_path):
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+    at = AppTest.from_file(HOME_PATH)
+    at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+    return at
+
+
+def test_a_skill_assigned_for_today_shows_up_on_home(monkeypatch, tmp_path):
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    skill_id = database.add_life_skill(s["id"], "Change a tire", "Vehicle")
+    database.schedule_life_skill(skill_id, date.today().isoformat())
+    database.close()
+
+    at = _open_home(monkeypatch, db_path)
+    text = " ".join(m.value for m in at.markdown)
+    assert "Life Skills (1)" in text
+    labels = [pl.label for pl in at.get("page_link")]
+    assert any("Change a tire" in label for label in labels)
+
+
+def test_scheduling_a_locked_skill_in_the_master_list_keeps_it_unlocked(monkeypatch, tmp_path):
+    """Regression: `schedule_life_skill`'s automatic unlock used to get
+    silently undone one rerun later. The "Unlocked" checkbox renders on the
+    same run that scheduling flips `active` to 1, but that checkbox's own
+    widget state was still the pre-scheduling `False` from before -- read as
+    a real user click on the *next* run, it wrote the lock straight back."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    skill_id = database.add_life_skill(s["id"], "Read a map", "Navigation")
+    # `add_life_skill` defaults to active=1 -- the bug this test pins down
+    # only fires for a skill that starts *locked*, so it has to be
+    # explicitly re-locked here rather than relying on that default.
+    database.set_life_skill_active(skill_id, False)
+    database.close()
+
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+    at = AppTest.from_file(HOME_PATH)
+    at.session_state["parent_unlocked"] = True
+    at.run(timeout=30)
+    at.switch_page(str(REPO_ROOT / "pages" / "6_Life_Skills.py"))
+    at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+
+    # The full 161-skill catalog auto-backfills onto any student who already
+    # has one life_skill row (see `_backfill_life_skill_catalog`), so every
+    # skill's "Assign this to a specific day" checkbox shares the same
+    # label -- only `key`, which embeds the skill id, picks out this one.
+    master_tab = [t for t in at.tabs if t.label == "Master list"][0]
+    assign = [c for c in master_tab.checkbox if c.key == f"ls_assign_toggle_{skill_id}"][0]
+    assign.set_value(True).run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    skill = next(row for row in database.list_life_skills(s["id"]) if row["id"] == skill_id)
+    database.close()
+    assert skill["scheduled_for"] is not None
+    assert skill["active"] == 1
+
+
+def test_home_shows_no_life_skills_card_when_nothing_is_assigned(monkeypatch, tmp_path):
+    """The default (no skill ever scheduled) has to look exactly like it did
+    before this feature existed."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    database.add_life_skill(s["id"], "Bake bread", "Cooking")  # never assigned a day
+    database.close()
+
+    at = _open_home(monkeypatch, db_path)
+    text = " ".join(m.value for m in at.markdown)
+    assert "Life Skills" not in text

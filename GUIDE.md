@@ -129,6 +129,19 @@ badge stays, only "what's still ahead of him" changes. For anything you add your
 outside the catalog, the "what you'll need" line is a plain text field on the *Add a
 skill* form.
 
+**You can also assign a skill to a specific day**, right from *Master list* — check
+"Assign this to a specific day" on any row and pick a date. Doing so also unlocks the
+skill automatically, since assigning it implies you want it visible and doable now, not
+still hidden in the catalog. From that point it shows up two places: a "📅 Assigned"
+line on its checklist card, and (once the day arrives) a small "🛠️ Life Skills" card on
+his Home page, right alongside Lessons — with a link straight to the checklist, not the
+skill embedded on Home itself. If he doesn't get to it that day, it keeps showing as due
+rather than quietly disappearing, the same "never silently drop it" rule an unfinished
+lesson already gets. Clearing the assigned date again doesn't re-lock the skill — taking
+away something already unlocked, just because its due-date got cleared, would be a
+surprising side effect. Leave a skill unassigned (the default, and where every skill
+starts) and nothing about it changes from before this existed — it's purely additive.
+
 There is no agent picking his next life skill, and there won't be. The four core
 agents exist because each answers something you genuinely can't answer off the top of
 your head — what he isn't ready for in a 50-skill chain, which era he's covered least,

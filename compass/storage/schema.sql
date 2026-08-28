@@ -309,6 +309,7 @@ CREATE TABLE IF NOT EXISTS life_skills (
     completed_on TEXT,
     notes        TEXT NOT NULL DEFAULT '',
     sort_order   INTEGER NOT NULL DEFAULT 0,
+    scheduled_for TEXT,  -- ISO date a parent assigned this skill to; NULL = do whenever
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

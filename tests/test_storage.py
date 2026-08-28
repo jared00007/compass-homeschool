@@ -684,6 +684,67 @@ def test_set_life_skill_active_toggles_visibility_without_touching_completion(db
     assert skill["completed_on"] is not None
 
 
+def test_scheduling_a_life_skill_makes_it_due_on_and_after_that_day(db, student):
+    skill_id = db.add_life_skill(student["id"], "Change a tire", "Vehicle")
+    db.schedule_life_skill(skill_id, "2026-08-24")
+    assert db.due_life_skills(student["id"], "2026-08-23") == []
+    assert [s["id"] for s in db.due_life_skills(student["id"], "2026-08-24")] == [skill_id]
+    assert [s["id"] for s in db.due_life_skills(student["id"], "2026-08-30")] == [skill_id]
+
+
+def test_scheduling_a_locked_skill_unlocks_it(db, student):
+    """Otherwise a skill could show as due on Home while linking to a
+    checklist page that hides it for being locked -- see
+    schedule_life_skill's docstring."""
+    skill_id = db.add_life_skill(student["id"], "Read a map", "Navigation")
+    db.set_life_skill_active(skill_id, False)
+    db.schedule_life_skill(skill_id, date.today().isoformat())
+    skill = next(s for s in db.list_life_skills(student["id"]) if s["id"] == skill_id)
+    assert skill["active"] == 1
+
+
+def test_relocking_an_assigned_skill_removes_it_from_due(db, student):
+    skill_id = db.add_life_skill(student["id"], "Sew a button", "Sewing")
+    today = date.today().isoformat()
+    db.schedule_life_skill(skill_id, today)
+    db.set_life_skill_active(skill_id, False)
+    assert db.due_life_skills(student["id"], today) == []
+
+
+def test_clearing_a_schedule_does_not_relock_the_skill(db, student):
+    skill_id = db.add_life_skill(student["id"], "Read a map", "Navigation")
+    db.set_life_skill_active(skill_id, False)
+    db.schedule_life_skill(skill_id, date.today().isoformat())
+    db.schedule_life_skill(skill_id, None)
+    skill = next(s for s in db.list_life_skills(student["id"]) if s["id"] == skill_id)
+    assert skill["active"] == 1
+
+
+def test_an_unscheduled_life_skill_never_shows_up_as_due(db, student):
+    """The default (no `scheduled_for`) has to keep behaving exactly like it
+    always did -- a family that never assigns a day shouldn't see anything
+    new show up anywhere."""
+    db.add_life_skill(student["id"], "Bake bread", "Cooking")
+    assert db.due_life_skills(student["id"], date.today().isoformat()) == []
+
+
+def test_completing_a_scheduled_life_skill_clears_it_from_due(db, student):
+    skill_id = db.add_life_skill(student["id"], "Balance a checkbook", "Budgeting")
+    today = date.today().isoformat()
+    db.schedule_life_skill(skill_id, today)
+    assert len(db.due_life_skills(student["id"], today)) == 1
+    db.set_life_skill_done(skill_id, True)
+    assert db.due_life_skills(student["id"], today) == []
+
+
+def test_clearing_a_skills_schedule_removes_it_from_due(db, student):
+    skill_id = db.add_life_skill(student["id"], "Write a resume", "Work")
+    today = date.today().isoformat()
+    db.schedule_life_skill(skill_id, today)
+    db.schedule_life_skill(skill_id, None)
+    assert db.due_life_skills(student["id"], today) == []
+
+
 def test_a_database_created_before_the_materials_column_gets_migrated(tmp_path):
     """`materials` shipped after some real databases already existed. Since
     `CREATE TABLE IF NOT EXISTS` only ever fires on a table's first creation,
@@ -710,7 +771,9 @@ def test_a_database_created_before_the_materials_column_gets_migrated(tmp_path):
     try:
         skill = migrated.conn.execute("SELECT * FROM life_skills").fetchone()
         assert skill["materials"] == ""
+        assert skill["scheduled_for"] is None
         migrated.set_life_skill_done(skill["id"], True)
+        migrated.schedule_life_skill(skill["id"], "2026-08-24")
     finally:
         migrated.close()
 

@@ -1354,6 +1354,7 @@ class Database:
         # `materials`/`active` columns, so they need adding here instead.
         self._ensure_column("life_skills", "materials", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("life_skills", "active", "INTEGER NOT NULL DEFAULT 1")
+        self._ensure_column("life_skills", "scheduled_for", "TEXT")
         self._ensure_column("project_steps", "min_days", "INTEGER NOT NULL DEFAULT 1")
         self._ensure_column("project_steps", "max_days", "INTEGER NOT NULL DEFAULT 1")
         self._ensure_column("big_projects", "shelved", "INTEGER NOT NULL DEFAULT 0")
@@ -3133,6 +3134,49 @@ class Database:
             "UPDATE life_skills SET active = ? WHERE id = ?", (int(active), skill_id)
         )
         self.conn.commit()
+
+    def schedule_life_skill(self, skill_id: int, scheduled_for: str | None) -> None:
+        """Assigns (or clears, with `None`) the specific day a parent picked
+        for this skill. Assigning a date also unlocks the skill (`active =
+        1`) -- a still-locked skill is invisible on the checklist itself
+        (see render_life_skill_cards' `active OR completed_on` filter), so
+        without this a skill could show up as "due" on Home while linking to
+        a checklist page that doesn't display it at all. Clearing the date
+        (`None`) deliberately does *not* re-lock it -- taking away an
+        already-unlocked skill just because its due-date got cleared would
+        be a surprising side effect, same reasoning as `set_life_skill_active`
+        never touching `completed_on`. An unscheduled skill otherwise keeps
+        working exactly as it always has, available whenever, so a family
+        that never touches this stays on the old behavior."""
+        if scheduled_for:
+            self.conn.execute(
+                "UPDATE life_skills SET scheduled_for = ?, active = 1 WHERE id = ?",
+                (scheduled_for, skill_id),
+            )
+        else:
+            self.conn.execute(
+                "UPDATE life_skills SET scheduled_for = ? WHERE id = ?",
+                (scheduled_for, skill_id),
+            )
+        self.conn.commit()
+
+    def due_life_skills(self, student_id: int, today: str) -> list[dict[str, Any]]:
+        """Assigned skills that still need doing: scheduled for today or
+        earlier, not yet completed, and still unlocked. Deliberately not
+        just `= today` -- see `schedule_life_skill`'s docstring on this
+        feature never silently dropping an assignment he missed, the same
+        way an unfinished lesson never just vanishes off Home either. The
+        `active` check is belt-and-suspenders against a parent re-locking an
+        already-scheduled skill by hand afterward -- without it, Home could
+        still point at a skill the checklist page itself won't show."""
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM life_skills WHERE student_id = ? AND scheduled_for IS NOT NULL "
+                "AND scheduled_for <= ? AND completed_on IS NULL AND active = 1 "
+                "ORDER BY scheduled_for, sort_order, id",
+                (student_id, today),
+            )
+        )
 
     def delete_life_skill(self, skill_id: int) -> None:
         self.conn.execute("DELETE FROM life_skills WHERE id = ?", (skill_id,))

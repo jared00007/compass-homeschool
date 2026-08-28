@@ -342,7 +342,7 @@ compass/
   theme.py                   the one fixed theme and the CSS that applies it
   fun_facts.py               fact-of-the-day for the student home view
   national_parks.py          the 63 parks + real state borders for Landon's Travels
-tests/                       876 tests, no API key required
+tests/                       886 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 scripts/new_school_year_reset.py  wipe a finished school year's data, see below
 ```
@@ -745,6 +745,42 @@ buttons elsewhere, instead of the flat tint Streamlit's default sidebar nav uses
 Approved as one paragraph in chat ("good to go") once he'd seen the mockup match
 what he'd asked for — see the Layout section above and `GUIDE.md`'s student-view
 section for what the page looks like now.
+
+## Assigning a life skill to a specific day
+
+Life skills were previously either "unlocked" (visible on the checklist, any order,
+done whenever) or not — no concept of a due date at all. A parent asked to be able to
+pin a skill to a specific day, the same way a lesson gets a `planned_for`.
+
+`life_skills.scheduled_for` (a nullable ISO date, `Database.schedule_life_skill` sets or
+clears it) is that pin. Setting one also flips `active = 1` in the same call —
+deliberately, not left as a separate step: a still-locked skill is invisible on the
+checklist itself (`render_life_skill_cards`'s `active OR completed_on` filter), so
+without this, a skill could show as "due" on Home while linking to a page that hides it
+entirely. Clearing the date back to `None` does *not* re-lock it, on purpose — taking
+away an already-unlocked skill as a side effect of clearing its due-date would be a
+surprising thing to have happen. `Database.due_life_skills(student_id, today)` is what
+Home reads: scheduled for today or earlier, not completed, still active — the `<=` and
+not `==` is the same "never silently drop a miss" rule the streak and lessons already
+follow, and the `active` check is belt-and-suspenders against a parent re-locking a
+scheduled skill by hand afterward.
+
+**A real bug worth noting, found only by testing this live in a browser rather than
+trusting the unit tests alone**: assigning a day to a locked skill in *Master list*
+correctly wrote `active = 1` to the database, but the very next rerun silently wrote the
+lock straight back. The "Unlocked" checkbox on that same row renders every pass with
+`key=f"ls_active_{id}"` — a fixed key means Streamlit ignores `value=` after the widget's
+first mount and keeps serving its old session-state value instead. That old value (still
+`False`, from before the skill got scheduled) disagreed with the freshly-read `active=1`
+on the next run, and the code's own "did the user just click this?" check —
+`if active != bool(skill["active"])` — read that disagreement as a real click and wrote
+the lock right back. Fixed by folding the current value into the key itself
+(`f"ls_active_{id}_{skill['active']}"`), which forces Streamlit to treat it as a brand
+new widget — freshly seeded from `value=` — every time `active` changes for *any* reason,
+not just a click on that exact checkbox. `tests/test_life_skills.py::
+test_scheduling_a_locked_skill_in_the_master_list_keeps_it_unlocked` pins this down
+directly; confirmed it actually fails without the fix (reverted, one assertion turned
+`assert 1 == 0`, then restored).
 
 ## Grades
 
@@ -1163,7 +1199,7 @@ make.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 876 tests, ~54s, no API key needed
+python -m pytest tests/ -q      # 886 tests, ~55s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the
