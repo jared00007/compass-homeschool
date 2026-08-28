@@ -680,10 +680,10 @@ day 6 of the same streak — he called it out as lame, and it was: a superlative
 that fires constantly stops meaning anything.
 
 Ordinary days now read as a plain count — `"🔥 4 school days in a row"`, with
-`· best: N` appended only when the current run hasn't caught up to a past one —
-and a `st.progress` bar toward the next milestone (`_STREAK_MILESTONES = (3, 5,
-10, 20, 30, 50)`). Landing on one of those numbers swaps that line for a small
-comic-style callout instead — same printed-poster palette (`theming.
+`· best: N` appended only when the current run hasn't caught up to a past one.
+Landing on a milestone (`_STREAK_MILESTONES = (3, 5, 10, 20, 30, 50)`) swaps
+that line for a small comic-style callout instead — same printed-poster
+palette (`theming.
 PRINTED_COMIC_INK`/`_PAPER`/`_WEEKDAY_COLORS`) as the Week grid and the
 first-day cover, a bordered card with a hard offset shadow and a slight tilt,
 picked over balloons/snow after sampling a few directions since it's the one

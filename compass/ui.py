@@ -2248,13 +2248,6 @@ def render_streak(db: Database, student: dict[str, Any]) -> None:
             line += "  \nFinish something today to keep it alive."
         st.success(line)
 
-    next_milestone = next((m for m in _STREAK_MILESTONES if m > streak), None)
-    if next_milestone:
-        st.progress(
-            streak / next_milestone,
-            text=f"{next_milestone - streak} more to reach {next_milestone}",
-        )
-
 
 def render_today_checklist(db: Database, student: dict[str, Any]) -> bool:
     """His own "what I did today" list -- a fun accomplishment checklist, not

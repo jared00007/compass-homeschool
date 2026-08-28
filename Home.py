@@ -92,10 +92,14 @@ if not is_parent():
                 st.session_state["home_view"] = view_key
                 st.rerun()
 
-    # Compact header: greeting, streak, and fun fact side by side rather than
-    # each spanning the full page width -- two sentences and a one-line
-    # streak don't need a whole banner's width each to read fine.
-    header_columns = st.columns([2, 1, 1])
+    # Compact header: greeting beside a narrow column holding streak and fun
+    # fact stacked on top of each other -- side by side by side made the
+    # streak and fact cards read as three competing banners in one row;
+    # stacking the two small ones under each other reads as one card group
+    # instead, and the streak's own milestone callout (comic-styled, wider
+    # than the ordinary one-line version) has more of that column's width to
+    # work with than a three-way split gave it.
+    header_columns = st.columns([2, 1])
     with header_columns[0]:
         # A plain styled div, not `st.title` -- the fixed theme reserves the
         # loud, gold, all-caps h1 treatment for a page's one real title (see
@@ -111,7 +115,6 @@ if not is_parent():
         st.caption("Here's what's set up for you. Work down the list, or jump around — up to you.")
     with header_columns[1]:
         render_streak(db, student)
-    with header_columns[2]:
         render_fun_fact()
 
     st.divider()
@@ -328,7 +331,12 @@ if not is_parent():
                         st.page_link(
                             page_path, label=f"{md(title)} — {subject_label}", icon=marker
                         )
-                st.caption("✅ approved · 📤 waiting on a parent · ↩️ sent back · ⬜ not turned in yet")
+                st.caption(
+                    "✅ approved  \n"
+                    "📤 waiting on a parent  \n"
+                    "↩️ sent back  \n"
+                    "⬜ not turned in yet"
+                )
             if later_this_week:
                 st.caption(
                     f"{later_this_week} more lesson(s) planned for later this week — "
