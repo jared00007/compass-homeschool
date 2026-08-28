@@ -1372,6 +1372,7 @@ class Database:
         self._ensure_column("travel_entries", "revision_note", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("travel_entries", "parent_feedback", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("travel_entries", "feedback_read_at", "TEXT")
+        self._ensure_column("travel_entries", "feedback_reply", "TEXT NOT NULL DEFAULT ''")
         self._backfill_life_skill_content()
         self._backfill_life_skill_catalog()
         self._migrate_park_visits_to_travel_entries()
@@ -2929,7 +2930,7 @@ class Database:
         # from before an entry was ever approved.
         self.conn.execute(
             "UPDATE travel_entries SET status = 'completed', parent_feedback = ?, "
-            "feedback_read_at = NULL WHERE id = ?",
+            "feedback_read_at = NULL, feedback_reply = '' WHERE id = ?",
             (feedback, entry_id),
         )
         self.conn.commit()
@@ -2951,17 +2952,27 @@ class Database:
             return
         if entry["parent_feedback"] == feedback:
             return
+        # His old reply was about the old text -- clearing it along with
+        # feedback_read_at, not just the read timestamp, so a parent never
+        # sees a reply sitting next to feedback it doesn't actually match.
         self.conn.execute(
-            "UPDATE travel_entries SET parent_feedback = ?, feedback_read_at = NULL "
-            "WHERE id = ?",
+            "UPDATE travel_entries SET parent_feedback = ?, feedback_read_at = NULL, "
+            "feedback_reply = '' WHERE id = ?",
             (feedback, entry_id),
         )
         self.conn.commit()
 
-    def mark_travel_feedback_read(self, entry_id: int) -> None:
+    def mark_travel_feedback_read(self, entry_id: int, reply: str) -> None:
+        """A click alone isn't evidence he read anything -- `reply` is his
+        own take on something specific from the feedback, required (see
+        config.TRAVEL_JOURNAL_FEEDBACK_REPLY_MIN_WORDS -- enforced by the
+        caller, same "downgrade, don't block" pattern the story's word
+        count uses) so a parent has something real to judge rather than a
+        bare timestamp. Stored alongside feedback_read_at so it shows up
+        right next to the "he read this" badge."""
         self.conn.execute(
-            "UPDATE travel_entries SET feedback_read_at = ? WHERE id = ?",
-            (datetime.now().isoformat(timespec="seconds"), entry_id),
+            "UPDATE travel_entries SET feedback_read_at = ?, feedback_reply = ? WHERE id = ?",
+            (datetime.now().isoformat(timespec="seconds"), reply, entry_id),
         )
         self.conn.commit()
 
@@ -2975,6 +2986,21 @@ class Database:
                 "AND parent_feedback != '' AND feedback_read_at IS NULL "
                 "ORDER BY id DESC",
                 (student_id,),
+            )
+        )
+
+    def travel_feedback_read_today(self, student_id: int, today: str) -> list[dict[str, Any]]:
+        """Feedback he acknowledged today -- lets Home show a ✅ for it
+        (same "stays on the roster today, then drops off" pattern the
+        Lessons card uses via weekly.today_subject_status) instead of the
+        item just silently vanishing the instant he replies, with no
+        confirmation it actually went through."""
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM travel_entries WHERE student_id = ? AND status = 'completed' "
+                "AND parent_feedback != '' AND substr(feedback_read_at, 1, 10) = ? "
+                "ORDER BY id DESC",
+                (student_id, today),
             )
         )
 

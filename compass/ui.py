@@ -2190,6 +2190,37 @@ div[class*="st-key-streak_milestone_burst"]::before {{
 """
 
 
+def render_travel_feedback_reply_form(
+    db: Database, entry: dict[str, Any], *, key_prefix: str
+) -> None:
+    """The gate for marking Travel Journal feedback read -- a parent asked
+    directly how a bare "I read this" button proves anything, since he
+    could click it without reading a word. Requires a short reply in his
+    own words about something specific from the feedback first: not proof
+    he understood it, but proof he was actually looking at it, and it
+    gives a parent something real to read and judge for themselves rather
+    than a bare timestamp. Shared between Home's "Feedback to read" card
+    and the entry's own card on the journal page -- both need identical
+    validation, so `key_prefix` just keeps their widget keys apart."""
+    with st.form(f"{key_prefix}_feedback_reply_{entry['id']}"):
+        reply = st.text_input(
+            "What's one thing from this feedback? (in your own words)",
+            key=f"{key_prefix}_feedback_reply_input_{entry['id']}",
+            placeholder="e.g. Use commas when I list things",
+        )
+        if st.form_submit_button("✅ I read this"):
+            word_count = len(reply.split())
+            if word_count < config.TRAVEL_JOURNAL_FEEDBACK_REPLY_MIN_WORDS:
+                st.warning(
+                    f"Say a little more -- needs at least "
+                    f"{config.TRAVEL_JOURNAL_FEEDBACK_REPLY_MIN_WORDS} words about "
+                    f"something specific ({word_count} so far)."
+                )
+            else:
+                db.mark_travel_feedback_read(entry["id"], reply.strip())
+                st.rerun()
+
+
 def render_streak(db: Database, student: dict[str, Any]) -> None:
     """His run of school days in a row. Student-facing, on Home.
 

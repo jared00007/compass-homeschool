@@ -71,6 +71,11 @@ TRAVEL_JOURNAL_MIN_STORY_WORDS = 60
 # pick" -- he chooses the destinations himself, one stub per trip.
 TRAVEL_JOURNAL_MAX_OPEN_PICKS = 5
 
+# A click alone doesn't prove he read the feedback -- he has to reply with
+# something specific from it first. Short (this isn't the story), but long
+# enough to rule out a one-word dodge like "ok" or "k".
+TRAVEL_JOURNAL_FEEDBACK_REPLY_MIN_WORDS = 4
+
 # --- Family policy defaults (editable in Settings) ---------------------------
 
 DEFAULT_SETTINGS: dict[str, str] = {

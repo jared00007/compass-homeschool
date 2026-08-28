@@ -463,24 +463,30 @@ if not is_parent():
         # 2c. Feedback he hasn't acknowledged yet -- separate from the due
         # card above, since this isn't about writing anything, it's about
         # actually reading what a parent already said about a trip he
-        # already turned in. An explicit "I read this" click is the whole
-        # point: a page view proves nothing, but a click he chose to make
-        # is a real, checkable signal a parent can see on the entry itself.
+        # already turned in. Home only tees this up -- a link out to where
+        # the feedback and the read/reply gate actually live (same "the
+        # roster is links out, not embedded content" shape as the Lessons
+        # card above) -- reading and replying both happen on the journal
+        # page. Once he does, it doesn't just vanish: it stays on today's
+        # roster with a ✅ instead of a 📬, exactly how a lesson approved
+        # today still shows here rather than disappearing the instant it's
+        # done (see weekly.today_subject_status) -- a real confirmation
+        # it went through, not just an assumption.
         unread_feedback = db.unread_travel_feedback(student["id"])
-        if unread_feedback:
+        read_today_feedback = db.travel_feedback_read_today(student["id"], today)
+        feedback_roster = [(e, "📬") for e in unread_feedback] + [
+            (e, "✅") for e in read_today_feedback
+        ]
+        if feedback_roster:
             with st.container(border=True):
-                render_card_heading(f"💬 Feedback to read ({len(unread_feedback)})")
-                for entry in unread_feedback:
+                render_card_heading(f"💬 Feedback ({len(unread_feedback)})")
+                for entry, marker in feedback_roster:
                     st.page_link(
                         "pages/9_Landons_Travels.py",
                         label=md(entry["title"] or entry["state"] or "Untitled trip"),
-                        icon="📬",
+                        icon=marker,
                     )
-                    if st.button(
-                        "✅ I read this", key=f"home_mark_feedback_read_{entry['id']}"
-                    ):
-                        db.mark_travel_feedback_read(entry["id"])
-                        st.rerun()
+                st.caption("📬 waiting on you to read  \n✅ read today")
 
         # 3. Words to Review, Reading, Life Skills, and Choice Topics all in
         # one row of four equal columns -- four small, single-purpose tiles

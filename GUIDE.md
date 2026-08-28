@@ -229,12 +229,19 @@ the approved entry's card, formatted properly, not flattened into one line. If
 you need to fix or reword feedback after the fact, open the entry and hit Edit —
 there's a matching box there too, and saving it replaces what he currently sees.
 
-Any entry with unread feedback shows up on his Home page under **💬 Feedback to
-read**, with a link to the trip and an **✅ I read this** button — that's the
-only thing that clears it. A page view doesn't count; he has to actually click
-it, so it's a real signal, not a guess. You can see whether (and when) he's
-acknowledged it right on the entry itself — "✅ Read 2026-08-28" once he has,
-"📬 Not read yet" until he does.
+Any entry with unread feedback shows up on his Home page under **💬 Feedback**,
+same as the Lessons roster right above it — a link out to the trip, not the
+feedback itself embedded there, so he actually opens the entry and reads it in
+context rather than reacting to a summary. Once he's there, clearing it takes
+more than a click: he has to answer "What's one thing from this feedback? (in
+your own words)" with at least a few words about something specific before
+**✅ I read this** does anything — a bare click, or a one-word "ok," isn't proof
+he read a word of it. You get to see exactly what he said, right on the entry:
+"✅ Read 2026-08-28 — he said: ..." with his reply quoted underneath, versus
+"📬 Not read yet." And it doesn't just vanish from Home the moment he answers —
+it stays on today's list with a ✅ next to it instead of a 📬, so there's a
+visible confirmation it went through, the same way an approved lesson still
+shows up (checked off) rather than disappearing the instant it's done.
 
 ---
 

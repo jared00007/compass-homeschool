@@ -313,7 +313,10 @@ def test_approving_with_no_feedback_leaves_it_blank(monkeypatch, tmp_path):
 # --- Whether he's actually read the feedback -----------------------------------
 
 
-def test_unread_feedback_shows_on_home_with_a_mark_read_button(monkeypatch, tmp_path):
+def test_unread_feedback_shows_on_home_as_a_link_out(monkeypatch, tmp_path):
+    """Home only tees this up -- a link to the journal page, same shape as
+    the Lessons roster above it. Reading and replying happen there, not
+    inline on Home."""
     db_path = tmp_path / "home.db"
     database = Database(db_path)
     s = database.ensure_default_student()
@@ -327,25 +330,45 @@ def test_unread_feedback_shows_on_home_with_a_mark_read_button(monkeypatch, tmp_
 
     at = _open_home(monkeypatch, db_path)
     text = " ".join(m.value for m in at.markdown)
-    assert "Feedback to read (1)" in text
+    assert "💬 Feedback (1)" in text
     labels = [pl.label for pl in at.get("page_link")]
     assert any("Grand Canyon" in label for label in labels)
+    # No reply form here -- he'd be answering blind with nothing to reply
+    # to on screen. That only lives on the journal page.
+    assert not any(
+        w.label == "What's one thing from this feedback? (in your own words)"
+        for w in at.text_input
+    )
 
-    mark_read = [b for b in at.button if b.key == f"home_mark_feedback_read_{entry_id}"][0]
-    mark_read.click().run()
-    assert not at.exception, [e.message for e in at.exception]
 
+def test_home_shows_a_checkmark_for_feedback_read_today_instead_of_vanishing(
+    monkeypatch, tmp_path
+):
+    """Same pattern the Lessons roster already uses -- something completed
+    today stays visible with a done marker rather than just disappearing,
+    so there's a real, visible confirmation the reply went through."""
+    db_path = tmp_path / "home.db"
     database = Database(db_path)
-    entry = database.list_travel_entries(s["id"])[0]
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    entry_id = database.add_travel_entry(
+        s["id"], "Arizona", "2025-06-10", title="Grand Canyon",
+        story="We hiked to the rim.", status="submitted",
+    )
+    database.approve_travel_entry(entry_id, "Great detail about the hike!")
+    database.mark_travel_feedback_read(entry_id, "I need to use commas when I list things.")
     database.close()
-    assert entry["feedback_read_at"] is not None
 
     at = _open_home(monkeypatch, db_path)
     text = " ".join(m.value for m in at.markdown)
-    assert "Feedback to read" not in text
+    # The count in the heading is what's still outstanding -- zero here --
+    # but the entry itself still shows, just with a done marker.
+    assert "💬 Feedback (0)" in text
+    labels = [pl.label for pl in at.get("page_link")]
+    assert any("Grand Canyon" in label for label in labels)
 
 
-def test_home_shows_no_feedback_card_when_nothing_is_unread(monkeypatch, tmp_path):
+def test_home_shows_no_feedback_card_when_nothing_is_relevant(monkeypatch, tmp_path):
     db_path = tmp_path / "home.db"
     database = Database(db_path)
     s = database.ensure_default_student()
@@ -358,7 +381,7 @@ def test_home_shows_no_feedback_card_when_nothing_is_unread(monkeypatch, tmp_pat
 
     at = _open_home(monkeypatch, db_path)
     text = " ".join(m.value for m in at.markdown)
-    assert "Feedback to read" not in text
+    assert "💬 Feedback (" not in text
 
 
 def test_marking_feedback_read_from_the_travels_page(monkeypatch, tmp_path):
@@ -378,7 +401,12 @@ def test_marking_feedback_read_from_the_travels_page(monkeypatch, tmp_path):
     captions = [c.value for c in tab.caption]
     assert any("Not read yet" in c for c in captions)
 
-    mark_read = [b for b in tab.button if b.key == f"mark_feedback_read_{entry_id}"][0]
+    reply_input = [
+        w for w in tab.text_input
+        if w.label == "What's one thing from this feedback? (in your own words)"
+    ][0]
+    reply_input.set_value("I need to use commas when I list things.")
+    mark_read = [b for b in tab.button if b.label == "✅ I read this"][0]
     mark_read.click().run()
     assert not at.exception, [e.message for e in at.exception]
 
@@ -386,6 +414,39 @@ def test_marking_feedback_read_from_the_travels_page(monkeypatch, tmp_path):
     entry = database.list_travel_entries(s["id"])[0]
     database.close()
     assert entry["feedback_read_at"] is not None
+    assert entry["feedback_reply"] == "I need to use commas when I list things."
+
+
+def test_a_too_short_reply_on_the_travels_page_does_not_mark_it_read(monkeypatch, tmp_path):
+    """A click alone can't prove he read anything -- and neither can a
+    one-word reply typed without looking."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    entry_id = database.add_travel_entry(
+        s["id"], "Arizona", "2025-06-10", title="Grand Canyon",
+        story="We hiked to the rim.", status="submitted",
+    )
+    database.approve_travel_entry(entry_id, "Great detail about the hike!")
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=False)
+    tab = _journal_tab(at)
+    reply_input = [
+        w for w in tab.text_input
+        if w.label == "What's one thing from this feedback? (in your own words)"
+    ][0]
+    reply_input.set_value("ok")
+    mark_read = [b for b in tab.button if b.label == "✅ I read this"][0]
+    mark_read.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+    assert any("Say a little more" in w.value for w in at.warning)
+
+    database = Database(db_path)
+    entry = database.list_travel_entries(s["id"])[0]
+    database.close()
+    assert entry["feedback_read_at"] is None
 
 
 def test_editing_a_completed_entry_can_fix_its_feedback(monkeypatch, tmp_path):

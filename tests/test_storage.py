@@ -674,9 +674,10 @@ def test_marking_feedback_read_clears_it_from_unread(db, student):
         story="We watched Old Faithful erupt.", status="submitted",
     )
     db.approve_travel_entry(entry_id, "Great detail about the geyser!")
-    db.mark_travel_feedback_read(entry_id)
+    db.mark_travel_feedback_read(entry_id, "I need to use commas in lists.")
     entry = db.list_travel_entries(student["id"])[0]
     assert entry["feedback_read_at"] is not None
+    assert entry["feedback_reply"] == "I need to use commas in lists."
     assert db.unread_travel_feedback(student["id"]) == []
 
 
@@ -697,13 +698,15 @@ def test_set_travel_entry_feedback_marks_it_unread_again_when_changed(db, studen
         story="We watched Old Faithful erupt.", status="submitted",
     )
     db.approve_travel_entry(entry_id, "flattened one line version")
-    db.mark_travel_feedback_read(entry_id)
+    db.mark_travel_feedback_read(entry_id, "I need to use commas in lists.")
     assert db.unread_travel_feedback(student["id"]) == []
 
     db.set_travel_entry_feedback(entry_id, "Line one.\n\nLine two, fixed.")
     entry = db.list_travel_entries(student["id"])[0]
     assert entry["parent_feedback"] == "Line one.\n\nLine two, fixed."
     assert entry["feedback_read_at"] is None
+    # His old reply was about the old text -- clearing along with read state.
+    assert entry["feedback_reply"] == ""
     assert [e["id"] for e in db.unread_travel_feedback(student["id"])] == [entry_id]
 
 
@@ -715,7 +718,7 @@ def test_set_travel_entry_feedback_leaves_read_state_alone_when_unchanged(db, st
         story="We watched Old Faithful erupt.", status="submitted",
     )
     db.approve_travel_entry(entry_id, "Great detail!")
-    db.mark_travel_feedback_read(entry_id)
+    db.mark_travel_feedback_read(entry_id, "I need to use commas in lists.")
 
     db.set_travel_entry_feedback(entry_id, "Great detail!")
     entry = db.list_travel_entries(student["id"])[0]

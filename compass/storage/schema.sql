@@ -364,6 +364,7 @@ CREATE TABLE IF NOT EXISTS travel_entries (
     revision_note TEXT NOT NULL DEFAULT '',  -- parent's note when sending an entry back
     parent_feedback TEXT NOT NULL DEFAULT '',  -- parent's note when approving -- praise, not a fix request
     feedback_read_at TEXT,  -- when he acknowledged parent_feedback; NULL = not yet (or nothing to read)
+    feedback_reply TEXT NOT NULL DEFAULT '',  -- his own words on it, required to mark it read
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

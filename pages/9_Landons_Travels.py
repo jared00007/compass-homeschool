@@ -26,7 +26,7 @@ from compass import config
 from compass import national_parks as parks
 from compass import theme as theming
 from compass.export import travel_journal_filename, travel_journal_to_docx
-from compass.ui import is_parent, md, page_setup
+from compass.ui import is_parent, md, page_setup, render_travel_feedback_reply_form
 
 db, student = page_setup("Landon's Travels", icon="🧭")
 
@@ -186,12 +186,11 @@ def _render_entry(entry: dict) -> None:
             st.markdown("💬 **Feedback from your parent**")
             st.markdown(md(entry["parent_feedback"]))
             if entry["feedback_read_at"]:
-                st.caption(f"✅ Read {entry['feedback_read_at'][:10]}")
+                st.caption(f"✅ Read {entry['feedback_read_at'][:10]} — he said:")
+                st.markdown(f"> {md(entry['feedback_reply'])}")
             else:
                 st.caption("📬 Not read yet")
-                if st.button("✅ I read this", key=f"mark_feedback_read_{entry['id']}"):
-                    db.mark_travel_feedback_read(entry["id"])
-                    st.rerun()
+                render_travel_feedback_reply_form(db, entry, key_prefix="travels")
 
     # Writing it up (a parent-assigned stub) or revising it (sent back) is
     # every family member's to do, not just a parent's -- shown before the

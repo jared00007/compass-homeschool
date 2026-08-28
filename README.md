@@ -886,17 +886,40 @@ already-lost formatting.
 
 A `feedback_read_at` column (nullable ISO timestamp) tracks whether he's actually
 acknowledged it -- explicitly, not by inference. `approve_travel_entry` and
-`set_travel_entry_feedback` both reset it to `NULL` whenever the feedback text
-actually changes (comparing old vs. new inside `set_travel_entry_feedback`, so
-re-saving the rest of an edit without touching feedback doesn't re-flag something
-already read). `Database.unread_travel_feedback(student_id)` is what Home's new
-"💬 Feedback to read" card queries -- entries that are `completed`, have non-blank
-`parent_feedback`, and `feedback_read_at IS NULL`. The only thing that clears it is
-`Database.mark_travel_feedback_read(entry_id)`, fired by an explicit "✅ I read this"
-button on that Home card and on the entry's own card on the journal page -- a page
-view proves nothing, but a click he chose to make is a real, checkable signal, and a
-parent can see it too: the entry shows "✅ Read {date}" once he has, "📬 Not read yet"
-until he does.
+`set_travel_entry_feedback` both reset it (and `feedback_reply`, below) to
+`NULL`/`''` whenever the feedback text actually changes (comparing old vs. new
+inside `set_travel_entry_feedback`, so re-saving the rest of an edit without
+touching feedback doesn't re-flag something already read).
+`Database.unread_travel_feedback(student_id)` is what Home's "💬 Feedback" card
+queries for its 📬 entries -- `completed`, non-blank `parent_feedback`,
+`feedback_read_at IS NULL`.
+
+**Home tees it up; reading and replying both happen on the journal page.**
+Raised directly: showing the feedback text itself (or a reply form) on Home
+would let him answer a reply prompt with nothing to actually reply *to* on
+screen -- exactly backwards from what the gate exists to prevent. So Home's
+card is a roster of *links* (`st.page_link`), same shape as the Lessons roster
+right above it, never the content. `Database.travel_feedback_read_today(student_id, today)`
+is the other half of that roster: entries whose `feedback_read_at` falls on
+today, shown with a ✅ instead of a 📬 -- mirrors `weekly.today_subject_status`
+keeping an approved-today lesson on the roster rather than dropping it the
+instant it's done, so replying doesn't just make the item silently vanish
+with no visible confirmation it went through. Read on any other day, it drops
+off Home entirely; the entry itself is the permanent record.
+
+**A bare click isn't proof he read anything -- asked directly, and a fair point.**
+The only thing that clears it is `Database.mark_travel_feedback_read(entry_id, reply)`,
+and `reply` is required: `compass.ui.render_travel_feedback_reply_form` -- used only
+on the entry's own card on the journal page, right where the feedback text is
+actually visible -- gates it behind a short `st.text_input` -- "What's one thing
+from this feedback? (in your own words)" -- checked against
+`config.TRAVEL_JOURNAL_FEEDBACK_REPLY_MIN_WORDS` (4) before the click does
+anything; short of that it just re-shows the form with a warning, same
+"downgrade, don't block" instinct the story's own word-count gate uses. Not proof
+of comprehension, but proof he was actually looking at it rather than reflexively
+clicking a button -- and it gives a parent something concrete to read and judge
+for themselves: the entry shows "✅ Read {date} — he said:" with his reply quoted
+underneath once he's answered, "📬 Not read yet" until he does.
 
 ## Balanced card rows: a global CSS rule, not a Home-specific fix
 
