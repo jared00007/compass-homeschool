@@ -1371,6 +1371,7 @@ class Database:
         self._ensure_column("travel_entries", "scheduled_for", "TEXT")
         self._ensure_column("travel_entries", "revision_note", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("travel_entries", "parent_feedback", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column("travel_entries", "feedback_read_at", "TEXT")
         self._backfill_life_skill_content()
         self._backfill_life_skill_catalog()
         self._migrate_park_visits_to_travel_entries()
@@ -2836,7 +2837,7 @@ class Database:
     def update_travel_entry(self, entry_id: int, **fields: Any) -> None:
         allowed = {
             "state", "park_key", "title", "story", "visited_on",
-            "favorite_moment", "would_return", "parent_feedback",
+            "favorite_moment", "would_return",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
@@ -2924,11 +2925,58 @@ class Database:
             description=entry["story"],
             source="travel_journal",
         )
+        # Fresh feedback is always unread -- there's nothing to preserve
+        # from before an entry was ever approved.
         self.conn.execute(
-            "UPDATE travel_entries SET status = 'completed', parent_feedback = ? WHERE id = ?",
+            "UPDATE travel_entries SET status = 'completed', parent_feedback = ?, "
+            "feedback_read_at = NULL WHERE id = ?",
             (feedback, entry_id),
         )
         self.conn.commit()
+
+    def set_travel_entry_feedback(self, entry_id: int, feedback: str) -> None:
+        """Fixing or rewording feedback after the fact (the Edit form on an
+        already-completed entry) -- the only other place parent_feedback
+        gets set is `approve_travel_entry`, which only runs once. Marks it
+        unread again so he actually sees the revision, but only if the
+        text genuinely changed -- saving the rest of an edit (state, story)
+        without touching feedback shouldn't re-flag something he already
+        read."""
+        entry = _row(
+            self.conn.execute(
+                "SELECT parent_feedback FROM travel_entries WHERE id = ?", (entry_id,)
+            )
+        )
+        if entry is None:
+            return
+        if entry["parent_feedback"] == feedback:
+            return
+        self.conn.execute(
+            "UPDATE travel_entries SET parent_feedback = ?, feedback_read_at = NULL "
+            "WHERE id = ?",
+            (feedback, entry_id),
+        )
+        self.conn.commit()
+
+    def mark_travel_feedback_read(self, entry_id: int) -> None:
+        self.conn.execute(
+            "UPDATE travel_entries SET feedback_read_at = ? WHERE id = ?",
+            (datetime.now().isoformat(timespec="seconds"), entry_id),
+        )
+        self.conn.commit()
+
+    def unread_travel_feedback(self, student_id: int) -> list[dict[str, Any]]:
+        """Approved entries with feedback he hasn't acknowledged yet --
+        Home's "please read" card. A blank parent_feedback isn't included:
+        nothing to read means nothing to mark as read."""
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM travel_entries WHERE student_id = ? AND status = 'completed' "
+                "AND parent_feedback != '' AND feedback_read_at IS NULL "
+                "ORDER BY id DESC",
+                (student_id,),
+            )
+        )
 
     def due_travel_entries(self, student_id: int, today: str) -> list[dict[str, Any]]:
         """Assigned entries still needing his attention: scheduled for

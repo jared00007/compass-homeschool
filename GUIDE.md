@@ -222,6 +222,20 @@ submit — not a one-line "went to the store." Come up short and nothing's lost:
 saves as a draft with a note on how many words short it is, and he picks "Write it
 up" to finish it once it clears the bar.
 
+**Leave him feedback when you approve, and see whether he actually read it.**
+There's a roomy text box right above Approve — write as much as you want (it
+supports real paragraphs, bullet lists, headers, all of it), and it shows up on
+the approved entry's card, formatted properly, not flattened into one line. If
+you need to fix or reword feedback after the fact, open the entry and hit Edit —
+there's a matching box there too, and saving it replaces what he currently sees.
+
+Any entry with unread feedback shows up on his Home page under **💬 Feedback to
+read**, with a link to the trip and an **✅ I read this** button — that's the
+only thing that clears it. A page view doesn't count; he has to actually click
+it, so it's a real signal, not a guess. You can see whether (and when) he's
+acknowledged it right on the entry itself — "✅ Read 2026-08-28" once he has,
+"📬 Not read yet" until he does.
+
 ---
 
 ## The counting rule

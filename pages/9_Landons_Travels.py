@@ -185,6 +185,13 @@ def _render_entry(entry: dict) -> None:
         with st.container(border=True):
             st.markdown("💬 **Feedback from your parent**")
             st.markdown(md(entry["parent_feedback"]))
+            if entry["feedback_read_at"]:
+                st.caption(f"✅ Read {entry['feedback_read_at'][:10]}")
+            else:
+                st.caption("📬 Not read yet")
+                if st.button("✅ I read this", key=f"mark_feedback_read_{entry['id']}"):
+                    db.mark_travel_feedback_read(entry["id"])
+                    st.rerun()
 
     # Writing it up (a parent-assigned stub) or revising it (sent back) is
     # every family member's to do, not just a parent's -- shown before the
@@ -429,7 +436,8 @@ def _render_entry(entry: dict) -> None:
                     else None
                 )
                 if st.form_submit_button("Save changes", type="primary") and edit_title.strip():
-                    edit_fields = dict(
+                    db.update_travel_entry(
+                        entry["id"],
                         state=edit_state,
                         visited_on=edit_date.isoformat(),
                         title=edit_title.strip(),
@@ -438,9 +446,12 @@ def _render_entry(entry: dict) -> None:
                         favorite_moment=edit_favorite_moment.strip(),
                         would_return=edit_would_return.strip(),
                     )
+                    # Its own call, not folded into the dict above -- this
+                    # is the one field that also decides whether to mark
+                    # the entry unread again (see set_travel_entry_feedback),
+                    # a side effect none of the other fields have.
                     if edit_feedback is not None:
-                        edit_fields["parent_feedback"] = edit_feedback.strip()
-                    db.update_travel_entry(entry["id"], **edit_fields)
+                        db.set_travel_entry_feedback(entry["id"], edit_feedback.strip())
                     st.session_state["editing_travel_entry"] = None
                     st.rerun()
 

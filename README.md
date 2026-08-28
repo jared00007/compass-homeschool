@@ -868,6 +868,36 @@ short he is. He picks "Write it up" to keep going once it clears the bar. This i
 "downgrade, don't block" instinct as the blank-story stub case just above, extended to a
 too-short one.
 
+**Feedback on approval, and proving he actually read it.** Requested directly: a way
+to leave him real feedback when approving an entry, not just a flat approve/reject.
+`Database.approve_travel_entry(entry_id, feedback="")` stores it in a new
+`parent_feedback` column and, unlike `revision_note`, it never blocks or changes the
+review outcome -- it's praise, not a fix request. It's entered through an `st.text_area`
+(not `st.text_input` -- a real bug, found live: a single-line input silently strips
+multi-paragraph pasted text down to one flat line with no way back in) and rendered
+through a genuine `st.markdown()` call in its own bordered container, not folded into
+the same `html.escape`'d raw-HTML block the story/`revision_note` render through --
+that block flattens line breaks and shows markdown syntax as literal characters instead
+of rendering it. `Database.set_travel_entry_feedback(entry_id, feedback)` is the
+separate path for fixing or rewording feedback on an already-`completed` entry (wired
+into the existing per-entry Edit form) -- `approve_travel_entry` only ever runs once,
+on a `submitted` entry, so without this there was no way back in to correct
+already-lost formatting.
+
+A `feedback_read_at` column (nullable ISO timestamp) tracks whether he's actually
+acknowledged it -- explicitly, not by inference. `approve_travel_entry` and
+`set_travel_entry_feedback` both reset it to `NULL` whenever the feedback text
+actually changes (comparing old vs. new inside `set_travel_entry_feedback`, so
+re-saving the rest of an edit without touching feedback doesn't re-flag something
+already read). `Database.unread_travel_feedback(student_id)` is what Home's new
+"💬 Feedback to read" card queries -- entries that are `completed`, have non-blank
+`parent_feedback`, and `feedback_read_at IS NULL`. The only thing that clears it is
+`Database.mark_travel_feedback_read(entry_id)`, fired by an explicit "✅ I read this"
+button on that Home card and on the entry's own card on the journal page -- a page
+view proves nothing, but a click he chose to make is a real, checkable signal, and a
+parent can see it too: the entry shows "✅ Read {date}" once he has, "📬 Not read yet"
+until he does.
+
 ## Balanced card rows: a global CSS rule, not a Home-specific fix
 
 Reported directly: a row of `st.container(border=True)` cards looks sloppy when one has

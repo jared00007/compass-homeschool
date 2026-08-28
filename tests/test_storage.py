@@ -577,20 +577,6 @@ def test_update_travel_entry_changes_only_the_given_fields(db, student):
     assert entry["park_key"] == "zion"
 
 
-def test_update_travel_entry_can_fix_the_stored_feedback(db, student):
-    """The only way to fix already-lost formatting (from before feedback
-    had a real text area) or just reword it after the fact -- approving
-    is the other place parent_feedback gets set, but that's a one-time
-    action on a submitted entry, not available once it's completed."""
-    entry_id = db.add_travel_entry(
-        student["id"], "Texas", "2024-06-15", title="Mall Day",
-        story="It was fun.", status="completed",
-    )
-    db.update_travel_entry(entry_id, parent_feedback="Line one.\nLine two.")
-    entry = db.list_travel_entries(student["id"])[0]
-    assert entry["parent_feedback"] == "Line one.\nLine two."
-
-
 def test_update_travel_entry_can_clear_the_park_link(db, student):
     entry_id = db.add_travel_entry(student["id"], "Montana", "2024-06-15", park_key="glacier")
     db.update_travel_entry(entry_id, park_key=None)
@@ -666,6 +652,75 @@ def test_approve_travel_entry_defaults_feedback_to_blank(db, student):
     db.approve_travel_entry(entry_id)
     entry = db.list_travel_entries(student["id"])[0]
     assert entry["parent_feedback"] == ""
+
+
+# --- Whether he's actually acknowledged feedback, not just that it exists -------
+
+
+def test_approving_with_feedback_leaves_it_unread(db, student):
+    entry_id = db.add_travel_entry(
+        student["id"], "Wyoming", "2025-06-10", title="Yellowstone",
+        story="We watched Old Faithful erupt.", status="submitted",
+    )
+    db.approve_travel_entry(entry_id, "Great detail about the geyser!")
+    entry = db.list_travel_entries(student["id"])[0]
+    assert entry["feedback_read_at"] is None
+    assert [e["id"] for e in db.unread_travel_feedback(student["id"])] == [entry_id]
+
+
+def test_marking_feedback_read_clears_it_from_unread(db, student):
+    entry_id = db.add_travel_entry(
+        student["id"], "Wyoming", "2025-06-10", title="Yellowstone",
+        story="We watched Old Faithful erupt.", status="submitted",
+    )
+    db.approve_travel_entry(entry_id, "Great detail about the geyser!")
+    db.mark_travel_feedback_read(entry_id)
+    entry = db.list_travel_entries(student["id"])[0]
+    assert entry["feedback_read_at"] is not None
+    assert db.unread_travel_feedback(student["id"]) == []
+
+
+def test_unread_travel_feedback_excludes_entries_with_no_feedback(db, student):
+    db.add_travel_entry(
+        student["id"], "Wyoming", "2025-06-10", title="Yellowstone",
+        story="We watched Old Faithful erupt.", status="completed",
+    )
+    assert db.unread_travel_feedback(student["id"]) == []
+
+
+def test_set_travel_entry_feedback_marks_it_unread_again_when_changed(db, student):
+    """The whole point of editing feedback after the fact -- fixing lost
+    formatting or rewording it -- is that he sees the corrected version,
+    not the stale one he may have already read."""
+    entry_id = db.add_travel_entry(
+        student["id"], "Wyoming", "2025-06-10", title="Yellowstone",
+        story="We watched Old Faithful erupt.", status="submitted",
+    )
+    db.approve_travel_entry(entry_id, "flattened one line version")
+    db.mark_travel_feedback_read(entry_id)
+    assert db.unread_travel_feedback(student["id"]) == []
+
+    db.set_travel_entry_feedback(entry_id, "Line one.\n\nLine two, fixed.")
+    entry = db.list_travel_entries(student["id"])[0]
+    assert entry["parent_feedback"] == "Line one.\n\nLine two, fixed."
+    assert entry["feedback_read_at"] is None
+    assert [e["id"] for e in db.unread_travel_feedback(student["id"])] == [entry_id]
+
+
+def test_set_travel_entry_feedback_leaves_read_state_alone_when_unchanged(db, student):
+    """Saving the rest of an edit (state, story) without touching feedback
+    shouldn't re-flag something he already read."""
+    entry_id = db.add_travel_entry(
+        student["id"], "Wyoming", "2025-06-10", title="Yellowstone",
+        story="We watched Old Faithful erupt.", status="submitted",
+    )
+    db.approve_travel_entry(entry_id, "Great detail!")
+    db.mark_travel_feedback_read(entry_id)
+
+    db.set_travel_entry_feedback(entry_id, "Great detail!")
+    entry = db.list_travel_entries(student["id"])[0]
+    assert entry["feedback_read_at"] is not None
+    assert db.unread_travel_feedback(student["id"]) == []
 
 
 def test_scheduling_a_travel_entry_makes_it_due_on_and_after_that_day(db, student):

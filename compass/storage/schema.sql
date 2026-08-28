@@ -363,6 +363,7 @@ CREATE TABLE IF NOT EXISTS travel_entries (
     scheduled_for TEXT,  -- ISO date a parent assigned this trip to be written up; NULL = whenever
     revision_note TEXT NOT NULL DEFAULT '',  -- parent's note when sending an entry back
     parent_feedback TEXT NOT NULL DEFAULT '',  -- parent's note when approving -- praise, not a fix request
+    feedback_read_at TEXT,  -- when he acknowledged parent_feedback; NULL = not yet (or nothing to read)
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

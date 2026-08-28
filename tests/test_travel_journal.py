@@ -310,6 +310,84 @@ def test_approving_with_no_feedback_leaves_it_blank(monkeypatch, tmp_path):
     assert entry["parent_feedback"] == ""
 
 
+# --- Whether he's actually read the feedback -----------------------------------
+
+
+def test_unread_feedback_shows_on_home_with_a_mark_read_button(monkeypatch, tmp_path):
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    entry_id = database.add_travel_entry(
+        s["id"], "Arizona", "2025-06-10", title="Grand Canyon",
+        story="We hiked to the rim.", status="submitted",
+    )
+    database.approve_travel_entry(entry_id, "Great detail about the hike!")
+    database.close()
+
+    at = _open_home(monkeypatch, db_path)
+    text = " ".join(m.value for m in at.markdown)
+    assert "Feedback to read (1)" in text
+    labels = [pl.label for pl in at.get("page_link")]
+    assert any("Grand Canyon" in label for label in labels)
+
+    mark_read = [b for b in at.button if b.key == f"home_mark_feedback_read_{entry_id}"][0]
+    mark_read.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    entry = database.list_travel_entries(s["id"])[0]
+    database.close()
+    assert entry["feedback_read_at"] is not None
+
+    at = _open_home(monkeypatch, db_path)
+    text = " ".join(m.value for m in at.markdown)
+    assert "Feedback to read" not in text
+
+
+def test_home_shows_no_feedback_card_when_nothing_is_unread(monkeypatch, tmp_path):
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    database.add_travel_entry(
+        s["id"], "Arizona", "2025-06-10", title="Grand Canyon",
+        story="We hiked to the rim.", status="submitted",
+    )  # never approved -- no feedback exists yet
+    database.close()
+
+    at = _open_home(monkeypatch, db_path)
+    text = " ".join(m.value for m in at.markdown)
+    assert "Feedback to read" not in text
+
+
+def test_marking_feedback_read_from_the_travels_page(monkeypatch, tmp_path):
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    entry_id = database.add_travel_entry(
+        s["id"], "Arizona", "2025-06-10", title="Grand Canyon",
+        story="We hiked to the rim.", status="submitted",
+    )
+    database.approve_travel_entry(entry_id, "Great detail about the hike!")
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=False)
+    tab = _journal_tab(at)
+    captions = [c.value for c in tab.caption]
+    assert any("Not read yet" in c for c in captions)
+
+    mark_read = [b for b in tab.button if b.key == f"mark_feedback_read_{entry_id}"][0]
+    mark_read.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    entry = database.list_travel_entries(s["id"])[0]
+    database.close()
+    assert entry["feedback_read_at"] is not None
+
+
 def test_editing_a_completed_entry_can_fix_its_feedback(monkeypatch, tmp_path):
     """The only way to redo feedback that already lost its formatting
     (entered back when the box was a single line) -- Approve only sets
@@ -322,7 +400,7 @@ def test_editing_a_completed_entry_can_fix_its_feedback(monkeypatch, tmp_path):
         s["id"], "Arizona", "2025-06-10", title="Grand Canyon", story="We hiked to the rim.",
         status="completed",
     )
-    database.update_travel_entry(entry_id, parent_feedback="all one flattened line, no breaks")
+    database.set_travel_entry_feedback(entry_id, "all one flattened line, no breaks")
     database.close()
 
     at = _open_travels(monkeypatch, db_path, as_parent=True)
