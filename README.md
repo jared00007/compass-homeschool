@@ -342,7 +342,7 @@ compass/
   theme.py                   the one fixed theme and the CSS that applies it
   fun_facts.py               fact-of-the-day for the student home view
   national_parks.py          the 63 parks + real state borders for Landon's Travels
-tests/                       862 tests, no API key required
+tests/                       873 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 scripts/new_school_year_reset.py  wipe a finished school year's data, see below
 ```
@@ -668,6 +668,60 @@ progress dots above the panels don't treat "collapsed" as "done" either -- so pa
 always shows every panel in full regardless of what's collapsed. A parent checking or
 approving a lesson needs to see everything, not whatever he happened to fold away for
 himself while working through it.
+
+## Home page: nav buttons instead of tabs, lessons that link out
+
+His Home page used to be `st.tabs()` (Today / This Week / Upcoming Week / Grades)
+with a full-width streak banner and fun fact stacked above it, and each subject's
+lesson rendered inline, in full, right there on the tab. He said it felt busy and
+asked for samples before anything changed; three directions were mocked up and he
+picked "nav first" — buttons at the top instead of tabs, links out to each
+lesson's own page instead of the content embedded here.
+
+**Why buttons, not `st.tabs()`.** The picked design puts shared header content —
+greeting, streak, fun fact — *between* the nav row and whichever view's body is
+showing. `st.tabs()` can't do that: content rendered after the call but outside a
+`with tab:` block lands below the entire tab widget (bar and every panel), not
+between the bar and the active one. So `active_view` is a plain
+`st.session_state["home_view"]` switch instead, with a row of four `st.button`s
+(📅 Today, 🗓️ This Week, 🔜 Upcoming Week, 🎓 Grades) standing in for the tab bar,
+and an `if/elif` chain standing in for `with tab:` blocks.
+
+That switch has one sharp edge worth calling out: the four buttons render in a
+single left-to-right pass each script run, so a button rendered *before* the one
+just clicked would otherwise still compute its own primary/secondary look from
+the pre-click session-state value — one click behind (confirmed live: This Week,
+then Grades, used to leave This Week looking pressed instead of Grades). The
+click handler fixes this by setting `st.session_state["home_view"]` and calling
+`st.rerun()` immediately, rather than also updating a local variable in place —
+every button's render then reads the same, already-updated value. `tests/
+test_home_nav.py` pins this down directly, including a regression test that
+fails without the rerun.
+
+**The header shrank to fit three things side by side** — greeting, streak, fun
+fact each get one of three columns (`st.columns([2, 1, 1])`) instead of stacking
+full-width, which is most of what "busy" meant in practice.
+
+**Today's lesson roster is now a list of `st.page_link`s, one per subject with
+something relevant today, not the lesson itself rendered inline.** Clicking one
+takes him to that subject's own page for the actual activities and detail; Home
+just shows what's waiting and where. `weekly.today_subject_status(lessons,
+today)` picks, per subject, which single lesson (if any) belongs on that roster —
+pending review outranks something due today, which outranks something finished
+today, which outranks nothing at all — and returns a marker for it: ✅ approved
+(passed the full parent review), 📤 submitted (turned in, waiting on a parent),
+↩️ needs revision (sent back, waiting on him again), or ⬜ planned (not turned in
+yet). A subject drops off the roster entirely once there's truly nothing
+relevant to it today, rather than showing an empty or stale row.
+
+**Sidebar nav links were restyled to match the parent-unlock button** he already
+liked — each page link in `compass/theme.py` now gets its own bordered, panel-colored
+button look, with the active page picked out in the same gold used for primary
+buttons elsewhere, instead of the flat tint Streamlit's default sidebar nav uses.
+
+Approved as one paragraph in chat ("good to go") once he'd seen the mockup match
+what he'd asked for — see the Layout section above and `GUIDE.md`'s student-view
+section for what the page looks like now.
 
 ## Grades
 
@@ -1086,7 +1140,7 @@ make.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 862 tests, ~57s, no API key needed
+python -m pytest tests/ -q      # 873 tests, ~54s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

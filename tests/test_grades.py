@@ -296,6 +296,8 @@ def _open_home(monkeypatch, db_path):
 
 def test_his_home_page_has_a_grades_tab_with_a_letter(monkeypatch, tmp_path):
     at = _open_home(monkeypatch, _seed(tmp_path))
+    grades_button = [b for b in at.button if "Grades" in (b.label or "")][0]
+    grades_button.click().run()
     letters = [m.value for m in at.metric]
     assert "A+" in letters
 
@@ -304,6 +306,8 @@ def test_the_grades_tab_shows_no_overall_gpa(monkeypatch, tmp_path):
     """Deliberate: one number for everything reads as a verdict on him
     rather than on the work."""
     at = _open_home(monkeypatch, _seed(tmp_path))
+    grades_button = [b for b in at.button if "Grades" in (b.label or "")][0]
+    grades_button.click().run()
     labels = " ".join(m.label for m in at.metric)
     assert "GPA" not in labels
     assert "Overall" not in labels

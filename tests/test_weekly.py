@@ -28,6 +28,7 @@ from compass.weekly import (
     plan_day,
     plan_missing_days,
     planning_nudge,
+    today_subject_status,
     week_dates,
     week_start,
 )
@@ -157,6 +158,74 @@ def test_due_lessons_on_an_all_untagged_list_preserves_input_order():
     ]
     result = due_lessons(lessons, "2026-08-11")
     assert [l["id"] for l in result] == [2, 1]
+
+
+# --- today_subject_status: one subject's row on Home's daily roster --------------
+
+
+def _status_lesson(id, status, *, planned_for=None, done=None):
+    metadata = {}
+    if planned_for is not None:
+        metadata["planned_for"] = planned_for
+    if done is not None:
+        metadata["student_done_on"] = done
+    return {"id": id, "agent": "math", "status": status, "metadata": metadata}
+
+
+def test_today_subject_status_prefers_a_pending_submission_over_anything_due():
+    lessons = [
+        _status_lesson(1, "submitted", planned_for="2026-08-11"),
+        _status_lesson(2, "planned", planned_for="2026-08-11"),
+    ]
+    lesson, marker = today_subject_status(lessons, "2026-08-11")
+    assert lesson["id"] == 1
+    assert marker == "\U0001F4E4"
+
+
+def test_today_subject_status_marks_a_sent_back_lesson_distinctly():
+    lessons = [_status_lesson(1, "needs_revision", planned_for="2026-08-10")]
+    lesson, marker = today_subject_status(lessons, "2026-08-11")
+    assert lesson["id"] == 1
+    assert marker == "↩️"
+
+
+def test_today_subject_status_shows_an_empty_box_for_something_due_but_untouched():
+    lessons = [_status_lesson(1, "planned", planned_for="2026-08-11")]
+    lesson, marker = today_subject_status(lessons, "2026-08-11")
+    assert lesson["id"] == 1
+    assert marker == "⬜"
+
+
+def test_today_subject_status_shows_a_green_check_once_fully_approved_today():
+    """Nothing due, nothing pending, but he finished and a parent approved
+    this same subject's lesson earlier today -- the roster should still
+    show it, checked, rather than reading as if nothing had happened."""
+    lessons = [_status_lesson(1, "completed", done="2026-08-11")]
+    lesson, marker = today_subject_status(lessons, "2026-08-11")
+    assert lesson["id"] == 1
+    assert marker == "✅"
+
+
+def test_today_subject_status_ignores_a_lesson_completed_on_an_earlier_day():
+    """An old approved lesson from a previous day isn't "today's" status --
+    it's not relevant to what's on his plate right now."""
+    lessons = [_status_lesson(1, "completed", done="2026-08-05")]
+    lesson, marker = today_subject_status(lessons, "2026-08-11")
+    assert lesson is None
+    assert marker == ""
+
+
+def test_today_subject_status_is_empty_when_nothing_is_set_up_for_this_subject():
+    lesson, marker = today_subject_status([], "2026-08-11")
+    assert lesson is None
+    assert marker == ""
+
+
+def test_today_subject_status_ignores_a_lesson_planned_for_a_later_day():
+    lessons = [_status_lesson(1, "planned", planned_for="2026-08-14")]  # later this week
+    lesson, marker = today_subject_status(lessons, "2026-08-11")
+    assert lesson is None
+    assert marker == ""
 
 
 # --- plan_day: the single-day primitive -------------------------------------------

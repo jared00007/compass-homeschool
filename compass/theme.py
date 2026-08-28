@@ -487,8 +487,19 @@ def css() -> str:
 .stApp [data-testid="stTable"] td, .stApp [data-testid="stTable"] th,
 .stApp .stDataFrame {{ font-variant-numeric: tabular-nums; }}
 
-/* --- sidebar nav ------------------------------------------------------ */
-[data-testid="stSidebarNavLink"] {{ border-radius: var(--c-radius); }}
+/* --- sidebar nav ------------------------------------------------------
+   Each page link reads as its own pressable button now -- the same cream-
+   panel-on-a-border look every `stBaseButton-secondary` already has (see
+   "buttons" below) -- rather than plain stacked text, on request. The
+   current page swaps to the primary-button treatment (solid accent fill)
+   in place of the old flat panel-tint highlight, so "where am I" reads the
+   same way "which button is pressed" already does everywhere else. */
+[data-testid="stSidebarNavLink"] {{
+  border: 1px solid var(--c-border);
+  border-radius: var(--c-radius);
+  background: var(--c-panel);
+  margin-bottom: 8px;
+}}
 /* `*` alongside the link itself, not just the link -- the label text lives in a
    child span, and per the page-title bug above, a child's own colour/weight/
    size always wins over the parent's, inherited or not. */
@@ -497,9 +508,11 @@ def css() -> str:
   font-weight: 700;
 }}
 [data-testid="stSidebarNavLink"][aria-current="page"] {{
-  background: var(--c-panel);
-  color: var(--c-primary);
+  background: var(--c-primary);
+  border-color: var(--c-primary);
+  color: var(--c-button-text);
 }}
+[data-testid="stSidebarNavLink"][aria-current="page"] * {{ color: var(--c-button-text); }}
 
 hr, [data-testid="stSidebarNavSeparator"] {{ border-color: var(--c-border); }}
 </style>

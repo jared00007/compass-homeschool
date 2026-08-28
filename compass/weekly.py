@@ -340,6 +340,56 @@ def due_lessons(lessons: list[dict[str, Any]], today: str) -> list[dict[str, Any
     return due
 
 
+def today_subject_status(
+    lessons: list[dict[str, Any]], today: str
+) -> tuple[dict[str, Any] | None, str]:
+    """One subject's row for Home's daily roster: whichever lesson is
+    actually relevant right now for this agent, and a marker reflecting
+    its real review-gate state -- not just whether he's touched it.
+
+    Same priority order student_lesson_view uses on the subject's own
+    page (a pending review always wins over anything new due), so Home's
+    roster and the subject page never disagree about which lesson is
+    "the" one right now:
+
+        submitted        -> waiting on a parent               "\U0001F4E4"
+        needs_revision   -> sent back, waiting on him again    "↩️"
+        due now, planned -> nothing turned in yet              "⬜"
+        completed today  -> a parent fully approved it today   "✅"
+        anything else    -> nothing relevant to show right now (None, "")
+
+    Unlike the subject page, a fully resolved lesson doesn't just vanish
+    here: reflecting the actual goal (see a green check once a parent's
+    signed off) means the roster keeps showing the subject once there's
+    nothing else due, rather than reading as if nothing had ever been
+    assigned.
+    """
+    pending = next((l for l in lessons if l["status"] in ("submitted", "needs_revision")), None)
+    if pending is not None:
+        marker = "\U0001F4E4" if pending["status"] == "submitted" else "↩️"
+        return pending, marker
+
+    todo = [
+        l
+        for l in lessons
+        if l["status"] not in ("skipped", "submitted", "needs_revision", "completed")
+        and not (l.get("metadata") or {}).get("student_done_on")
+    ]
+    due_now = due_lessons(todo, today)
+    if due_now:
+        return due_now[0], "⬜"
+
+    completed_today = [
+        l
+        for l in lessons
+        if l["status"] == "completed" and (l.get("metadata") or {}).get("student_done_on") == today
+    ]
+    if completed_today:
+        return completed_today[0], "✅"
+
+    return None, ""
+
+
 MATH_STAGE_NOTES: tuple[str, ...] = (
     "",  # Day 1: no note. A fresh introduction, taught the normal way.
     "This is day 2 of 4 on this same skill this week -- additional "

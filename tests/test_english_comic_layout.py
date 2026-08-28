@@ -214,11 +214,16 @@ def test_reopening_a_past_lesson_also_gets_the_comic_panel_treatment(monkeypatch
     assert "Past Lesson" in text
 
 
-def test_homes_own_checklist_also_gets_the_comic_panel_treatment(monkeypatch, tmp_path):
-    """Regression: Home.py calls render_lesson through its own separate code
-    path (not student_lesson_view) for the "Lessons ready for you" checklist
-    -- this is the exact call site that was already forgotten once before,
-    for the writing-response box, and had been forgotten again here."""
+def test_homes_lesson_roster_links_out_instead_of_embedding_the_lesson(
+    monkeypatch, tmp_path
+):
+    """Home used to render each lesson's full content inline through its own
+    separate call to render_lesson -- a second call site that had already
+    caused one regression (the comic-panel treatment, then the writing-
+    response box, each forgotten here once before). It now just links out
+    to the subject page, the only place a lesson actually renders for him,
+    so there's no second call site left to fall out of sync with
+    student_lesson_view."""
     db_path = tmp_path / "a.db"
     db = Database(db_path)
     student = db.ensure_default_student()
@@ -230,12 +235,12 @@ def test_homes_own_checklist_also_gets_the_comic_panel_treatment(monkeypatch, tm
     db.close()
 
     at = _open(monkeypatch, db_path, HOME_PATH, as_parent=False)
-    at.expander[0].expanded = True
-    at.run(timeout=30)
     text = " ".join(m.value for m in at.markdown)
-    assert "comic-issue-tag" in text
-    assert "No. 1" in text
-    assert "Current Lesson" in text
+    assert "comic-issue-tag" not in text
+
+    links = [l for l in at.get("page_link") if "Brian's Turning Point" in l.label]
+    assert len(links) == 1
+    assert links[0].page == "English"
 
 
 def test_vocab_review_gets_its_own_framed_eyebrow_header(monkeypatch, tmp_path):

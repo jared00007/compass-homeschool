@@ -265,13 +265,13 @@ def test_writing_activity_shows_a_response_box_in_student_view(monkeypatch, tmp_
     assert any(t.label == "Your response" for t in at.text_area)
 
 
-def test_writing_activity_also_shows_a_response_box_on_home(monkeypatch, tmp_path):
-    """Home's own checklist renders lessons through a separate call to
-    render_lesson than the subject pages do (Home.py:297 vs.
-    student_lesson_view in compass/ui.py) -- easy to fix one and forget the
-    other, which is exactly what happened the first time around: Home
-    never passed db/lesson_id/metadata through, so the box silently never
-    appeared for the one place he actually opens lessons from day to day."""
+def test_home_links_to_the_lesson_instead_of_showing_the_response_box(monkeypatch, tmp_path):
+    """Home's own roster used to render lessons through a separate call to
+    render_lesson than the subject pages do -- easy to fix one and forget
+    the other, which caused a real regression once (the box silently never
+    appeared for the one place he actually opened lessons from day to day).
+    Home no longer renders lesson content at all: it links out to the
+    subject page, the only place left where a response box exists."""
     db_path = tmp_path / "a.db"
     db = Database(db_path)
     student = db.ensure_default_student()
@@ -283,7 +283,10 @@ def test_writing_activity_also_shows_a_response_box_on_home(monkeypatch, tmp_pat
     db.close()
 
     at = _open(monkeypatch, db_path, HOME_PATH, as_parent=False)
-    assert any(t.label == "Your response" for t in at.text_area)
+    assert not any(t.label == "Your response" for t in at.text_area)
+    links = [l for l in at.get("page_link") if "Argue a Character's Choice" in l.label]
+    assert len(links) == 1
+    assert links[0].page == "English"
 
 
 def test_an_instruction_activity_flagged_requires_written_response_gets_a_box(

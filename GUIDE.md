@@ -680,11 +680,32 @@ materials, a suggested video when there is one, and the quiz at the end — plus
 his reading progress, vocabulary review, and his own Tier 3 topics. Enough to
 do the work without you narrating it.
 
-His Home page has four tabs: **📅 Today** (the checklist he works down),
+His Home page has four views, picked with a row of big buttons across the top
+rather than a small tab strip: **📅 Today** (the checklist he works down),
 **🗓️ This Week** and **🔜 Upcoming Week** (read-only week grids), and
-**🎓 Grades** (see [Grades](#grades)). Grades get their own tab rather than a
+**🎓 Grades** (see [Grades](#grades)). Grades get its own view rather than a
 block on Today deliberately — sitting above the checklist, his grade would be
 the first thing he read every morning, which is the opposite of the point.
+His streak and the day's fun fact sit side by side in two small cards below
+the buttons, rather than each spanning the full page width, freeing up the
+space for the actual checklist underneath.
+
+**Today's lesson roster links out to each subject's own page rather than
+showing the lesson itself.** Home used to embed the whole thing — objectives,
+activities, quiz — inline for whichever subjects had something due, through
+its own separate call to `render_lesson`. That was a second call site the
+subject pages' own `student_lesson_view` didn't share, which is exactly the
+kind of place a change to one and not the other slips through (it happened
+twice: the writing-response box, then the Comic Panels rollout, both silently
+missing here before being caught). Now each of the four core subjects gets one
+row — a link straight to that subject's page, where the lesson actually
+renders — with a marker showing its real review-gate state, not just whether
+he's clicked anything: ✅ a parent's fully approved it, 📤 turned in and
+waiting on a parent, ↩️ sent back and waiting on him again, ⬜ nothing turned
+in yet (`weekly.today_subject_status`). A subject only drops off the roster
+once there's truly nothing relevant to it today — unlike the old list, an
+already-approved lesson doesn't just vanish; it stays checked off so the day's
+picture stays complete instead of shrinking as he goes.
 
 **Every subject's activities render as a "Comic Panels" grid, not a stack of
 collapsed expanders.** Sampled as three mockups on the English page before
