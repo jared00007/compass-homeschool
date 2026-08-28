@@ -92,13 +92,13 @@ if not is_parent():
                 st.session_state["home_view"] = view_key
                 st.rerun()
 
-    # Compact header: greeting beside a narrow column holding streak and fun
-    # fact stacked on top of each other -- side by side by side made the
-    # streak and fact cards read as three competing banners in one row;
-    # stacking the two small ones under each other reads as one card group
-    # instead, and the streak's own milestone callout (comic-styled, wider
-    # than the ordinary one-line version) has more of that column's width to
-    # work with than a three-way split gave it.
+    # Compact header: greeting and streak stacked in the left column, fun
+    # fact alone in the right. Streak used to sit stacked on top of fun fact
+    # on the right, which left the left column (just the greeting) shorter
+    # than the right one -- the gap between the greeting and whatever came
+    # next was exactly that height difference. Moving the streak under the
+    # greeting instead makes the two columns closer in height and removes
+    # that gap, per a sketch of the wanted layout.
     header_columns = st.columns([2, 1])
     with header_columns[0]:
         # A plain styled div, not `st.title` -- the fixed theme reserves the
@@ -113,8 +113,8 @@ if not is_parent():
             unsafe_allow_html=True,
         )
         st.caption("Here's what's set up for you. Work down the list, or jump around — up to you.")
-    with header_columns[1]:
         render_streak(db, student)
+    with header_columns[1]:
         render_fun_fact()
 
     st.divider()

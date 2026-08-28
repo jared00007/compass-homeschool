@@ -716,15 +716,18 @@ rather than a small tab strip: **📅 Today** (the checklist he works down),
 **🎓 Grades** (see [Grades](#grades)). Grades get its own view rather than a
 block on Today deliberately — sitting above the checklist, his grade would be
 the first thing he read every morning, which is the opposite of the point.
-His streak and the day's fun fact sit side by side in two small cards below
-the buttons, rather than each spanning the full page width, freeing up the
-space for the actual checklist underneath. Morning Routine and Check-In sit
-right below that header, side by side — moved up from further down the page
-on request, since leaving them there meant the whole left side of the header
-sat empty under his name while the streak/fact column on the right stacked
-two cards; pulling them up balances the two sides instead of leaving that
-gap. Lessons, Words to Review/Reading, and Choice Topics keep their original
-order underneath.
+His streak sits right under the greeting, and the day's fun fact stands alone
+in a narrow column beside them, rather than each spanning the full page
+width — freeing up space for the actual checklist underneath. Streak used to
+stack on top of fun fact in that same narrow column instead, which left the
+greeting's own column noticeably shorter than the fact/streak column next to
+it and showed up as an empty gap below the greeting; moving the streak under
+the greeting balances the two columns' heights instead. Morning Routine and
+Check-In sit right below that header, side by side — moved up from further
+down the page on request, for the same reason: leaving them lower down left
+that gap unfilled regardless of what balanced the header itself. Lessons,
+Words to Review/Reading, and Choice Topics keep their original order
+underneath.
 
 The greeting and every card's title on this page (Lessons, Morning Routine,
 Check-In, ...) are deliberately plain, normal-case text rather than a real
