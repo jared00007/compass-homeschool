@@ -96,6 +96,106 @@ def test_best_streak_survives_a_long_history_without_running_off_the_calendar():
     assert best_streak({"1990-01-02"}, WED) == 1
 
 
+# --- planned_days/planned_weeks: telling a deliberate day off from a real miss --
+#
+# Monday the 24th is the anchor for all of these: it's the Monday of the
+# week containing WED, so week_start(any day that week) == "2026-08-24".
+
+
+def test_a_day_nothing_was_ever_planned_for_does_not_break_the_streak():
+    """Monday 24th was a holiday -- unchecked in This Week's school-days
+    picker -- but the rest of that week *was* batch-planned (planned_weeks
+    has that Monday), so its absence from planned_days reads as deliberate.
+    Must count the same way a weekend does: skipped, not a miss."""
+    active = {"2026-08-20", "2026-08-21", "2026-08-25", "2026-08-26"}  # Mon 24 missing
+    planned_days = set(active)  # Monday was never planned; Tue/Wed were
+    planned_weeks = {"2026-08-24"}  # this week did get a batch-planning pass
+    assert current_streak(active, WED, planned_days=planned_days, planned_weeks=planned_weeks) == 4
+
+    # Without planning info at all, the same data reads as a broken streak --
+    # this is exactly the gap being closed here.
+    assert current_streak(active, WED) == 2
+
+
+def test_a_planned_day_left_undone_still_breaks_the_streak():
+    """Contrast with the above: Monday 24th *was* planned this time, he
+    just didn't do it. That's a real miss, not a day off, and must still
+    break the streak even with planning info given."""
+    active = {"2026-08-20", "2026-08-21", "2026-08-25", "2026-08-26"}  # Mon 24 missing
+    planned_days = active | {"2026-08-24"}  # Monday had work waiting
+    planned_weeks = {"2026-08-24"}
+    assert current_streak(active, WED, planned_days=planned_days, planned_weeks=planned_weeks) == 2
+
+
+def test_a_week_never_touched_by_batch_planning_forgives_nothing():
+    """The critical safety case: a family that never uses This Week's batch
+    planner has an empty planned_days *and* empty planned_weeks forever --
+    every lesson is on-demand, with no planned_for/week_start tag at all.
+    A missing Monday must still break the streak exactly as it always did;
+    planned_days being empty must never be read as "everything is a day
+    off," or the whole streak mechanic would go silent permanently the
+    moment a family didn't opt into batch planning."""
+    active = {"2026-08-20", "2026-08-21", "2026-08-25", "2026-08-26"}  # Mon 24 missing
+    assert current_streak(active, WED, planned_days=set(), planned_weeks=set()) == 2
+
+
+def test_best_streak_is_not_capped_by_a_day_that_was_never_planned():
+    # Thu/Fri/[Mon: never planned]/Tue/Wed would be a broken 2+2 without
+    # planning info; with it, the untouched Monday doesn't reset the run,
+    # so the whole stretch counts as one run of 4.
+    active = {"2026-08-20", "2026-08-21", "2026-08-25", "2026-08-26"}
+    planned_days = set(active)
+    planned_weeks = {"2026-08-24"}
+    assert (
+        best_streak(active, WED, planned_days=planned_days, planned_weeks=planned_weeks) == 4
+    )
+    assert best_streak(active, WED) == 2
+
+
+def test_best_streak_still_resets_on_a_planned_day_left_undone():
+    active = {"2026-08-20", "2026-08-21", "2026-08-25", "2026-08-26"}
+    planned_days = active | {"2026-08-24"}
+    planned_weeks = {"2026-08-24"}
+    assert (
+        best_streak(active, WED, planned_days=planned_days, planned_weeks=planned_weeks) == 2
+    )
+
+
+def test_planned_days_across_every_subject(db, student):
+    db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="t", payload={}, metadata={"planned_for": "2026-08-24"},
+    )
+    db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="t", payload={}, metadata={"planned_for": "2026-08-25"},
+    )
+    # An on-demand lesson, generated the ordinary way with no day attached --
+    # must not show up as a "planned" date.
+    db.save_lesson(
+        student_id=student["id"], agent="science", subject="science", topic="t",
+        title="t", payload={},
+    )
+    assert db.planned_days(student["id"]) == {"2026-08-24", "2026-08-25"}
+
+
+def test_planned_weeks_across_every_subject(db, student):
+    db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="t", payload={}, metadata={"week_start": "2026-08-24", "planned_for": "2026-08-24"},
+    )
+    db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="t", payload={}, metadata={"week_start": "2026-08-17", "planned_for": "2026-08-18"},
+    )
+    # An on-demand lesson -- no week_start tag -- must not show up.
+    db.save_lesson(
+        student_id=student["id"], agent="science", subject="science", topic="t",
+        title="t", payload={},
+    )
+    assert db.planned_weeks(student["id"]) == {"2026-08-24", "2026-08-17"}
+
+
 # --- what counts as an active day ----------------------------------------------
 
 

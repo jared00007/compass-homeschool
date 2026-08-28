@@ -2154,16 +2154,25 @@ def render_streak(db: Database, student: dict[str, Any]) -> None:
     The one thing on his page that rewards showing up rather than scoring
     well -- deliberately, since everything else Compass checks is about the
     quality of one piece of work. Weekends don't break it (see
-    compass.weekly), so it survives Monday morning.
+    compass.weekly), so it survives Monday morning. Neither does a
+    deliberate day off -- a holiday unchecked in This Week's school-days
+    picker leaves no lesson planned for that date at all, and
+    planned_days/planned_weeks together are what tell that apart from a day
+    he actually had work waiting and skipped (see
+    weekly._is_deliberate_day_off for why both are needed).
     """
     active = db.active_days(student["id"])
-    streak = weekly.current_streak(active)
+    planned_days = db.planned_days(student["id"])
+    planned_weeks = db.planned_weeks(student["id"])
+    streak = weekly.current_streak(
+        active, planned_days=planned_days, planned_weeks=planned_weeks
+    )
     if not streak:
         if active:
             st.caption("🔥 Finish something today to start a new streak.")
         return
 
-    best = weekly.best_streak(active)
+    best = weekly.best_streak(active, planned_days=planned_days, planned_weeks=planned_weeks)
     plural = "s" if streak != 1 else ""
     line = f"🔥 **{streak} school day{plural} in a row**"
     if streak >= best and streak > 1:

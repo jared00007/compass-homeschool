@@ -62,7 +62,42 @@ def _school_days_back(today: date):
         day -= timedelta(days=1)
 
 
-def current_streak(active_days: set[str], today: date | None = None) -> int:
+def _is_deliberate_day_off(
+    day: date, planned_days: set[str] | None, planned_weeks: set[str] | None
+) -> bool:
+    """Whether `day` looks like a real, deliberate day off -- a holiday
+    unchecked in This Week's school-days picker -- rather than a day he
+    just didn't get to.
+
+    Both sets have to agree, and for a reason that isn't obvious: a day
+    missing from `planned_days` alone is ambiguous. It's exactly what a
+    genuine holiday looks like, but it's *also* exactly what every single
+    day looks like for a family that never uses This Week's batch planner
+    at all and generates every lesson on demand instead -- `planned_days`
+    would just be permanently empty, and treating every gap as forgivable
+    would silently make the whole streak meaningless (never breakable, no
+    matter how long he actually goes without doing anything).
+
+    `planned_weeks` is what breaks that tie: it only forgives a day if its
+    *week* was actually run through the batch planner at all -- one of its
+    days really did get planned_for -- and this particular day still isn't
+    among them. A family that never touches This Week has an empty
+    `planned_weeks` forever, so nothing here ever fires and every gap is
+    judged exactly as it was before this existed.
+    """
+    if planned_days is None or planned_weeks is None:
+        return False
+    if day.isoformat() in planned_days:
+        return False  # it *was* planned -- missing from active_days is a real miss
+    return week_start(day).isoformat() in planned_weeks
+
+
+def current_streak(
+    active_days: set[str],
+    today: date | None = None,
+    planned_days: set[str] | None = None,
+    planned_weeks: set[str] | None = None,
+) -> int:
     """How many school days in a row, ending now, he did work on.
 
     Today not being done *yet* doesn't break the run -- the count just picks
@@ -77,26 +112,48 @@ def current_streak(active_days: set[str], today: date | None = None) -> int:
     not "today, still in progress." `index == 0` used to forgive that Friday
     the same way it forgives an actual today, silently letting a missed
     Friday slide every single weekend that followed it.
+
+    `planned_days`/`planned_weeks` (see the matching `Database` methods and
+    `_is_deliberate_day_off`) are what tell a genuine holiday apart from a
+    day he just didn't get to: a day that looks deliberately skipped is
+    treated exactly like a weekend -- neither breaking the streak nor
+    adding to it. Leaving either at `None` (the default) skips that check
+    entirely, so every weekday is judged the plain way, for callers that
+    don't track planning.
     """
     today = today or date.today()
     streak = 0
     for index, day in enumerate(_school_days_back(today)):
-        if day.isoformat() in active_days:
+        if index > 400:  # pragma: no cover - defensive bound
+            break
+        day_iso = day.isoformat()
+        if day_iso in active_days:
             streak += 1
         elif day == today:
             continue  # today is simply still in progress
+        elif _is_deliberate_day_off(day, planned_days, planned_weeks):
+            continue  # a real day off, not a miss
         else:
-            break
-        if index > 400:  # pragma: no cover - defensive bound
             break
     return streak
 
 
-def best_streak(active_days: set[str], today: date | None = None) -> int:
+def best_streak(
+    active_days: set[str],
+    today: date | None = None,
+    planned_days: set[str] | None = None,
+    planned_weeks: set[str] | None = None,
+) -> int:
     """His longest run ever, for the streak to be worth protecting.
 
     Computed from the same history rather than stored, so it can't drift out
     of step with the days it's counting.
+
+    `planned_days`/`planned_weeks` carry the same deliberate-day-off check
+    `current_streak` uses -- such a day leaves `run` untouched rather than
+    resetting it to 0, so a genuine holiday in the middle of an otherwise
+    unbroken run doesn't quietly cap his best-ever number below what it
+    should be.
     """
     if not active_days:
         return 0
@@ -107,7 +164,7 @@ def best_streak(active_days: set[str], today: date | None = None) -> int:
     day = date.fromisoformat(min(active_days))
     best = run = 0
     while day <= today:
-        if day.weekday() < 5:
+        if day.weekday() < 5 and not _is_deliberate_day_off(day, planned_days, planned_weeks):
             run = run + 1 if day.isoformat() in active_days else 0
             best = max(best, run)
         day += timedelta(days=1)

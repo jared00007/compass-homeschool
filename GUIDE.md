@@ -305,7 +305,10 @@ misses, so it survives Monday morning instead of resetting every week, and today
 unfinished doesn't break it: the count picks up from yesterday, which is exactly when
 you want it saying "you're on 6, keep it going." His current run, his best ever, and the
 next milestone. Deliberately not farmable — the vocabulary review and morning routine are
-one button press each and don't count toward it.
+one button press each and don't count toward it. A holiday you unchecked in This Week's
+school-days picker gets the same pass a weekend does — nothing was ever scheduled that
+day, so there's nothing to have missed — but a day that genuinely had a lesson waiting
+and just didn't get done still breaks it, exactly as before.
 
 It's the one thing on his page that rewards showing up rather than scoring well, which is
 worth having when everything else Compass checks is about the quality of a single piece of

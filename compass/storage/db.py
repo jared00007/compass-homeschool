@@ -2515,6 +2515,45 @@ class Database:
         ).fetchall()
         return {row["day"] for row in [*lesson_days, *skill_days] if row["day"]}
 
+    def planned_days(self, student_id: int) -> set[str]:
+        """Every date that ever had at least one lesson scheduled for it,
+        across every subject -- not just the ones he finished.
+
+        Feeds compass.weekly's streak counting one half of what it needs to
+        tell a deliberate day off (a holiday unchecked in This Week's
+        school-days picker) from a day he just didn't do the work that was
+        sitting there waiting -- see `planned_weeks` for the other half,
+        and why both are needed together rather than this alone.
+        """
+        rows = self.conn.execute(
+            "SELECT DISTINCT json_extract(metadata, '$.planned_for') AS day "
+            "FROM lessons WHERE student_id = ? "
+            "AND json_extract(metadata, '$.planned_for') IS NOT NULL",
+            (student_id,),
+        ).fetchall()
+        return {row["day"] for row in rows if row["day"]}
+
+    def planned_weeks(self, student_id: int) -> set[str]:
+        """Every Monday that ever got a This Week batch-planning pass at
+        all, regardless of which specific days within it ended up with a
+        lesson.
+
+        `planned_days` alone can't safely tell "this day was deliberately
+        skipped" from "this family has never used batch planning, so no day
+        ever carries a planned_for tag" -- both look identical, an absence.
+        Only a day whose *week* is in here but the day itself isn't in
+        `planned_days` is a real, deliberate skip; a family that generates
+        every lesson on demand (never touching This Week at all) has an
+        empty set here, so nothing about their streak changes.
+        """
+        rows = self.conn.execute(
+            "SELECT DISTINCT json_extract(metadata, '$.week_start') AS week "
+            "FROM lessons WHERE student_id = ? "
+            "AND json_extract(metadata, '$.week_start') IS NOT NULL",
+            (student_id,),
+        ).fetchall()
+        return {row["week"] for row in rows if row["week"]}
+
     def save_writing_ai_review(
         self, lesson_id: int, activity_index: int, review: dict[str, Any]
     ) -> None:

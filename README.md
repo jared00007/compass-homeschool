@@ -342,7 +342,7 @@ compass/
   theme.py                   the one fixed theme and the CSS that applies it
   fun_facts.py               fact-of-the-day for the student home view
   national_parks.py          the 63 parks + real state borders for Landon's Travels
-tests/                       854 tests, no API key required
+tests/                       861 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 scripts/new_school_year_reset.py  wipe a finished school year's data, see below
 ```
@@ -635,6 +635,20 @@ further") in a way a generic formula would flatten into one repeated sentence; o
 actually-shortened week (a holiday) falls through to the generic three-tier version --
 no note on day one, escalating practice through the middle, assessment-weighted on the
 last day (which can be the same day as the first, on a one-day week).
+
+**A holiday skipped this way doesn't cost him his streak, either.** `weekly.
+current_streak`/`best_streak` (see "Days in a row" below) used to read any weekday with
+nothing marked done as a miss, full stop -- indistinguishable from a day he actually had
+work waiting and didn't do. Two new `Database` methods give them enough to tell the two
+apart without a stored "this day is a holiday" flag: `planned_days` (every date that ever
+got a lesson, any subject) and `planned_weeks` (every Monday that ever got a batch-planning
+pass at all). A weekday counts as a deliberate day off -- skipped, same as a weekend,
+neither breaking the streak nor extending it -- only when its *week* was batch-planned but
+that specific day wasn't; a day that genuinely had work waiting and got nothing done still
+breaks the streak exactly as before. Both sets are empty forever for a family that never
+touches This Week and generates every lesson on demand instead, which is what keeps the
+streak meaning what it always did for them -- the two checks only ever start forgiving
+anything once there's a real batch-planned week to compare a gap against.
 
 ## Comic panels: single column, and collapsing a card when it's done
 
@@ -1072,7 +1086,7 @@ make.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 854 tests, ~60s, no API key needed
+python -m pytest tests/ -q      # 861 tests, ~72s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the
