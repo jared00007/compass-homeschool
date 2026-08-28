@@ -44,12 +44,26 @@ st.caption(
 )
 
 entries = db.list_travel_entries(student["id"])
-visited_states = {e["state"] for e in entries}
-visited_park_keys = {e["park_key"] for e in entries if e["park_key"]}
-newest_park_key = next((e["park_key"] for e in entries if e["park_key"]), None)
+
+# An "open pick" -- assigned via "assign him to pick" below -- has no state
+# or title yet because he hasn't chosen the trip. That blank pair is the
+# reliable signal for one: a parent-assigned *specific* trip always has a
+# title (the add form requires it), so this can't collide with that case.
+# Grouped separately below instead of by state/year, which would otherwise
+# show a blank-named group.
+open_pick_entries = [
+    e for e in entries
+    if not e["title"] and not e["state"] and e["status"] in ("planned", "needs_revision")
+]
+open_pick_ids = {e["id"] for e in open_pick_entries}
+graded_entries = [e for e in entries if e["id"] not in open_pick_ids]
+
+visited_states = {e["state"] for e in graded_entries}
+visited_park_keys = {e["park_key"] for e in graded_entries if e["park_key"]}
+newest_park_key = next((e["park_key"] for e in graded_entries if e["park_key"]), None)
 
 entries_by_state: dict[str, list[dict]] = {}
-for e in entries:
+for e in graded_entries:
     entries_by_state.setdefault(e["state"], []).append(e)
 
 
@@ -65,7 +79,7 @@ def _school_year_group(visited_on: str) -> tuple[int, str]:
 
 entries_by_year: dict[str, list[dict]] = {}
 year_sort_keys: dict[str, int] = {}
-for e in entries:
+for e in graded_entries:
     sort_key, label = _school_year_group(e["visited_on"])
     entries_by_year.setdefault(label, []).append(e)
     year_sort_keys[label] = sort_key
@@ -174,12 +188,34 @@ def _render_entry(entry: dict) -> None:
             st.session_state["composing_travel_entry"] = None if composing else entry["id"]
             st.rerun()
         if composing:
+            # An open pick (see the assign-him-to-pick UI) has no state or
+            # title yet -- he picks the trip himself here, on top of writing
+            # it up. A parent-assigned specific trip already has both, so
+            # this form stays exactly what it always was for that case.
+            is_open_pick = not entry["title"] and not entry["state"]
             with st.form(f"compose_travel_entry_{entry['id']}"):
+                if is_open_pick:
+                    st.caption("You're picking this trip -- fill in where and when, then write it up.")
+                    pick_columns = st.columns([2, 1])
+                    new_state = pick_columns[0].selectbox("State", parks.STATES)
+                    new_visited_on = pick_columns[1].date_input("Date", value=date.today())
+                    new_title = st.text_input(
+                        "Title", placeholder="e.g. Glaciers Before They're Gone"
+                    )
+                    new_park = st.selectbox(
+                        "National Park (optional)",
+                        [None, *parks.PARKS],
+                        format_func=lambda p: (
+                            "No park this trip" if p is None else f"{p.name} ({p.states})"
+                        ),
+                    )
                 new_story = st.text_area(
                     "The story",
                     value=entry["story"],
                     height=140,
-                    help="Take your time here. Details, details, details.",
+                    help="Take your time here. Details, details, details. Who was there, "
+                    f"what you did, what you remember -- at least "
+                    f"{config.TRAVEL_JOURNAL_MIN_STORY_WORDS} words.",
                 )
                 compose_columns = st.columns(2)
                 new_favorite = compose_columns[0].text_input(
@@ -188,16 +224,35 @@ def _render_entry(entry: dict) -> None:
                 new_return = compose_columns[1].text_input(
                     "Would you go back? (optional)", value=entry["would_return"]
                 )
-                if st.form_submit_button("Submit for review", type="primary") and new_story.strip():
-                    db.update_travel_entry(
-                        entry["id"],
+                if st.form_submit_button("Submit for review", type="primary"):
+                    update_fields = dict(
                         story=new_story.strip(),
                         favorite_moment=new_favorite.strip(),
                         would_return=new_return.strip(),
                     )
-                    db.submit_travel_entry(entry["id"])
-                    st.session_state["composing_travel_entry"] = None
-                    st.rerun()
+                    if is_open_pick:
+                        update_fields.update(
+                            state=new_state,
+                            title=new_title.strip(),
+                            visited_on=new_visited_on.isoformat(),
+                            park_key=new_park.key if new_park else None,
+                        )
+                    word_count = len(new_story.split())
+                    missing = []
+                    if word_count < config.TRAVEL_JOURNAL_MIN_STORY_WORDS:
+                        missing.append(
+                            f"needs at least {config.TRAVEL_JOURNAL_MIN_STORY_WORDS} words "
+                            f"of real detail ({word_count} so far)"
+                        )
+                    if is_open_pick and not new_title.strip():
+                        missing.append("needs a title")
+                    db.update_travel_entry(entry["id"], **update_fields)
+                    if not missing:
+                        db.submit_travel_entry(entry["id"])
+                        st.session_state["composing_travel_entry"] = None
+                        st.rerun()
+                    else:
+                        st.warning("Saved your progress, but not ready to submit yet -- " + "; ".join(missing) + ".")
 
     if is_parent() and entry["status"] == "submitted":
         reviewing = st.session_state.get("reviewing_travel_entry") == entry["id"]
@@ -394,11 +449,17 @@ with map_tab:
     )
 
 with journal_tab:
+    if msg := st.session_state.pop("travel_entry_needs_more_detail", None):
+        st.warning(msg)
+
     st.subheader("Add a travel entry")
     st.caption(
         "Every trip gets its own entry -- it doesn't have to be about a park. "
         "If there wasn't one that trip, just tell the state's story. Past "
-        "trips count too -- write up one we've already taken."
+        "trips count too -- write up one we've already taken. **A real "
+        "account of a real trip** -- who was there, what you did, what you "
+        f"remember -- at least {config.TRAVEL_JOURNAL_MIN_STORY_WORDS} words. "
+        "Not a one-line errand like a stop at the store."
     )
     # The park selector lives outside the form: form widgets only report
     # their values on submit, but picking a park needs to update the state
@@ -449,6 +510,30 @@ with journal_tab:
         if assign:
             assign_day = st.date_input("Day", value=date.today(), key="travel_entry_assign_day")
 
+        st.caption(
+            "Or don't pick the trip for him -- assign him to choose his own "
+            "and write about them, same review gate, due by a day you set."
+        )
+        open_pick_columns = st.columns([2, 2, 3])
+        open_pick_count = open_pick_columns[0].number_input(
+            "How many trips",
+            min_value=1,
+            max_value=config.TRAVEL_JOURNAL_MAX_OPEN_PICKS,
+            value=2,
+            step=1,
+            key="travel_entry_open_pick_count",
+        )
+        open_pick_due = open_pick_columns[1].date_input(
+            "Due by", value=date.today(), key="travel_entry_open_pick_due"
+        )
+        with open_pick_columns[2]:
+            st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
+            if st.button("🧭 Assign him to pick & write up", key="assign_open_travel_picks"):
+                db.assign_open_travel_entries(
+                    student["id"], int(open_pick_count), open_pick_due.isoformat()
+                )
+                st.rerun()
+
     with st.form("add_travel_entry", clear_on_submit=True):
         top_columns = st.columns([2, 1])
         state_choice = top_columns[0].selectbox(
@@ -485,8 +570,13 @@ with journal_tab:
             # A real story submits straight for review, same as a lesson --
             # a blank one (only reachable in parent view; the story field
             # is the whole point for anyone else) is a stub assignment with
-            # nothing to review yet.
-            entry_status = "submitted" if story.strip() else "planned"
+            # nothing to review yet. A story that's too short to be a real
+            # account doesn't submit either -- it saves as a stub instead,
+            # so nothing typed is lost, and he can pick "Write it up" below
+            # to finish it once it clears the bar.
+            word_count = len(story.split())
+            meets_requirement = word_count >= config.TRAVEL_JOURNAL_MIN_STORY_WORDS
+            entry_status = "submitted" if (story.strip() and meets_requirement) else "planned"
             new_id = db.add_travel_entry(
                 student["id"],
                 state_choice,
@@ -501,11 +591,26 @@ with journal_tab:
             if assign_day is not None:
                 db.schedule_travel_entry(new_id, assign_day.isoformat())
             st.session_state["travel_entry_just_saved"] = True
+            if story.strip() and not meets_requirement:
+                st.session_state["travel_entry_needs_more_detail"] = (
+                    f'Saved "{title.strip()}" but it needs at least '
+                    f"{config.TRAVEL_JOURNAL_MIN_STORY_WORDS} words of real detail before "
+                    f"it's ready to submit -- {word_count} so far. Find it below and pick "
+                    '"Write it up" to keep going.'
+                )
             st.rerun()
+
+    if open_pick_entries:
+        st.divider()
+        count_label = "trip" if len(open_pick_entries) == 1 else "trips"
+        st.subheader(f"🎯 Assigned: pick {len(open_pick_entries)} {count_label} of your own")
+        st.caption("Choose where, write it up, submit for review -- same as any other entry.")
+        for entry in open_pick_entries:
+            _render_entry(entry)
 
     st.divider()
 
-    if entries:
+    if graded_entries:
         header_columns = st.columns([2, 2])
         with header_columns[0]:
             group_mode = st.radio(
@@ -517,7 +622,7 @@ with journal_tab:
                     e,
                     park_name=(parks.park_by_key(e["park_key"]).name if e["park_key"] else ""),
                 )
-                for e in entries
+                for e in graded_entries
             ]
             st.download_button(
                 "📄 Export the Travel Journal",

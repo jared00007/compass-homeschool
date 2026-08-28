@@ -2847,6 +2847,23 @@ class Database:
         )
         self.conn.commit()
 
+    def assign_open_travel_entries(
+        self, student_id: int, count: int, due_date: str
+    ) -> list[int]:
+        """Parent assigns him to pick and write about `count` trips of his
+        own choosing, due by `due_date` -- unlike `schedule_travel_entry`,
+        there's no specific destination decided yet. Creates `count` blank
+        stubs (empty state/title, the signal `pages/9_Landons_Travels.py`
+        uses to tell an open pick apart from a parent-assigned specific
+        trip); he fills in the state, title, and story himself when he
+        writes each one up."""
+        ids = []
+        for _ in range(count):
+            entry_id = self.add_travel_entry(student_id, "", due_date, status="planned")
+            self.schedule_travel_entry(entry_id, due_date)
+            ids.append(entry_id)
+        return ids
+
     def schedule_travel_entry(self, entry_id: int, scheduled_for: str | None) -> None:
         """Assigns (or clears, with `None`) the day a parent wants this
         trip written up by. Unlike `schedule_life_skill`, there's no

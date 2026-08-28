@@ -209,6 +209,19 @@ never retroactively needs review — it reads as already approved, same as it al
 did. You can still log real extra minutes on any entry — the flat credit is a floor,
 not a ceiling, for something that was genuine researched writing.
 
+**Or don't pick the trip for him — assign him to pick.** Right below the single-trip
+checkbox: set how many trips (2, say) and a due date, then **🧭 Assign him to pick &
+write up**. That creates that many open slots — no destination decided yet — which
+show up in their own **🎯 Assigned: pick N trips of your own** section on the journal
+page. He picks the state, gives it a title, and writes it up, same submit/review gate
+as any other entry. The moment he's picked a real trip, it moves out of that section
+and into the regular list, even before the story's finished.
+
+Either way, a story needs at least 60 words of real detail before it's ready to
+submit — not a one-line "went to the store." Come up short and nothing's lost: it
+saves as a draft with a note on how many words short it is, and he picks "Write it
+up" to finish it once it clears the bar.
+
 ---
 
 ## The counting rule

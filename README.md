@@ -847,6 +847,27 @@ picker outside the form to match, and pinned the submit button's label to `assig
 (known accurately outside the form) rather than to the story text (which, being a form
 field too, can't be read reactively either).
 
+**Open picks — "assign him to pick," not a specific trip.** Requested as a follow-on:
+sometimes the point isn't a parent-chosen destination, it's making him choose and write
+about trips of his own. `Database.assign_open_travel_entries(student_id, count, due_date)`
+creates `count` blank stubs — empty `state` and `title`, unlike a specific assignment,
+which always has both. That blank pair is the whole signal `pages/9_Landons_Travels.py`
+needs to tell an open pick apart from a specific one (a specific assignment always has a
+title — the add form requires it before it'll save), so no extra schema was needed. Open
+picks render in their own "🎯 Assigned: pick N trips of your own" section, separate from
+the state/school-year groups a chosen trip belongs to; the moment he sets a real state and
+title (whether or not the story's ready yet), the entry graduates out of that section into
+the normal grouped list, since it's no longer un-chosen.
+
+**Minimum word count, so an assignment can't be a one-line errand.**
+`config.TRAVEL_JOURNAL_MIN_STORY_WORDS` (60) gates every path that would otherwise mark an
+entry `submitted` — the add-entry form and the compose/write-it-up form alike. Falling
+short doesn't discard what was typed: the entry still saves (as `planned`, with the
+under-length story attached), so nothing is lost, and a warning tells him how many words
+short he is. He picks "Write it up" to keep going once it clears the bar. This is the same
+"downgrade, don't block" instinct as the blank-story stub case just above, extended to a
+too-short one.
+
 ## Balanced card rows: a global CSS rule, not a Home-specific fix
 
 Reported directly: a row of `st.container(border=True)` cards looks sloppy when one has

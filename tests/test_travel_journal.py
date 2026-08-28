@@ -149,7 +149,7 @@ def test_writing_a_real_entry_submits_it_not_completes_it(monkeypatch, tmp_path)
     title_input = [w for w in tab.text_input if w.label == "Title"][0]
     title_input.set_value("Yellowstone trip")
     story_input = [w for w in tab.text_area if w.label == "The story"][0]
-    story_input.set_value("We watched Old Faithful erupt together.")
+    story_input.set_value(" ".join(["We", "watched", "Old", "Faithful", "erupt", "together"] * 12))
     submit = [b for b in tab.button if b.label in ("Save this entry", "Assign this trip")][0]
     submit.click().run()
     assert not at.exception, [e.message for e in at.exception]
@@ -213,7 +213,9 @@ def test_writing_up_an_assigned_stub_submits_it_for_review(monkeypatch, tmp_path
     # document order) and this compose form's pre-filled one (last) --
     # `[-1]` picks the one actually being edited here.
     story_input = [w for w in tab.text_area if w.label == "The story"][-1]
-    story_input.set_value("We hiked to the rim and watched the sunset.")
+    story_input.set_value(
+        " ".join(["We", "hiked", "to", "the", "rim", "and", "watched", "the", "sunset"] * 7)
+    )
     submit = [b for b in tab.button if b.label == "Submit for review"][0]
     submit.click().run()
     assert not at.exception, [e.message for e in at.exception]
@@ -249,6 +251,124 @@ def test_a_parent_approving_a_submitted_entry_completes_it_and_logs_credit(monke
     assert entry["status"] == "completed"
     assert len(activities) == 1
     assert activities[0]["source"] == "travel_journal"
+
+
+# --- Assigning him to pick his own trips (open picks) --------------------------
+
+
+def test_assigning_open_picks_creates_the_requested_number_of_blank_stubs(monkeypatch, tmp_path):
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=True)
+    tab = _journal_tab(at)
+    assign_button = [b for b in tab.button if b.key == "assign_open_travel_picks"][0]
+    assign_button.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    entries = database.list_travel_entries(s["id"])
+    database.close()
+    # Default count on the assign form is 2.
+    assert len(entries) == 2
+    assert all(e["state"] == "" and e["title"] == "" and e["status"] == "planned" for e in entries)
+
+
+def test_composing_an_open_pick_lets_him_choose_the_trip_and_submits_it(monkeypatch, tmp_path):
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    database.assign_open_travel_entries(s["id"], 1, date.today().isoformat())
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=False)
+    tab = _journal_tab(at)
+    compose_button = [b for b in tab.button if b.label == "✍️ Write it up"][0]
+    compose_button.click().run()
+    tab = _journal_tab(at)
+
+    state_select = [w for w in tab.selectbox if w.label == "State"][-1]
+    state_select.set_value("Wyoming")
+    title_input = [w for w in tab.text_input if w.label == "Title"][-1]
+    title_input.set_value("Yellowstone Adventure")
+    story_input = [w for w in tab.text_area if w.label == "The story"][-1]
+    long_story = " ".join(["We", "explored", "the", "park", "together"] * 15)
+    story_input.set_value(long_story)
+    submit = [b for b in tab.button if b.label == "Submit for review"][0]
+    submit.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    entry = database.list_travel_entries(s["id"])[0]
+    database.close()
+    assert entry["status"] == "submitted"
+    assert entry["state"] == "Wyoming"
+    assert entry["title"] == "Yellowstone Adventure"
+
+
+def test_a_too_short_open_pick_story_does_not_submit(monkeypatch, tmp_path):
+    """The whole point of this feature -- picking a real trip and writing
+    about it -- so a one-liner doesn't sneak through as submitted."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    database.assign_open_travel_entries(s["id"], 1, date.today().isoformat())
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=False)
+    tab = _journal_tab(at)
+    compose_button = [b for b in tab.button if b.label == "✍️ Write it up"][0]
+    compose_button.click().run()
+    tab = _journal_tab(at)
+
+    state_select = [w for w in tab.selectbox if w.label == "State"][-1]
+    state_select.set_value("Wyoming")
+    title_input = [w for w in tab.text_input if w.label == "Title"][-1]
+    title_input.set_value("Corner store run")
+    story_input = [w for w in tab.text_area if w.label == "The story"][-1]
+    story_input.set_value("We went there.")
+    submit = [b for b in tab.button if b.label == "Submit for review"][0]
+    submit.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    entry = database.list_travel_entries(s["id"])[0]
+    database.close()
+    assert entry["status"] == "planned"
+    assert entry["story"] == "We went there."
+    assert any("needs at least" in w.value for w in at.warning)
+
+
+def test_a_too_short_story_on_the_add_form_saves_as_a_stub_not_submitted(monkeypatch, tmp_path):
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=False)
+    tab = _journal_tab(at)
+    title_input = [w for w in tab.text_input if w.label == "Title"][0]
+    title_input.set_value("Quick trip")
+    story_input = [w for w in tab.text_area if w.label == "The story"][0]
+    story_input.set_value("It was fun.")
+    submit = [b for b in tab.button if b.label in ("Save this entry", "Assign this trip")][0]
+    submit.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    entry = database.list_travel_entries(s["id"])[0]
+    database.close()
+    assert entry["status"] == "planned"
+    assert entry["story"] == "It was fun."
+    assert any("needs at least" in w.value for w in at.warning)
 
 
 def test_a_parent_sending_a_submitted_entry_back_with_a_note(monkeypatch, tmp_path):

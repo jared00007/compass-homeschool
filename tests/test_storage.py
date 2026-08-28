@@ -643,6 +643,22 @@ def test_scheduling_a_travel_entry_makes_it_due_on_and_after_that_day(db, studen
     assert [e["id"] for e in db.due_travel_entries(student["id"], "2026-08-30")] == [entry_id]
 
 
+def test_assign_open_travel_entries_creates_blank_stubs_due_that_day(db, student):
+    """"Assign him to pick" -- unlike scheduling one specific trip, there's
+    no destination decided yet, so each stub gets no state or title."""
+    ids = db.assign_open_travel_entries(student["id"], 2, "2026-08-24")
+    assert len(ids) == 2
+    entries = {e["id"]: e for e in db.list_travel_entries(student["id"])}
+    for entry_id in ids:
+        entry = entries[entry_id]
+        assert entry["state"] == ""
+        assert entry["title"] == ""
+        assert entry["status"] == "planned"
+        assert entry["scheduled_for"] == "2026-08-24"
+    due_ids = {e["id"] for e in db.due_travel_entries(student["id"], "2026-08-24")}
+    assert due_ids == set(ids)
+
+
 def test_due_travel_entries_includes_submitted_and_needs_revision_not_just_planned(db, student):
     """He shouldn't see a submitted trip as if it silently vanished --
     Home's marker distinguishes the states, but all three still count as

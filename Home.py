@@ -292,7 +292,8 @@ if not is_parent():
                         "✅" if trip["status"] == "completed"
                         else TRAVEL_MARKERS.get(trip["status"], "⬜")
                     )
-                    st.markdown(f"{trip_marker} 🧭 {md(trip['title'] or trip['state'])}")
+                    trip_label = trip["title"] or trip["state"] or "Pick a trip to write about"
+                    st.markdown(f"{trip_marker} 🧭 {md(trip_label)}")
 
     def _render_extra_activities() -> None:
         st.markdown(
@@ -441,7 +442,7 @@ if not is_parent():
                     )
                     st.page_link(
                         "pages/9_Landons_Travels.py",
-                        label=f"{md(trip['title'] or trip['state'])} — {when}",
+                        label=f"{md(trip['title'] or trip['state'] or 'Pick a trip to write about')} — {when}",
                         icon=marker,
                     )
                 if due_trips:

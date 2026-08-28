@@ -61,6 +61,16 @@ COURSE_NUDGE_HOURS = 20
 TRAVEL_JOURNAL_WRITING_MINUTES = 30
 TRAVEL_JOURNAL_SOCIAL_STUDIES_MINUTES = 15
 
+# Below this many words, a story isn't "submitted for review" yet -- it's
+# saved as a stub he can keep writing. Keeps a travel entry an actual
+# written account of a real trip (who, what, where, a real memory) rather
+# than a one-line "went to the store" cashing in the flat credit above.
+TRAVEL_JOURNAL_MIN_STORY_WORDS = 60
+
+# How many open-ended trips a parent can assign at once with "assign him to
+# pick" -- he chooses the destinations himself, one stub per trip.
+TRAVEL_JOURNAL_MAX_OPEN_PICKS = 5
+
 # --- Family policy defaults (editable in Settings) ---------------------------
 
 DEFAULT_SETTINGS: dict[str, str] = {
