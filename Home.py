@@ -288,7 +288,31 @@ if not is_parent():
         # desktop actually has instead of one narrow scrolling column.
         today = date.today().isoformat()
 
-        # 1. Lessons -- a roster of *links* out to each subject's own page,
+        # 1. Morning routine and Check-In, side by side, right under the
+        # header -- balances the header row's left/right split instead of
+        # leaving the space under the greeting empty until Lessons starts.
+        # Both stay exactly as compact as they already render (Morning
+        # Routine's own steps sit behind a collapsed expander), just moved
+        # up rather than resized.
+        grid_columns = st.columns(2)
+        with grid_columns[0]:
+            with st.container(border=True):
+                render_morning_routine(db, student)
+        with grid_columns[1]:
+            with st.container(border=True):
+                checked_in = db.journal_entry_for_date(student["id"], today) is not None
+                render_card_heading("💬 Check-In")
+                if checked_in:
+                    st.success("✅ You've checked in today.")
+                else:
+                    st.caption("Take a second to say how you're doing today.")
+                st.page_link(
+                    "pages/8_Check_In.py",
+                    label="Check in again" if checked_in else "Open Check-In",
+                    icon="➡️",
+                )
+
+        # 2. Lessons -- a roster of *links* out to each subject's own page,
         # not the lesson's own content embedded here. Each subject's marker
         # reflects its real review-gate state (weekly.today_subject_status),
         # not just whether he's clicked anything: turned in and waiting on a
@@ -348,7 +372,7 @@ if not is_parent():
                     "**Upcoming Week**."
                 )
 
-        # 1b. Life skills assigned to a specific day -- only when there's
+        # 2b. Life skills assigned to a specific day -- only when there's
         # actually one due, so a family that never assigns a day (the
         # default) never sees this card at all. Includes anything assigned
         # for today or earlier and still not done, same "never silently
@@ -365,26 +389,7 @@ if not is_parent():
                         icon="🛠️",
                     )
 
-        # 2 & 3. Morning routine and Check-In, side by side.
-        grid_columns = st.columns(2)
-        with grid_columns[0]:
-            with st.container(border=True):
-                render_morning_routine(db, student)
-        with grid_columns[1]:
-            with st.container(border=True):
-                checked_in = db.journal_entry_for_date(student["id"], today) is not None
-                render_card_heading("💬 Check-In")
-                if checked_in:
-                    st.success("✅ You've checked in today.")
-                else:
-                    st.caption("Take a second to say how you're doing today.")
-                st.page_link(
-                    "pages/8_Check_In.py",
-                    label="Check in again" if checked_in else "Open Check-In",
-                    icon="➡️",
-                )
-
-        # 4. Vocabulary review and 5. Reading, side by side; Choice Topics
+        # 3. Vocabulary review and 4. Reading, side by side; Choice Topics
         # spans the full width below (its list can run a few items long).
         # Same limit render_vocab_review uses for "words due," so this count
         # matches what he'll actually see when he clicks through.

@@ -707,7 +707,13 @@ block on Today deliberately — sitting above the checklist, his grade would be
 the first thing he read every morning, which is the opposite of the point.
 His streak and the day's fun fact sit side by side in two small cards below
 the buttons, rather than each spanning the full page width, freeing up the
-space for the actual checklist underneath.
+space for the actual checklist underneath. Morning Routine and Check-In sit
+right below that header, side by side — moved up from further down the page
+on request, since leaving them there meant the whole left side of the header
+sat empty under his name while the streak/fact column on the right stacked
+two cards; pulling them up balances the two sides instead of leaving that
+gap. Lessons, Words to Review/Reading, and Choice Topics keep their original
+order underneath.
 
 The greeting and every card's title on this page (Lessons, Morning Routine,
 Check-In, ...) are deliberately plain, normal-case text rather than a real
