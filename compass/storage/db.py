@@ -1367,6 +1367,9 @@ class Database:
         # opposite ordering hazard from the books rebuild further down.
         self._ensure_column("travel_entries", "favorite_moment", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("travel_entries", "would_return", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column("travel_entries", "status", "TEXT NOT NULL DEFAULT 'completed'")
+        self._ensure_column("travel_entries", "scheduled_for", "TEXT")
+        self._ensure_column("travel_entries", "revision_note", "TEXT NOT NULL DEFAULT ''")
         self._backfill_life_skill_content()
         self._backfill_life_skill_catalog()
         self._migrate_park_visits_to_travel_entries()
@@ -2799,12 +2802,23 @@ class Database:
         park_key: str | None = None,
         favorite_moment: str = "",
         would_return: str = "",
+        status: str = "completed",
     ) -> int:
+        """`status` defaults to 'completed' -- the old, zero-friction
+        behavior for anything that doesn't say otherwise (every existing
+        caller, including the park_visits migration). The journal page
+        itself passes 'submitted' for a real written entry or 'planned' for
+        a parent-assigned stub with no story yet, since only it knows
+        which one this is."""
         cur = self.conn.execute(
             "INSERT INTO travel_entries "
-            "(student_id, state, park_key, title, story, favorite_moment, would_return, visited_on) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (student_id, state, park_key, title, story, favorite_moment, would_return, visited_on),
+            "(student_id, state, park_key, title, story, favorite_moment, would_return, "
+            " visited_on, status) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                student_id, state, park_key, title, story, favorite_moment, would_return,
+                visited_on, status,
+            ),
         )
         self.conn.commit()
         return cur.lastrowid  # type: ignore[return-value]
@@ -2832,6 +2846,106 @@ class Database:
             (*updates.values(), entry_id),
         )
         self.conn.commit()
+
+    def schedule_travel_entry(self, entry_id: int, scheduled_for: str | None) -> None:
+        """Assigns (or clears, with `None`) the day a parent wants this
+        trip written up by. Unlike `schedule_life_skill`, there's no
+        active/locked concept here to also flip -- a travel entry is either
+        in the journal or it isn't."""
+        self.conn.execute(
+            "UPDATE travel_entries SET scheduled_for = ? WHERE id = ?",
+            (scheduled_for, entry_id),
+        )
+        self.conn.commit()
+
+    def submit_travel_entry(self, entry_id: int) -> None:
+        """The story's been written (whether this is a first pass on a
+        parent-assigned stub or a resubmission after being sent back) --
+        now it's waiting on a parent to read it."""
+        self.conn.execute(
+            "UPDATE travel_entries SET status = 'submitted' WHERE id = ?", (entry_id,)
+        )
+        self.conn.commit()
+
+    def send_travel_entry_back(self, entry_id: int, note: str = "") -> None:
+        self.conn.execute(
+            "UPDATE travel_entries SET status = 'needs_revision', revision_note = ? WHERE id = ?",
+            (note, entry_id),
+        )
+        self.conn.commit()
+
+    def approve_travel_entry(self, entry_id: int) -> None:
+        """Marks the entry completed and logs its flat Writing + Social
+        Studies credit in the same action -- one click does both, the same
+        way approving a lesson (`log_activity(..., lesson_id=...)`) flips
+        its status as a side effect of logging the credit rather than as a
+        separate step. The existing manual "Log hours" flow on the journal
+        page stays available afterward for anything that earned more than
+        the flat default."""
+        entry = _row(
+            self.conn.execute("SELECT * FROM travel_entries WHERE id = ?", (entry_id,))
+        )
+        if entry is None:
+            return
+        self.log_activity(
+            student_id=entry["student_id"],
+            title=entry["title"] or f"Travel journal -- {entry['state']}",
+            tier=config.TIER_CHOICE,
+            primary_subject="writing",
+            minutes=config.TRAVEL_JOURNAL_WRITING_MINUTES + config.TRAVEL_JOURNAL_SOCIAL_STUDIES_MINUTES,
+            subject_credits={
+                "writing": config.TRAVEL_JOURNAL_WRITING_MINUTES,
+                "social_studies": config.TRAVEL_JOURNAL_SOCIAL_STUDIES_MINUTES,
+            },
+            occurred_on=entry["visited_on"],
+            description=entry["story"],
+            source="travel_journal",
+        )
+        self.conn.execute(
+            "UPDATE travel_entries SET status = 'completed' WHERE id = ?", (entry_id,)
+        )
+        self.conn.commit()
+
+    def due_travel_entries(self, student_id: int, today: str) -> list[dict[str, Any]]:
+        """Assigned entries still needing his attention: scheduled for
+        today or earlier, and not yet approved. Includes 'submitted' ones
+        too (waiting on a parent, not him) so Home can show the real
+        review-gate marker instead of just due/not-due -- same reasoning
+        as `weekly.today_subject_status` for lessons."""
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM travel_entries WHERE student_id = ? AND scheduled_for IS NOT NULL "
+                "AND scheduled_for <= ? AND status != 'completed' "
+                "ORDER BY scheduled_for, id",
+                (student_id, today),
+            )
+        )
+
+    def upcoming_travel_entries(self, student_id: int, after: str) -> list[dict[str, Any]]:
+        """Assigned entries not due yet -- scheduled strictly after
+        `after`, not yet approved. Feeds Home's "N more assigned this
+        week" hint, mirroring `upcoming_life_skills`."""
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM travel_entries WHERE student_id = ? AND scheduled_for IS NOT NULL "
+                "AND scheduled_for > ? AND status != 'completed' "
+                "ORDER BY scheduled_for, id",
+                (student_id, after),
+            )
+        )
+
+    def travel_entries_for_week(self, student_id: int, week_start: str) -> list[dict[str, Any]]:
+        """Every entry assigned inside the 5-day span starting `week_start`
+        (Mon-Fri), any status -- the Week grid shows the whole week's plan,
+        mirroring `life_skills_for_week`."""
+        week_end = (date.fromisoformat(week_start) + timedelta(days=4)).isoformat()
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM travel_entries WHERE student_id = ? AND scheduled_for IS NOT NULL "
+                "AND scheduled_for BETWEEN ? AND ? ORDER BY scheduled_for, id",
+                (student_id, week_start, week_end),
+            )
+        )
 
     def delete_travel_entry(self, entry_id: int) -> None:
         self.conn.execute("DELETE FROM travel_entries WHERE id = ?", (entry_id,))

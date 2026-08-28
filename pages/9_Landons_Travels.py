@@ -1,11 +1,17 @@
-"""Landon's Travels -- a family travel journal. Entries are pure journal by
-default, same as Choice Topics and Life Skills: writing them logs nothing on
-its own, but a parent can log real minutes against a specific entry when it
-was genuine researched work, not just a two-sentence trip recap, or seed it
-as an open History topic (compass.storage.db.add_web_node) to be picked up
-by a real generated lesson later -- never automatic, either way. Real state
-borders and National Park pins -- see compass/national_parks.py's own
-docstring for where that data comes from.
+"""Landon's Travels -- a family travel journal, now behind the same kind of
+review gate a lesson goes through: writing an entry submits it, a parent
+approves it (which also logs its flat Writing + Social Studies credit
+automatically, no separate "Log hours" click needed for the ordinary case)
+or sends it back with a note to revise. A parent can also assign a trip to
+be written up on a specific day ahead of time -- a stub entry (trip
+details, no story yet) that shows up on Home and the Week grid until he
+writes it. Either way, a parent can still log real extra minutes against
+any entry when it was genuine researched work, well beyond the flat
+default, or seed it as an open History topic
+(compass.storage.db.add_web_node) to be picked up by a real generated
+lesson later -- never automatic. Real state borders and National Park
+pins -- see compass/national_parks.py's own docstring for where that data
+comes from.
 """
 
 from __future__ import annotations
@@ -33,8 +39,8 @@ _MONO_FONT = theming.THEME.mono_font.replace('"', "'")
 st.title("🧭 Landon's Travels")
 st.caption(
     "Every state has a story -- National Parks are part of it, not the "
-    "whole map. Entries are a family record first; a parent can log real "
-    "minutes against one when it was genuine researched writing."
+    "whole map. Writing an entry submits it for review, same as a lesson -- "
+    "approving it logs its Writing/Social Studies credit automatically."
 )
 
 entries = db.list_travel_entries(student["id"])
@@ -65,10 +71,25 @@ for e in entries:
     year_sort_keys[label] = sort_key
 
 
+# Same three non-'completed' states a lesson can sit in, same semantic
+# colors the rest of the app already uses for them (var(--c-dim)/
+# var(--c-alt)/var(--c-bad) -- never the accent, which means "yours to act
+# on" everywhere else, not "here's a status"). 'completed' and any
+# pre-existing entry from before this column existed get no badge at all.
+TRAVEL_ENTRY_STATUS_BADGES: dict[str, tuple[str, str]] = {
+    "planned": ("📝 Not written yet", "var(--c-dim)"),
+    "submitted": ("📤 Waiting on a parent", "var(--c-alt)"),
+    "needs_revision": ("↩️ Sent back", "var(--c-bad)"),
+}
+
+
 def _render_entry(entry: dict) -> None:
-    """One trip's card, plus (parent-only) its edit/log/remove/suggest
-    actions -- shared between the by-state and by-year groupings so neither
-    duplicates this whole block."""
+    """One trip's card, plus its actions -- shared between the by-state and
+    by-year groupings so neither duplicates this whole block. Three tiers:
+    writing/revising a not-yet-submitted entry is open to anyone (same as
+    the original add-entry form always was); approving or sending one back
+    is parent-only, gated on `status == "submitted"`; edit/log
+    hours/remove/suggest-lesson stay parent-only same as always."""
     park = parks.park_by_key(entry["park_key"]) if entry["park_key"] else None
     park_tag = (
         f'<div style="font-size:11px; color:var(--c-border); text-transform:uppercase; '
@@ -76,6 +97,27 @@ def _render_entry(entry: dict) -> None:
         if park
         else ""
     )
+    # Only entries a parent actually put through the gate (assigned a day,
+    # or written up since this feature shipped) ever show a badge --
+    # 'completed' covers both an approved entry and every pre-existing one
+    # from before this column existed, and neither needs a status called
+    # out. See TRAVEL_ENTRY_STATUS_BADGES below.
+    badge_label, badge_color = TRAVEL_ENTRY_STATUS_BADGES.get(entry["status"], (None, None))
+    badge_tag = ""
+    if badge_label:
+        badge_text = badge_label
+        if entry["scheduled_for"] and entry["status"] in ("planned", "needs_revision"):
+            badge_text += f" · assigned {entry['scheduled_for']}"
+        badge_tag = (
+            f'<div style="font-size:11px; color:{badge_color}; font-weight:700; margin:2px 0 6px;">'
+            f"{badge_text}</div>"
+        )
+        if entry["status"] == "needs_revision" and entry["revision_note"].strip():
+            badge_tag += (
+                f'<div style="font-size:12.5px; color:var(--c-text); background:var(--c-panel); '
+                f'border-left:3px solid {badge_color}; padding:4px 8px; margin-bottom:6px;">'
+                f'{html.escape(entry["revision_note"].strip())}</div>'
+            )
     story_text = entry["story"].strip()
     story_html = (
         html.escape(story_text).replace("\n", "<br>")
@@ -109,8 +151,9 @@ def _render_entry(entry: dict) -> None:
                  white-space:nowrap;">{entry["visited_on"]}</div>
           </div>
           {park_tag}
+          {badge_tag}
           <div style="font-size:13.5px; line-height:1.6; color:var(--c-text);
-               margin-top:{"4px" if park_tag else "10px"};">
+               margin-top:{"4px" if (park_tag or badge_tag) else "10px"};">
             {story_html}
           </div>
           {extra_html}
@@ -118,6 +161,66 @@ def _render_entry(entry: dict) -> None:
         """,
         unsafe_allow_html=True,
     )
+
+    # Writing it up (a parent-assigned stub) or revising it (sent back) is
+    # every family member's to do, not just a parent's -- shown before the
+    # parent-only action row below, and open to anyone regardless of
+    # is_parent(), the same way the original "Add a travel entry" form
+    # always was.
+    if entry["status"] in ("planned", "needs_revision"):
+        composing = st.session_state.get("composing_travel_entry") == entry["id"]
+        verb = "Write it up" if entry["status"] == "planned" else "Revise & resubmit"
+        if st.button(f"✍️ {verb}" if not composing else "Cancel", key=f"compose_entry_{entry['id']}"):
+            st.session_state["composing_travel_entry"] = None if composing else entry["id"]
+            st.rerun()
+        if composing:
+            with st.form(f"compose_travel_entry_{entry['id']}"):
+                new_story = st.text_area(
+                    "The story",
+                    value=entry["story"],
+                    height=140,
+                    help="Take your time here. Details, details, details.",
+                )
+                compose_columns = st.columns(2)
+                new_favorite = compose_columns[0].text_input(
+                    "Favorite moment (optional)", value=entry["favorite_moment"]
+                )
+                new_return = compose_columns[1].text_input(
+                    "Would you go back? (optional)", value=entry["would_return"]
+                )
+                if st.form_submit_button("Submit for review", type="primary") and new_story.strip():
+                    db.update_travel_entry(
+                        entry["id"],
+                        story=new_story.strip(),
+                        favorite_moment=new_favorite.strip(),
+                        would_return=new_return.strip(),
+                    )
+                    db.submit_travel_entry(entry["id"])
+                    st.session_state["composing_travel_entry"] = None
+                    st.rerun()
+
+    if is_parent() and entry["status"] == "submitted":
+        reviewing = st.session_state.get("reviewing_travel_entry") == entry["id"]
+        review_columns = st.columns([1, 1, 4])
+        if review_columns[0].button("✅ Approve", key=f"approve_entry_{entry['id']}", type="primary"):
+            db.approve_travel_entry(entry["id"])
+            st.rerun()
+        if review_columns[1].button(
+            "Cancel" if reviewing else "↩️ Send back", key=f"reviewbounce_entry_{entry['id']}"
+        ):
+            st.session_state["reviewing_travel_entry"] = None if reviewing else entry["id"]
+            st.rerun()
+        if reviewing:
+            with st.form(f"send_back_travel_entry_{entry['id']}"):
+                note = st.text_input(
+                    "What should he fix or add?",
+                    placeholder="e.g. more detail on what you actually did there",
+                )
+                if st.form_submit_button("Send back", type="primary"):
+                    db.send_travel_entry_back(entry["id"], note.strip())
+                    st.session_state["reviewing_travel_entry"] = None
+                    st.rerun()
+
     if is_parent():
         editing = st.session_state.get("editing_travel_entry") == entry["id"]
         logging_hours = st.session_state.get("logging_travel_entry") == entry["id"]
@@ -328,6 +431,24 @@ with journal_tab:
             f"{default_state} below, change it if this trip was based in one of the others."
         )
 
+    # Also outside the form, same reasoning as park_choice above -- a
+    # checkbox *inside* a form doesn't rerun the script when clicked (only
+    # the form's own submit button does), so a date_input that's only
+    # supposed to appear once this box is checked would never actually
+    # show up in a browser, only ever exist in whatever the script's very
+    # first render happened to compute. Confirmed live: the box checked
+    # fine, the date picker never appeared.
+    assign_day: date | None = None
+    if is_parent():
+        assign = st.checkbox(
+            "Assign this trip to be written up on a specific day",
+            key="travel_entry_assign_toggle",
+            help="Leave the story below blank and he'll see this as an assignment "
+            "on Home and the Week grid until he fills it in.",
+        )
+        if assign:
+            assign_day = st.date_input("Day", value=date.today(), key="travel_entry_assign_day")
+
     with st.form("add_travel_entry", clear_on_submit=True):
         top_columns = st.columns([2, 1])
         state_choice = top_columns[0].selectbox(
@@ -343,7 +464,8 @@ with journal_tab:
                 "Give real detail -- not just \"we went here and it was cool.\""
             ),
             height=140,
-            help="Take your time here. Details, details, details.",
+            help="Take your time here. Details, details, details. Leave this blank to "
+            "just assign the trip for now -- see below.",
         )
         extra_columns = st.columns(2)
         favorite_moment = extra_columns[0].text_input(
@@ -353,8 +475,19 @@ with journal_tab:
             "Would you go back? (optional)", placeholder="e.g. Yes, in the fall next time"
         )
 
-        if st.form_submit_button("Save this entry", type="primary") and title.strip():
-            db.add_travel_entry(
+        # Based on `assign_day` (known accurately outside the form, see
+        # above), not on `story` -- a text_area inside a form only reports
+        # its live value at submit time like every other form widget, so a
+        # label reacting to what's currently typed would just show
+        # whatever was there on the *previous* run, not this keystroke.
+        submit_label = "Assign this trip" if assign_day is not None else "Save this entry"
+        if st.form_submit_button(submit_label, type="primary") and title.strip():
+            # A real story submits straight for review, same as a lesson --
+            # a blank one (only reachable in parent view; the story field
+            # is the whole point for anyone else) is a stub assignment with
+            # nothing to review yet.
+            entry_status = "submitted" if story.strip() else "planned"
+            new_id = db.add_travel_entry(
                 student["id"],
                 state_choice,
                 visited_on.isoformat(),
@@ -363,7 +496,10 @@ with journal_tab:
                 park_key=park_choice.key if park_choice else None,
                 favorite_moment=favorite_moment.strip(),
                 would_return=would_return.strip(),
+                status=entry_status,
             )
+            if assign_day is not None:
+                db.schedule_travel_entry(new_id, assign_day.isoformat())
             st.session_state["travel_entry_just_saved"] = True
             st.rerun()
 

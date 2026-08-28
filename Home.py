@@ -119,6 +119,16 @@ if not is_parent():
 
     st.divider()
 
+    # Shared with both the Today card below and the Week grid further down
+    # -- a travel entry assigned to a day goes through the same review gate
+    # a lesson does, so it gets the same four-state marker set instead of
+    # skills' plain done/not-done one.
+    TRAVEL_MARKERS = {
+        "planned": "⬜",
+        "submitted": "📤",
+        "needs_revision": "↩️",
+    }
+
     # "Sunday Funnies" week-grid styling -- one of three retro comic
     # directions sampled and approved before building (see Home's own week
     # tab). Deliberately this one fixed printed-poster palette, not
@@ -201,6 +211,11 @@ if not is_parent():
         for skill in week_skills:
             skills_by_day.setdefault(skill["scheduled_for"], []).append(skill)
 
+        week_trips = db.travel_entries_for_week(student["id"], week_start_date.isoformat())
+        trips_by_day: dict[str, list[dict]] = {}
+        for trip in week_trips:
+            trips_by_day.setdefault(trip["scheduled_for"], []).append(trip)
+
         checked_in_dates = {
             e["entry_date"] for e in db.list_journal_entries(student["id"], limit=60)
         }
@@ -241,13 +256,14 @@ if not is_parent():
                     st.caption("💬 No check-in yet")
 
                 day_skills = skills_by_day.get(day_iso, [])
+                day_trips = trips_by_day.get(day_iso, [])
 
                 if day_name == "Friday":
                     st.caption("🎬 Light day — review the week, plus a quick win:")
                     render_friday_plan(db, student, day_iso)
                 else:
                     day_lessons = lessons_by_day.get(day_iso, [])
-                    if not day_lessons and not day_skills:
+                    if not day_lessons and not day_skills and not day_trips:
                         st.caption("Nothing planned yet.")
                     for lesson in day_lessons:
                         icon = SUBJECT_ICONS.get(lesson["agent"], "📘")
@@ -265,6 +281,18 @@ if not is_parent():
                     done = bool(skill["completed_on"])
                     marker = "✅" if done else "⬜"
                     st.markdown(f"{marker} 🛠️ {md(skill['title'])}")
+
+                # Same reasoning as life skills just above -- renders after
+                # everything else the day already shows. Uses the same
+                # four-state marker set Lessons uses (not skills' plain
+                # done/not-done) since a travel entry goes through the same
+                # review gate a lesson does once it's been assigned.
+                for trip in day_trips:
+                    trip_marker = (
+                        "✅" if trip["status"] == "completed"
+                        else TRAVEL_MARKERS.get(trip["status"], "⬜")
+                    )
+                    st.markdown(f"{trip_marker} 🧭 {md(trip['title'] or trip['state'])}")
 
     def _render_extra_activities() -> None:
         st.markdown(
@@ -387,6 +415,49 @@ if not is_parent():
                     f"{later_week} more lesson(s) planned for a later week — see "
                     "**Upcoming Week**."
                 )
+
+        # 2b. Travel journal entries a parent assigned to a specific day --
+        # only when there's actually one due or upcoming, same as Life
+        # Skills used to render before it joined the row below: most
+        # families never assign a trip, so most Home pages never show
+        # this at all. Unlike Life Skills, an assigned trip goes through
+        # the same review gate a lesson does (see pages/9_Landons_Travels.py),
+        # so it gets the same four-state TRAVEL_MARKERS set (defined above,
+        # shared with the Week grid) instead of a plain done/not-done one.
+        due_trips = db.due_travel_entries(student["id"], today)
+        upcoming_trips = db.upcoming_travel_entries(student["id"], today)
+        later_trips_this_week = sum(
+            1 for t in upcoming_trips if t["scheduled_for"] <= this_week_end
+        )
+        later_trips_week = len(upcoming_trips) - later_trips_this_week
+        if due_trips or upcoming_trips:
+            with st.container(border=True):
+                render_card_heading(f"🧭 Travel Journal ({len(due_trips)})")
+                for trip in due_trips:
+                    marker = TRAVEL_MARKERS.get(trip["status"], "⬜")
+                    when = (
+                        "today" if trip["scheduled_for"] == today
+                        else f"since {trip['scheduled_for']}"
+                    )
+                    st.page_link(
+                        "pages/9_Landons_Travels.py",
+                        label=f"{md(trip['title'] or trip['state'])} — {when}",
+                        icon=marker,
+                    )
+                if due_trips:
+                    st.caption("⬜ not written yet  \n📤 waiting on a parent  \n↩️ sent back")
+                else:
+                    st.caption("Nothing due today.")
+                if later_trips_this_week:
+                    st.caption(
+                        f"{later_trips_this_week} more trip(s) assigned for later this "
+                        "week — see **This Week**."
+                    )
+                if later_trips_week:
+                    st.caption(
+                        f"{later_trips_week} more trip(s) assigned for a later week — "
+                        "see **Upcoming Week**."
+                    )
 
         # 3. Words to Review, Reading, Life Skills, and Choice Topics all in
         # one row of four equal columns -- four small, single-purpose tiles

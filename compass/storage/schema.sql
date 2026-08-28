@@ -351,6 +351,17 @@ CREATE TABLE IF NOT EXISTS travel_entries (
     favorite_moment TEXT NOT NULL DEFAULT '',
     would_return    TEXT NOT NULL DEFAULT '',
     visited_on  TEXT NOT NULL,
+    -- The same review-gate vocabulary lessons use, not a bespoke one:
+    -- 'planned' is a parent-assigned stub with no story yet, 'submitted'
+    -- is waiting on a parent to review, 'needs_revision' was sent back,
+    -- 'completed' is approved (and has earned its flat credit). Existing
+    -- rows from before this column existed default to 'completed' --
+    -- there's nothing to retroactively review about a trip already
+    -- written up and sitting in the family record.
+    status      TEXT NOT NULL DEFAULT 'completed'
+                CHECK (status IN ('planned', 'submitted', 'needs_revision', 'completed')),
+    scheduled_for TEXT,  -- ISO date a parent assigned this trip to be written up; NULL = whenever
+    revision_note TEXT NOT NULL DEFAULT '',  -- parent's note when sending an entry back
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

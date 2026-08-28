@@ -185,6 +185,32 @@ reopen the skill, so this isn't a per-session expense.
 
 ---
 
+## Landon's Travels: assign a trip, review it like a lesson
+
+The family travel journal (state map, National Park pins, a story per trip) now goes
+through the same review gate a lesson does. Writing a real entry submits it —
+**📤 Waiting on a parent** — and you either **✅ Approve** it (which logs its flat
+Writing + Social Studies credit automatically, no separate "Log hours" click for the
+ordinary case) or **↩️ Send it back** with a note on what to add or fix, the same as
+sending a lesson back. He can revise and resubmit as many times as it takes.
+
+**Assigning a trip works like Life Skills.** On the journal page, check "Assign this
+trip to be written up on a specific day," pick a date, and leave the story blank —
+that saves a stub (trip, state, park if any, no story yet) that shows up on his Home
+page and the Week grid until he writes it. It reads there exactly the way a lesson
+does: ⬜ not written yet, 📤 waiting on you, ↩️ sent back, and it keeps showing as
+outstanding rather than quietly disappearing if he doesn't get to it that day.
+
+Every new entry written from here on goes through the gate — a real story submits
+for review whether or not a day was ever assigned to it. Assigning a day is a
+separate, optional layer on top: it just gives an entry a due-date reminder on Home
+and the Week grid before he's written it. An entry from before this feature existed
+never retroactively needs review — it reads as already approved, same as it always
+did. You can still log real extra minutes on any entry — the flat credit is a floor,
+not a ceiling, for something that was genuine researched writing.
+
+---
+
 ## The counting rule
 
 This has to be right, and it's the thing most likely to confuse you on the compliance page.
@@ -733,7 +759,11 @@ four small, single-purpose tiles, each linking straight to where that thing
 actually gets done, which cuts the page's overall length. All four always
 render, even with nothing outstanding (a plain "nothing due"/"add a topic"
 state), so the row never changes shape depending on what's assigned that
-day.
+day. All four also stretch to match whichever one in the row actually has
+the most to say, rather than each sizing to its own content -- a plain CSS
+rule in `theme.py` (the same technique already used to keep a row of
+metric tiles the same height), so any row of cards anywhere in the app
+gets this for free, not just this one.
 
 The greeting and every card's title on this page (Lessons, Morning Routine,
 Check-In, ...) are deliberately plain, normal-case text rather than a real

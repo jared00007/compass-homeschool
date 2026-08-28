@@ -51,6 +51,16 @@ CREDIT_HOURS_PER_UNIT = 150
 # toward any credit. A UX tuning knob, free to adjust.
 COURSE_NUDGE_HOURS = 20
 
+# Flat credit a parent-approved travel journal entry earns automatically --
+# no manual "Log hours" click needed for the ordinary case. Picked to read as
+# a real but modest writing session plus its social-studies half (a trip
+# genuinely does double as geography/civics/economics, WA's own definition of
+# that subject), not an attempt to estimate actual time spent. The existing
+# manual Log Hours flow on the journal page stays available afterward for
+# anything that earned more than this.
+TRAVEL_JOURNAL_WRITING_MINUTES = 30
+TRAVEL_JOURNAL_SOCIAL_STUDIES_MINUTES = 15
+
 # --- Family policy defaults (editable in Settings) ---------------------------
 
 DEFAULT_SETTINGS: dict[str, str] = {

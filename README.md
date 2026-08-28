@@ -342,7 +342,7 @@ compass/
   theme.py                   the one fixed theme and the CSS that applies it
   fun_facts.py               fact-of-the-day for the student home view
   national_parks.py          the 63 parks + real state borders for Landon's Travels
-tests/                       892 tests, no API key required
+tests/                       913 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 scripts/new_school_year_reset.py  wipe a finished school year's data, see below
 ```
@@ -802,6 +802,66 @@ One real limit, shared with lessons: the Week grid is Monday-Friday only, so a s
 assigned to a weekend won't show on either weekly view — only the Home hint, and the due
 card once its date actually arrives, will ever surface it.
 
+## The travel journal's review gate, and assigning a trip
+
+Requested directly: the family travel journal (`pages/9_Landons_Travels.py`) should go
+through the same kind of review a lesson does, with a way to assign a trip to a specific
+day ahead of time and have it roll into real Writing/Social Studies credit.
+
+`travel_entries` gained the same three columns life_skills' scheduling got, plus one
+more: `status` (`planned`/`submitted`/`needs_revision`/`completed` — the exact same
+strings and meaning a lesson's own `status` column already uses, not a bespoke
+vocabulary), `scheduled_for` (nullable ISO date, `Database.schedule_travel_entry`), and
+`revision_note` (what a parent typed when sending one back). Existing rows default to
+`completed` — nothing to retroactively review about a trip already written up and sitting
+in the family record.
+
+**Every entry with a real story now submits for review, whether or not it was ever
+assigned a day.** `pages/9_Landons_Travels.py`'s add-entry form decides:
+`"submitted" if story.strip() else "planned"`. `Database.approve_travel_entry` marks it
+`completed` and logs its flat credit (`config.TRAVEL_JOURNAL_WRITING_MINUTES` = 30,
+`config.TRAVEL_JOURNAL_SOCIAL_STUDIES_MINUTES` = 15 — a real but modest session, not an
+attempt to estimate actual time spent) via `log_activity`, in the same click — approving
+*is* logging the credit, exactly the same pattern lessons already use.
+`Database.send_travel_entry_back(entry_id, note)` sets `needs_revision` and stores the
+note; the entry stays editable and anyone (not just a parent) can revise and resubmit it.
+The existing manual "Log hours" flow on the page stays available afterward for anything
+that earned more than the flat default.
+
+**Assigning a trip is a separate, optional layer on top** — mirroring life_skills'
+scheduling exactly: `due_travel_entries`/`upcoming_travel_entries`/
+`travel_entries_for_week` are the same three query shapes, and Home/the Week grid render
+them the same way, except with the lesson-style four-marker set (⬜/📤/↩️/✅) instead of
+life_skills' plain done/not-done one, since a travel entry now has the extra
+`needs_revision` state to show. Leave a trip unassigned and nothing about it changes from
+before this existed, other than that writing it now waits on a parent to approve.
+
+**A real bug, found only by testing this live in a browser**: the "Assign this trip"
+checkbox and its date picker were originally placed *inside* `st.form(...)`, the same
+form the rest of the add-entry fields live in. Checking the box did nothing visible at
+all — a widget inside a Streamlit form only reports its value when the form's own submit
+button fires, so the script never reran to reveal the conditional date picker. This is
+the exact class of bug the file already had a comment warning about for `park_choice`
+(which lives outside the form for the same reason) — moved the assign checkbox and date
+picker outside the form to match, and pinned the submit button's label to `assign_day`
+(known accurately outside the form) rather than to the story text (which, being a form
+field too, can't be read reactively either).
+
+## Balanced card rows: a global CSS rule, not a Home-specific fix
+
+Reported directly: a row of `st.container(border=True)` cards looks sloppy when one has
+more to say than its neighbors and ends up visibly taller or shorter than the rest.
+Streamlit's own `st.columns()` never stretches a bordered container to match its row
+siblings — the same problem the metric-tile row on the compliance dashboard already had,
+and already had a fix for (see `theme.py`'s "Metrics in the same row need to be the same
+height" comment). That fix generalizes verbatim: `[data-testid="stColumn"]` becomes flex,
+the element container wrapping a `stVerticalBlockBorderWrapper` gets `flex: 1`, and the
+border wrapper itself (plus its inner vertical block) becomes a flex column at `flex: 1`
+too — every link in that chain has to actually pass the height down, not just the
+outermost one. Added as one CSS block in `theme.py`, not a per-page fix, so it applies to
+every row of bordered cards anywhere in the app, including ones built after this — Home's
+four-tile row is just the case that surfaced it.
+
 ## Grades
 
 Added last, and only because the student asked to be graded. Two modules, split on the
@@ -1219,7 +1279,7 @@ make.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 892 tests, ~58s, no API key needed
+python -m pytest tests/ -q      # 913 tests, ~62s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

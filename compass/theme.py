@@ -333,6 +333,39 @@ def css() -> str:
   flex: 1;
 }}
 
+/* A row of `st.container(border=True)` cards has exactly the same problem
+   metrics do above, and the fix generalizes verbatim -- one card with more
+   to say than its neighbors (a due item, a hint line) would otherwise sit
+   shorter or taller than the rest of the row, reading as sloppy rather
+   than as one consistent group. Applies everywhere in the app a bordered
+   container sits inside `st.columns()`, not just Home's own rows, since
+   this is a layout rule, not a Home-specific fix -- new rows built this
+   way get it for free without repeating the CSS. */
+[data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:has([data-testid="stVerticalBlockBorderWrapper"]) {{
+  display: flex;
+}}
+[data-testid="stColumn"] > [data-testid="stVerticalBlock"]:has(> [data-testid="stElementContainer"] > [data-testid="stVerticalBlockBorderWrapper"]) {{
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}}
+[data-testid="stElementContainer"]:has(> [data-testid="stVerticalBlockBorderWrapper"]) {{
+  display: flex;
+  flex: 1;
+}}
+[data-testid="stVerticalBlockBorderWrapper"]:has(> div > [data-testid="stVerticalBlock"]) {{
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}}
+[data-testid="stVerticalBlockBorderWrapper"]:has(> div > [data-testid="stVerticalBlock"]) > div,
+[data-testid="stVerticalBlockBorderWrapper"]:has(> div > [data-testid="stVerticalBlock"]) > div > [data-testid="stVerticalBlock"] {{
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+}}
+
 /* --- numbers ---------------------------------------------------------
    Deliberately *not* the accent. An early build painted every metric in it,
    which made the compliance page read as a wall of alarms — "0 / 1000 hours"

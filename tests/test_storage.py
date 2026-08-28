@@ -584,6 +584,181 @@ def test_update_travel_entry_can_clear_the_park_link(db, student):
     assert entry["park_key"] is None
 
 
+# --- the travel journal's review gate + assignment, mirroring life_skills ------
+
+
+def test_add_travel_entry_defaults_to_completed(db, student):
+    """Every existing caller (and every pre-existing row) has to keep
+    reading as already-done -- the gate only ever engages for an entry the
+    journal page deliberately marks otherwise."""
+    entry_id = db.add_travel_entry(student["id"], "Wyoming", "2025-06-10", title="Yellowstone")
+    entry = db.list_travel_entries(student["id"])[0]
+    assert entry["id"] == entry_id
+    assert entry["status"] == "completed"
+
+
+def test_submit_travel_entry_sets_status(db, student):
+    entry_id = db.add_travel_entry(
+        student["id"], "Wyoming", "2025-06-10", title="Yellowstone", status="planned"
+    )
+    db.submit_travel_entry(entry_id)
+    entry = db.list_travel_entries(student["id"])[0]
+    assert entry["status"] == "submitted"
+
+
+def test_send_travel_entry_back_stores_the_note(db, student):
+    entry_id = db.add_travel_entry(
+        student["id"], "Wyoming", "2025-06-10", title="Yellowstone", status="submitted"
+    )
+    db.send_travel_entry_back(entry_id, "more detail on what you actually did there")
+    entry = db.list_travel_entries(student["id"])[0]
+    assert entry["status"] == "needs_revision"
+    assert entry["revision_note"] == "more detail on what you actually did there"
+
+
+def test_approve_travel_entry_completes_it_and_logs_the_flat_credit(db, student):
+    entry_id = db.add_travel_entry(
+        student["id"], "Wyoming", "2025-06-10", title="Yellowstone",
+        story="We watched Old Faithful erupt.", status="submitted",
+    )
+    db.approve_travel_entry(entry_id)
+    entry = db.list_travel_entries(student["id"])[0]
+    assert entry["status"] == "completed"
+
+    activities = db.list_activities(student["id"])
+    assert len(activities) == 1
+    assert activities[0]["source"] == "travel_journal"
+    assert activities[0]["minutes"] == (
+        config.TRAVEL_JOURNAL_WRITING_MINUTES + config.TRAVEL_JOURNAL_SOCIAL_STUDIES_MINUTES
+    )
+
+
+def test_scheduling_a_travel_entry_makes_it_due_on_and_after_that_day(db, student):
+    entry_id = db.add_travel_entry(
+        student["id"], "Wyoming", "2025-06-10", title="Yellowstone", status="planned"
+    )
+    db.schedule_travel_entry(entry_id, "2026-08-24")
+    assert db.due_travel_entries(student["id"], "2026-08-23") == []
+    assert [e["id"] for e in db.due_travel_entries(student["id"], "2026-08-24")] == [entry_id]
+    assert [e["id"] for e in db.due_travel_entries(student["id"], "2026-08-30")] == [entry_id]
+
+
+def test_due_travel_entries_includes_submitted_and_needs_revision_not_just_planned(db, student):
+    """He shouldn't see a submitted trip as if it silently vanished --
+    Home's marker distinguishes the states, but all three still count as
+    "still needs attention from someone" until actually approved."""
+    today = date.today().isoformat()
+    submitted_id = db.add_travel_entry(
+        student["id"], "Wyoming", today, title="Submitted trip", status="submitted"
+    )
+    db.schedule_travel_entry(submitted_id, today)
+    revision_id = db.add_travel_entry(
+        student["id"], "Montana", today, title="Needs revision", status="needs_revision"
+    )
+    db.schedule_travel_entry(revision_id, today)
+
+    due_ids = {e["id"] for e in db.due_travel_entries(student["id"], today)}
+    assert due_ids == {submitted_id, revision_id}
+
+
+def test_approving_a_scheduled_travel_entry_clears_it_from_due(db, student):
+    today = date.today().isoformat()
+    entry_id = db.add_travel_entry(
+        student["id"], "Wyoming", today, title="Yellowstone", status="submitted"
+    )
+    db.schedule_travel_entry(entry_id, today)
+    assert len(db.due_travel_entries(student["id"], today)) == 1
+    db.approve_travel_entry(entry_id)
+    assert db.due_travel_entries(student["id"], today) == []
+
+
+def test_upcoming_travel_entries_excludes_today_and_past_but_includes_the_future(db, student):
+    today = "2026-08-24"
+    yesterday_id = db.add_travel_entry(
+        student["id"], "Wyoming", today, title="Yesterday", status="planned"
+    )
+    db.schedule_travel_entry(yesterday_id, "2026-08-23")
+    today_id = db.add_travel_entry(
+        student["id"], "Wyoming", today, title="Today", status="planned"
+    )
+    db.schedule_travel_entry(today_id, today)
+    tomorrow_id = db.add_travel_entry(
+        student["id"], "Wyoming", today, title="Tomorrow", status="planned"
+    )
+    db.schedule_travel_entry(tomorrow_id, "2026-08-25")
+
+    upcoming = db.upcoming_travel_entries(student["id"], today)
+    assert [e["id"] for e in upcoming] == [tomorrow_id]
+
+
+def test_travel_entries_for_week_covers_monday_through_friday_only(db, student):
+    monday_id = db.add_travel_entry(
+        student["id"], "Wyoming", "2026-08-24", title="Monday trip", status="planned"
+    )
+    db.schedule_travel_entry(monday_id, "2026-08-24")
+    friday_id = db.add_travel_entry(
+        student["id"], "Wyoming", "2026-08-28", title="Friday trip", status="planned"
+    )
+    db.schedule_travel_entry(friday_id, "2026-08-28")
+    next_monday_id = db.add_travel_entry(
+        student["id"], "Wyoming", "2026-08-31", title="Next Monday trip", status="planned"
+    )
+    db.schedule_travel_entry(next_monday_id, "2026-08-31")
+    unscheduled_id = db.add_travel_entry(
+        student["id"], "Wyoming", "2026-08-24", title="Unscheduled", status="planned"
+    )
+
+    week = db.travel_entries_for_week(student["id"], "2026-08-24")
+    assert {e["id"] for e in week} == {monday_id, friday_id}
+    assert unscheduled_id not in {e["id"] for e in week}
+
+
+def test_travel_entries_for_week_includes_completed_entries(db, student):
+    """The Week grid shows the whole week's plan, done or not."""
+    entry_id = db.add_travel_entry(
+        student["id"], "Wyoming", "2026-08-24", title="Yellowstone", status="submitted"
+    )
+    db.schedule_travel_entry(entry_id, "2026-08-24")
+    db.approve_travel_entry(entry_id)
+
+    week = db.travel_entries_for_week(student["id"], "2026-08-24")
+    assert [e["id"] for e in week] == [entry_id]
+    assert week[0]["status"] == "completed"
+
+
+def test_a_database_created_before_the_travel_review_gate_columns_gets_migrated(tmp_path):
+    """A family's existing travel_entries table predates status/
+    scheduled_for/revision_note -- old rows have to read as 'completed'
+    (nothing to retroactively review) rather than break or silently need
+    review out of nowhere."""
+    path = tmp_path / "pre_gate.db"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE travel_entries ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL, "
+        "state TEXT NOT NULL, park_key TEXT, title TEXT NOT NULL DEFAULT '', "
+        "story TEXT NOT NULL DEFAULT '', favorite_moment TEXT NOT NULL DEFAULT '', "
+        "would_return TEXT NOT NULL DEFAULT '', visited_on TEXT NOT NULL, "
+        "created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+    )
+    conn.execute(
+        "INSERT INTO travel_entries (student_id, state, title, visited_on) "
+        "VALUES (1, 'Wyoming', 'Old entry', '2020-01-01')"
+    )
+    conn.commit()
+    conn.close()
+
+    migrated = Database(path)
+    try:
+        entry = migrated.conn.execute("SELECT * FROM travel_entries").fetchone()
+        assert entry["status"] == "completed"
+        assert entry["scheduled_for"] is None
+        assert entry["revision_note"] == ""
+        migrated.schedule_travel_entry(entry["id"], "2026-08-24")
+    finally:
+        migrated.close()
+
+
 def test_zero_minute_activity_is_rejected(db, student):
     with pytest.raises(ValueError):
         db.log_activity(
