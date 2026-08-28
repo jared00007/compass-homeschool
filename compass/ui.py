@@ -2157,6 +2157,38 @@ def render_report_card(db: Database, student: dict[str, Any], *, for_parent: boo
 
 _STREAK_MILESTONES = (3, 5, 10, 20, 30, 50)
 
+# Same fixed printed-poster palette as the Week grid and first-day cover --
+# a comic callout on purpose, picked from three celebration directions
+# sampled before building (balloons, snow, this) as the one that matched
+# the app's own printed-comic look everywhere else.
+_STREAK_BURST_INK = theming.PRINTED_COMIC_INK
+_STREAK_BURST_PAPER = theming.PRINTED_COMIC_PAPER
+_STREAK_BURST_POP = theming.PRINTED_COMIC_WEEKDAY_COLORS[1]
+_STREAK_BURST_CSS = f"""
+<style>
+div[class*="st-key-streak_milestone_burst"] {{
+  background: {_STREAK_BURST_PAPER};
+  border: 3px solid {_STREAK_BURST_INK};
+  border-radius: 4px;
+  padding: 10px 16px 8px;
+  position: relative;
+  box-shadow: 5px 5px 0 0 {_STREAK_BURST_INK};
+  transform: rotate(-1deg);
+  margin-bottom: 4px;
+}}
+div[class*="st-key-streak_milestone_burst"]::before {{
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  pointer-events: none;
+  opacity: .14;
+  background-image: radial-gradient(circle, {_STREAK_BURST_INK} 1.6px, transparent 1.8px);
+  background-size: 9px 9px;
+}}
+</style>
+"""
+
 
 def render_streak(db: Database, student: dict[str, Any]) -> None:
     """His run of school days in a row. Student-facing, on Home.
@@ -2170,6 +2202,16 @@ def render_streak(db: Database, student: dict[str, Any]) -> None:
     planned_days/planned_weeks together are what tell that apart from a day
     he actually had work waiting and skipped (see
     weekly._is_deliberate_day_off for why both are needed).
+
+    Ordinary days stay quiet -- just the count, no superlative. The old copy
+    added "-- your best yet!" whenever `streak >= best`, but a streak IS the
+    record every single day once it's ever been the longest he's had, so
+    that fired on nearly every day of an ongoing streak and read as
+    meaningless. Milestones (_STREAK_MILESTONES) get an actual comic-style
+    callout instead, and only on the day he actually lands on one --
+    `today_done` gates it so reopening the app later the same week, still
+    sitting on a milestone number from a day he already saw it, doesn't
+    show the celebration again.
     """
     active = db.active_days(student["id"])
     planned_days = db.planned_days(student["id"])
@@ -2183,18 +2225,28 @@ def render_streak(db: Database, student: dict[str, Any]) -> None:
         return
 
     best = weekly.best_streak(active, planned_days=planned_days, planned_weeks=planned_weeks)
-    plural = "s" if streak != 1 else ""
-    line = f"🔥 **{streak} school day{plural} in a row**"
-    if streak >= best and streak > 1:
-        line += " — your best yet!"
-    elif best > streak:
-        line += f" · best: {best}"
-
     today_done = date.today().isoformat() in active
-    if not today_done:
-        line += "  \nFinish something today to keep it alive."
 
-    st.success(line)
+    if today_done and streak in _STREAK_MILESTONES:
+        st.markdown(_STREAK_BURST_CSS, unsafe_allow_html=True)
+        with st.container(key="streak_milestone_burst"):
+            st.markdown(
+                f'<div style="font-weight:900; font-size:11px; letter-spacing:.06em; '
+                f'color:{_STREAK_BURST_POP};">MILESTONE!</div>'
+                f'<div style="font-weight:900; font-size:22px; line-height:1.05; '
+                f'color:{_STREAK_BURST_INK};">🎉 {streak} DAYS IN A ROW</div>',
+                unsafe_allow_html=True,
+            )
+            if streak >= best:
+                st.caption("A new personal best.")
+    else:
+        plural = "s" if streak != 1 else ""
+        line = f"🔥 **{streak} school day{plural} in a row**"
+        if best > streak:
+            line += f" · best: {best}"
+        if not today_done:
+            line += "  \nFinish something today to keep it alive."
+        st.success(line)
 
     next_milestone = next((m for m in _STREAK_MILESTONES if m > streak), None)
     if next_milestone:

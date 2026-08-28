@@ -342,7 +342,7 @@ compass/
   theme.py                   the one fixed theme and the CSS that applies it
   fun_facts.py               fact-of-the-day for the student home view
   national_parks.py          the 63 parks + real state borders for Landon's Travels
-tests/                       873 tests, no API key required
+tests/                       876 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 scripts/new_school_year_reset.py  wipe a finished school year's data, see below
 ```
@@ -668,6 +668,29 @@ progress dots above the panels don't treat "collapsed" as "done" either -- so pa
 always shows every panel in full regardless of what's collapsed. A parent checking or
 approving a lesson needs to see everything, not whatever he happened to fold away for
 himself while working through it.
+
+## Days in a row: quiet counting, comic milestones
+
+`render_streak` (`compass/ui.py`) is the streak shown on his Home page. The old
+copy appended " — your best yet!" whenever `streak >= best`, which sounds like a
+one-time honor but isn't: a streak IS the record every single day once it's ever
+been the longest he's had, so that condition is true on nearly every day of an
+ongoing run. In practice it printed the same "your best yet!" on day 4, day 5,
+day 6 of the same streak — he called it out as lame, and it was: a superlative
+that fires constantly stops meaning anything.
+
+Ordinary days now read as a plain count — `"🔥 4 school days in a row"`, with
+`· best: N` appended only when the current run hasn't caught up to a past one —
+and a `st.progress` bar toward the next milestone (`_STREAK_MILESTONES = (3, 5,
+10, 20, 30, 50)`). Landing on one of those numbers swaps that line for a small
+comic-style callout instead — same printed-poster palette (`theming.
+PRINTED_COMIC_INK`/`_PAPER`/`_WEEKDAY_COLORS`) as the Week grid and the
+first-day cover, a bordered card with a hard offset shadow and a slight tilt,
+picked over balloons/snow after sampling a few directions since it's the one
+that matches the rest of the app's printed-comic look. It's gated on
+`today_done and streak in _STREAK_MILESTONES` — not just the count sitting on a
+milestone number — so reopening the app later in the week, still at that same
+milestone count from a day he already saw it, doesn't replay the celebration.
 
 ## Home page: nav buttons instead of tabs, lessons that link out
 
@@ -1140,7 +1163,7 @@ make.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 873 tests, ~54s, no API key needed
+python -m pytest tests/ -q      # 876 tests, ~54s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

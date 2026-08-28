@@ -303,12 +303,19 @@ an answer that can't be picked) are dropped before they ever reach him.
 marked done or a life skill checked off. Weekends are skipped rather than counted as
 misses, so it survives Monday morning instead of resetting every week, and today being
 unfinished doesn't break it: the count picks up from yesterday, which is exactly when
-you want it saying "you're on 6, keep it going." His current run, his best ever, and the
-next milestone. Deliberately not farmable — the vocabulary review and morning routine are
-one button press each and don't count toward it. A holiday you unchecked in This Week's
-school-days picker gets the same pass a weekend does — nothing was ever scheduled that
-day, so there's nothing to have missed — but a day that genuinely had a lesson waiting
-and just didn't get done still breaks it, exactly as before.
+you want it saying "you're on 6, keep it going." Deliberately not farmable — the
+vocabulary review and morning routine are one button press each and don't count toward
+it. A holiday you unchecked in This Week's school-days picker gets the same pass a
+weekend does — nothing was ever scheduled that day, so there's nothing to have missed —
+but a day that genuinely had a lesson waiting and just didn't get done still breaks it,
+exactly as before.
+
+Ordinary days stay quiet: just the count, and his best ever if it's higher than today's
+run, with a progress bar toward the next milestone (3, 5, 10, 20, 30, 50 days). Landing
+on one of those numbers — only on the actual day he gets there, not every day he happens
+to still be sitting on it — swaps the plain line for a small comic-style callout in the
+same printed-poster style as the Week grid and the first-day cover, instead of a
+generic "your best yet!" repeated every day of a long run.
 
 It's the one thing on his page that rewards showing up rather than scoring well, which is
 worth having when everything else Compass checks is about the quality of a single piece of
