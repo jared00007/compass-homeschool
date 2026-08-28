@@ -342,7 +342,7 @@ compass/
   theme.py                   the one fixed theme and the CSS that applies it
   fun_facts.py               fact-of-the-day for the student home view
   national_parks.py          the 63 parks + real state borders for Landon's Travels
-tests/                       886 tests, no API key required
+tests/                       892 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 scripts/new_school_year_reset.py  wipe a finished school year's data, see below
 ```
@@ -782,6 +782,26 @@ test_scheduling_a_locked_skill_in_the_master_list_keeps_it_unlocked` pins this d
 directly; confirmed it actually fails without the fix (reverted, one assertion turned
 `assert 1 == 0`, then restored).
 
+**Follow-up, reported directly**: assigning a skill for tomorrow made it show up nowhere
+at all on Home until the day actually arrived — `due_life_skills` only ever looks at
+today-or-earlier, by design, so a future date just fell through the cracks entirely. Two
+additions close that gap, both mirroring how lessons already handle the same situation:
+
+* `Database.upcoming_life_skills(student_id, after)` — assigned, not-yet-due, still
+  unlocked skills scheduled strictly after `after`. Home splits these into "later this
+  week" / "a later week" the same way it already does for lessons planned further out
+  (`planned_for > today`, split on `this_week_end`), and shows the matching hint instead
+  of nothing at all.
+* `Database.life_skills_for_week(student_id, week_start)` — every skill assigned inside
+  that Monday-Friday span, done or not (the Week grid shows the whole week's plan, not
+  just what's outstanding). `_render_week_grid` in `Home.py` renders these under each
+  weekday's card, right alongside whatever lesson landed there, including Friday's own
+  Big Project/Travel Journal content.
+
+One real limit, shared with lessons: the Week grid is Monday-Friday only, so a skill
+assigned to a weekend won't show on either weekly view — only the Home hint, and the due
+card once its date actually arrives, will ever surface it.
+
 ## Grades
 
 Added last, and only because the student asked to be graded. Two modules, split on the
@@ -1199,7 +1219,7 @@ make.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 886 tests, ~55s, no API key needed
+python -m pytest tests/ -q      # 892 tests, ~58s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

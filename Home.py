@@ -196,6 +196,11 @@ if not is_parent():
             planned_for = lesson["metadata"].get("planned_for", "")
             lessons_by_day.setdefault(planned_for, []).append(lesson)
 
+        week_skills = db.life_skills_for_week(student["id"], week_start_date.isoformat())
+        skills_by_day: dict[str, list[dict]] = {}
+        for skill in week_skills:
+            skills_by_day.setdefault(skill["scheduled_for"], []).append(skill)
+
         checked_in_dates = {
             e["entry_date"] for e in db.list_journal_entries(student["id"], limit=60)
         }
@@ -235,12 +240,14 @@ if not is_parent():
                 elif day_date <= today_date:
                     st.caption("💬 No check-in yet")
 
+                day_skills = skills_by_day.get(day_iso, [])
+
                 if day_name == "Friday":
                     st.caption("🎬 Light day — review the week, plus a quick win:")
                     render_friday_plan(db, student, day_iso)
                 else:
                     day_lessons = lessons_by_day.get(day_iso, [])
-                    if not day_lessons:
+                    if not day_lessons and not day_skills:
                         st.caption("Nothing planned yet.")
                     for lesson in day_lessons:
                         icon = SUBJECT_ICONS.get(lesson["agent"], "📘")
@@ -249,6 +256,15 @@ if not is_parent():
                         quiz = lesson["metadata"].get("quiz_result") or {}
                         badge = " 🎯" if quiz.get("passed") else ""
                         st.markdown(f"{marker} {icon} {md(lesson['title'])}{badge}")
+
+                # Life skills render after whatever else the day already
+                # shows -- including Friday's own Big Project/Travel Journal
+                # plan -- since assigning one doesn't care what else is
+                # scheduled that day.
+                for skill in day_skills:
+                    done = bool(skill["completed_on"])
+                    marker = "✅" if done else "⬜"
+                    st.markdown(f"{marker} 🛠️ {md(skill['title'])}")
 
     def _render_extra_activities() -> None:
         st.markdown(
@@ -373,12 +389,21 @@ if not is_parent():
                 )
 
         # 2b. Life skills assigned to a specific day -- only when there's
-        # actually one due, so a family that never assigns a day (the
-        # default) never sees this card at all. Includes anything assigned
-        # for today or earlier and still not done, same "never silently
-        # drops it" rule an unfinished lesson already gets.
+        # actually something assigned (due or upcoming), so a family that
+        # never assigns a day (the default) never sees this card at all.
+        # `due_skills` includes anything assigned for today or earlier and
+        # still not done, same "never silently drops it" rule an unfinished
+        # lesson already gets; `upcoming_skills` (assigned later, not due
+        # yet) gets the same "N more planned" hint the Lessons card above
+        # gives, split the same way, so a skill assigned for Thursday
+        # doesn't look like it was never scheduled until Thursday arrives.
         due_skills = db.due_life_skills(student["id"], today)
-        if due_skills:
+        upcoming_skills = db.upcoming_life_skills(student["id"], today)
+        later_skills_this_week = sum(
+            1 for s in upcoming_skills if s["scheduled_for"] <= this_week_end
+        )
+        later_skills_week = len(upcoming_skills) - later_skills_this_week
+        if due_skills or upcoming_skills:
             with st.container(border=True):
                 render_card_heading(f"🛠️ Life Skills ({len(due_skills)})")
                 for skill in due_skills:
@@ -387,6 +412,18 @@ if not is_parent():
                         "pages/6_Life_Skills.py",
                         label=f"{md(skill['title'])} — assigned {when}",
                         icon="🛠️",
+                    )
+                if not due_skills:
+                    st.caption("Nothing due today.")
+                if later_skills_this_week:
+                    st.caption(
+                        f"{later_skills_this_week} more life skill(s) assigned for later "
+                        "this week — see **This Week**."
+                    )
+                if later_skills_week:
+                    st.caption(
+                        f"{later_skills_week} more life skill(s) assigned for a later "
+                        "week — see **Upcoming Week**."
                     )
 
         # 3. Vocabulary review and 4. Reading, side by side; Choice Topics

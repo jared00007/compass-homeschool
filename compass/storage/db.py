@@ -3178,6 +3178,36 @@ class Database:
             )
         )
 
+    def upcoming_life_skills(self, student_id: int, after: str) -> list[dict[str, Any]]:
+        """Assigned skills not due yet -- scheduled strictly after `after`,
+        still unlocked, not yet completed. Feeds a "N more assigned this
+        week" hint on Home, the same shape as the one lessons already show,
+        so a day he hasn't reached yet doesn't just look like nothing was
+        ever planned for it."""
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM life_skills WHERE student_id = ? AND scheduled_for IS NOT NULL "
+                "AND scheduled_for > ? AND completed_on IS NULL AND active = 1 "
+                "ORDER BY scheduled_for, sort_order, id",
+                (student_id, after),
+            )
+        )
+
+    def life_skills_for_week(self, student_id: int, week_start: str) -> list[dict[str, Any]]:
+        """Every skill assigned somewhere in the 5-day span starting
+        `week_start` (Mon-Fri) -- regardless of active/completed, so the
+        Week grid shows the whole plan for the week, not just what's still
+        outstanding (a skill he already finished should still show, marked
+        done, the same way a finished lesson does)."""
+        week_end = (date.fromisoformat(week_start) + timedelta(days=4)).isoformat()
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM life_skills WHERE student_id = ? AND scheduled_for IS NOT NULL "
+                "AND scheduled_for BETWEEN ? AND ? ORDER BY scheduled_for, sort_order, id",
+                (student_id, week_start, week_end),
+            )
+        )
+
     def delete_life_skill(self, skill_id: int) -> None:
         self.conn.execute("DELETE FROM life_skills WHERE id = ?", (skill_id,))
         self.conn.commit()

@@ -720,6 +720,57 @@ def test_clearing_a_schedule_does_not_relock_the_skill(db, student):
     assert skill["active"] == 1
 
 
+def test_upcoming_life_skills_excludes_todays_and_pasts_but_includes_the_future(db, student):
+    yesterday = db.add_life_skill(student["id"], "Change a tire", "Vehicle")
+    db.schedule_life_skill(yesterday, "2026-08-23")
+    today_skill = db.add_life_skill(student["id"], "Sew a button", "Sewing")
+    db.schedule_life_skill(today_skill, "2026-08-24")
+    tomorrow = db.add_life_skill(student["id"], "Read a map", "Navigation")
+    db.schedule_life_skill(tomorrow, "2026-08-25")
+
+    upcoming = db.upcoming_life_skills(student["id"], "2026-08-24")
+    assert [s["id"] for s in upcoming] == [tomorrow]
+
+
+def test_upcoming_life_skills_excludes_completed_and_relocked_ones(db, student):
+    tomorrow = "2026-08-25"
+    done = db.add_life_skill(student["id"], "Bake bread", "Cooking")
+    db.schedule_life_skill(done, tomorrow)
+    db.set_life_skill_done(done, True)
+
+    relocked = db.add_life_skill(student["id"], "Read a map", "Navigation")
+    db.schedule_life_skill(relocked, tomorrow)
+    db.set_life_skill_active(relocked, False)
+
+    assert db.upcoming_life_skills(student["id"], "2026-08-24") == []
+
+
+def test_life_skills_for_week_covers_monday_through_friday_only(db, student):
+    monday = db.add_life_skill(student["id"], "Change a tire", "Vehicle")
+    db.schedule_life_skill(monday, "2026-08-24")
+    friday = db.add_life_skill(student["id"], "Sew a button", "Sewing")
+    db.schedule_life_skill(friday, "2026-08-28")
+    next_monday = db.add_life_skill(student["id"], "Read a map", "Navigation")
+    db.schedule_life_skill(next_monday, "2026-08-31")
+    unscheduled = db.add_life_skill(student["id"], "Bake bread", "Cooking")
+
+    week = db.life_skills_for_week(student["id"], "2026-08-24")
+    assert {s["id"] for s in week} == {monday, friday}
+    assert unscheduled not in {s["id"] for s in week}
+
+
+def test_life_skills_for_week_includes_completed_skills(db, student):
+    """The Week grid shows the whole week's plan, done or not -- a finished
+    skill should still show, marked done, not just drop off the grid."""
+    skill_id = db.add_life_skill(student["id"], "Change a tire", "Vehicle")
+    db.schedule_life_skill(skill_id, "2026-08-24")
+    db.set_life_skill_done(skill_id, True)
+
+    week = db.life_skills_for_week(student["id"], "2026-08-24")
+    assert [s["id"] for s in week] == [skill_id]
+    assert week[0]["completed_on"] is not None
+
+
 def test_an_unscheduled_life_skill_never_shows_up_as_due(db, student):
     """The default (no `scheduled_for`) has to keep behaving exactly like it
     always did -- a family that never assigns a day shouldn't see anything

@@ -8,7 +8,7 @@ land in the same compliance record either way.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -313,3 +313,45 @@ def test_home_shows_no_life_skills_card_when_nothing_is_assigned(monkeypatch, tm
     at = _open_home(monkeypatch, db_path)
     text = " ".join(m.value for m in at.markdown)
     assert "Life Skills" not in text
+
+
+def test_a_skill_assigned_for_later_shows_an_upcoming_hint_on_home(monkeypatch, tmp_path):
+    """Reported directly: assigning a skill for tomorrow made it show up
+    nowhere on Home at all until the day actually arrived. It should read
+    as "coming up," the same way a lesson planned for later in the week
+    already does, not just go quiet until its day."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    skill_id = database.add_life_skill(s["id"], "Read a map", "Navigation")
+    # 7 days out is always past this week's Friday regardless of what day
+    # "today" happens to be when this test runs -- lands in the "later
+    # week" bucket reliably, without hardcoding a specific weekday.
+    later = (date.today() + timedelta(days=7)).isoformat()
+    database.schedule_life_skill(skill_id, later)
+    database.close()
+
+    at = _open_home(monkeypatch, db_path)
+    text = " ".join(c.value for c in at.caption)
+    assert "more life skill(s) assigned for a later week" in text
+    # Not due yet -- shouldn't show as a direct "assigned since/today" link.
+    labels = [pl.label for pl in at.get("page_link")]
+    assert not any("Read a map" in label for label in labels)
+
+
+def test_a_life_skill_assigned_this_week_shows_on_the_week_grid(monkeypatch, tmp_path):
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    skill_id = database.add_life_skill(s["id"], "Change a tire", "Vehicle")
+    database.schedule_life_skill(skill_id, date.today().isoformat())
+    database.close()
+
+    at = _open_home(monkeypatch, db_path)
+    week_button = [b for b in at.button if "This Week" in (b.label or "")][0]
+    week_button.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+    text = " ".join(m.value for m in at.markdown)
+    assert "Change a tire" in text

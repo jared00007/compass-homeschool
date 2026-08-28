@@ -132,15 +132,26 @@ skill* form.
 **You can also assign a skill to a specific day**, right from *Master list* — check
 "Assign this to a specific day" on any row and pick a date. Doing so also unlocks the
 skill automatically, since assigning it implies you want it visible and doable now, not
-still hidden in the catalog. From that point it shows up two places: a "📅 Assigned"
-line on its checklist card, and (once the day arrives) a small "🛠️ Life Skills" card on
-his Home page, right alongside Lessons — with a link straight to the checklist, not the
-skill embedded on Home itself. If he doesn't get to it that day, it keeps showing as due
-rather than quietly disappearing, the same "never silently drop it" rule an unfinished
-lesson already gets. Clearing the assigned date again doesn't re-lock the skill — taking
-away something already unlocked, just because its due-date got cleared, would be a
-surprising side effect. Leave a skill unassigned (the default, and where every skill
-starts) and nothing about it changes from before this existed — it's purely additive.
+still hidden in the catalog. From that point it shows up three places: a "📅 Assigned"
+line on its checklist card; a small "🛠️ Life Skills" card on his Home page, right
+alongside Lessons, once the day actually arrives (with a link straight to the checklist,
+not the skill embedded on Home itself); and, even before it's due, the Week grid on
+**This Week**/**Upcoming Week** shows it on its assigned weekday's card, right alongside
+whatever lesson landed there — a skill assigned for Thursday shows up under Thursday the
+same way a Math lesson planned for that day already does. An assignment still a few days
+out also earns a quieter "N more life skill(s) assigned for later this week/a later
+week" hint on Home itself, the same shape as the hint Lessons already gives for a lesson
+planned further out — so a skill assigned for tomorrow doesn't just go quiet until the
+day it's due. If he doesn't get to it that day, it keeps showing as due rather than
+quietly disappearing, the same "never silently drop it" rule an unfinished lesson
+already gets. Clearing the assigned date again doesn't re-lock the skill — taking away
+something already unlocked, just because its due-date got cleared, would be a surprising
+side effect. Leave a skill unassigned (the default, and where every skill starts) and
+nothing about it changes from before this existed — it's purely additive.
+
+One real limit, shared with lessons: the Week grid is Monday-Friday only. A skill
+assigned to a Saturday or Sunday won't show on either weekly view — only the Home hint
+and, once its date arrives, the due card will ever surface it.
 
 There is no agent picking his next life skill, and there won't be. The four core
 agents exist because each answers something you genuinely can't answer off the top of
