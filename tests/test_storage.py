@@ -577,6 +577,20 @@ def test_update_travel_entry_changes_only_the_given_fields(db, student):
     assert entry["park_key"] == "zion"
 
 
+def test_update_travel_entry_can_fix_the_stored_feedback(db, student):
+    """The only way to fix already-lost formatting (from before feedback
+    had a real text area) or just reword it after the fact -- approving
+    is the other place parent_feedback gets set, but that's a one-time
+    action on a submitted entry, not available once it's completed."""
+    entry_id = db.add_travel_entry(
+        student["id"], "Texas", "2024-06-15", title="Mall Day",
+        story="It was fun.", status="completed",
+    )
+    db.update_travel_entry(entry_id, parent_feedback="Line one.\nLine two.")
+    entry = db.list_travel_entries(student["id"])[0]
+    assert entry["parent_feedback"] == "Line one.\nLine two."
+
+
 def test_update_travel_entry_can_clear_the_park_link(db, student):
     entry_id = db.add_travel_entry(student["id"], "Montana", "2024-06-15", park_key="glacier")
     db.update_travel_entry(entry_id, park_key=None)

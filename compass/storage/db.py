@@ -2836,7 +2836,7 @@ class Database:
     def update_travel_entry(self, entry_id: int, **fields: Any) -> None:
         allowed = {
             "state", "park_key", "title", "story", "visited_on",
-            "favorite_moment", "would_return",
+            "favorite_moment", "would_return", "parent_feedback",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:

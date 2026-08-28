@@ -310,6 +310,61 @@ def test_approving_with_no_feedback_leaves_it_blank(monkeypatch, tmp_path):
     assert entry["parent_feedback"] == ""
 
 
+def test_editing_a_completed_entry_can_fix_its_feedback(monkeypatch, tmp_path):
+    """The only way to redo feedback that already lost its formatting
+    (entered back when the box was a single line) -- Approve only sets
+    it once, on a submitted entry, and this one's already completed."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    entry_id = database.add_travel_entry(
+        s["id"], "Arizona", "2025-06-10", title="Grand Canyon", story="We hiked to the rim.",
+        status="completed",
+    )
+    database.update_travel_entry(entry_id, parent_feedback="all one flattened line, no breaks")
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=True)
+    tab = _journal_tab(at)
+    edit_button = [b for b in tab.button if b.key == f"edit_entry_{entry_id}"][0]
+    edit_button.click().run()
+    tab = _journal_tab(at)
+
+    feedback_input = [w for w in tab.text_area if w.label == "Feedback (shown to him)"][0]
+    feedback_input.set_value("Line one.\n\nLine two, a new paragraph.")
+    save = [b for b in tab.button if b.label == "Save changes"][0]
+    save.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    entry = database.list_travel_entries(s["id"])[0]
+    database.close()
+    assert entry["parent_feedback"] == "Line one.\n\nLine two, a new paragraph."
+
+
+def test_editing_a_not_yet_completed_entry_has_no_feedback_field(monkeypatch, tmp_path):
+    """Nothing to fix yet -- Approve is what sets it in the first place,
+    and this entry hasn't been approved."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    entry_id = database.add_travel_entry(
+        s["id"], "Arizona", "2025-06-10", title="Grand Canyon", story="We hiked to the rim.",
+        status="submitted",
+    )
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=True)
+    tab = _journal_tab(at)
+    edit_button = [b for b in tab.button if b.key == f"edit_entry_{entry_id}"][0]
+    edit_button.click().run()
+    tab = _journal_tab(at)
+
+    assert not any(w.label == "Feedback (shown to him)" for w in tab.text_area)
+
+
 # --- Assigning him to pick his own trips (open picks) --------------------------
 
 

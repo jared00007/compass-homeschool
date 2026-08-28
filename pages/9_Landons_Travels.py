@@ -413,9 +413,23 @@ def _render_entry(entry: dict) -> None:
                 edit_would_return = edit_extra_columns[1].text_input(
                     "Would you go back? (optional)", value=entry["would_return"]
                 )
+                # Only a completed entry has feedback to fix -- approving is
+                # the only other place it's set, and that box is already
+                # this same size for exactly this reason (a single-line
+                # text_input used to flatten a pasted, multi-paragraph note
+                # into one line with no way to go back and redo it).
+                edit_feedback = (
+                    st.text_area(
+                        "Feedback (shown to him)",
+                        value=entry["parent_feedback"],
+                        height=200,
+                        help="Fix formatting or reword it -- this replaces what he currently sees.",
+                    )
+                    if entry["status"] == "completed"
+                    else None
+                )
                 if st.form_submit_button("Save changes", type="primary") and edit_title.strip():
-                    db.update_travel_entry(
-                        entry["id"],
+                    edit_fields = dict(
                         state=edit_state,
                         visited_on=edit_date.isoformat(),
                         title=edit_title.strip(),
@@ -424,6 +438,9 @@ def _render_entry(entry: dict) -> None:
                         favorite_moment=edit_favorite_moment.strip(),
                         would_return=edit_would_return.strip(),
                     )
+                    if edit_feedback is not None:
+                        edit_fields["parent_feedback"] = edit_feedback.strip()
+                    db.update_travel_entry(entry["id"], **edit_fields)
                     st.session_state["editing_travel_entry"] = None
                     st.rerun()
 
