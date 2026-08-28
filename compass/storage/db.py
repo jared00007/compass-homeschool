@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Sequence
@@ -1322,6 +1323,20 @@ class Database:
     def __init__(self, db_path: str | Path | None = None):
         self.path = Path(db_path or config.DEFAULT_DB_PATH)
         self.conn = connect(self.path)
+        # `ui.get_db()` caches one Database (and so one Connection) per
+        # server process with `st.cache_resource` -- every browser session,
+        # parent's or his, shares it. That's fine for a plain INSERT/UPDATE
+        # statement, but a handful of methods below read a lesson's
+        # `metadata` blob, mutate the dict in Python, and write the whole
+        # thing back -- two of those interleaving (a parent bouncing one
+        # activity while he saves another, at the same moment) can silently
+        # drop whichever wrote first. Every such method takes this lock for
+        # its entire read-modify-write span, which is enough to close that
+        # window completely: one process, one connection, so one lock is
+        # authoritative over all of it. (Reentrant rather than a plain Lock
+        # only as cheap insurance against a future method calling another
+        # locked one -- none currently do.)
+        self._lock = threading.RLock()
         self.migrate()
 
     # -- schema ---------------------------------------------------------------
@@ -2253,18 +2268,19 @@ class Database:
         Persisted so a lesson worked across two sittings doesn't reopen
         every card he already collapsed.
         """
-        lesson = self.get_lesson(lesson_id)
-        metadata = lesson["metadata"] if lesson else {}
-        indices = set(metadata.get("collapsed_activities") or [])
-        if collapsed:
-            indices.add(activity_index)
-        else:
-            indices.discard(activity_index)
-        metadata["collapsed_activities"] = sorted(indices)
-        self.conn.execute(
-            "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
-        )
-        self.conn.commit()
+        with self._lock:
+            lesson = self.get_lesson(lesson_id)
+            metadata = lesson["metadata"] if lesson else {}
+            indices = set(metadata.get("collapsed_activities") or [])
+            if collapsed:
+                indices.add(activity_index)
+            else:
+                indices.discard(activity_index)
+            metadata["collapsed_activities"] = sorted(indices)
+            self.conn.execute(
+                "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
+            )
+            self.conn.commit()
 
     def mark_student_done(self, lesson_id: int) -> None:
         """The student's own "did work today" signal.
@@ -2310,18 +2326,19 @@ class Database:
         second bounce shouldn't erase the first note just because he
         hasn't fixed that part yet either.
         """
-        lesson = self.get_lesson(lesson_id)
-        metadata = lesson["metadata"] if lesson else {}
-        if feedback:
-            history = list(metadata.get("lesson_feedback_history") or [])
-            history.append(feedback)
-            metadata["lesson_feedback_history"] = history
-            metadata["lesson_feedback"] = feedback
-        self.conn.execute(
-            "UPDATE lessons SET metadata = ?, status = 'needs_revision' WHERE id = ?",
-            (json.dumps(metadata), lesson_id),
-        )
-        self.conn.commit()
+        with self._lock:
+            lesson = self.get_lesson(lesson_id)
+            metadata = lesson["metadata"] if lesson else {}
+            if feedback:
+                history = list(metadata.get("lesson_feedback_history") or [])
+                history.append(feedback)
+                metadata["lesson_feedback_history"] = history
+                metadata["lesson_feedback"] = feedback
+            self.conn.execute(
+                "UPDATE lessons SET metadata = ?, status = 'needs_revision' WHERE id = ?",
+                (json.dumps(metadata), lesson_id),
+            )
+            self.conn.commit()
 
     def record_quiz_result(
         self,
@@ -2417,20 +2434,21 @@ class Database:
         render_assessment_card) already uses; the version table is purely
         additive, for whoever wants the history.
         """
-        lesson = self.get_lesson(lesson_id)
-        metadata = lesson["metadata"] if lesson else {}
-        responses = metadata.get("writing_responses") or {}
-        responses[str(activity_index)] = text
-        metadata["writing_responses"] = responses
-        self.conn.execute(
-            "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
-        )
-        self.conn.execute(
-            "INSERT INTO writing_response_versions "
-            "(lesson_id, activity_index, student_id, text) VALUES (?, ?, ?, ?)",
-            (lesson_id, activity_index, lesson["student_id"], text),
-        )
-        self.conn.commit()
+        with self._lock:
+            lesson = self.get_lesson(lesson_id)
+            metadata = lesson["metadata"] if lesson else {}
+            responses = metadata.get("writing_responses") or {}
+            responses[str(activity_index)] = text
+            metadata["writing_responses"] = responses
+            self.conn.execute(
+                "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
+            )
+            self.conn.execute(
+                "INSERT INTO writing_response_versions "
+                "(lesson_id, activity_index, student_id, text) VALUES (?, ?, ?, ?)",
+                (lesson_id, activity_index, lesson["student_id"], text),
+            )
+            self.conn.commit()
 
     def list_writing_response_versions(
         self, lesson_id: int, activity_index: int
@@ -2460,19 +2478,20 @@ class Database:
         the reading happened, and locking a lesson behind one would strand
         him on a book he genuinely did read if a question came out wrong.
         """
-        lesson = self.get_lesson(lesson_id)
-        metadata = lesson["metadata"] if lesson else {}
-        results = metadata.get("reading_checks") or {}
-        results[str(activity_index)] = {
-            "correct": correct,
-            "total": total,
-            "checked_on": date.today().isoformat(),
-        }
-        metadata["reading_checks"] = results
-        self.conn.execute(
-            "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
-        )
-        self.conn.commit()
+        with self._lock:
+            lesson = self.get_lesson(lesson_id)
+            metadata = lesson["metadata"] if lesson else {}
+            results = metadata.get("reading_checks") or {}
+            results[str(activity_index)] = {
+                "correct": correct,
+                "total": total,
+                "checked_on": date.today().isoformat(),
+            }
+            metadata["reading_checks"] = results
+            self.conn.execute(
+                "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
+            )
+            self.conn.commit()
 
     def active_days(self, student_id: int) -> set[str]:
         """Every date he did real work on, as ISO strings.
@@ -2507,15 +2526,16 @@ class Database:
         instead of thinking lives on the read side (`existing_review` gates
         the button), but nothing here overwrites either.
         """
-        lesson = self.get_lesson(lesson_id)
-        metadata = lesson["metadata"] if lesson else {}
-        reviews = metadata.get("writing_ai_review") or {}
-        reviews[str(activity_index)] = review
-        metadata["writing_ai_review"] = reviews
-        self.conn.execute(
-            "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
-        )
-        self.conn.commit()
+        with self._lock:
+            lesson = self.get_lesson(lesson_id)
+            metadata = lesson["metadata"] if lesson else {}
+            reviews = metadata.get("writing_ai_review") or {}
+            reviews[str(activity_index)] = review
+            metadata["writing_ai_review"] = reviews
+            self.conn.execute(
+                "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
+            )
+            self.conn.commit()
 
     def set_writing_review(
         self, lesson_id: int, activity_index: int, status: str, feedback: str = ""
@@ -2539,22 +2559,25 @@ class Database:
         """
         if status not in config.WRITING_REVIEW_STATUSES:
             raise ValueError(f"invalid writing review status: {status}")
-        lesson = self.get_lesson(lesson_id)
-        metadata = lesson["metadata"] if lesson else {}
-        reviews = metadata.get("writing_review") or {}
-        history = list((reviews.get(str(activity_index)) or {}).get("feedback_history") or [])
-        if feedback:
-            history.append(feedback)
-        reviews[str(activity_index)] = {
-            "status": status,
-            "feedback": feedback,
-            "feedback_history": history,
-        }
-        metadata["writing_review"] = reviews
-        self.conn.execute(
-            "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
-        )
-        self.conn.commit()
+        with self._lock:
+            lesson = self.get_lesson(lesson_id)
+            metadata = lesson["metadata"] if lesson else {}
+            reviews = metadata.get("writing_review") or {}
+            history = list(
+                (reviews.get(str(activity_index)) or {}).get("feedback_history") or []
+            )
+            if feedback:
+                history.append(feedback)
+            reviews[str(activity_index)] = {
+                "status": status,
+                "feedback": feedback,
+                "feedback_history": history,
+            }
+            metadata["writing_review"] = reviews
+            self.conn.execute(
+                "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
+            )
+            self.conn.commit()
 
     def record_assessment(self, lesson_id: int, verdict: str, notes: str = "") -> None:
         """The parent's digital check on a lesson's `assessment` block, for
@@ -2566,17 +2589,18 @@ class Database:
         """
         if verdict not in config.ASSESSMENT_VERDICTS:
             raise ValueError(f"invalid assessment verdict: {verdict}")
-        lesson = self.get_lesson(lesson_id)
-        metadata = lesson["metadata"] if lesson else {}
-        metadata["assessment_result"] = {
-            "verdict": verdict,
-            "notes": notes,
-            "assessed_on": date.today().isoformat(),
-        }
-        self.conn.execute(
-            "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
-        )
-        self.conn.commit()
+        with self._lock:
+            lesson = self.get_lesson(lesson_id)
+            metadata = lesson["metadata"] if lesson else {}
+            metadata["assessment_result"] = {
+                "verdict": verdict,
+                "notes": notes,
+                "assessed_on": date.today().isoformat(),
+            }
+            self.conn.execute(
+                "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
+            )
+            self.conn.commit()
 
     # -- activities and multi-subject credits ---------------------------------
 

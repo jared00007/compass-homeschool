@@ -342,7 +342,7 @@ compass/
   theme.py                   the one fixed theme and the CSS that applies it
   fun_facts.py               fact-of-the-day for the student home view
   national_parks.py          the 63 parks + real state borders for Landon's Travels
-tests/                       853 tests, no API key required
+tests/                       854 tests, no API key required
 scripts/clear_lessons.py    wipe generated lessons only; hours/mastery/profile untouched
 scripts/new_school_year_reset.py  wipe a finished school year's data, see below
 ```
@@ -361,11 +361,20 @@ any page, and four hand-maintained copies were four chances to forget one.
 
 **Concurrency.** `get_db()` is `@st.cache_resource`, so one `Database` — and one
 SQLite connection — is shared across every browser session, each of which
-Streamlit runs on its own thread. That's safe here rather than merely convenient:
-`sqlite3.threadsafety` is `3` on this build (SQLite compiled in serialized mode),
-so the driver itself serializes access. Writes commit immediately and there are
-no cross-request transactions to interleave, so parent and student can have the
-app open at once without a lock of our own.
+Streamlit runs on its own thread. `sqlite3.threadsafety` being `3` on this build
+(SQLite compiled in serialized mode) keeps any *individual* statement safe across
+threads, but it doesn't cover the handful of methods that read a lesson's whole
+`metadata` blob, mutate the dict in Python, and write it all back
+(`set_writing_review`, `send_lesson_back`, `save_writing_response`,
+`save_reading_check`, `save_writing_ai_review`, `record_assessment`,
+`set_activity_collapsed`) — two of those interleaving on a parent's bounce and a
+student's save landing at the same moment could have one silently clobber the
+other. Those seven take `Database`'s own `self._lock` (a plain `threading.RLock`)
+for the whole read-modify-write span, which is enough on its own precisely
+because there's exactly one process and one shared connection — no
+cross-process version column or retry logic needed. Every other write here is a
+single atomic SQL statement (`json_set` included), so it was never at risk and
+needs no lock.
 
 ---
 
@@ -1063,7 +1072,7 @@ make.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 853 tests, ~60s, no API key needed
+python -m pytest tests/ -q      # 854 tests, ~60s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

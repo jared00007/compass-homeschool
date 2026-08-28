@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
+import time
 from datetime import date, timedelta
 
 import pytest
@@ -1440,3 +1442,50 @@ def test_lessons_for_week_ignores_lessons_with_no_week_metadata(db, student):
         student["id"], "math", "math", "topic", "On-demand lesson", payload={"title": "t"},
     )
     assert db.lessons_for_week(student["id"], "2026-08-17") == []
+
+
+# --- concurrent metadata writes --------------------------------------------------
+
+
+def test_concurrent_writes_to_different_activities_do_not_lose_either_one(
+    db, student, monkeypatch
+):
+    """`ui.get_db()` caches one Database (one Connection) per server process
+    with `st.cache_resource` -- every browser session shares it, so a parent
+    and student acting at the same moment run on two different threads
+    against the exact same object. save_writing_response reads the whole
+    lesson row, mutates the metadata dict in Python, and writes it all back;
+    without something serializing that read-modify-write, two saves for two
+    different activities landing close enough together can have the second
+    one overwrite the first's write with a stale copy it read before the
+    first one committed.
+
+    Forces that interleaving deterministically (rather than hoping it shows
+    up under raw thread-timing luck) by making get_lesson slow: thread A
+    starts first and is asleep *inside* the lock, mid-read; thread B's own
+    call blocks on the same lock until A finishes, rather than reading the
+    pre-A state and clobbering A's write on the way out."""
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Essay", payload={"activities": []},
+    )
+
+    real_get_lesson = Database.get_lesson
+
+    def slow_get_lesson(self, *args, **kwargs):
+        result = real_get_lesson(self, *args, **kwargs)
+        time.sleep(0.05)
+        return result
+
+    monkeypatch.setattr(Database, "get_lesson", slow_get_lesson)
+
+    first = threading.Thread(target=db.save_writing_response, args=(lesson_id, 0, "first"))
+    second = threading.Thread(target=db.save_writing_response, args=(lesson_id, 1, "second"))
+    first.start()
+    time.sleep(0.01)  # first is now asleep inside slow_get_lesson, holding the lock
+    second.start()
+    first.join()
+    second.join()
+
+    lesson = real_get_lesson(db, lesson_id)
+    assert lesson["metadata"]["writing_responses"] == {"0": "first", "1": "second"}
