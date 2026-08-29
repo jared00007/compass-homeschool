@@ -202,6 +202,38 @@ def test_a_lesson_planned_for_another_week_is_not_silently_dropped(monkeypatch, 
     assert any("Nothing waiting on you" in s.value for s in review_tab.success)
 
 
+def test_a_friday_substitute_lesson_shows_on_the_board_not_other_week(monkeypatch, tmp_path):
+    """This Week's school-days picker can opt Friday in as a lesson day
+    (a stand-in for a holiday earlier that same week) -- a lesson planned
+    there belongs in the board's own Friday column, not misreported as
+    'scheduled for a different week' just because the board's day columns
+    used to stop at Thursday."""
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    sid = student["id"]
+    today = date.today()
+    next_week_start = weekly.week_start(today) + timedelta(days=7)
+    friday = weekly.week_dates(next_week_start, include_friday=True)[-1]
+
+    db.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t", title="Friday's lesson",
+        payload={"title": "Friday's lesson", "activities": []},
+        metadata={"planned_for": friday.isoformat(), "week_start": next_week_start.isoformat()},
+    )
+    db.close()
+
+    at, review_tab = _open_review_tab(monkeypatch, db_path)
+    week_picker = [w for w in review_tab.date_input if w.label.startswith("Week to review")][0]
+    week_picker.set_value(next_week_start).run()
+    review_tab = [t for t in at.tabs if t.label.startswith("To review")][0]
+
+    labels = [e.label for e in review_tab.expander]
+    assert any("Friday's lesson" in l for l in labels)
+    captions = [c.value for c in review_tab.caption]
+    assert not any("different week" in c for c in captions)
+
+
 # --- Travel Journal entries share the same "To review" queue -------------------
 
 

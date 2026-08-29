@@ -61,6 +61,20 @@ def test_week_dates_is_monday_through_thursday_only():
     assert dates == [date(2026, 8, 10), date(2026, 8, 11), date(2026, 8, 12), date(2026, 8, 13)]
 
 
+def test_week_dates_can_include_friday_as_a_fifth_option():
+    """Friday stays out unless explicitly asked for -- the escape hatch for
+    a week where a holiday on another weekday means Friday's needed as a
+    substitute lesson day instead."""
+    dates = week_dates(date(2026, 8, 10), include_friday=True)
+    assert dates == [
+        date(2026, 8, 10),
+        date(2026, 8, 11),
+        date(2026, 8, 12),
+        date(2026, 8, 13),
+        date(2026, 8, 14),
+    ]
+
+
 def test_default_plan_target_is_the_monday_after_next():
     """Planning always targets the week ahead, not the one about to end --
     Friday Aug 14 sits in the week starting Aug 10, so the plan target is

@@ -176,14 +176,17 @@ if not is_parent():
         """The 5-column Monday-Friday layout, shared by This Week and
         Upcoming Week -- same read-only glance at whatever's been planned,
         just pointed at a different Monday. Monday-Thursday get whatever
-        Tier 1 subject was planned for that day; Friday is deliberately
-        never a new-content day (see compass/weekly.py), so it points at
-        the next step on whichever Big Project he's chosen as this year's
-        (db.active_big_project -- picked on the Big Projects page, never
-        guessed at here) plus a Travel Journal entry -- low-effort, but
-        each is enough on its own to make Friday an instructional day that
-        counts, which a truly empty "light day" isn't guaranteed to be (see
-        compass.compliance's day-count pace warning).
+        Tier 1 subject was planned for that day; Friday is a new-content
+        day only when This Week's school-days picker opted it in for that
+        particular week (a holiday landing on another weekday, say) --
+        otherwise it points at the next step on whichever Big Project he's
+        chosen as this year's (db.active_big_project -- picked on the Big
+        Projects page, never guessed at here) plus a Travel Journal entry
+        -- low-effort, but each is enough on its own to make Friday an
+        instructional day that counts, which a truly empty "light day"
+        isn't guaranteed to be (see compass.compliance's day-count pace
+        warning). The two aren't mutually exclusive: a Friday lesson still
+        shows alongside the usual light-day plan, never in place of it.
 
         Styled as a "Sunday Funnies" comic strip -- thick ink border, a hard
         offset shadow instead of a soft glow, a halftone dot tint, and a
@@ -257,12 +260,24 @@ if not is_parent():
 
                 day_skills = skills_by_day.get(day_iso, [])
                 day_trips = trips_by_day.get(day_iso, [])
+                day_lessons = lessons_by_day.get(day_iso, [])
 
                 if day_name == "Friday":
+                    # Ordinarily empty -- Friday only carries a subject
+                    # lesson when This Week's school-days picker opted it in
+                    # as a substitute for a holiday elsewhere that week, and
+                    # a lesson planned there needs to actually show up here,
+                    # not be silently swallowed by the light-day framing below.
+                    for lesson in day_lessons:
+                        icon = SUBJECT_ICONS.get(lesson["agent"], "📘")
+                        done = bool(lesson["metadata"].get("student_done_on"))
+                        marker = "✅" if done else "⬜"
+                        quiz = lesson["metadata"].get("quiz_result") or {}
+                        badge = " 🎯" if quiz.get("passed") else ""
+                        st.markdown(f"{marker} {icon} {md(lesson['title'])}{badge}")
                     st.caption("🎬 Light day — review the week, plus a quick win:")
                     render_friday_plan(db, student, day_iso)
                 else:
-                    day_lessons = lessons_by_day.get(day_iso, [])
                     if not day_lessons and not day_skills and not day_trips:
                         st.caption("Nothing planned yet.")
                     for lesson in day_lessons:

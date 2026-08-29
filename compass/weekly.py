@@ -37,13 +37,24 @@ def week_start(on: date | None = None) -> date:
     return on - timedelta(days=on.weekday())
 
 
-def week_dates(start: date) -> list[date]:
-    """The four scheduled dates (Monday-Thursday) for the week beginning `start`.
+def week_dates(start: date, *, include_friday: bool = False) -> list[date]:
+    """The scheduled dates for the week beginning `start`: Monday-Thursday,
+    plus Friday itself when `include_friday=True`.
+
+    Friday stays out by default -- see the module docstring for why it's
+    not a new-content day -- but a parent can opt it back in as a fifth
+    lesson day for one particular week: a holiday lands on Monday (or any
+    other weekday), that day gets unchecked in This Week's school-days
+    picker, and Friday gets checked instead so the week still has four
+    real lesson days rather than three.
 
     `start` is assumed to already be a Monday -- callers get one from
     `week_start()` rather than an arbitrary date, so this doesn't re-derive it.
     """
-    return [start + timedelta(days=i) for i in range(len(WEEKDAY_NAMES))]
+    dates = [start + timedelta(days=i) for i in range(len(WEEKDAY_NAMES))]
+    if include_friday:
+        dates.append(start + timedelta(days=4))
+    return dates
 
 
 # --- school-day streaks --------------------------------------------------------

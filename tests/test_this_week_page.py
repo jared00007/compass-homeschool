@@ -58,6 +58,53 @@ def test_all_four_days_are_checked_by_default(monkeypatch, tmp_path):
     assert all(c.value is True for c in checkboxes)
 
 
+def test_friday_is_offered_but_unchecked_by_default(monkeypatch, tmp_path):
+    """Reported directly: a holiday landing on a weekday shouldn't mean the
+    week only gets three lesson days -- Friday's available as a fifth
+    option, but stays unchecked unless a parent opts it in, since it's
+    normally the review/light day instead."""
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    db.ensure_default_student()
+    db.close()
+
+    _, plan_tab = _open_plan_tab(monkeypatch, db_path)
+    friday = [c for c in plan_tab.checkbox if c.label == "Friday"]
+    assert len(friday) == 1
+    assert friday[0].value is False
+
+
+def test_checking_friday_covers_for_a_holiday_earlier_in_the_week(monkeypatch, tmp_path):
+    """The actual point of the feature: Tuesday-Thursday already planned,
+    Monday's a holiday (so nothing's ever seeded for it) -- unchecking
+    Monday alone leaves nothing missing, but checking Friday too gives the
+    week its fourth lesson day back."""
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    dates = weekly.week_dates(TARGET_MONDAY)
+    for d in dates[1:]:
+        db.save_lesson(
+            student_id=student["id"], agent="math", subject="math", topic="t", title="t",
+            payload={"title": "t", "activities": []},
+            metadata={"week_start": TARGET_MONDAY.isoformat(), "planned_for": d.isoformat()},
+        )
+    db.close()
+
+    at, plan_tab = _open_plan_tab(monkeypatch, db_path)
+    monday = [c for c in plan_tab.checkbox if c.label == "Monday"][0]
+    monday.set_value(False).run()
+    plan_tab = _plan_tab(at)
+    button = [b for b in plan_tab.button if b.key == "regen_week_math"][0]
+    assert button.disabled is True  # Tue-Thu already cover the three checked days
+
+    friday = [c for c in plan_tab.checkbox if c.label == "Friday"][0]
+    friday.set_value(True).run()
+    plan_tab = _plan_tab(at)
+    button = [b for b in plan_tab.button if b.key == "regen_week_math"][0]
+    assert button.disabled is False  # Friday's checked now and still missing a lesson
+
+
 def test_unchecking_the_only_missing_day_disables_that_subjects_button(monkeypatch, tmp_path):
     db_path = tmp_path / "week.db"
     db = Database(db_path)

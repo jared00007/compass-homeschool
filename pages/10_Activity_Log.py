@@ -393,7 +393,11 @@ with lessons_tab:
             key="review_week_picker",
         )
         target_week_start = weekly.week_start(picked_week)
-        target_dates = weekly.week_dates(target_week_start)
+        # Friday included even though it's not a lesson day by default --
+        # This Week's school-days picker can opt it in as a substitute for a
+        # holiday elsewhere in the week, and a lesson planned there needs a
+        # real column here too, not a trip into the "other_week" bucket below.
+        target_dates = weekly.week_dates(target_week_start, include_friday=True)
         st.caption(
             f"{target_dates[0].strftime('%b %-d')} – {target_dates[-1].strftime('%b %-d, %Y')}"
         )

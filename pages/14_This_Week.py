@@ -140,7 +140,9 @@ with plan_tab:
         value=default_target,
     )
     target_week_start = weekly.week_start(picked)
-    full_week_dates = weekly.week_dates(target_week_start)
+    # Friday's included here even though it's unchecked by default below --
+    # the whole point is to have it available to opt into for this one week.
+    full_week_dates = weekly.week_dates(target_week_start, include_friday=True)
     st.caption(
         f"Planning {full_week_dates[0].strftime('%b %-d')} – "
         f"{full_week_dates[-1].strftime('%b %-d, %Y')}."
@@ -149,6 +151,9 @@ with plan_tab:
     st.markdown("**School days this week**")
     st.caption(
         "Uncheck a day to skip it entirely -- a holiday, a field trip, whatever. "
+        "Friday's unchecked by default (it's normally the review/light day below), "
+        "but check it when another day's out and you want four real lesson days "
+        "anyway -- a holiday Monday, say, made up for with a Friday lesson instead. "
         "Applies to every subject below; nothing gets generated for an unchecked "
         "day, and Math's practice notes ('day 2 of 3', say) count against however "
         "many days are actually checked, not always four."
@@ -158,7 +163,9 @@ with plan_tab:
     for column, day in zip(day_columns, full_week_dates):
         with column:
             is_school_day = st.checkbox(
-                day.strftime("%A"), value=True, key=f"weekplan_schoolday_{day.isoformat()}"
+                day.strftime("%A"),
+                value=day.weekday() != 4,
+                key=f"weekplan_schoolday_{day.isoformat()}",
             )
         if is_school_day:
             target_dates.append(day)
@@ -311,16 +318,20 @@ with plan_tab:
                             st.rerun()
 
     st.divider()
-    # Friday isn't a lesson day regardless of which of Monday-Thursday got
-    # checked above, so its date is derived from the Monday directly rather
-    # than indexed off target_dates (which may now hold fewer than four).
+    # This widget always exists for Friday, whether or not Friday's also
+    # checked above as a lesson day this particular week -- its date is
+    # derived from the Monday directly rather than indexed off
+    # target_dates (which may or may not include Friday, and may hold
+    # fewer than four either way).
     friday_date = target_week_start + timedelta(days=4)
     st.markdown(f"**Friday's plan** — {friday_date.strftime('%b %-d')}")
     st.caption(
-        "Friday's never a new-content day (see the four subjects above) -- this is "
-        "what actually shows on the Week grid instead. Pick any mix of the "
-        "standard options below, or add your own; nothing picked yet falls back "
-        "to the original Big Project + Travel Journal pairing."
+        "Friday's the review/light day by default -- check it above in the "
+        "school-days picker to make it a real lesson day instead, just for "
+        "this week. This is what shows on the Week grid either way, alongside "
+        "any subject lesson you did plan for Friday. Pick any mix of the "
+        "standard options below, or add your own; nothing picked yet falls "
+        "back to the original Big Project + Travel Journal pairing."
     )
 
     friday_items = db.list_friday_plan_items(student["id"], friday_date.isoformat())

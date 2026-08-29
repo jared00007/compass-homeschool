@@ -626,6 +626,23 @@ A day that's deliberately left unplanned just never shows a lesson for it (same 
 weekend already does on the Week grid) -- nothing elsewhere assumes exactly four lessons
 exist, so there's no separate "this day is a holiday" flag to keep in sync.
 
+**Friday's a fifth option in that same checkbox row, unchecked by default.** Reported
+directly: unchecking a holiday Monday only leaves three lesson days that week, with no
+way to make up the fourth. `weekly.week_dates(start, include_friday=True)` appends
+Friday to the four dates the picker already builds from; the checkbox itself defaults
+to unchecked (`day.weekday() != 4`) since Friday's still the review/light day the rest
+of the app assumes -- checking it in for one particular week is an explicit opt-in, not
+a new default. Everything downstream already worked off `planned_for` dates rather than
+a fixed Monday-Thursday assumption (`plan_day`/`plan_missing_days`, `today_subject_status`,
+Home's "ready for you" roster), so a Friday lesson flows through the same gate as any
+other day's -- the two places that did still assume four fixed columns needed a matching
+`include_friday=True`: Activity Log's "This week's plan" board (else a Friday lesson fell
+into the "scheduled for a different week" bucket, wrongly, since Friday was never one of
+its column keys) and Home's week grid, which used to render *only* the Big
+Project/Travel Journal light-day fallback for Friday regardless of what was actually
+`planned_for` that date -- a Friday lesson now renders alongside that fallback rather
+than being silently swallowed by it.
+
 **`weekly.math_stage_note(index, total)` generalizes the parent-facing note Math
 attaches to each day** ("day 2 of 4 on this same skill," escalating toward the graded
 assessment on the last day) to however many days actually got checked. The ordinary
