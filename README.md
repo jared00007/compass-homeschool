@@ -1043,6 +1043,20 @@ the one behavior change this introduces — a lesson already self-reported done
 `submitted`, landing in the new review queue instead of silently reappearing as his
 current lesson once the gate goes live.
 
+**The "To review (N)" tab-header number is a narrower count than the tab's own
+contents.** Reported directly: a lesson merely `planned` for a future week — never
+started, never turned in — was inflating the header even though nothing about it
+needed a parent's attention; the same complaint the `other_week` caption below
+already existed to soften without actually fixing. `needs_review_count` in
+`pages/10_Activity_Log.py` now only sums `_needs_attention(lesson, today_iso)`
+(`submitted`, or `planned` and overdue) plus `needs_revision` lessons plus
+`travel_to_review` — a lesson simply scheduled for later, this week or any other,
+never counts. The tab body still lists every open lesson (that part didn't change),
+but now carries a "📅 This week's plan" heading over the day-by-day board making
+clear it's a schedule view, not a second review queue, and the "Nothing waiting on
+you right now" success banner checks the same narrower set as the header so the two
+never disagree.
+
 ### His "Today" checklist
 
 `render_today_checklist()` in `compass/ui.py`, called from `Home.py`'s student branch

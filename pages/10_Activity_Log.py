@@ -200,6 +200,9 @@ def _render_travel_review_card(entry: dict) -> None:
         )
 
 
+today = date.today()
+today_iso = today.isoformat()
+
 all_lessons = db.list_lessons(student["id"], limit=50)
 to_review = [l for l in all_lessons if l["status"] in ("planned", "submitted", "needs_revision")]
 history = [l for l in all_lessons if l["status"] in ("completed", "skipped")]
@@ -219,8 +222,20 @@ all_travel_entries = db.list_travel_entries(student["id"])
 travel_to_review = [t for t in all_travel_entries if t["status"] in ("submitted", "needs_revision")]
 travel_to_review.sort(key=lambda t: 0 if t["status"] == "submitted" else 1)
 
+# The tab's own number, not just "everything not yet completed" -- reported
+# directly: a lesson simply scheduled for a future day, untouched, isn't
+# something to review yet, the same reasoning travel_to_review above
+# already uses for an unwritten stub. Only turned-in work, sent-back work,
+# and anything genuinely overdue belongs in this count; the week's day
+# board further down is a schedule view, not a review queue, and was
+# quietly inflating this number even though nothing on it needed a look.
+needs_review_count = (
+    sum(1 for l in to_review if _needs_attention(l, today_iso) or l["status"] == "needs_revision")
+    + len(travel_to_review)
+)
+
 log_tab, add_tab, lessons_tab = st.tabs(
-    ["The record", "Log something manually", f"To review ({len(to_review) + len(travel_to_review)})"]
+    ["The record", "Log something manually", f"To review ({needs_review_count})"]
 )
 
 with log_tab:
@@ -333,9 +348,6 @@ with lessons_tab:
             _render_travel_review_card(entry)
         st.divider()
 
-    today = date.today()
-    today_iso = today.isoformat()
-
     attention = [l for l in to_review if _needs_attention(l, today_iso)]
     attention.sort(
         key=lambda l: (
@@ -369,6 +381,12 @@ with lessons_tab:
                 _render_review_card(lesson, today_iso)
             st.divider()
 
+        st.markdown("**📅 This week's plan**")
+        st.caption(
+            "Not more things waiting on you -- just the schedule, so you can see "
+            "what's coming without switching pages. Nothing here counts toward "
+            "the number above until it's actually turned in, sent back, or overdue."
+        )
         picked_week = st.date_input(
             "Week to review (any day in it — snapped to that week's Monday)",
             value=today,
@@ -427,15 +445,15 @@ with lessons_tab:
             plural = "s" if len(other_week) != 1 else ""
             st.divider()
             st.caption(
-                f"{len(other_week)} more lesson{plural} waiting on you, planned for "
-                f"a different week (week of {', '.join(other_weeks)}) — change the "
+                f"{len(other_week)} more lesson{plural} also scheduled, for a "
+                f"different week (week of {', '.join(other_weeks)}) — change the "
                 "date above to see them."
             )
 
-        if (
-            not attention and not sent_back and not any(board_buckets.values())
-            and not unscheduled and not travel_to_review and not other_week
-        ):
+        # Matches needs_review_count above -- the week's plan (whatever
+        # week is picked) never factors into this, since none of it is
+        # actually waiting on a review from you.
+        if not attention and not sent_back and not travel_to_review:
             st.success("Nothing waiting on you right now.")
 
     show_history = st.checkbox("Also show completed and skipped lessons")

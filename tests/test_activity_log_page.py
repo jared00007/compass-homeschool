@@ -164,9 +164,13 @@ def test_a_lesson_planned_for_another_week_is_not_silently_dropped(monkeypatch, 
     """A real bug, found live: a lesson that's neither overdue/submitted
     (so not in 'attention') nor unscheduled (it does have a planned_for)
     but scheduled for a week other than the one on screen used to fall
-    through every bucket and vanish -- still counted in the tab's header
-    total, but rendered nowhere, so the header number and what was
-    actually visible silently stopped matching."""
+    through every bucket and vanish -- rendered nowhere, with no way to
+    even find it via the date picker above.
+
+    It doesn't count toward the header total (a lesson simply scheduled
+    for later isn't something to review yet -- a separate, later
+    complaint: the count used to include it too), but it's still visible
+    via the caption below, naming which week to switch to."""
     db_path = tmp_path / "review.db"
     db = Database(db_path)
     student = db.ensure_default_student()
@@ -183,7 +187,9 @@ def test_a_lesson_planned_for_another_week_is_not_silently_dropped(monkeypatch, 
     db.close()
 
     at, review_tab = _open_review_tab(monkeypatch, db_path)
-    assert review_tab.label == "To review (1)"
+    # Nothing here actually needs your review -- it's just scheduled for
+    # later -- so the header count is 0, not 1.
+    assert review_tab.label == "To review (0)"
     labels = [e.label for e in review_tab.expander]
     assert not any("Later week's lesson" in l for l in labels)
     captions = [c.value for c in review_tab.caption]
@@ -191,9 +197,9 @@ def test_a_lesson_planned_for_another_week_is_not_silently_dropped(monkeypatch, 
         "1 more lesson" in c and "different week" in c and other_week_start.isoformat() in c
         for c in captions
     )
-    # Not "Nothing waiting on you" either -- something genuinely is, it's
-    # just not on this week's board.
-    assert not any("Nothing waiting on you" in s.value for s in review_tab.success)
+    # "Nothing waiting on you" is about actual review items, and there
+    # genuinely are none -- a future lesson isn't one, so this still shows.
+    assert any("Nothing waiting on you" in s.value for s in review_tab.success)
 
 
 # --- Travel Journal entries share the same "To review" queue -------------------
