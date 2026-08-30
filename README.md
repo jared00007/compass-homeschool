@@ -1611,9 +1611,10 @@ personal website about something he's into) rather than an abstract exercise. Mo
 credit `occupational_education` (career-relevant technical skill, same subject Life
 Skills' own catalog leans on); a few that are really about visual design credit
 `art_and_music` instead, and one about working with a real spreadsheet of data credits
-`math`. Lives at `pages/17_Coding.py`, deliberately without a "plan a session" AI agent
-tab (unlike Life Skills) -- v1 is the checklist itself; an agent is a later, separate
-addition if it turns out to be worth it. `render_coding_module_cards` and
+`math`. Originally lived at `pages/17_Coding.py`, deliberately without a "plan a
+session" AI agent tab (unlike Life Skills) -- v1 was the checklist itself,
+with an agent and a fold into Life Skills' own page following later (see
+"Coding Camp folds into Life Skills" further down). `render_coding_module_cards` and
 `render_coding_module_catalog_manager` in `compass/ui.py` use plain bordered
 containers/expanders rather than Life Skills' own custom "Neon Pop" card-grid CSS --
 a deliberate scope cut for a v1, not a design downgrade, on the same reasoning
@@ -1772,10 +1773,80 @@ actually submitted, the same acknowledged limitation the Log Time tab's own
 good enough to scope a dropdown's options, not something written to the
 database).
 
+## Coding Camp folds into Life Skills; This Week gets sprint-board freedom
+
+Three small, related changes, all requested off screenshots of the app in
+actual use rather than planned up front.
+
+**Bug: the move control was showing up for the student on two surfaces it
+was never meant to.** `render_story_move_control` (the shared top-right
+popover documented above) is a parent-only tool everywhere else it's wired
+in -- Big Projects, Choice Topics, lesson review cards all wrap the call in
+`if is_parent():`. `render_life_skill_cards` and `render_coding_module_cards`
+didn't, and a screenshot showed Landon's own Life Skills checklist offering
+him a "send to Backlog" control that was supposed to be parent-only. Both
+call sites now check `is_parent()` before rendering the control, matching
+every other surface; regression tests assert no `move_ls_*`/`move_coding_*`
+widget key exists in a student-view render.
+
+**This Week's "Plan next week" tab gets the same move control as everything
+else.** The original design let a parent regenerate a single already-planned
+day or replan the whole week, but offered no way to just move a lesson to a
+different day or send it back to Backlog once it existed -- "I want to be
+able to plan his next week like sprint planning almost." Each per-lesson
+expander in the Plan-next-week tab now renders `render_story_move_control`
+right after the lesson body, wired to the same `db.reschedule_lesson` /
+`db.send_to_backlog` pair every other surface uses, with a
+`validate_schedule` closure that blocks moving a lesson onto a day another
+lesson from the *same agent* already occupies (checked against every lesson
+for that student, not just the target week, so a collision in a different
+week is still caught). Offered for every agent including math -- unlike the
+existing single-day "Regenerate", which stays math-excluded because math's
+four days share one derived skill_id that a plain day-move never touches.
+
+**Coding Camp folds into Life Skills as a "Coding" tab, not a rollup into Big
+Projects.** Asked directly whether Coding should roll up to the Big Projects
+board "in a sense" -- the shape doesn't fit: Big Projects is multi-week,
+big Project steps that unlock each other; Coding Camp is a same-shape sibling
+of Core Life Skills, a flat catalog of independent, pick-any-day modules.
+Life Skills was the better home. `pages/17_Coding.py` is deleted outright;
+its checklist, Log Time, Master List, and Add-a-module sections now live as
+a new "Coding" tab on `pages/6_Life_Skills.py`, alongside Checklist,
+Student's Choice (the earlier Choice Topics fold-in). Coding's own
+sub-sections render as stacked `st.divider()`-separated blocks rather than a
+nested tab strip -- AppTest's `at.tabs` returns every tab across every
+nesting level as one flat list with no nesting information, so a nested
+"Log time"/"Master list" pair would be ambiguous against Life Skills' own
+outer tabs of the same name even though Streamlit itself renders nested tabs
+fine. `_FOLDED_IN_PAGES` grew a third entry so the sidebar keeps hiding it.
+
+**Coding Camp gets its own "plan a session" agent -- a build guide written
+to the student, not the parent.** Every other subject agent (`life_skills`
+included) writes for the parent, who runs the session. Coding is different:
+Landon builds the module himself, so `compass/agents/coding.py` generates a
+build guide addressed directly to him -- concepts explained before he needs
+them, step-by-step instructions with short code examples, common mistakes,
+a concrete "done looks like" bar, and stretch goals. Parent-only
+`subject_credits`/`parent_note` aside, the guide is visible to both viewers:
+`render_coding_plan` renders it inside a "📖 How to build this" expander
+directly on the (both-parent-and-student-visible) checklist card via
+`db.latest_coding_plan`, since a build guide a student never sees defeats
+its own purpose. Generation itself ("Plan a build guide") stays behind
+`is_parent()` on the Coding tab, matching how life_skills' own session
+planner works -- only the finished guide is shared.
+
+**Home.py's four quick-glance tiles become three.** With Choice Topics
+already living inside the Life Skills page and Coding now doing the same,
+keeping them as separate Home tiles stopped making sense. The standalone
+"⭐ Choice Topics" tile is gone; the Life Skills tile picks up a
+`⭐ N on Student's Choice` caption and a `💻 N coding module(s) due` caption
+alongside its existing due-count, so one tile now surfaces all three without
+losing any of the information the fourth tile carried.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1057 tests, ~100s, no API key needed
+python -m pytest tests/ -q      # 1075 tests, ~100s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

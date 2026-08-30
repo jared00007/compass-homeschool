@@ -33,6 +33,7 @@ from compass.ui import (
     parent_only,
     render_friday_plan,
     render_lesson,
+    render_story_move_control,
 )
 
 db, student = page_setup("This Week", icon="🗓️")
@@ -178,6 +179,10 @@ with plan_tab:
     existing_by_agent: dict[str, list[dict]] = {}
     for lesson in existing:
         existing_by_agent.setdefault(lesson["agent"], []).append(lesson)
+    # Broader than `existing` (this target week only) on purpose -- moving a
+    # lesson onto a day in a *different* week must still catch a same-agent
+    # collision there, same scope Activity Log's own Backlog tab checks.
+    all_lessons_for_collision = db.list_lessons(student["id"], limit=50)
 
     st.caption(
         "Each subject plans on its own click -- at most four lessons at a time, "
@@ -290,6 +295,41 @@ with plan_tab:
                     expanded=False,
                 ):
                     render_lesson(lesson["payload"], for_parent=True)
+
+                    # Sprint-board freedom: send this lesson back to Backlog,
+                    # or move it to a different day entirely -- the same
+                    # shared control every other story type uses, offered
+                    # for every agent including math (moving a day doesn't
+                    # touch the shared skill_id the way regenerating one
+                    # would, so math isn't excluded here the way it is below).
+                    def _validate_weekplan_move(new_date: str, lesson=lesson) -> str | None:
+                        collision = any(
+                            other["agent"] == lesson["agent"]
+                            and other["id"] != lesson["id"]
+                            and (other.get("metadata") or {}).get("planned_for") == new_date
+                            for other in all_lessons_for_collision
+                        )
+                        if collision:
+                            return (
+                                f"⚠️ Already a {lesson['agent']} lesson planned for that "
+                                "day -- pick a different one."
+                            )
+                        return None
+
+                    render_story_move_control(
+                        key=f"weekplan_lesson_{lesson['id']}",
+                        active=not weekly.is_backlogged(lesson, date.today().isoformat()),
+                        scheduled_for=lesson["metadata"].get("planned_for"),
+                        set_active=lambda a, lid=lesson["id"]: (
+                            db.reschedule_lesson(lid, date.today().isoformat())
+                            if a else db.send_to_backlog(lid)
+                        ),
+                        schedule=lambda d, lid=lesson["id"]: (
+                            db.reschedule_lesson(lid, d) if d else None
+                        ),
+                        validate_schedule=_validate_weekplan_move,
+                    )
+
                     # Math isn't offered a single-day regenerate: its four days
                     # share one skill, so swapping just one out of sequence
                     # would need to re-derive that shared skill_id from a

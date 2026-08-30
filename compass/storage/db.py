@@ -2442,6 +2442,22 @@ class Database:
             row["metadata"] = json.loads(row["metadata"])
         return row
 
+    def latest_coding_plan(self, student_id: int, module_id: int) -> dict[str, Any] | None:
+        """The most recent generated build guide for one coding module, if
+        there is one -- same shape and reasoning as latest_life_skill_plan."""
+        row = _row(
+            self.conn.execute(
+                "SELECT * FROM lessons WHERE student_id = ? AND agent = 'coding' "
+                "AND json_extract(metadata, '$.coding_module_id') = ? "
+                "ORDER BY created_at DESC, id DESC LIMIT 1",
+                (student_id, module_id),
+            )
+        )
+        if row:
+            row["payload"] = json.loads(row["payload"])
+            row["metadata"] = json.loads(row["metadata"])
+        return row
+
     def lesson_usage_between(
         self, student_id: int, start: str, end: str
     ) -> list[dict[str, Any]]:

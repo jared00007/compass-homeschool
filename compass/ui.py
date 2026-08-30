@@ -160,18 +160,20 @@ _PARENT_ONLY_PAGES = (
     "Model_Costs",
 )
 
-# Folded into another page rather than removed -- Choice Topics now lives as
-# a tab on Life Skills (same "his to pick" list, same active/backlog gate),
-# and the Travel Journal always sits inside Big Projects as its own project
-# (see Database.ensure_travel_log_project). Hidden from the top-level nav
-# for both of you, not just for him -- the whole point was fewer sidebar
-# entries, and a parent reaches both through the page that now hosts them.
-# Neither page file is deleted here for Travels (still real, still linked to
-# from the Big Projects card); Choice Topics' own page is gone entirely --
-# see render_choice_topics_section below.
+# Folded into another page rather than removed -- Choice Topics and Coding
+# Camp now live as tabs on Life Skills (same "his to pick"/"you decide" list,
+# same active/backlog gate), and the Travel Journal always sits inside Big
+# Projects as its own project (see Database.ensure_travel_log_project).
+# Hidden from the top-level nav for both of you, not just for him -- the
+# whole point was fewer sidebar entries, and a parent reaches all three
+# through the page that now hosts them. Neither page file is deleted here
+# for Travels (still real, still linked to from the Big Projects card);
+# Choice Topics' and Coding's own pages are gone entirely -- see
+# render_choice_topics_section/the Coding tab on pages/6_Life_Skills.py.
 _FOLDED_IN_PAGES = (
     "Choice_Topics",
     "Landons_Travels",
+    "Coding",
 )
 
 
@@ -1109,6 +1111,69 @@ def render_life_skill_plan(plan: dict[str, Any]) -> None:
 
     credits = plan.get("subject_credits") or []
     if credits:
+        st.markdown("**Subject credit (feeds the WA compliance dashboard)**")
+        for credit in credits:
+            st.markdown(
+                f"- **{subjects.label(credit['subject'])}** — {credit['minutes']} min · "
+                f"{credit.get('justification', '')}"
+            )
+
+
+# --- Coding Camp: the AI-drafted build guide -------------------------------------
+
+
+def render_coding_plan(plan: dict[str, Any]) -> None:
+    """Render a coding module's build guide.
+
+    Unlike render_life_skill_plan, this one is meant for *him* -- he builds
+    a module himself, at a computer, without a parent required to be there,
+    so the whole guide (including each step's own code example) is written
+    to and shown to him directly. There's no answer key here to redact:
+    this is instructional content, the actual "how to do this" the parent
+    asked for, not an assessment with a hidden answer -- see
+    compass.agents.coding's own module docstring.
+    """
+    st.subheader(md(plan.get("title", "Build guide")))
+    if plan.get("overview"):
+        st.write(md(plan["overview"]))
+
+    concepts = plan.get("concepts") or []
+    if concepts:
+        st.markdown("**What you'll need to know**")
+        for concept in concepts:
+            st.markdown(f"**{md(concept.get('name', ''))}** — {md(concept.get('explanation', ''))}")
+
+    steps = plan.get("steps") or []
+    if steps:
+        st.markdown("**How to build it**")
+        for index, step in enumerate(steps, start=1):
+            header = f"{index}. {md(step.get('title', 'Step'))} · {step.get('minutes', 0)} min"
+            with st.expander(header, expanded=False):
+                st.write(md(step.get("instructions", "")))
+                if step.get("example"):
+                    st.code(step["example"])
+
+    if plan.get("done_looks_like"):
+        st.success(f"**Done looks like:** {md(plan['done_looks_like'])}")
+
+    common_mistakes = plan.get("common_mistakes") or []
+    if common_mistakes:
+        with st.expander(f"Where this goes wrong ({len(common_mistakes)})"):
+            for item in common_mistakes:
+                st.markdown(f"- {md(item)}")
+
+    stretch_goals = plan.get("stretch_goals") or []
+    if stretch_goals:
+        with st.expander("Want to keep going?"):
+            for item in stretch_goals:
+                st.markdown(f"- {md(item)}")
+
+    parent_note = (plan.get("parent_note") or "").strip()
+    if parent_note and parent_note.lower().rstrip(".") != "nothing" and is_parent():
+        st.caption(f"👤 Parent note: {md(parent_note)}")
+
+    credits = plan.get("subject_credits") or []
+    if credits and is_parent():
         st.markdown("**Subject credit (feeds the WA compliance dashboard)**")
         for credit in credits:
             st.markdown(
@@ -2651,15 +2716,16 @@ def render_life_skill_cards(db: Database, skills: list[dict[str, Any]], can_edit
                 earned = bool(skill["completed_on"])
                 state = "earned" if earned else "locked"
                 with columns[index], st.container(key=f"ls_card_{skill['id']}_{state}"):
-                    _spacer, move_col = st.columns([5, 1])
-                    with move_col:
-                        render_story_move_control(
-                            key=f"ls_{skill['id']}",
-                            active=bool(skill["active"]),
-                            scheduled_for=skill["scheduled_for"],
-                            set_active=lambda a, sid=skill["id"]: db.set_life_skill_active(sid, a),
-                            schedule=lambda s, sid=skill["id"]: db.schedule_life_skill(sid, s),
-                        )
+                    if is_parent():
+                        _spacer, move_col = st.columns([5, 1])
+                        with move_col:
+                            render_story_move_control(
+                                key=f"ls_{skill['id']}",
+                                active=bool(skill["active"]),
+                                scheduled_for=skill["scheduled_for"],
+                                set_active=lambda a, sid=skill["id"]: db.set_life_skill_active(sid, a),
+                                schedule=lambda s, sid=skill["id"]: db.schedule_life_skill(sid, s),
+                            )
                     story = html.escape(skill["description"]) if skill["description"] else "No mission notes yet."
                     needs = (
                         f'<div class="cp-ls-needs"><b>You\'ll need:</b> {html.escape(skill["materials"])}</div>'
@@ -2775,7 +2841,9 @@ def render_life_skill_catalog_manager(db: Database, skills: list[dict[str, Any]]
                     st.rerun()
 
 
-# --- Coding Camp: same shape as Core Life Skills, its own catalog and page ------
+# --- Coding Camp: same shape as Core Life Skills, its own catalog, folded
+# into the Life Skills page as a flat section (see pages/6_Life_Skills.py's
+# "Coding" tab) rather than a top-level page of its own -----------------------
 #
 # Plain expander rows throughout, on the same reasoning
 # render_life_skill_catalog_manager's own docstring gives for its half of Life
@@ -2811,18 +2879,30 @@ def render_coding_module_cards(db: Database, modules: list[dict[str, Any]], can_
                 title_col, move_col = st.columns([5, 1])
                 with title_col:
                     st.markdown(f"**{md(module['title'])}**" + (f" — {badge}" if badge else ""))
-                with move_col:
-                    render_story_move_control(
-                        key=f"coding_{module['id']}",
-                        active=bool(module["active"]),
-                        scheduled_for=module["scheduled_for"],
-                        set_active=lambda a, mid=module["id"]: db.set_coding_module_active(mid, a),
-                        schedule=lambda s, mid=module["id"]: db.schedule_coding_module(mid, s),
-                    )
+                if is_parent():
+                    with move_col:
+                        render_story_move_control(
+                            key=f"coding_{module['id']}",
+                            active=bool(module["active"]),
+                            scheduled_for=module["scheduled_for"],
+                            set_active=lambda a, mid=module["id"]: db.set_coding_module_active(mid, a),
+                            schedule=lambda s, mid=module["id"]: db.schedule_coding_module(mid, s),
+                        )
                 if module["description"]:
                     st.caption(md(module["description"]))
                 if module["materials"]:
                     st.caption(f"You'll need: {md(module['materials'])}")
+                # Visible to both of you, always -- this is the actual
+                # "how to do this" content the checklist used to be missing
+                # entirely, not a parent-only planning step. Generating one
+                # in the first place still only happens from the Coding
+                # tab's own "Plan a build guide" section (spends real API
+                # cost, so parent-gated there), but once it exists, reading
+                # it is exactly what he needs it for.
+                plan = db.latest_coding_plan(module["student_id"], module["id"])
+                if plan:
+                    with st.expander("📖 How to build this", expanded=False):
+                        render_coding_plan(plan["payload"])
                 columns = st.columns([1, 1])
                 checked = columns[0].checkbox(
                     "Mark done", value=earned, key=f"coding_done_{module['id']}"

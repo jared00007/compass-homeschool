@@ -184,3 +184,56 @@ def test_the_first_checked_day_gets_the_topic_picker_even_if_its_not_monday(
     labels = [s.label for s in plan_tab.selectbox] + [t.label for t in plan_tab.text_input]
     assert any(label.startswith("Tuesday's topic") for label in labels)
     assert not any(label.startswith("Monday's topic") for label in labels)
+
+
+def test_the_move_control_can_send_a_planned_lesson_to_backlog(monkeypatch, tmp_path):
+    """The actual point of the sprint-board request: a lesson already sitting
+    on a specific day in "Plan next week" needs the same freedom to move to
+    Backlog (or another day) that Activity Log's own Backlog tab already
+    gives -- not just after the fact once its week has run out, but right
+    here while planning it."""
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="Locking In the Coordinate Plane",
+        payload={"title": "Locking In the Coordinate Plane", "activities": []},
+        metadata={
+            "planned_for": TARGET_MONDAY.isoformat(),
+            "week_start": TARGET_MONDAY.isoformat(),
+        },
+    )
+    db.close()
+
+    at, plan_tab = _open_plan_tab(monkeypatch, db_path)
+    backlog_key = f"move_weekplan_lesson_{lesson_id}_backlog_True"
+    checkbox = [c for c in plan_tab.checkbox if c.key == backlog_key]
+    assert checkbox, "the move control's backlog toggle must be offered on a planned lesson"
+    checkbox[0].set_value(True).run()
+
+    db = Database(db_path)
+    lesson = db.get_lesson(lesson_id)
+    db.close()
+    assert lesson["metadata"].get("held_back") is True
+
+
+def test_the_move_control_offers_moving_to_a_different_day(monkeypatch, tmp_path):
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="science", subject="science", topic="t",
+        title="Backyard Ecosystem",
+        payload={"title": "Backyard Ecosystem", "activities": []},
+        metadata={
+            "planned_for": TARGET_MONDAY.isoformat(),
+            "week_start": TARGET_MONDAY.isoformat(),
+        },
+    )
+    db.close()
+
+    _, plan_tab = _open_plan_tab(monkeypatch, db_path)
+    date_key = f"move_weekplan_lesson_{lesson_id}_date_{TARGET_MONDAY.isoformat()}"
+    date_widget = [d for d in plan_tab.date_input if d.key == date_key]
+    assert date_widget, "the move control's date picker must be offered on a planned lesson"

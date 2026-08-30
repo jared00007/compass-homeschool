@@ -501,13 +501,20 @@ if not is_parent():
                     )
                 st.caption("📬 waiting on you to read  \n✅ read today")
 
-        # 3. Words to Review, Reading, Life Skills, and Choice Topics all in
-        # one row of four equal columns -- four small, single-purpose tiles
-        # that each just say what's outstanding and link to where it's
-        # actually done, rather than each getting its own full-width or
-        # half-width row. Cuts the page's overall length versus stacking
-        # them, and every tile always renders (even with nothing due) so
-        # the row never shifts shape depending on what's assigned.
+        # 3. Words to Review, Reading, and Life Skills all in one row of
+        # three equal columns -- small, single-purpose tiles that each just
+        # say what's outstanding and link to where it's actually done,
+        # rather than each getting its own full-width or half-width row.
+        # Cuts the page's overall length versus stacking them, and every
+        # tile always renders (even with nothing due) so the row never
+        # shifts shape depending on what's assigned.
+        #
+        # Life Skills' own tile also folds in Student's Choice and Coding --
+        # both now live as tabs on the same page (see pages/6_Life_Skills.py),
+        # so a separate tile per tab would just be the same "Open Life
+        # Skills" link three times over. One tile, one link; the due-skills
+        # list stays the tile's primary content since that's the one with
+        # actual per-item day tracking, with the other two as compact counts.
         due_skills = db.due_life_skills(student["id"], today)
         upcoming_skills = db.upcoming_life_skills(student["id"], today)
         later_skills_this_week = sum(
@@ -522,8 +529,9 @@ if not is_parent():
             for t in db.list_choice_topics(student["id"])
             if t["status"] in ("active", "approved")
         ]
+        due_coding = db.due_coding_modules(student["id"], today)
 
-        extras_columns = st.columns(4)
+        extras_columns = st.columns(3)
         with extras_columns[0]:
             with st.container(border=True):
                 render_card_heading("🔤 Words to Review")
@@ -565,22 +573,14 @@ if not is_parent():
                         )
                 else:
                     st.caption("Nothing due today.")
-                    st.page_link("pages/6_Life_Skills.py", label="Open Life Skills", icon="➡️")
                 if later_skills_this_week:
                     st.caption(f"+{later_skills_this_week} later this week")
                 if later_skills_week:
                     st.caption(f"+{later_skills_week} later")
-        with extras_columns[3]:
-            with st.container(border=True):
-                render_card_heading("⭐ Choice Topics")
                 if topics:
-                    for topic in topics[:3]:
-                        st.markdown(f"- {md(topic['title'])}")
-                else:
-                    st.caption("Nothing yet — add something you want to learn.")
-                # Lives inside Life Skills now, its own "Student's Choice"
-                # tab -- no page_link can jump straight to a specific tab,
-                # so this just opens the page itself.
+                    st.caption(f"⭐ {len(topics)} on Student's Choice")
+                if due_coding:
+                    st.caption(f"💻 {len(due_coding)} coding module(s) due")
                 st.page_link("pages/6_Life_Skills.py", label="Open Life Skills", icon="➡️")
 
         render_today_checklist(db, student)
