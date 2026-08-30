@@ -31,6 +31,7 @@ from compass.ui import (
     md,
     page_setup,
     parent_only,
+    render_board_card,
     render_friday_plan,
     render_lesson,
     render_story_move_control,
@@ -85,7 +86,60 @@ def _idea_options(db, student_id: int, key: str) -> list[tuple[str, str]]:
     return options
 
 
-review_tab, plan_tab = st.tabs(["Review this week", "Plan next week"])
+board_tab, review_tab, plan_tab = st.tabs(["📋 Board", "Review this week", "Plan next week"])
+
+# --- Board: every subject's stories, one week, one place ------------------------
+#
+# The actual point of the whole redesign this tab is part of: before this,
+# rearranging a story meant navigating into whichever subject's own page it
+# lived on, then several clicks deep into a nested expander, to reach the
+# exact same shared move control this tab now surfaces directly on every
+# card. This tab changes nothing about *how* a story moves -- only where a
+# parent has to go to do it.
+
+with board_tab:
+    board_week_start = weekly.week_start(
+        st.date_input(
+            "Week to view",
+            value=date.today(),
+            key="board_week_picker",
+            help="Any day in the week you want to see -- snapped to that week's Monday.",
+        )
+    )
+    board_days = weekly.week_dates(board_week_start, include_friday=True)
+    st.caption(
+        f"{board_days[0].strftime('%b %-d')} – {board_days[-1].strftime('%b %-d, %Y')}"
+    )
+
+    board = weekly.board_for_week(db, student, board_week_start)
+    all_lessons_for_board = db.list_lessons(student["id"], limit=200)
+
+    board_columns = st.columns(6)
+    for column, day_date in zip(board_columns[:5], board_days):
+        with column:
+            st.markdown(f"**{day_date.strftime('%a')}**")
+            st.caption(day_date.strftime("%b %-d"))
+            day_items = board[day_date.isoformat()]
+            if not day_items:
+                st.caption("Nothing here.")
+            for kind, item in day_items:
+                render_board_card(
+                    db, kind, item,
+                    today_iso=date.today().isoformat(),
+                    all_lessons_for_collision=all_lessons_for_board,
+                )
+
+    with board_columns[5]:
+        st.markdown("**🗄️ Backlog**")
+        st.caption("Parked -- pull one back in above whenever it's ready.")
+        if not board["backlog"]:
+            st.caption("Nothing parked.")
+        for kind, item in board["backlog"]:
+            render_board_card(
+                db, kind, item,
+                today_iso=date.today().isoformat(),
+                all_lessons_for_collision=all_lessons_for_board,
+            )
 
 # --- Review this week ----------------------------------------------------------
 

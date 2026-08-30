@@ -21,6 +21,7 @@ from compass.agents.llm import LessonGenerationError
 from compass.storage.db import Database
 from compass.weekly import (
     MATH_STAGE_NOTES,
+    board_for_week,
     default_plan_target,
     due_lessons,
     is_backlogged,
@@ -721,3 +722,117 @@ def test_weekend_nudge_ignores_whether_the_week_just_finished_was_ever_planned(
     _plan_a_lesson(nudge_db, nudge_student["id"], default_plan_target(friday))
     # the week that just ended (starting Aug 10) was deliberately never planned
     assert planning_nudge(nudge_db, nudge_student["id"], today=friday) is None
+
+
+# --- board_for_week ----------------------------------------------------------------
+
+
+@pytest.fixture()
+def board_db(tmp_path):
+    database = Database(tmp_path / "board.db")
+    yield database
+    database.close()
+
+
+@pytest.fixture()
+def board_student(board_db):
+    student = board_db.ensure_default_student()
+    board_db.seed_life_skills(student["id"])
+    board_db.seed_coding_modules(student["id"])
+    return student
+
+
+def test_board_buckets_every_story_type_by_its_own_day(board_db, board_student):
+    """One of each story type, each on a different weekday -- confirms
+    every branch of the aggregator reads its own item correctly, not just
+    lessons (the one type every other weekly.py function already covers)."""
+    monday = week_start()
+    sid = board_student["id"]
+
+    board_db.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t", title="Math Lesson",
+        payload={"activities": []},
+        metadata={"planned_for": monday.isoformat(), "week_start": monday.isoformat()},
+    )
+    skills = board_db.list_life_skills(sid)
+    board_db.schedule_life_skill(skills[0]["id"], monday.isoformat())
+
+    modules = board_db.list_coding_modules(sid)
+    board_db.schedule_coding_module(modules[0]["id"], (monday + timedelta(days=1)).isoformat())
+
+    topic_id = board_db.add_choice_topic(sid, "Learn guitar chords")
+    board_db.schedule_choice_topic(topic_id, (monday + timedelta(days=2)).isoformat())
+
+    project_id = board_db.add_big_project(sid, "Stop-Motion Film")
+    step_id = board_db.add_project_step(project_id, "Write the script", active=True)
+    board_db.schedule_project_step(step_id, (monday + timedelta(days=3)).isoformat())
+
+    entry_id = board_db.add_travel_entry(
+        sid, "Wyoming", monday.isoformat(), title="Yellowstone", status="planned"
+    )
+    board_db.schedule_travel_entry(entry_id, (monday + timedelta(days=4)).isoformat())
+
+    board = board_for_week(board_db, board_student, monday)
+
+    assert [k for k, _ in board[monday.isoformat()]] == ["lesson", "life_skill"]
+    assert [k for k, _ in board[(monday + timedelta(days=1)).isoformat()]] == ["coding_module"]
+    assert [k for k, _ in board[(monday + timedelta(days=2)).isoformat()]] == ["choice_topic"]
+    assert [k for k, _ in board[(monday + timedelta(days=3)).isoformat()]] == ["project_step"]
+    assert [k for k, _ in board[(monday + timedelta(days=4)).isoformat()]] == ["travel_entry"]
+    assert board["backlog"] == []
+
+
+def test_board_puts_a_backlogged_lesson_in_backlog_not_its_stale_day(board_db, board_student):
+    monday = week_start()
+    sid = board_student["id"]
+    lesson_id = board_db.save_lesson(
+        student_id=sid, agent="science", subject="science", topic="t", title="Backyard Ecosystem",
+        payload={"activities": []},
+        metadata={"planned_for": monday.isoformat(), "week_start": monday.isoformat()},
+    )
+    board_db.send_to_backlog(lesson_id)
+
+    board = board_for_week(board_db, board_student, monday)
+    assert board[monday.isoformat()] == []
+    assert [item["title"] for _, item in board["backlog"]] == ["Backyard Ecosystem"]
+
+
+def test_board_puts_a_backlogged_life_skill_in_backlog_regardless_of_its_original_week(
+    board_db, board_student
+):
+    """The interesting case: a skill parked from a completely different
+    (past) week must still surface in the global Backlog bucket -- the
+    `_for_week` queries alone would never find it, since its stale
+    scheduled_for date falls outside the target week's own range."""
+    monday = week_start()
+    sid = board_student["id"]
+    skills = board_db.list_life_skills(sid)
+    skill_id = skills[0]["id"]
+    board_db.schedule_life_skill(skill_id, (monday - timedelta(days=21)).isoformat())
+    board_db.set_life_skill_active(skill_id, False)
+
+    board = board_for_week(board_db, board_student, monday)
+    assert [item["id"] for kind, item in board["backlog"] if kind == "life_skill"] == [skill_id]
+
+
+def test_board_never_floods_backlog_with_the_untouched_catalog(board_db, board_student):
+    """The actual bug this guards: life_skills/coding_modules are
+    pre-seeded from a large starter catalog, the vast majority sitting
+    inactive from the moment it's seeded simply because it was never
+    unlocked -- not because a parent ever parked it. None of that should
+    ever show up as board clutter."""
+    board = board_for_week(board_db, board_student, week_start())
+    assert board["backlog"] == []
+
+
+def test_board_excludes_a_completed_story_from_backlog(board_db, board_student):
+    monday = week_start()
+    sid = board_student["id"]
+    skills = board_db.list_life_skills(sid)
+    skill_id = skills[0]["id"]
+    board_db.schedule_life_skill(skill_id, (monday - timedelta(days=21)).isoformat())
+    board_db.set_life_skill_done(skill_id, True)
+    board_db.set_life_skill_active(skill_id, False)
+
+    board = board_for_week(board_db, board_student, monday)
+    assert board["backlog"] == []

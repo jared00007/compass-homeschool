@@ -1843,10 +1843,107 @@ keeping them as separate Home tiles stopped making sense. The standalone
 alongside its existing due-count, so one tile now surfaces all three without
 losing any of the information the fourth tile carried.
 
+## Closing three more move-control gaps
+
+A full audit of every surface `render_story_move_control` touches (or
+should) turned up three more real gaps, closed in the same pass:
+
+**A lesson sent back for revision can now be rescheduled or backlogged
+too, not just a `planned` one** -- `needs_revision` is still an open story
+(he's meant to redo it, and a parent might genuinely need to push that
+redo to a later day), so `_render_review_card` in
+`pages/10_Activity_Log.py` now offers the move control there as well.
+Fixing this also surfaced a real latent bug it depended on: `_needs_attention`
+didn't explicitly exclude `needs_revision`, so an overdue sent-back lesson
+could satisfy both the "needs your attention" filter and the "sent
+back" filter at once, rendering the same lesson's card twice in the same
+page (`_render_review_card` isn't safe to call twice for one lesson --
+`st.download_button`'s `key` collides) and crashing the page outright.
+
+**Big Project steps can now be reordered.** `add_project_step` only ever
+appended (`MAX(sort_order)+1`), so changing which step comes next in a
+linear project's fixed sequence meant deleting and re-adding every step
+after it. `db.move_project_step(step_id, direction)` swaps `sort_order`
+with whichever sibling currently sits immediately before/after it in
+`list_project_steps`' own ordering, exposed as a new "Reorder steps"
+section (↑/↓ buttons) on the Add/manage tab -- deliberately separate from
+the move control, which handles a day or Backlog, never sequence.
+
+**Travel Journal entries get full move-control parity.** Previously a
+trip's day could only ever be set once, at creation (`schedule_travel_entry`
+via the add-a-trip form) -- there was no way to reschedule an already-assigned
+trip, or park it in Backlog, the way every other story type already could.
+A new `travel_entries.active` column (mirroring `life_skills.active`),
+`db.set_travel_entry_active`, and the shared move control wired into each
+entry (excluded once `completed`, same as a finished Big Project step)
+close that gap; `due_travel_entries`/`upcoming_travel_entries` now respect
+the new flag the same way `due_life_skills` already does, and a backlogged
+entry is hidden from Landon's own view on `pages/9_Landons_Travels.py`
+the same way a backlogged skill disappears from his checklist.
+
+Also fixed in the same pass: `render_story_move_control`'s own popover
+label used to check `scheduled_for` before `active`, so a story backlogged
+after already being assigned a day kept showing its stale date instead of
+"🗄️ Backlog" -- none of the `set_active`/`send_to_backlog` implementations
+clear the scheduled date, so this was possible for every story type, not
+just lessons. The label now checks `active` first.
+
+## A unified weekly Board -- every subject's stories, one week, one place
+
+Requested directly, off a walkthrough of the app in real use: "I don't think
+this UI flow is architecturally sound... let's talk about this in an agile,
+epic, sprint, story setup." The shared move control (above) already let a
+parent send any story to Backlog or a specific day, but reaching it meant
+navigating into whichever subject's own page a story lived on, then several
+clicks deep into a nested expander -- a different page per subject, a
+different depth per surface. The fix isn't a new way of moving a story
+(that mechanism was already right); it's putting every subject's stories on
+one page, so rearranging the week doesn't mean a tour of five different
+pages.
+
+`pages/14_This_Week.py` gains a new first tab, "📋 Board": a week picker
+(defaulting to the current week, not "next week" the way Plan next week
+does -- this is the page for rearranging a week already underway) and six
+columns -- Monday through Friday plus a single global Backlog -- with every
+story type rendered as a compact card, the move control right on the card
+face this time, not nested inside an expander.
+
+`compass.weekly.board_for_week(db, student, week_start)` is the aggregator:
+it gathers lessons, life skills, coding modules, choice topics, big project
+steps, and travel entries for one week and buckets each into its own day or
+into `"backlog"`. Three new `_for_week` db methods needed adding to cover
+the story types that didn't already have one (`coding_modules_for_week`,
+`choice_topics_for_week`, `project_steps_for_week` -- the last needs an
+actual join, since `project_steps` has no `student_id` of its own, only
+`project_id -> big_projects.student_id`), mirroring `life_skills_for_week`'s
+existing shape rather than inventing a new pattern.
+
+The Backlog column runs as two passes, not one: first, anything scheduled
+*within* the target week that's since been backlogged (so it shows only in
+Backlog, never also under a day that no longer means anything); second, a
+global sweep of every *other* currently-parked story regardless of which
+week -- or no week at all -- it originally belonged to, the same "a single
+pool, not sprint-scoped" behavior every subject's own Backlog section
+already gives. The one thing that pass had to guard against on purpose:
+life_skills/coding_modules are pre-seeded from a ~150-entry starter catalog,
+the vast majority of it sitting `active=0` from the moment it's seeded
+simply because it was never unlocked -- not because a parent ever parked
+it. Naively including every inactive catalog row would drown the board in
+clutter that was never really "backlog" in the sprint sense; the fix is a
+`scheduled_for IS NOT NULL` filter on just those two types' global sweep --
+a row a parent has never touched has never been given a day either, so
+this cleanly separates "untouched catalog" from "actually parked."
+
+`render_board_card` in `compass/ui.py` is the one place every story type's
+card gets rendered -- a title, a one-line status, and the exact same
+`render_story_move_control` call every other surface already uses,
+including the same same-agent-same-day collision guard for lessons. Nothing
+about *how* a story moves changed; only where a parent has to go to do it.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1075 tests, ~100s, no API key needed
+python -m pytest tests/ -q      # 1098 tests, ~100s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

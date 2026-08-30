@@ -3069,6 +3069,21 @@ class Database:
             )
         )
 
+    def choice_topics_for_week(self, student_id: int, week_start: str) -> list[dict[str, Any]]:
+        """Every topic assigned inside the 5-day span starting `week_start`
+        (Mon-Fri), any active/status state -- mirrors life_skills_for_week,
+        the raw material for the unified weekly board. `choice_topics` has
+        no `sort_order` column, unlike life_skills/coding_modules -- id is
+        the tiebreaker instead."""
+        week_end = (date.fromisoformat(week_start) + timedelta(days=4)).isoformat()
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM choice_topics WHERE student_id = ? AND scheduled_for IS NOT NULL "
+                "AND scheduled_for BETWEEN ? AND ? ORDER BY scheduled_for, id",
+                (student_id, week_start, week_end),
+            )
+        )
+
     def add_choice_topic(
         self,
         student_id: int,
@@ -3560,6 +3575,24 @@ class Database:
             )
         )
 
+    def project_steps_for_week(self, student_id: int, week_start: str) -> list[dict[str, Any]]:
+        """Every step assigned inside the 5-day span starting `week_start`
+        (Mon-Fri), any project, any active/completed state -- mirrors
+        life_skills_for_week, the raw material for the unified weekly
+        board. Unlike list_project_steps, this needs a join: project_steps
+        has no student_id of its own, only project_id -> big_projects."""
+        week_end = (date.fromisoformat(week_start) + timedelta(days=4)).isoformat()
+        return _rows(
+            self.conn.execute(
+                "SELECT project_steps.* FROM project_steps "
+                "JOIN big_projects ON big_projects.id = project_steps.project_id "
+                "WHERE big_projects.student_id = ? AND project_steps.scheduled_for IS NOT NULL "
+                "AND project_steps.scheduled_for BETWEEN ? AND ? "
+                "ORDER BY project_steps.scheduled_for, project_steps.sort_order, project_steps.id",
+                (student_id, week_start, week_end),
+            )
+        )
+
     def add_project_step(
         self,
         project_id: int,
@@ -4021,6 +4054,19 @@ class Database:
                 "AND scheduled_for > ? AND completed_on IS NULL AND active = 1 "
                 "ORDER BY scheduled_for, sort_order, id",
                 (student_id, after),
+            )
+        )
+
+    def coding_modules_for_week(self, student_id: int, week_start: str) -> list[dict[str, Any]]:
+        """Every module assigned inside the 5-day span starting `week_start`
+        (Mon-Fri), any active/completed state -- mirrors life_skills_for_week,
+        the raw material for the unified weekly board."""
+        week_end = (date.fromisoformat(week_start) + timedelta(days=4)).isoformat()
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM coding_modules WHERE student_id = ? AND scheduled_for IS NOT NULL "
+                "AND scheduled_for BETWEEN ? AND ? ORDER BY scheduled_for, sort_order, id",
+                (student_id, week_start, week_end),
             )
         )
 

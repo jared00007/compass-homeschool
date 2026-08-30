@@ -237,3 +237,106 @@ def test_the_move_control_offers_moving_to_a_different_day(monkeypatch, tmp_path
     date_key = f"move_weekplan_lesson_{lesson_id}_date_{TARGET_MONDAY.isoformat()}"
     date_widget = [d for d in plan_tab.date_input if d.key == date_key]
     assert date_widget, "the move control's date picker must be offered on a planned lesson"
+
+
+# --- the Board tab: every subject's stories, one week, one place ----------------
+
+
+def _open_board_tab(monkeypatch, db_path):
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+    at = AppTest.from_file(HOME_PATH)
+    at.session_state["parent_unlocked"] = True
+    at.run(timeout=30)
+    at.switch_page(THIS_WEEK_PATH)
+    at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+    date_picker = [d for d in at.date_input if d.label == "Week to view"][0]
+    date_picker.set_value(TARGET_MONDAY).run()
+    assert not at.exception, [e.message for e in at.exception]
+    return at, _board_tab(at)
+
+
+def _board_tab(at):
+    return [t for t in at.tabs if t.label == "📋 Board"][0]
+
+
+def test_board_is_the_first_tab(monkeypatch, tmp_path):
+    db_path = tmp_path / "week.db"
+    Database(db_path).close()
+    at, _ = _open_board_tab(monkeypatch, db_path)
+    assert at.tabs[0].label == "📋 Board"
+
+
+def test_a_planned_lesson_shows_on_the_board_with_a_move_control(monkeypatch, tmp_path):
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="Locking In the Coordinate Plane",
+        payload={"title": "Locking In the Coordinate Plane", "activities": []},
+        metadata={
+            "planned_for": TARGET_MONDAY.isoformat(),
+            "week_start": TARGET_MONDAY.isoformat(),
+        },
+    )
+    db.close()
+
+    _, board_tab = _open_board_tab(monkeypatch, db_path)
+    markdowns = " ".join(m.value for m in board_tab.markdown)
+    assert "Locking In the Coordinate Plane" in markdowns
+    backlog_key = f"move_board_lesson_{lesson_id}_backlog_True"
+    assert any(c.key == backlog_key for c in board_tab.checkbox)
+
+
+def test_a_life_skill_shows_on_the_board_with_a_move_control(monkeypatch, tmp_path):
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    db.seed_life_skills(student["id"])
+    skill = db.list_life_skills(student["id"])[0]
+    db.schedule_life_skill(skill["id"], TARGET_MONDAY.isoformat())
+    db.close()
+
+    _, board_tab = _open_board_tab(monkeypatch, db_path)
+    markdowns = " ".join(m.value for m in board_tab.markdown)
+    assert skill["title"] in markdowns
+    backlog_key = f"move_board_ls_{skill['id']}_backlog_True"
+    assert any(c.key == backlog_key for c in board_tab.checkbox)
+
+
+def test_a_backlogged_story_shows_in_the_backlog_column(monkeypatch, tmp_path):
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    db.seed_life_skills(student["id"])
+    skill = db.list_life_skills(student["id"])[0]
+    db.schedule_life_skill(skill["id"], TARGET_MONDAY.isoformat())
+    db.set_life_skill_active(skill["id"], False)
+    db.close()
+
+    _, board_tab = _open_board_tab(monkeypatch, db_path)
+    markdowns = " ".join(m.value for m in board_tab.markdown)
+    assert skill["title"] in markdowns
+    assert "Parked" in markdowns or "🗄️ Backlog" in markdowns
+
+
+def test_moving_a_life_skill_from_the_board_reschedules_it(monkeypatch, tmp_path):
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    db.seed_life_skills(student["id"])
+    skill = db.list_life_skills(student["id"])[0]
+    db.schedule_life_skill(skill["id"], TARGET_MONDAY.isoformat())
+    db.close()
+
+    _, board_tab = _open_board_tab(monkeypatch, db_path)
+    backlog_key = f"move_board_ls_{skill['id']}_backlog_True"
+    checkbox = [c for c in board_tab.checkbox if c.key == backlog_key][0]
+    checkbox.set_value(True).run()
+
+    db = Database(db_path)
+    reloaded = next(s for s in db.list_life_skills(student["id"]) if s["id"] == skill["id"])
+    db.close()
+    assert reloaded["active"] == 0

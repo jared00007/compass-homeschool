@@ -394,6 +394,148 @@ def due_lessons(lessons: list[dict[str, Any]], today: str) -> list[dict[str, Any
     return due
 
 
+def board_for_week(
+    db: Any, student: dict[str, Any], week_start_date: date, today: date | None = None
+) -> dict[str, list[tuple[str, dict[str, Any]]]]:
+    """Every story assigned to one Monday-anchored week, or currently
+    backlogged regardless of which week it was originally for -- the raw
+    material for the unified weekly board (pages/14_This_Week.py's own
+    "Board" tab, the one place a parent can see and rearrange every
+    subject's stories at once instead of hunting through each subject's
+    own page).
+
+    Six buckets in the returned dict: one per weekday Monday-Friday (keyed
+    by that day's own ISO date), plus `"backlog"` -- a single pool shared
+    across every story type, matching how each subject's own Backlog
+    section already treats things (parking something doesn't care which
+    week it came from, and pulling it back in works the same regardless of
+    where it started).
+
+    Each bucket holds `(kind, item)` pairs, `kind` one of "lesson",
+    "life_skill", "coding_module", "choice_topic", "project_step", or
+    "travel_entry" -- callers dispatch on that to pick the right title,
+    icon, and move-control wiring (see `render_board_card` in
+    `compass.ui`).
+
+    A story backlogged *within* the target week's own date range shows
+    only in "backlog", never also under its stale day -- otherwise it'd
+    render twice, once under a day that no longer means anything now that
+    it's parked. That's what `_place_scheduled`'s branch does. The second
+    half of this function is a separate pass over every *other* currently
+    backlogged story regardless of which week (or no week at all) it was
+    assigned to -- `_for_week` only returns rows whose date already falls
+    in this specific range, so a story backlogged from some other week
+    would otherwise never surface here at all. `backlogged_ids` guards
+    against double-adding a story counted by both passes.
+    """
+    today = today or date.today()
+    today_iso = today.isoformat()
+    week_start_iso = week_start_date.isoformat()
+    student_id = student["id"]
+
+    days = [(week_start_date + timedelta(days=i)).isoformat() for i in range(5)]
+    board: dict[str, list[tuple[str, dict[str, Any]]]] = {d: [] for d in days}
+    board["backlog"] = []
+    backlogged_ids: dict[str, set[int]] = {}
+
+    def _place_scheduled(
+        day_iso: str, backlogged: bool, kind: str, item: dict[str, Any]
+    ) -> None:
+        if backlogged:
+            board["backlog"].append((kind, item))
+            backlogged_ids.setdefault(kind, set()).add(item["id"])
+        elif day_iso in board:
+            board[day_iso].append((kind, item))
+
+    for lesson in latest_per_day(db.lessons_for_week(student_id, week_start_iso)):
+        planned_for = lesson["metadata"].get("planned_for", "")
+        _place_scheduled(planned_for, is_backlogged(lesson, today_iso), "lesson", lesson)
+
+    for skill in db.life_skills_for_week(student_id, week_start_iso):
+        _place_scheduled(skill["scheduled_for"], not skill["active"], "life_skill", skill)
+
+    for module in db.coding_modules_for_week(student_id, week_start_iso):
+        _place_scheduled(module["scheduled_for"], not module["active"], "coding_module", module)
+
+    for topic in db.choice_topics_for_week(student_id, week_start_iso):
+        _place_scheduled(topic["scheduled_for"], not topic["active"], "choice_topic", topic)
+
+    for step in db.project_steps_for_week(student_id, week_start_iso):
+        _place_scheduled(step["scheduled_for"], not step["active"], "project_step", step)
+
+    for trip in db.travel_entries_for_week(student_id, week_start_iso):
+        _place_scheduled(trip["scheduled_for"], not trip["active"], "travel_entry", trip)
+
+    # --- Every other currently-parked story, any week (or no week at all)
+    # it originally belonged to. Only closed-out stories are excluded --
+    # same "nothing left for a move to do" reasoning every subject's own
+    # Backlog section already applies.
+    for lesson in db.list_lessons(student_id, limit=200):
+        if (
+            lesson["status"] == "planned"
+            and lesson["id"] not in backlogged_ids.get("lesson", set())
+            and is_backlogged(lesson, today_iso)
+        ):
+            board["backlog"].append(("lesson", lesson))
+
+    # `scheduled_for is not None` is doing real work here, not just
+    # matching the other passes' shape: life_skills/coding_modules are
+    # pre-seeded from a ~150-entry starter catalog, the vast majority of
+    # it sitting `active=0` from the moment it's seeded simply because it
+    # was never unlocked -- not because a parent ever parked it. Without
+    # this, the board's Backlog column would drown in the entire untouched
+    # catalog rather than showing only what a parent actually engaged with
+    # (unlocked and assigned a day) and then chose to pull back. An
+    # inactive-and-never-scheduled entry is still findable on the Master
+    # List, same as always -- it just isn't board clutter.
+    for skill in db.list_life_skills(student_id):
+        if (
+            not skill["completed_on"]
+            and not skill["active"]
+            and skill["scheduled_for"]
+            and skill["id"] not in backlogged_ids.get("life_skill", set())
+        ):
+            board["backlog"].append(("life_skill", skill))
+
+    for module in db.list_coding_modules(student_id):
+        if (
+            not module["completed_on"]
+            and not module["active"]
+            and module["scheduled_for"]
+            and module["id"] not in backlogged_ids.get("coding_module", set())
+        ):
+            board["backlog"].append(("coding_module", module))
+
+    for topic in db.list_choice_topics(student_id):
+        if (
+            topic["status"] not in ("done", "declined")
+            and not topic["active"]
+            and topic["id"] not in backlogged_ids.get("choice_topic", set())
+        ):
+            board["backlog"].append(("choice_topic", topic))
+
+    for project in db.list_big_projects(student_id):
+        if project["shelved"] or project["kind"] == "travel_log":
+            continue
+        for step in db.list_project_steps(project["id"]):
+            if (
+                not step["completed_on"]
+                and not step["active"]
+                and step["id"] not in backlogged_ids.get("project_step", set())
+            ):
+                board["backlog"].append(("project_step", step))
+
+    for trip in db.list_travel_entries(student_id):
+        if (
+            trip["status"] != "completed"
+            and not trip["active"]
+            and trip["id"] not in backlogged_ids.get("travel_entry", set())
+        ):
+            board["backlog"].append(("travel_entry", trip))
+
+    return board
+
+
 def today_subject_status(
     lessons: list[dict[str, Any]], today: str
 ) -> tuple[dict[str, Any] | None, str]:
