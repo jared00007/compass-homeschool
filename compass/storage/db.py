@@ -1369,6 +1369,13 @@ class Database:
         # topic that already existed before this column did stays exactly
         # as visible as it always was.
         self._ensure_column("choice_topics", "active", "INTEGER NOT NULL DEFAULT 1")
+        # No CHECK here (same reasoning travel_entries.status' own migration
+        # gives, a few lines up) -- SQLite enum validation for an
+        # ALTER-added column is enforced in Python instead, at
+        # ensure_travel_log_project. Every project that already existed
+        # before this column did is 'steps', which is exactly what it
+        # already was.
+        self._ensure_column("big_projects", "kind", "TEXT NOT NULL DEFAULT 'steps'")
         # Runs before the migration below, not after: that migration inserts
         # travel_entries rows (from the old park_visits table) through
         # add_travel_entry, which writes every one of these columns -- if
@@ -3193,18 +3200,47 @@ class Database:
             )
         )
 
-    def add_big_project(self, student_id: int, title: str, vision: str = "") -> int:
+    def add_big_project(
+        self, student_id: int, title: str, vision: str = "", kind: str = "steps"
+    ) -> int:
         next_order = self.conn.execute(
             "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM big_projects WHERE student_id = ?",
             (student_id,),
         ).fetchone()[0]
         cur = self.conn.execute(
-            "INSERT INTO big_projects (student_id, title, vision, sort_order) "
-            "VALUES (?, ?, ?, ?)",
-            (student_id, title, vision, next_order),
+            "INSERT INTO big_projects (student_id, title, vision, sort_order, kind) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (student_id, title, vision, next_order, kind),
         )
         self.conn.commit()
         return int(cur.lastrowid)
+
+    def ensure_travel_log_project(self, student_id: int) -> int:
+        """Folds the *existing* Travel Journal in as its own Big Project --
+        a folder around it, nothing more. `travel_entries` itself is
+        completely untouched: no new column there, no change to its review
+        gate, its credit, or its due-date model. This just gives it a
+        `big_projects` row of `kind='travel_log'` so it can sit organized
+        alongside other projects on the Checklist tab, whose card (see
+        pages/7_Big_Projects.py) shows a trip-count summary and links out
+        to the real Travels page rather than rendering project_steps rows
+        -- there are none, and never will be, for this kind.
+
+        Idempotent: a student only ever gets one, found by `kind` rather
+        than by title (a parent renaming it must not spawn a duplicate).
+        Returns the existing one's id if already present.
+        """
+        existing = self.conn.execute(
+            "SELECT id FROM big_projects WHERE student_id = ? AND kind = 'travel_log'",
+            (student_id,),
+        ).fetchone()
+        if existing:
+            return int(existing["id"])
+        return self.add_big_project(
+            student_id, "Travel Log",
+            "Every trip he's written up, all in one place.",
+            kind="travel_log",
+        )
 
     def delete_big_project(self, project_id: int) -> None:
         self.conn.execute("DELETE FROM big_projects WHERE id = ?", (project_id,))

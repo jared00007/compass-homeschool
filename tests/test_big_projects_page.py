@@ -183,3 +183,87 @@ def test_send_to_backlog_is_not_offered_on_an_already_done_step(monkeypatch, tmp
 
     keys = {b.key for b in at.button}
     assert f"backlog_step_{step_id}" not in keys
+
+
+def test_travel_log_card_shows_a_trip_summary_and_link_instead_of_steps(monkeypatch, tmp_path):
+    db_path = tmp_path / "projects.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    project_id = db.ensure_travel_log_project(student["id"])
+    db.add_travel_entry(student["id"], "Colorado", "2026-06-01", "Rocky Mountain hike")
+    db.add_travel_entry(
+        student["id"], "Utah", "2026-07-01", "", status="submitted"
+    )
+    db.close()
+
+    at = _open_checklist_tab(monkeypatch, db_path)
+    at = _expand_project(at, project_id)
+
+    captions = [c.value for c in at.caption]
+    assert any("1 trip" in c and "written up" in c for c in captions)
+    assert any("1 still open" in c for c in captions)
+    links = [pl.label for pl in at.get("page_link")]
+    assert any("Landon's Travels" in label for label in links)
+    # None of the step-list machinery applies to this project.
+    assert not any(e.label.startswith(("1.", "2.")) for e in at.expander)
+
+
+def test_travel_log_project_is_never_offered_for_the_year_pick(monkeypatch, tmp_path):
+    """big_project_status_text assumes an active project has steps with a
+    next one due -- never true for a travel log, so it must not be
+    selectable as "the one" worked on this year."""
+    db_path = tmp_path / "projects.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    project_id = db.ensure_travel_log_project(student["id"])
+    db.close()
+
+    at = _open_checklist_tab(monkeypatch, db_path)
+    at = _expand_project(at, project_id)
+
+    keys = {b.key for b in at.button}
+    assert f"activate_project_{project_id}" not in keys
+
+
+def test_travel_log_is_excluded_from_the_add_a_step_project_picker(monkeypatch, tmp_path):
+    db_path = tmp_path / "projects.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    db.ensure_travel_log_project(student["id"])
+    ordinary_id = db.add_big_project(student["id"], "Stop-Motion Film")
+    db.close()
+
+    at = _open_checklist_tab(monkeypatch, db_path)
+
+    picker = at.selectbox(key="step_project")
+    assert "Travel Log" not in picker.options
+    assert "Stop-Motion Film" in picker.options
+    assert ordinary_id  # sanity: an ordinary project really was added
+
+
+def test_fold_in_travel_journal_button_creates_the_project(monkeypatch, tmp_path):
+    db_path = tmp_path / "projects.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    db.close()
+
+    at = _open_checklist_tab(monkeypatch, db_path)
+    at.button(key="fold_in_travel_log").click().run()
+
+    db = Database(db_path)
+    projects = db.list_big_projects(student["id"])
+    db.close()
+    assert any(p["kind"] == "travel_log" for p in projects)
+
+
+def test_fold_in_travel_journal_button_is_hidden_once_already_folded_in(monkeypatch, tmp_path):
+    db_path = tmp_path / "projects.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    db.ensure_travel_log_project(student["id"])
+    db.close()
+
+    at = _open_checklist_tab(monkeypatch, db_path)
+
+    markdowns = [m.value for m in at.markdown]
+    assert not any("Fold in the Travel Journal" in m for m in markdowns)

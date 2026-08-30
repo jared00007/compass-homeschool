@@ -1509,10 +1509,33 @@ topics default `active=True`, matching Life Skills' own default rather than Big
 Project steps' backlog-by-default one — Choice Topics never hid anything from Landon
 before this, so nothing should suddenly disappear the day the column ships.
 
+**Landon's Travels folds in as its own Big Project — a folder around it, nothing about
+the travel journal itself changes.** Requested directly, framed as "essentially a
+travel log" that should sit inside Big Projects rather than as its own separate nav
+item — but a real merge (moving `travel_entries` rows into `project_steps`) would have
+meant giving up its own review-gate direction (a trip is *his* to write, a step is
+either of yours to check off), its flat per-entry credit instead of a project's
+per-step one, and the assign-a-trip/open-pick scheduling model entirely. None of that
+was asked for — "nothing changes... no changes at all" was explicit — so the link is
+purely organizational: a new `big_projects.kind` column (`'steps'`, the default every
+existing project already migrates in as, or `'travel_log'`) marks a project that has no
+`project_steps` rows at all and never will. `Database.ensure_travel_log_project
+(student_id)` creates the one `kind='travel_log'` row, found by `kind` rather than by
+title so a parent renaming it later can't spawn a duplicate; the "🧭 Fold in the Travel
+Journal" button on the Add/manage tab offers it once and hides itself once it exists.
+Its Checklist-tab card renders a trip-count summary and a link out to the real Travels
+page instead of a step list or the "chunk this into steps with AI" offer, and it's
+deliberately excluded from both the "add a step" project picker and the "work on this
+one this year" pick — the latter assumes an active project has steps with a next one
+due, which is never true for a travel log; Travel Journal keeps running on its own
+assignment schedule regardless of what's "active" among the step-based projects.
+Photo uploads and a printable trip read-out were floated as a future idea, not built
+here — this pass is just the folder.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 993 tests, ~90s, no API key needed
+python -m pytest tests/ -q      # 1003 tests, ~100s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

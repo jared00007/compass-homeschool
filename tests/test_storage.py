@@ -1277,6 +1277,32 @@ def test_a_database_created_before_the_step_active_column_gets_migrated(tmp_path
         migrated.close()
 
 
+def test_a_database_created_before_the_project_kind_column_gets_migrated(tmp_path):
+    """`kind` shipped after some real databases already had big_projects rows
+    -- every pre-existing project must migrate in as an ordinary 'steps'
+    project, not the new 'travel_log' kind, or its step list would suddenly
+    stop rendering."""
+    path = tmp_path / "pre_kind.db"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE big_projects ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL, "
+        "title TEXT NOT NULL, vision TEXT NOT NULL DEFAULT '', "
+        "sort_order INTEGER NOT NULL DEFAULT 0, "
+        "created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+    )
+    conn.execute("INSERT INTO big_projects (student_id, title) VALUES (1, 'Old project')")
+    conn.commit()
+    conn.close()
+
+    migrated = Database(path)
+    try:
+        project = migrated.conn.execute("SELECT * FROM big_projects").fetchone()
+        assert project["kind"] == "steps"
+    finally:
+        migrated.close()
+
+
 def test_a_checklist_seeded_before_mission_text_existed_gets_backfilled(db, student):
     """A checklist seeded in an earlier build (blank description/materials,
     since `seed_life_skills` only ever inserts once per student) must pick up
@@ -1655,6 +1681,37 @@ def test_shelving_an_inactive_project_leaves_the_active_pick_alone(db, student):
     active = db.active_big_project(student["id"])
     assert active is not None
     assert active["id"] == active_id
+
+
+def test_add_big_project_defaults_to_steps_kind(db, student):
+    project_id = db.add_big_project(student["id"], "Test Project")
+    project = db.list_big_projects(student["id"])[0]
+    assert project["id"] == project_id
+    assert project["kind"] == "steps"
+
+
+def test_ensure_travel_log_project_creates_one_project(db, student):
+    project_id = db.ensure_travel_log_project(student["id"])
+    projects = db.list_big_projects(student["id"])
+    assert len(projects) == 1
+    assert projects[0]["id"] == project_id
+    assert projects[0]["kind"] == "travel_log"
+
+
+def test_ensure_travel_log_project_is_idempotent(db, student):
+    """A parent could click "Fold in the Travel Journal" more than once, or
+    rename the project afterward -- neither should spawn a second one, since
+    the lookup is by kind rather than by title."""
+    first_id = db.ensure_travel_log_project(student["id"])
+    db.conn.execute(
+        "UPDATE big_projects SET title = ? WHERE id = ?", ("Renamed", first_id)
+    )
+    db.conn.commit()
+
+    second_id = db.ensure_travel_log_project(student["id"])
+
+    assert second_id == first_id
+    assert len(db.list_big_projects(student["id"])) == 1
 
 
 def test_no_active_big_project_until_one_is_chosen(db, student):

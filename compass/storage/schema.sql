@@ -415,6 +415,12 @@ CREATE TABLE IF NOT EXISTS big_projects (
     vision      TEXT NOT NULL DEFAULT '',
     sort_order  INTEGER NOT NULL DEFAULT 0,
     shelved     INTEGER NOT NULL DEFAULT 0,  -- "not an interest" -- parent-only, reversible
+    -- 'steps' is the ordinary project (this table's own project_steps rows).
+    -- 'travel_log' is the one special case: a folder around the *existing*
+    -- Travel Journal (travel_entries, unchanged) so it can sit organized
+    -- alongside other projects -- see Database.ensure_travel_log_project.
+    -- It never gets project_steps rows of its own.
+    kind        TEXT NOT NULL DEFAULT 'steps' CHECK (kind IN ('steps', 'travel_log')),
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

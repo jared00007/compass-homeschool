@@ -42,6 +42,23 @@ def _day_range(min_days: int, max_days: int) -> str:
     return f"{min_days}-{max_days} days"
 
 
+def _render_travel_log_summary() -> None:
+    """The Travel Log project's own card body: a trip-count summary and a
+    link out to the real page (pages/9_Landons_Travels.py) -- see
+    Database.ensure_travel_log_project. No project_steps rendering here on
+    purpose; this project never has any. Nothing here duplicates that
+    page's own review gate, map, or export -- this is a summary, not a
+    second copy of the feature."""
+    entries = db.list_travel_entries(student["id"])
+    completed = sum(1 for e in entries if e["status"] == "completed")
+    open_entries = [e for e in entries if e["status"] != "completed"]
+    st.caption(
+        f"🧭 {completed} trip{'s' if completed != 1 else ''} written up"
+        + (f" · {len(open_entries)} still open" if open_entries else "")
+    )
+    st.page_link("pages/9_Landons_Travels.py", label="Open Landon's Travels", icon="🧭")
+
+
 projects = db.list_big_projects(student["id"])
 visible_projects = [p for p in projects if not p["shelved"]]
 
@@ -101,7 +118,11 @@ with checklist_tab:
     active_project = db.active_big_project(student["id"])
     active_id = active_project["id"] if active_project else None
     for project in visible_projects:
-        steps = db.list_project_steps(project["id"])
+        # The Travel Log folder never has project_steps rows -- see
+        # Database.ensure_travel_log_project -- so none of the step-list
+        # machinery below applies to it at all.
+        is_travel_log = project["kind"] == "travel_log"
+        steps = [] if is_travel_log else db.list_project_steps(project["id"])
         # Visible to both of you: committed to the current plan, same as
         # Life Skills' own `active OR completed_on` gate -- a step already
         # done stays visible regardless of this flag, so backlogging never
@@ -131,7 +152,9 @@ with checklist_tab:
                 ):
                     st.session_state[open_key] = not st.session_state[open_key]
                     st.rerun()
-            if visible_steps:
+            if is_travel_log:
+                _render_travel_log_summary()
+            elif visible_steps:
                 st.progress(done / len(visible_steps), text=f"{done} / {len(visible_steps)} steps done")
                 total_min = sum(s["min_days"] for s in visible_steps)
                 total_max = sum(s["max_days"] for s in visible_steps)
@@ -178,8 +201,14 @@ with checklist_tab:
 
             # Deliberately no default -- Friday's nudge on Home only ever
             # points at what's chosen here, never an arbitrary guess, so
-            # picking one is a real decision, not a formality.
-            if project["id"] == active_id:
+            # picking one is a real decision, not a formality. The Travel Log
+            # folder sits out of this pick entirely -- big_project_status_text
+            # assumes an active project has steps with a next one due, which
+            # is never true for a travel log; Travel Journal already runs on
+            # its own assignment schedule regardless of what's "active" here.
+            if is_travel_log:
+                pass
+            elif project["id"] == active_id:
                 st.success("🌟 This is the one you're working on this year.")
             elif st.button(
                 "🌟 Work on this one this year", key=f"activate_project_{project['id']}"
@@ -341,15 +370,27 @@ if manage_tab is not None:
             db.add_big_project(student["id"], title.strip(), vision.strip())
             st.rerun()
 
+    has_travel_log = any(p["kind"] == "travel_log" for p in projects)
+    if not has_travel_log:
+        st.caption(
+            "Landon's Travels can also sit here as its own project folder -- "
+            "purely organizational, nothing about how travel entries work "
+            "changes."
+        )
+        if st.button("🧭 Fold in the Travel Journal", key="fold_in_travel_log"):
+            db.ensure_travel_log_project(student["id"])
+            st.rerun()
+
     st.divider()
 
     st.markdown("#### Add a step to an existing project")
-    if not projects:
+    steppable_projects = [p for p in projects if p["kind"] != "travel_log"]
+    if not steppable_projects:
         st.caption("Add a project first.")
     else:
         with st.form("add_project_step", clear_on_submit=True):
             project = st.selectbox(
-                "Project", projects, format_func=lambda p: p["title"], key="step_project"
+                "Project", steppable_projects, format_func=lambda p: p["title"], key="step_project"
             )
             step_title = st.text_input("Step title")
             description = st.text_area("What happens in this step?", height=80)
