@@ -21,7 +21,7 @@ from datetime import date, timedelta
 
 import streamlit as st
 
-from compass import weekly
+from compass import theme, weekly
 from compass.agents import all_agents
 from compass.agents.strategies import ERAS, SCIENCE_DOMAINS
 from compass.compliance import build_report
@@ -86,6 +86,12 @@ def _idea_options(db, student_id: int, key: str) -> list[tuple[str, str]]:
         options += [(f"domain:{i}", f"💡 {label}") for i, (_, label) in enumerate(ERAS)]
     return options
 
+
+# Same "Sunday Funnies" Mon-Fri palette Home's own Week grid already uses
+# (compass.theme.PRINTED_COMIC_WEEKDAY_COLORS) -- reused here rather than
+# invented, so a Tuesday card reads the same color everywhere in the app.
+_WEEKDAY_COLORS = theme.PRINTED_COMIC_WEEKDAY_COLORS
+_WEEKDAY_PAPER = theme.PRINTED_COMIC_PAPER
 
 board_tab, review_tab, plan_tab = st.tabs(["📋 Board", "Review this week", "Plan next week"])
 
@@ -165,10 +171,19 @@ with board_tab:
 
     with board_col:
         board_columns = st.columns(5)
-        for column, day_date in zip(board_columns, board_days):
+        for index, (column, day_date) in enumerate(zip(board_columns, board_days)):
+            color = _WEEKDAY_COLORS[index]
             with column:
-                st.markdown(f"**{day_date.strftime('%a')}**")
-                st.caption(day_date.strftime("%b %-d"))
+                today_tag = " · Today" if day_date == date.today() else ""
+                st.markdown(
+                    f'<span style="display:inline-block; padding:2px 10px 3px; '
+                    f'border-radius:3px; background:{color}; color:{_WEEKDAY_PAPER}; '
+                    f'font-weight:900; font-size:15px; text-transform:uppercase; '
+                    f'letter-spacing:-.01em; text-shadow:1.5px 1.5px 0 rgba(0,0,0,.35);">'
+                    f"{day_date.strftime('%a')}</span>",
+                    unsafe_allow_html=True,
+                )
+                st.caption(day_date.strftime("%b %-d") + today_tag)
                 day_items = board[day_date.isoformat()]
                 if not day_items:
                     st.caption("Nothing here.")
@@ -177,6 +192,7 @@ with board_tab:
                         db, kind, item,
                         today_iso=today_iso_for_board,
                         all_lessons_for_collision=all_lessons_for_board,
+                        accent_color=color,
                     )
 
 # --- Review this week ----------------------------------------------------------

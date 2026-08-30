@@ -2641,6 +2641,7 @@ def render_board_card(
     *,
     today_iso: str,
     all_lessons_for_collision: list[dict[str, Any]] | None = None,
+    accent_color: str | None = None,
 ) -> None:
     """One compact card for the unified weekly board (the "Board" tab on
     `pages/14_This_Week.py`) -- a title, a one-line status, and the same
@@ -2656,116 +2657,146 @@ def render_board_card(
     same-agent-same-day collision guard This Week's Plan-next-week tab and
     Activity Log's own move control already both run, reused here rather
     than reinvented.
+
+    `accent_color`, given, paints a thin strip across the top of the card
+    -- the caller's own day-of-week color (see pages/14_This_Week.py's
+    `_WEEKDAY_COLORS`, the same "Sunday Funnies" palette Home's Week grid
+    already uses) so a story reads as "this is a Tuesday card" at a
+    glance. Left unset for the Product Backlog panel's own cards -- they
+    don't belong to a day, so nothing here should imply one.
+
+    Each story collapses into its own expander, title as the header --
+    same "closed until you need it" rhythm as the Backlog panel's own
+    epic sections, so a board with a dozen cards in one column reads as a
+    dozen one-line rows, not a wall of open detail.
     """
     with st.container(border=True):
+        if accent_color:
+            st.markdown(
+                f'<div style="height:4px; margin:-1px -1px 8px; border-radius:2px 2px 0 0; '
+                f'background:{accent_color};"></div>',
+                unsafe_allow_html=True,
+            )
         if kind == "lesson":
             icon = SUBJECT_ICONS.get(item["agent"], "📘")
             done = bool((item.get("metadata") or {}).get("student_done_on"))
             marker = "✅" if done else "⬜"
-            st.markdown(f"{marker} {icon} **{md(item['title'])}**")
-            status_note = {
-                "submitted": "📤 waiting on you to review",
-                "needs_revision": "↩️ sent back — waiting on him",
-            }.get(item["status"])
-            if status_note:
-                st.caption(status_note)
-            if item["status"] in ("planned", "needs_revision"):
-                lessons_for_collision = all_lessons_for_collision or []
+            with st.expander(f"{marker} {icon} **{md(item['title'])}**", expanded=False):
+                st.caption(f"{item['agent'].replace('_', ' ').title()} agent")
+                status_note = {
+                    "submitted": "📤 waiting on you to review",
+                    "needs_revision": "↩️ sent back — waiting on him",
+                }.get(item["status"])
+                if status_note:
+                    st.caption(status_note)
+                if item["status"] in ("planned", "needs_revision"):
+                    lessons_for_collision = all_lessons_for_collision or []
 
-                def _validate_lesson_move(new_date: str, lesson=item) -> str | None:
-                    collision = any(
-                        other["agent"] == lesson["agent"]
-                        and other["id"] != lesson["id"]
-                        and (other.get("metadata") or {}).get("planned_for") == new_date
-                        for other in lessons_for_collision
-                    )
-                    if collision:
-                        return (
-                            f"⚠️ Already a {lesson['agent']} lesson planned for that "
-                            "day -- pick a different one."
+                    def _validate_lesson_move(new_date: str, lesson=item) -> str | None:
+                        collision = any(
+                            other["agent"] == lesson["agent"]
+                            and other["id"] != lesson["id"]
+                            and (other.get("metadata") or {}).get("planned_for") == new_date
+                            for other in lessons_for_collision
                         )
-                    return None
+                        if collision:
+                            return (
+                                f"⚠️ Already a {lesson['agent']} lesson planned for that "
+                                "day -- pick a different one."
+                            )
+                        return None
 
-                render_story_move_control(
-                    key=f"board_lesson_{item['id']}",
-                    active=not weekly.is_backlogged(item, today_iso),
-                    scheduled_for=(item.get("metadata") or {}).get("planned_for"),
-                    set_active=lambda a, lid=item["id"]: (
-                        db.reschedule_lesson(lid, date.today().isoformat())
-                        if a
-                        else db.send_to_backlog(lid)
-                    ),
-                    schedule=lambda d, lid=item["id"]: (
-                        db.reschedule_lesson(lid, d) if d else None
-                    ),
-                    validate_schedule=_validate_lesson_move,
-                )
+                    render_story_move_control(
+                        key=f"board_lesson_{item['id']}",
+                        active=not weekly.is_backlogged(item, today_iso),
+                        scheduled_for=(item.get("metadata") or {}).get("planned_for"),
+                        set_active=lambda a, lid=item["id"]: (
+                            db.reschedule_lesson(lid, date.today().isoformat())
+                            if a
+                            else db.send_to_backlog(lid)
+                        ),
+                        schedule=lambda d, lid=item["id"]: (
+                            db.reschedule_lesson(lid, d) if d else None
+                        ),
+                        validate_schedule=_validate_lesson_move,
+                    )
 
         elif kind == "life_skill":
             earned = bool(item["completed_on"])
             marker = "✅" if earned else "⬜"
-            st.markdown(f"{marker} {BOARD_KIND_ICONS['life_skill']} **{md(item['title'])}**")
-            st.caption(item["category"])
-            render_story_move_control(
-                key=f"board_ls_{item['id']}",
-                active=bool(item["active"]),
-                scheduled_for=item["scheduled_for"],
-                set_active=lambda a, sid=item["id"]: db.set_life_skill_active(sid, a),
-                schedule=lambda s, sid=item["id"]: db.schedule_life_skill(sid, s),
-            )
+            label = f"{marker} {BOARD_KIND_ICONS['life_skill']} **{md(item['title'])}**"
+            with st.expander(label, expanded=False):
+                st.caption(item["category"])
+                render_story_move_control(
+                    key=f"board_ls_{item['id']}",
+                    active=bool(item["active"]),
+                    scheduled_for=item["scheduled_for"],
+                    set_active=lambda a, sid=item["id"]: db.set_life_skill_active(sid, a),
+                    schedule=lambda s, sid=item["id"]: db.schedule_life_skill(sid, s),
+                )
 
         elif kind == "coding_module":
             earned = bool(item["completed_on"])
             marker = "✅" if earned else "⬜"
-            st.markdown(f"{marker} {BOARD_KIND_ICONS['coding_module']} **{md(item['title'])}**")
-            st.caption(item["category"])
-            render_story_move_control(
-                key=f"board_coding_{item['id']}",
-                active=bool(item["active"]),
-                scheduled_for=item["scheduled_for"],
-                set_active=lambda a, mid=item["id"]: db.set_coding_module_active(mid, a),
-                schedule=lambda s, mid=item["id"]: db.schedule_coding_module(mid, s),
-            )
-
-        elif kind == "choice_topic":
-            st.markdown(
-                f"{BOARD_KIND_ICONS['choice_topic']} **{md(item['title'])}** — {item['status']}"
-            )
-            if item["category"]:
+            label = f"{marker} {BOARD_KIND_ICONS['coding_module']} **{md(item['title'])}**"
+            with st.expander(label, expanded=False):
                 st.caption(item["category"])
-            if item["status"] not in ("done", "declined"):
                 render_story_move_control(
-                    key=f"board_choice_{item['id']}",
+                    key=f"board_coding_{item['id']}",
                     active=bool(item["active"]),
                     scheduled_for=item["scheduled_for"],
-                    set_active=lambda a, tid=item["id"]: db.set_choice_topic_active(tid, a),
-                    schedule=lambda s, tid=item["id"]: db.schedule_choice_topic(tid, s),
+                    set_active=lambda a, mid=item["id"]: db.set_coding_module_active(mid, a),
+                    schedule=lambda s, mid=item["id"]: db.schedule_coding_module(mid, s),
                 )
+
+        elif kind == "choice_topic":
+            label = (
+                f"{BOARD_KIND_ICONS['choice_topic']} **{md(item['title'])}** — {item['status']}"
+            )
+            with st.expander(label, expanded=False):
+                if item["category"]:
+                    st.caption(item["category"])
+                if item["status"] not in ("done", "declined"):
+                    render_story_move_control(
+                        key=f"board_choice_{item['id']}",
+                        active=bool(item["active"]),
+                        scheduled_for=item["scheduled_for"],
+                        set_active=lambda a, tid=item["id"]: db.set_choice_topic_active(tid, a),
+                        schedule=lambda s, tid=item["id"]: db.schedule_choice_topic(tid, s),
+                    )
+                else:
+                    st.caption("Closed out — nothing left to move.")
 
         elif kind == "project_step":
             done = bool(item["completed_on"])
             marker = "✅" if done else "⬜"
-            st.markdown(f"{marker} {BOARD_KIND_ICONS['project_step']} **{md(item['title'])}**")
-            if not done:
-                render_story_move_control(
-                    key=f"board_step_{item['id']}",
-                    active=bool(item["active"]),
-                    scheduled_for=item["scheduled_for"],
-                    set_active=lambda a, sid=item["id"]: db.set_project_step_active(sid, a),
-                    schedule=lambda s, sid=item["id"]: db.schedule_project_step(sid, s),
-                )
+            label = f"{marker} {BOARD_KIND_ICONS['project_step']} **{md(item['title'])}**"
+            with st.expander(label, expanded=False):
+                if not done:
+                    render_story_move_control(
+                        key=f"board_step_{item['id']}",
+                        active=bool(item["active"]),
+                        scheduled_for=item["scheduled_for"],
+                        set_active=lambda a, sid=item["id"]: db.set_project_step_active(sid, a),
+                        schedule=lambda s, sid=item["id"]: db.schedule_project_step(sid, s),
+                    )
+                else:
+                    st.caption("Done — nothing left to move.")
 
         elif kind == "travel_entry":
             title = md(item["title"]) if item["title"] else "Untitled trip"
-            st.markdown(f"{BOARD_KIND_ICONS['travel_entry']} **{title}** — {item['status']}")
-            if item["status"] != "completed":
-                render_story_move_control(
-                    key=f"board_travel_{item['id']}",
-                    active=bool(item["active"]),
-                    scheduled_for=item["scheduled_for"],
-                    set_active=lambda a, eid=item["id"]: db.set_travel_entry_active(eid, a),
-                    schedule=lambda s, eid=item["id"]: db.schedule_travel_entry(eid, s),
-                )
+            label = f"{BOARD_KIND_ICONS['travel_entry']} **{title}** — {item['status']}"
+            with st.expander(label, expanded=False):
+                if item["status"] != "completed":
+                    render_story_move_control(
+                        key=f"board_travel_{item['id']}",
+                        active=bool(item["active"]),
+                        scheduled_for=item["scheduled_for"],
+                        set_active=lambda a, eid=item["id"]: db.set_travel_entry_active(eid, a),
+                        schedule=lambda s, eid=item["id"]: db.schedule_travel_entry(eid, s),
+                    )
+                else:
+                    st.caption("Completed — nothing left to move.")
 
 
 # --- life skill cards: the catalog grid and its manager -------------------------

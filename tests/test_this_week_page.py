@@ -284,8 +284,8 @@ def test_a_planned_lesson_shows_on_the_board_with_a_move_control(monkeypatch, tm
     db.close()
 
     _, board_tab = _open_board_tab(monkeypatch, db_path)
-    markdowns = " ".join(m.value for m in board_tab.markdown)
-    assert "Locking In the Coordinate Plane" in markdowns
+    labels = [e.label for e in board_tab.expander]
+    assert any("Locking In the Coordinate Plane" in label for label in labels)
     backlog_key = f"move_board_lesson_{lesson_id}_backlog_True"
     assert any(c.key == backlog_key for c in board_tab.checkbox)
 
@@ -300,8 +300,8 @@ def test_a_life_skill_shows_on_the_board_with_a_move_control(monkeypatch, tmp_pa
     db.close()
 
     _, board_tab = _open_board_tab(monkeypatch, db_path)
-    markdowns = " ".join(m.value for m in board_tab.markdown)
-    assert skill["title"] in markdowns
+    labels = [e.label for e in board_tab.expander]
+    assert any(skill["title"] in label for label in labels)
     backlog_key = f"move_board_ls_{skill['id']}_backlog_True"
     assert any(c.key == backlog_key for c in board_tab.checkbox)
 
@@ -323,7 +323,8 @@ def test_a_backlogged_story_shows_in_its_epics_backlog_panel_section(monkeypatch
         e for e in board_tab.expander if e.label.startswith("🛠️ Life Skills")
     ]
     assert life_skills_expanders, "the Life Skills epic section must be offered"
-    assert skill["title"] in " ".join(m.value for m in life_skills_expanders[0].markdown)
+    card_labels = [e.label for e in life_skills_expanders[0].expander]
+    assert any(skill["title"] in label for label in card_labels)
 
 
 def test_moving_a_life_skill_from_the_board_reschedules_it(monkeypatch, tmp_path):
@@ -368,14 +369,13 @@ def test_next_week_button_jumps_the_board_to_next_weeks_monday(monkeypatch, tmp_
     at, board_tab = _open_board_tab(monkeypatch, db_path)
     # _open_board_tab already parks the picker on TARGET_MONDAY -- confirm
     # next week's lesson isn't visible yet before the jump.
-    assert "Next Week's Lesson" not in " ".join(m.value for m in board_tab.markdown)
+    assert not any("Next Week's Lesson" in e.label for e in board_tab.expander)
 
     next_week_button = [b for b in board_tab.button if b.label == "Next week"][0]
     next_week_button.click().run()
 
     board_tab = _board_tab(at)
-    markdowns = " ".join(m.value for m in board_tab.markdown)
-    assert "Next Week's Lesson" in markdowns
+    assert any("Next Week's Lesson" in e.label for e in board_tab.expander)
     date_widget = [d for d in board_tab.date_input if d.key == "board_week_picker"][0]
     assert weekly.week_start(date_widget.value) == weekly.default_plan_target()
     assert lesson_id  # sanity: the lesson really was created
@@ -427,7 +427,8 @@ def test_the_backlog_panel_includes_a_story_parked_from_a_totally_different_week
     _, board_tab = _open_board_tab(monkeypatch, db_path)
     history_expanders = [e for e in board_tab.expander if e.label.startswith("🏛️ History")]
     assert history_expanders, "a story parked months ago must still surface in its epic's panel section"
-    assert "Origins of the Cold War" in " ".join(m.value for m in history_expanders[0].markdown)
+    card_labels = [e.label for e in history_expanders[0].expander]
+    assert any("Origins of the Cold War" in label for label in card_labels)
 
 
 def test_the_board_columns_are_monday_through_friday_only_no_sixth_backlog_column(
@@ -439,8 +440,12 @@ def test_the_board_columns_are_monday_through_friday_only_no_sixth_backlog_colum
     Database(db_path).close()
 
     _, board_tab = _open_board_tab(monkeypatch, db_path)
-    day_labels = {m.value for m in board_tab.markdown if m.value in ("**Mon**", "**Tue**", "**Wed**", "**Thu**", "**Fri**")}
-    assert day_labels == {"**Mon**", "**Tue**", "**Wed**", "**Thu**", "**Fri**"}
+    # Day headers are now colored HTML pills (see _WEEKDAY_COLORS), not
+    # plain "**Mon**"-style markdown -- check for the day abbreviation
+    # inside whichever markdown block renders it instead.
+    day_markdowns = " ".join(m.value for m in board_tab.markdown)
+    for day in ("Mon", "Tue", "Wed", "Thu", "Fri"):
+        assert f">{day}</span>" in day_markdowns
     # The old day-column-style "**🗄️ Backlog**" header is gone -- it's now
     # the panel's own "📋 Product Backlog" heading instead.
     assert not any(m.value == "**🗄️ Backlog**" for m in board_tab.markdown)

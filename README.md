@@ -1991,6 +1991,33 @@ data `board_for_week` already computes -- no new queries:
   was already true of that list before this change; grouping it by epic
   is the only thing that's new.
 
+## The Board's day columns get real color, and every card collapses
+
+A direct reaction to seeing the real thing running, next to the sample
+mockups: "my layout is really different than the sample... I want the
+color day cards," followed by "I want each assignment to be collapsible
+too." Two changes, both to `render_board_card` and the day-column loop in
+`pages/14_This_Week.py`:
+
+**Colored day cards.** Each day header is now the same colored pill Home's
+own Week grid already uses (`theme.PRINTED_COMIC_WEEKDAY_COLORS` --
+Mon red, Tue orange, Wed blue, Thu green, Fri purple -- the "Sunday
+Funnies" palette, not a new invented one), and every card in that column
+gets a matching thin color strip across its top via `render_board_card`'s
+new `accent_color` param. The Product Backlog panel's own cards pass no
+`accent_color` -- they don't belong to a day, so nothing there should
+imply one.
+
+**Every card collapses into an expander**, title as the header -- the
+same "closed until you need it" rhythm the Backlog panel's epic sections
+already had, now applied one level deeper, story by story, requested
+directly off the example of a specific lesson card ("Positive, Negative,
+Repeat: All Four Integer Operations"). A card's status line, category,
+and its move control now live inside the expander body rather than
+always-visible on the card face -- a day with several stories reads as a
+handful of one-line rows, not a wall of open detail, matching what
+already worked well for the epic groupings.
+
 ## Tests
 
 ```bash
