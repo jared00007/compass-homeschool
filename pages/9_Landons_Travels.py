@@ -26,7 +26,13 @@ from compass import config
 from compass import national_parks as parks
 from compass import theme as theming
 from compass.export import travel_journal_filename, travel_journal_to_docx
-from compass.ui import is_parent, md, page_setup, render_travel_feedback_reply_form
+from compass.ui import (
+    is_parent,
+    md,
+    page_setup,
+    render_story_move_control,
+    render_travel_feedback_reply_form,
+)
 
 db, student = page_setup("Landon's Travels", icon="🧭")
 
@@ -44,6 +50,14 @@ st.caption(
 )
 
 entries = db.list_travel_entries(student["id"])
+if not is_parent():
+    # A backlogged entry is a parent's own "not yet" call -- hide it from
+    # him same as every other story type's own Backlog, not just from the
+    # due-count on Home. Never hides a completed one: `active` only ever
+    # changes through the move control, which itself never offers a
+    # completed entry (see `_render_entry`), so there's no live path for a
+    # family's finished trips to ever go missing here.
+    entries = [e for e in entries if e["active"] or e["status"] == "completed"]
 
 # An "open pick" -- assigned via "assign him to pick" below -- has no state
 # or title yet because he hasn't chosen the trip. That blank pair is the
@@ -306,7 +320,11 @@ def _render_entry(entry: dict) -> None:
     if is_parent():
         editing = st.session_state.get("editing_travel_entry") == entry["id"]
         logging_hours = st.session_state.get("logging_travel_entry") == entry["id"]
-        button_columns = st.columns([1, 1, 1, 1, 4])
+        # Not offered on a completed entry -- same as Choice Topics/Big
+        # Project steps, there's nothing left for a move to do to a trip
+        # that's already been written up and approved.
+        movable = entry["status"] != "completed"
+        button_columns = st.columns([1, 1, 1, 1, 1, 3] if movable else [1, 1, 1, 1, 4])
         if button_columns[0].button(
             "Cancel" if editing else "Edit", key=f"edit_entry_{entry['id']}"
         ):
@@ -320,6 +338,15 @@ def _render_entry(entry: dict) -> None:
         if button_columns[2].button("Remove", key=f"remove_entry_{entry['id']}"):
             db.delete_travel_entry(entry["id"])
             st.rerun()
+        if movable:
+            with button_columns[4]:
+                render_story_move_control(
+                    key=f"travel_{entry['id']}",
+                    active=bool(entry["active"]),
+                    scheduled_for=entry["scheduled_for"],
+                    set_active=lambda a, eid=entry["id"]: db.set_travel_entry_active(eid, a),
+                    schedule=lambda s, eid=entry["id"]: db.schedule_travel_entry(eid, s),
+                )
         if button_columns[3].button("Suggest lesson", key=f"suggest_entry_{entry['id']}"):
             rationale = (
                 f"A real family trip: {story_text[:400]}"

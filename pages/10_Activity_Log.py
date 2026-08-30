@@ -51,6 +51,8 @@ def _needs_attention(lesson: dict, today_iso: str) -> bool:
     rather than being counted here."""
     if lesson["status"] == "submitted":
         return True
+    if lesson["status"] == "needs_revision":
+        return False
     planned_for = (lesson.get("metadata") or {}).get("planned_for")
     if not planned_for or planned_for >= today_iso:
         return False
@@ -170,7 +172,13 @@ def _render_review_card(lesson: dict, today_iso: str) -> None:
             # old day" move the way other story types have one. The
             # collision check that used to gate the inline "Move" button now
             # runs as `validate_schedule`, shown in the popover in its place.
-            if lesson["status"] == "planned":
+            #
+            # Offered for 'needs_revision' too, not just 'planned' -- a
+            # lesson sent back for a redo is still an open story that might
+            # genuinely need a later day, not a closed one. Not offered for
+            # 'submitted': it's already turned in and waiting on a review
+            # decision, not something to reschedule out from under that.
+            if lesson["status"] in ("planned", "needs_revision"):
                 def _validate(new_date: str, lesson=lesson) -> str | None:
                     collision = any(
                         other["agent"] == lesson["agent"]

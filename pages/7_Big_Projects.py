@@ -614,6 +614,36 @@ if manage_tab is not None:
 
     st.divider()
 
+    st.markdown("#### Reorder steps")
+    st.caption(
+        "The move control (Backlog / a specific day) never touches step "
+        "*order* -- this is the only place to change which step comes "
+        "next in a linear project's fixed sequence."
+    )
+    if not steppable_projects:
+        st.caption("Add a project first.")
+    else:
+        reorder_project = st.selectbox(
+            "Project", steppable_projects, format_func=lambda p: p["title"], key="reorder_project"
+        )
+        reorder_steps = db.list_project_steps(reorder_project["id"])
+        if not reorder_steps:
+            st.caption("No steps yet.")
+        else:
+            for i, step in enumerate(reorder_steps):
+                cols = st.columns([6, 1, 1])
+                cols[0].markdown(f"{i + 1}. {md(step['title'])}")
+                if cols[1].button("↑", key=f"step_up_{step['id']}", disabled=i == 0):
+                    db.move_project_step(step["id"], "up")
+                    st.rerun()
+                if cols[2].button(
+                    "↓", key=f"step_down_{step['id']}", disabled=i == len(reorder_steps) - 1
+                ):
+                    db.move_project_step(step["id"], "down")
+                    st.rerun()
+
+    st.divider()
+
     st.markdown("#### Remove a step")
     removable = [
         (project, step)

@@ -204,6 +204,64 @@ def test_moving_a_manually_backlogged_lesson_releases_it(monkeypatch, tmp_path):
     assert not any("Parked then released" in l for l in labels)
 
 
+def test_a_lesson_sent_back_for_revision_can_still_be_rescheduled(monkeypatch, tmp_path):
+    """A lesson that got sent back isn't closed out -- he's meant to redo
+    it, and a parent might genuinely need to push that redo to a later day
+    (or park it in the backlog) same as any other still-open lesson. Only
+    'submitted' (already turned in, waiting on a review decision) is left
+    without the move control -- see _render_review_card's own reasoning."""
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    sid = student["id"]
+    week_start = weekly.week_start(date.today())
+
+    lesson_id = db.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t", title="Sent back for a redo",
+        payload={"title": "Sent back for a redo", "activities": []},
+        metadata={"planned_for": week_start.isoformat(), "week_start": week_start.isoformat()},
+    )
+    db.set_lesson_status(lesson_id, "needs_revision")
+    db.close()
+
+    at, review_tab = _open_review_tab(monkeypatch, db_path)
+    backlog_key = f"move_lesson_{lesson_id}_backlog_True"
+    checkbox = [c for c in review_tab.checkbox if c.key == backlog_key]
+    assert checkbox, "the move control must still be offered on a needs_revision lesson"
+    checkbox[0].set_value(True).run()
+
+    db = Database(db_path)
+    lesson = db.get_lesson(lesson_id)
+    db.close()
+    assert lesson["metadata"].get("held_back") is True
+
+
+def test_a_submitted_lesson_gets_no_move_control(monkeypatch, tmp_path):
+    """Unlike needs_revision, a submitted lesson is already turned in and
+    waiting on a review decision -- rescheduling it out from under that
+    doesn't make sense, so it keeps just Skip/Remove."""
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    sid = student["id"]
+    week_start = weekly.week_start(date.today())
+
+    lesson_id = db.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t", title="Turned in already",
+        payload={"title": "Turned in already", "activities": []},
+        metadata={"planned_for": week_start.isoformat(), "week_start": week_start.isoformat()},
+    )
+    db.set_lesson_status(lesson_id, "submitted")
+    db.close()
+
+    at, review_tab = _open_review_tab(monkeypatch, db_path)
+    move_keys = [
+        c.key for c in review_tab.checkbox
+        if c.key and c.key.startswith(f"move_lesson_{lesson_id}_")
+    ]
+    assert not move_keys, "a submitted lesson should not offer the move control"
+
+
 def test_a_held_back_lesson_not_yet_due_shows_backlogged_not_planned(monkeypatch, tmp_path):
     """Sent to backlog ahead of its own due date -- still shown as
     deliberately parked, not misread as merely "planned" or, worse,

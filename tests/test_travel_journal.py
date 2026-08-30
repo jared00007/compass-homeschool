@@ -652,3 +652,110 @@ def test_a_parent_sending_a_submitted_entry_back_with_a_note(monkeypatch, tmp_pa
     database.close()
     assert entry["status"] == "needs_revision"
     assert "more detail" in entry["revision_note"]
+
+
+# --- The shared move control: full Backlog/reschedule parity with every
+# other story type, not just a one-time day assignment at creation --------
+
+
+def test_the_move_control_can_backlog_an_assigned_trip(monkeypatch, tmp_path):
+    """The actual gap this closes: previously a trip could only be assigned
+    a day once, at creation -- there was no way to park it in Backlog or
+    move it to a different day afterward, unlike every other story type."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    entry_id = database.add_travel_entry(
+        s["id"], "Wyoming", date.today().isoformat(), title="Yellowstone", status="planned"
+    )
+    database.schedule_travel_entry(entry_id, date.today().isoformat())
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=True)
+    tab = _journal_tab(at)
+    backlog_key = f"move_travel_{entry_id}_backlog_True"
+    checkbox = [c for c in tab.checkbox if c.key == backlog_key]
+    assert checkbox, "the move control must be offered on an assigned, not-yet-written trip"
+    checkbox[0].set_value(True).run()
+
+    database = Database(db_path)
+    entry = database.list_travel_entries(s["id"])[0]
+    database.close()
+    assert entry["active"] == 0
+
+
+def test_a_backlogged_trip_is_hidden_from_the_student_view(monkeypatch, tmp_path):
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    entry_id = database.add_travel_entry(
+        s["id"], "Wyoming", date.today().isoformat(), title="Yellowstone", status="planned"
+    )
+    database.schedule_travel_entry(entry_id, date.today().isoformat())
+    database.set_travel_entry_active(entry_id, False)
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=False)
+    text = " ".join(m.value for m in at.markdown)
+    assert "Yellowstone" not in text
+
+    at = _open_travels(monkeypatch, db_path, as_parent=True)
+    text = " ".join(m.value for m in _journal_tab(at).markdown)
+    assert "Yellowstone" in text, "a parent must still see a backlogged trip, to un-backlog it"
+
+
+def test_the_move_control_is_not_offered_on_a_completed_trip(monkeypatch, tmp_path):
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    entry_id = database.add_travel_entry(
+        s["id"], "Arizona", "2025-06-10", title="Grand Canyon",
+        story="We went there.", status="completed",
+    )
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=True)
+    tab = _journal_tab(at)
+    move_keys = [
+        c.key for c in tab.checkbox if c.key and c.key.startswith(f"move_travel_{entry_id}_")
+    ]
+    assert not move_keys, "a completed trip should not offer the move control"
+
+
+def test_the_move_control_never_shows_in_the_students_own_view(monkeypatch, tmp_path):
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    entry_id = database.add_travel_entry(
+        s["id"], "Wyoming", date.today().isoformat(), title="Yellowstone", status="planned"
+    )
+    database.schedule_travel_entry(entry_id, date.today().isoformat())
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=False)
+    tab = _journal_tab(at)
+    move_keys = [
+        c.key for c in tab.checkbox if c.key and c.key.startswith(f"move_travel_{entry_id}_")
+    ]
+    assert not move_keys, "the move control is parent-only, same as every other story type"
+
+
+def test_due_travel_entries_excludes_a_backlogged_one(monkeypatch, tmp_path):
+    """Home's due-count must respect the new active flag same as it already
+    does for life skills -- a backlogged trip shouldn't still nag him."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    entry_id = database.add_travel_entry(
+        s["id"], "Wyoming", date.today().isoformat(), title="Yellowstone", status="planned"
+    )
+    database.schedule_travel_entry(entry_id, date.today().isoformat())
+    database.set_travel_entry_active(entry_id, False)
+
+    due = database.due_travel_entries(s["id"], date.today().isoformat())
+    database.close()
+    assert due == []

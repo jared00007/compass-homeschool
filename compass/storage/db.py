@@ -1507,6 +1507,7 @@ class Database:
         self._ensure_column("travel_entries", "parent_feedback", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("travel_entries", "feedback_read_at", "TEXT")
         self._ensure_column("travel_entries", "feedback_reply", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column("travel_entries", "active", "INTEGER NOT NULL DEFAULT 1")
         self._backfill_life_skill_content()
         self._backfill_life_skill_catalog()
         self._backfill_coding_module_catalog()
@@ -3204,12 +3205,24 @@ class Database:
 
     def schedule_travel_entry(self, entry_id: int, scheduled_for: str | None) -> None:
         """Assigns (or clears, with `None`) the day a parent wants this
-        trip written up by. Unlike `schedule_life_skill`, there's no
-        active/locked concept here to also flip -- a travel entry is either
-        in the journal or it isn't."""
+        trip written up by. Same reasoning as `schedule_life_skill` for
+        the rest: doesn't touch `active`, so backlogging and rescheduling
+        stay two separately-timed moves through the shared move control."""
         self.conn.execute(
             "UPDATE travel_entries SET scheduled_for = ? WHERE id = ?",
             (scheduled_for, entry_id),
+        )
+        self.conn.commit()
+
+    def set_travel_entry_active(self, entry_id: int, active: bool) -> None:
+        """Moves a trip between Backlog and the plan, same shape as
+        `set_life_skill_active`/`set_project_step_active` -- purely a
+        visibility flag layered on top of `status`, never touching it. A
+        completed entry is never offered this (see `_render_entry`'s own
+        exclusion), so nothing here needs to guard against re-backlogging
+        an already-approved trip."""
+        self.conn.execute(
+            "UPDATE travel_entries SET active = ? WHERE id = ?", (int(active), entry_id)
         )
         self.conn.commit()
 
@@ -3341,14 +3354,17 @@ class Database:
 
     def due_travel_entries(self, student_id: int, today: str) -> list[dict[str, Any]]:
         """Assigned entries still needing his attention: scheduled for
-        today or earlier, and not yet approved. Includes 'submitted' ones
-        too (waiting on a parent, not him) so Home can show the real
-        review-gate marker instead of just due/not-due -- same reasoning
-        as `weekly.today_subject_status` for lessons."""
+        today or earlier, not yet approved, and not backlogged. Includes
+        'submitted' ones too (waiting on a parent, not him) so Home can
+        show the real review-gate marker instead of just due/not-due --
+        same reasoning as `weekly.today_subject_status` for lessons. The
+        `active` check is belt-and-suspenders against a parent backlogging
+        an already-scheduled entry by hand afterward, same as
+        `due_life_skills`."""
         return _rows(
             self.conn.execute(
                 "SELECT * FROM travel_entries WHERE student_id = ? AND scheduled_for IS NOT NULL "
-                "AND scheduled_for <= ? AND status != 'completed' "
+                "AND scheduled_for <= ? AND status != 'completed' AND active = 1 "
                 "ORDER BY scheduled_for, id",
                 (student_id, today),
             )
@@ -3356,12 +3372,12 @@ class Database:
 
     def upcoming_travel_entries(self, student_id: int, after: str) -> list[dict[str, Any]]:
         """Assigned entries not due yet -- scheduled strictly after
-        `after`, not yet approved. Feeds Home's "N more assigned this
-        week" hint, mirroring `upcoming_life_skills`."""
+        `after`, not yet approved, not backlogged. Feeds Home's "N more
+        assigned this week" hint, mirroring `upcoming_life_skills`."""
         return _rows(
             self.conn.execute(
                 "SELECT * FROM travel_entries WHERE student_id = ? AND scheduled_for IS NOT NULL "
-                "AND scheduled_for > ? AND status != 'completed' "
+                "AND scheduled_for > ? AND status != 'completed' AND active = 1 "
                 "ORDER BY scheduled_for, id",
                 (student_id, after),
             )
@@ -3582,6 +3598,44 @@ class Database:
         )
         self.conn.commit()
         return int(cur.lastrowid)
+
+    def move_project_step(self, step_id: int, direction: str) -> None:
+        """Reprioritize a linear project's step sequence -- the one thing
+        the shared move control was never built for (it moves a story
+        between a day and Backlog, never *within* an already-committed
+        order). `add_project_step` only ever appends (`MAX(sort_order)+1`),
+        so without this, changing which step comes next meant deleting and
+        re-adding every step after it in the new order.
+
+        `direction` is `'up'` or `'down'`; swaps `sort_order` with whichever
+        sibling in the same project currently sits immediately before/after
+        this one in `list_project_steps`' own `ORDER BY sort_order, id` --
+        the same ordering every caller already renders from, so a swap here
+        is guaranteed to move the step exactly one visible slot. A no-op at
+        either end of the list (nothing to swap with) rather than an error --
+        the UI just disables that direction's button there instead."""
+        step = _row(
+            self.conn.execute("SELECT * FROM project_steps WHERE id = ?", (step_id,))
+        )
+        if step is None:
+            return
+        siblings = self.list_project_steps(step["project_id"])
+        index = next((i for i, s in enumerate(siblings) if s["id"] == step_id), None)
+        if index is None:
+            return
+        neighbor_index = index - 1 if direction == "up" else index + 1
+        if neighbor_index < 0 or neighbor_index >= len(siblings):
+            return
+        neighbor = siblings[neighbor_index]
+        self.conn.execute(
+            "UPDATE project_steps SET sort_order = ? WHERE id = ?",
+            (neighbor["sort_order"], step_id),
+        )
+        self.conn.execute(
+            "UPDATE project_steps SET sort_order = ? WHERE id = ?",
+            (step["sort_order"], neighbor["id"]),
+        )
+        self.conn.commit()
 
     def set_project_step_done(self, step_id: int, completed: bool) -> None:
         self.conn.execute(

@@ -2547,10 +2547,13 @@ def render_story_move_control(
     this (two lessons from the same agent can't share a day); every other
     story type leaves it unset.
 
-    `show_backlog_toggle` is off for lessons, which reach backlog only
-    through `set_active` -- moving *to* a day already implies un-backlogging
-    as a side effect of `schedule`, so a second, separately-timed toggle for
-    the same state would just be confusing there.
+    `show_backlog_toggle` stays on its default (on) for every caller today,
+    lessons included -- a lesson always keeps its old `planned_for` even
+    once backlogged (there's no bare "un-assign" for a lesson the way other
+    story types have one, since a lesson always needs *some* planned day),
+    so the checkbox below is the *only* way to backlog one. Turning it off
+    for lessons would remove that ability entirely, not just tidy up a
+    redundant control.
 
     Widget keys fold in the current `active`/`scheduled_for` values, the same
     trick `render_life_skill_catalog_manager` uses for its own checkbox --
@@ -2562,7 +2565,19 @@ def render_story_move_control(
     # top-right corner on a card grid (three cards to a row), and a two-word
     # label wraps into an unreadable vertical sliver at that width. The
     # other two states already read fine at that width on their own.
-    label = f"📅 {scheduled_for}" if scheduled_for else ("🗄️ Backlog" if not active else "📅")
+    #
+    # `active` is checked *before* `scheduled_for`: every story type here
+    # keeps its old scheduled_for/planned_for value even after being sent to
+    # backlog (none of the set_active/send_to_backlog implementations clear
+    # it), so a backlogged story with a leftover date would otherwise still
+    # show "📅 <that date>" here instead of "🗄️ Backlog" -- exactly the
+    # trigger for it no longer reading as backlogged at a glance.
+    if not active:
+        label = "🗄️ Backlog"
+    elif scheduled_for:
+        label = f"📅 {scheduled_for}"
+    else:
+        label = "📅"
     with st.popover(label, use_container_width=False, help="Move to a day, or send to Backlog"):
         assign = st.checkbox(
             "Assign to a specific day",

@@ -274,3 +274,53 @@ def test_the_travel_log_project_exists_automatically_for_a_brand_new_student(mon
     projects = db.list_big_projects(student["id"])
     db.close()
     assert any(p["kind"] == "travel_log" for p in projects)
+
+
+def test_reorder_steps_up_button_swaps_with_the_previous_step(monkeypatch, tmp_path):
+    """The move control only ever handles a day or Backlog, never step
+    *order* -- this is the only UI for changing which step comes next in
+    a linear project's fixed sequence (see db.move_project_step)."""
+    db_path = tmp_path / "projects.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    project_id = db.add_big_project(student["id"], "Stop-Motion Film")
+    step_a = db.add_project_step(project_id, "Step A")
+    step_b = db.add_project_step(project_id, "Step B")
+    db.add_project_step(project_id, "Step C")
+    db.close()
+
+    at = _open_checklist_tab(monkeypatch, db_path)
+    manage_tab = at.tabs[2]
+    project_select = manage_tab.selectbox(key="reorder_project")
+    project_select.select_index(project_select.options.index("Stop-Motion Film")).run()
+
+    manage_tab = at.tabs[2]
+    up_button = [b for b in manage_tab.button if b.key == f"step_up_{step_b}"][0]
+    assert not up_button.disabled
+    up_button.click().run()
+
+    db = Database(db_path)
+    steps = [s["title"] for s in db.list_project_steps(project_id)]
+    db.close()
+    assert steps == ["Step B", "Step A", "Step C"]
+
+
+def test_reorder_steps_boundary_buttons_are_disabled(monkeypatch, tmp_path):
+    db_path = tmp_path / "projects.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    project_id = db.add_big_project(student["id"], "Stop-Motion Film")
+    step_a = db.add_project_step(project_id, "Step A")
+    step_b = db.add_project_step(project_id, "Step B")
+    db.close()
+
+    at = _open_checklist_tab(monkeypatch, db_path)
+    manage_tab = at.tabs[2]
+    project_select = manage_tab.selectbox(key="reorder_project")
+    project_select.select_index(project_select.options.index("Stop-Motion Film")).run()
+
+    manage_tab = at.tabs[2]
+    first_up = [b for b in manage_tab.button if b.key == f"step_up_{step_a}"][0]
+    last_down = [b for b in manage_tab.button if b.key == f"step_down_{step_b}"][0]
+    assert first_up.disabled
+    assert last_down.disabled
