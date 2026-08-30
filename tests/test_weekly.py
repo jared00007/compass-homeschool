@@ -23,6 +23,7 @@ from compass.weekly import (
     MATH_STAGE_NOTES,
     default_plan_target,
     due_lessons,
+    is_backlogged,
     latest_per_day,
     math_stage_note,
     plan_day,
@@ -172,6 +173,35 @@ def test_due_lessons_on_an_all_untagged_list_preserves_input_order():
     ]
     result = due_lessons(lessons, "2026-08-11")
     assert [l["id"] for l in result] == [2, 1]
+
+
+def test_due_lessons_excludes_a_lesson_from_a_fully_elapsed_week():
+    """The Backlog feature's actual effect on due_lessons: merely overdue
+    (same week) still surfaces, same as always, but once the whole week's
+    gone by it's backlogged instead -- pulled out of the due list entirely,
+    not just sorted to the bottom of it."""
+    lessons = [_lesson(1, "math", "2026-08-10")]  # Monday, week of Aug 10
+    assert due_lessons(lessons, "2026-08-18") == []  # the following Tuesday
+
+
+# --- is_backlogged: a whole week's gone by without it being turned in -----------
+
+
+def test_is_backlogged_false_for_a_lesson_still_within_its_own_week():
+    lesson = _lesson(1, "math", "2026-08-10")  # Monday
+    assert not is_backlogged(lesson, "2026-08-13")  # Thursday, same week
+
+
+def test_is_backlogged_true_once_its_own_week_has_fully_ended():
+    lesson = _lesson(1, "math", "2026-08-10")  # Monday, week of Aug 10
+    assert is_backlogged(lesson, "2026-08-18")  # Tuesday, the following week
+
+
+def test_is_backlogged_false_for_an_untagged_on_demand_lesson():
+    """No planned_for at all -- no week concept, so it's never backlogged,
+    matching due_lessons' own unbounded treatment of one."""
+    untagged = {"id": 9, "agent": "math", "metadata": {}}
+    assert not is_backlogged(untagged, "2026-08-18")
 
 
 # --- today_subject_status: one subject's row on Home's daily roster --------------

@@ -36,13 +36,18 @@ def _lesson_date(lesson: dict) -> str:
 
 def _needs_attention(lesson: dict, today_iso: str) -> bool:
     """Genuinely waiting on you: he's turned it in, or it's overdue and
-    still untouched. A lesson sent back for revision ('needs_revision') is
-    waiting on HIM, not you -- it gets its own quieter section below
+    still untouched -- but only within its own week. Once that week ends
+    it's backlogged instead (see the Backlog section below): out of his
+    own view entirely, and no longer something today's date should keep
+    flagging as urgent. A lesson sent back for revision ('needs_revision')
+    is waiting on HIM, not you -- it gets its own quieter section below
     rather than being counted here."""
     if lesson["status"] == "submitted":
         return True
     planned_for = (lesson.get("metadata") or {}).get("planned_for")
-    return bool(planned_for and planned_for < today_iso)
+    if not planned_for or planned_for >= today_iso:
+        return False
+    return not weekly.is_backlogged(lesson, today_iso)
 
 
 def _review_badge(lesson: dict, today_iso: str) -> str:
@@ -59,12 +64,15 @@ def _review_badge(lesson: dict, today_iso: str) -> str:
     return "🕓 planned"
 
 
-def _render_review_card(lesson: dict, today_iso: str) -> None:
+def _render_review_card(
+    lesson: dict, today_iso: str, *, show_reschedule: bool = False
+) -> None:
     """One lesson's expander: badge + planned date + title as the header,
     full detail and the logging form inside. Shared by the attention
-    list, every day column, the unscheduled section, and history -- the
-    only thing that changes between them is which bucket a lesson lands
-    in, never how it's rendered once it's there."""
+    list, every day column, the unscheduled section, backlog, and
+    history -- the only thing that changes between them is which bucket a
+    lesson lands in (and, for backlog, one extra action), never how it's
+    rendered once it's there."""
     student_done_on = (lesson.get("metadata") or {}).get("student_done_on")
     badge = _review_badge(lesson, today_iso)
     with st.expander(f"{badge} · {_lesson_date(lesson)} · {md(lesson['title'])}"):
@@ -142,6 +150,37 @@ def _render_review_card(lesson: dict, today_iso: str) -> None:
             if remove_col.button("Remove", key=f"remove_lesson_{lesson['id']}"):
                 db.delete_lesson(lesson["id"])
                 st.rerun()
+            # Backlog only -- an already-live lesson doesn't need this, it's
+            # already showing up on whatever day it's for.
+            if show_reschedule and lesson["status"] == "planned":
+                move_columns = st.columns([3, 1])
+                new_date = move_columns[0].date_input(
+                    "Move to",
+                    value=date.today() + timedelta(days=1),
+                    min_value=date.today(),
+                    key=f"reschedule_date_{lesson['id']}",
+                )
+                # Same agent, same target day, a different lesson already
+                # sitting there -- moving this one in would silently shadow
+                # it (latest_per_day keeps whichever lesson is newest), so
+                # the move is refused rather than letting that happen quietly.
+                collision = any(
+                    other["agent"] == lesson["agent"]
+                    and other["id"] != lesson["id"]
+                    and (other.get("metadata") or {}).get("planned_for") == new_date.isoformat()
+                    for other in all_lessons
+                )
+                if collision:
+                    move_columns[1].button(
+                        "Move", key=f"reschedule_{lesson['id']}", disabled=True
+                    )
+                    st.caption(
+                        f"⚠️ Already a {lesson['agent']} lesson planned for that day -- "
+                        "pick a different one."
+                    )
+                elif move_columns[1].button("Move", key=f"reschedule_{lesson['id']}"):
+                    db.reschedule_lesson(lesson["id"], new_date.isoformat())
+                    st.rerun()
 
 
 _TRAVEL_REVIEW_BADGES = {
@@ -360,7 +399,17 @@ with lessons_tab:
     # with lessons still simply due, so what's on your plate versus his
     # stays visually distinct.
     sent_back = [l for l in to_review if l["status"] == "needs_revision"]
-    excluded_ids = {l["id"] for l in attention} | {l["id"] for l in sent_back}
+    # Its whole week ended without being turned in -- pulled out of his own
+    # view entirely (see weekly.is_backlogged/due_lessons). This is the only
+    # place left to see it until it's explicitly moved to a new day below.
+    backlog = [
+        l for l in to_review
+        if l["status"] == "planned" and weekly.is_backlogged(l, today_iso)
+    ]
+    backlog.sort(key=lambda l: (l.get("metadata") or {}).get("planned_for") or "")
+    excluded_ids = (
+        {l["id"] for l in attention} | {l["id"] for l in sent_back} | {l["id"] for l in backlog}
+    )
     rest = [l for l in to_review if l["id"] not in excluded_ids]
 
     if not all_lessons:
@@ -379,6 +428,18 @@ with lessons_tab:
             )
             for lesson in sent_back:
                 _render_review_card(lesson, today_iso)
+            st.divider()
+
+        if backlog:
+            st.markdown(f"**🗄️ Backlog** ({len(backlog)})")
+            st.caption(
+                "His whole week for these came and went without being turned in -- "
+                "pulled out of his own view entirely, not just marked late. Move one "
+                "to a new day below to bring it back; it'll show up for him again "
+                "exactly like a freshly planned lesson, once it's due."
+            )
+            for lesson in backlog:
+                _render_review_card(lesson, today_iso, show_reschedule=True)
             st.divider()
 
         st.markdown("**📅 This week's plan**")

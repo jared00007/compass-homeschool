@@ -480,6 +480,42 @@ def test_delete_lesson_removes_a_planned_lesson(db, student):
     assert db.get_lesson(lesson_id) is None
 
 
+def test_reschedule_lesson_moves_planned_for_and_week_start(db, student):
+    """The Backlog release valve: content and status stay put, only the
+    two date fields that decide where a lesson lives move -- both of
+    them, since a stale week_start would leave the moved lesson invisible
+    to This Week's "already covered" check for its new week."""
+    lesson_id = db.save_lesson(
+        student["id"], "math", "math", "topic", "title", payload={"a": 1},
+        metadata={"planned_for": "2026-01-05", "week_start": "2025-12-29"},
+    )
+    db.reschedule_lesson(lesson_id, "2026-02-16")  # a Monday
+    lesson = db.get_lesson(lesson_id)
+    assert lesson["metadata"]["planned_for"] == "2026-02-16"
+    assert lesson["metadata"]["week_start"] == "2026-02-16"
+    assert lesson["status"] == "planned"
+    assert lesson["payload"] == {"a": 1}
+
+
+def test_reschedule_lesson_snaps_week_start_to_the_targets_own_monday(db, student):
+    """Moving into the middle of a week (not onto its Monday) still tags
+    the lesson with that week's real Monday, not the target date itself --
+    otherwise it wouldn't match up with anything else planned for that
+    same week."""
+    lesson_id = db.save_lesson(
+        student["id"], "math", "math", "topic", "title", payload={"a": 1},
+        metadata={"planned_for": "2026-01-05", "week_start": "2025-12-29"},
+    )
+    db.reschedule_lesson(lesson_id, "2026-02-19")  # a Thursday
+    lesson = db.get_lesson(lesson_id)
+    assert lesson["metadata"]["planned_for"] == "2026-02-19"
+    assert lesson["metadata"]["week_start"] == "2026-02-16"  # that week's Monday
+
+
+def test_reschedule_lesson_on_a_missing_id_is_a_no_op(db, student):
+    db.reschedule_lesson(999999, "2026-02-16")  # doesn't raise
+
+
 def test_deleting_a_logged_lessons_activity_keeps_its_hours(db, student):
     """A lesson can be deleted even after it's been logged -- the activity
     (and its hours/credit) survives; it just loses the back-link, per

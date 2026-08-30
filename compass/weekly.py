@@ -324,16 +324,44 @@ def latest_per_day(lessons: list[dict[str, Any]]) -> list[dict[str, Any]]:
     )
 
 
+def is_backlogged(lesson: dict[str, Any], today: str) -> bool:
+    """Whether this lesson's entire week already ended without it being
+    turned in -- reported directly: a parent wants explicit control over
+    when a missed assignment reappears, not to have it silently pile up
+    as "overdue" forever on Landon's own view. A lesson in this state is
+    pulled out of `due_lessons` below entirely; Activity Log's Backlog
+    section is the only place it's still visible, until a parent
+    explicitly moves it to a new day (`Database.reschedule_lesson`), at
+    which point it's live again exactly like a freshly planned lesson.
+
+    Only ever true for a lesson that actually carries a `planned_for` --
+    an on-demand lesson (no week concept at all) is never backlogged,
+    matching `due_lessons`' own unbounded treatment of one below. Status
+    isn't checked here (same as `due_lessons` itself) -- every caller
+    already narrows to still-open lessons before this runs.
+    """
+    planned_for = (lesson.get("metadata") or {}).get("planned_for") or ""
+    if not planned_for:
+        return False
+    return week_start(date.fromisoformat(planned_for)) < week_start(date.fromisoformat(today))
+
+
 def due_lessons(lessons: list[dict[str, Any]], today: str) -> list[dict[str, Any]]:
     """Filter to what's actually due now: today's, or overdue from an
-    earlier day -- sorted oldest-overdue-first, then today's, then anything
-    with no `planned_for` at all (ordinary on-demand generation, never
-    batch-planned) last. A lesson planned for a day *later* than today is
-    excluded outright, same as it doesn't belong in Home's own "Lessons
-    ready for you" list either -- a caller that also wants a "later this
-    week" count computes that separately from whatever this excluded, since
-    that split needs the week's own end date, which isn't this function's
-    business.
+    earlier day within the *same* week -- sorted oldest-overdue-first,
+    then today's, then anything with no `planned_for` at all (ordinary
+    on-demand generation, never batch-planned) last. A lesson planned for
+    a day *later* than today is excluded outright, same as it doesn't
+    belong in Home's own "Lessons ready for you" list either -- a caller
+    that also wants a "later this week" count computes that separately
+    from whatever this excluded, since that split needs the week's own
+    end date, which isn't this function's business.
+
+    Once a lesson's whole week has ended without being turned in, it's
+    backlogged (see `is_backlogged` above) and drops out here too --
+    indefinitely overdue is not the same as due, and a parent choosing to
+    hold it back is not something this function should keep overriding by
+    surfacing it anyway.
 
     Shared by Home (across every agent at once) and student_lesson_view
     (one agent's own subject page) so both pick the exact same lesson --
@@ -346,6 +374,7 @@ def due_lessons(lessons: list[dict[str, Any]], today: str) -> list[dict[str, Any
         lesson
         for lesson in lessons
         if not ((lesson.get("metadata") or {}).get("planned_for") or "") > today
+        and not is_backlogged(lesson, today)
     ]
     due.sort(key=lambda lesson: (lesson.get("metadata") or {}).get("planned_for") or "9999-99-99")
     return due

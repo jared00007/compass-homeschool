@@ -43,22 +43,30 @@ def _open_review_tab(monkeypatch, db_path):
     return at, [t for t in at.tabs if t.label.startswith("To review")][0]
 
 
-def test_overdue_and_needs_logging_surface_regardless_of_day(monkeypatch, tmp_path):
+def test_submitted_and_still_this_week_overdue_surface_regardless_of_day(monkeypatch, tmp_path):
+    """A submitted lesson always needs a look, whatever weekday this test
+    happens to run on. An overdue-but-still-this-week lesson does too --
+    only once its *own* week fully ends does it become backlog instead
+    (see the backlog-specific test below). Monday has no earlier day in
+    its own week to construct that second case from, so it's only added
+    when today isn't a Monday -- the submitted-lesson assertion alone
+    still runs every day."""
     db_path = tmp_path / "review.db"
     db = Database(db_path)
     student = db.ensure_default_student()
     sid = student["id"]
     today = date.today()
     week_start = today - timedelta(days=today.weekday())
+    expected_attention = 1
 
-    db.save_lesson(
-        student_id=sid, agent="math", subject="math", topic="t", title="Overdue lesson",
-        payload={"title": "Overdue lesson", "activities": []},
-        metadata={
-            "planned_for": (week_start - timedelta(days=7)).isoformat(),
-            "week_start": (week_start - timedelta(days=14)).isoformat(),
-        },
-    )
+    if week_start < today:
+        db.save_lesson(
+            student_id=sid, agent="math", subject="math", topic="t",
+            title="Overdue this week",
+            payload={"title": "Overdue this week", "activities": []},
+            metadata={"planned_for": week_start.isoformat(), "week_start": week_start.isoformat()},
+        )
+        expected_attention = 2
     lid = db.save_lesson(
         student_id=sid, agent="science", subject="science", topic="t", title="Turned in",
         payload={"title": "Turned in", "activities": []},
@@ -70,10 +78,45 @@ def test_overdue_and_needs_logging_surface_regardless_of_day(monkeypatch, tmp_pa
     at, review_tab = _open_review_tab(monkeypatch, db_path)
 
     markdowns = [m.value for m in review_tab.markdown]
-    assert any("Needs your attention now" in m and "(2)" in m for m in markdowns)
+    assert any(
+        "Needs your attention now" in m and f"({expected_attention})" in m for m in markdowns
+    )
     labels = [e.label for e in review_tab.expander]
-    assert any("overdue" in l and "Overdue lesson" in l for l in labels)
     assert any("waiting on you to review" in l and "Turned in" in l for l in labels)
+    if week_start < today:
+        assert any("overdue" in l and "Overdue this week" in l for l in labels)
+
+
+def test_a_lesson_from_a_fully_elapsed_week_moves_to_backlog_not_attention(monkeypatch, tmp_path):
+    """The actual point of the Backlog feature: once a lesson's whole week
+    has come and gone without it being turned in, it's no longer "just
+    overdue" -- it's pulled out of Landon's own view entirely (see
+    weekly.is_backlogged/due_lessons) and held here until a parent
+    explicitly moves it to a new day."""
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    sid = student["id"]
+    today = date.today()
+    week_start = today - timedelta(days=today.weekday())
+
+    db.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t", title="Backlogged lesson",
+        payload={"title": "Backlogged lesson", "activities": []},
+        metadata={
+            "planned_for": (week_start - timedelta(days=7)).isoformat(),
+            "week_start": (week_start - timedelta(days=7)).isoformat(),
+        },
+    )
+    db.close()
+
+    at, review_tab = _open_review_tab(monkeypatch, db_path)
+
+    markdowns = [m.value for m in review_tab.markdown]
+    assert not any("Needs your attention now" in m for m in markdowns)
+    assert any("Backlog" in m and "(1)" in m for m in markdowns)
+    labels = [e.label for e in review_tab.expander]
+    assert any("Backlogged lesson" in l for l in labels)
 
 
 def test_board_columns_only_show_their_own_day(monkeypatch, tmp_path):

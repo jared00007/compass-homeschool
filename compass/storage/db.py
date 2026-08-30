@@ -2264,6 +2264,40 @@ class Database:
         self.conn.execute("DELETE FROM lessons WHERE id = ?", (lesson_id,))
         self.conn.commit()
 
+    def reschedule_lesson(self, lesson_id: int, new_planned_for: str) -> None:
+        """Moves an already-generated, still-`planned` lesson to a new day --
+        the release valve for Activity Log's Backlog section (see
+        `compass.weekly.is_backlogged`/`due_lessons`). Content and status
+        are untouched; only the two date fields that decide where a lesson
+        lives move, so nothing about it gets regenerated or re-paid-for.
+
+        Also reassigns `week_start` to the new date's own Monday, not just
+        `planned_for` -- without that, the lesson would still look "this
+        week's" to its *old* week (blocking This Week's planner from ever
+        treating that old day as missing again) while being invisible to
+        the *new* week's own "already covered" check, risking a second
+        lesson getting batch-generated for the same day. It also needs the
+        right `week_start` to be found by Math's shared-skill continuation,
+        which reads off whatever's already planned for the *target* week.
+
+        `week_start` is computed inline here rather than via
+        `compass.weekly.week_start` -- that module imports
+        `compass.agents.framework`, which imports this one, so importing it
+        here would be a real cycle, not just an unused one.
+        """
+        lesson = self.get_lesson(lesson_id)
+        if lesson is None:
+            return
+        new_date = date.fromisoformat(new_planned_for)
+        new_week_start = new_date - timedelta(days=new_date.weekday())
+        metadata = lesson["metadata"]
+        metadata["planned_for"] = new_planned_for
+        metadata["week_start"] = new_week_start.isoformat()
+        self.conn.execute(
+            "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
+        )
+        self.conn.commit()
+
     def set_activity_collapsed(
         self, lesson_id: int, activity_index: int, collapsed: bool
     ) -> None:

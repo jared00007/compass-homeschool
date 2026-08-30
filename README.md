@@ -1074,6 +1074,37 @@ clear it's a schedule view, not a second review queue, and the "Nothing waiting 
 you right now" success banner checks the same narrower set as the header so the two
 never disagree.
 
+**Backlog: a missed lesson's whole week ending doesn't leave it "overdue" forever
+— it drops out of his view entirely, into a parent-only holding area.** Requested
+directly: a parent wants explicit control over when a missed assignment reappears,
+not to have it silently pile up as "overdue" on his own Home/subject page indefinitely.
+`weekly.is_backlogged(lesson, today)` is the whole mechanism — true once a `planned`
+lesson's own week (`week_start(planned_for)`) has fully ended, computed live off the
+two date fields every lesson already carries, no new status value and no scheduled
+job needed to "roll it over" at week's end. `weekly.due_lessons()` (shared by Home's
+roster and every subject's own page) now excludes anything backlogged, so it's not
+just sorted to the bottom of "overdue" — it's indistinguishable from a lesson that was
+never generated, exactly the same way a batch-planned *future* lesson is already
+invisible to him until its day arrives. This mirrors that existing precedent rather
+than inventing a new one: the parent controls the reveal window on both ends now, not
+just the front.
+
+Activity Log's "To review" tab gets a new **"🗄️ Backlog"** section (`_needs_attention`
+was narrowed to exclude backlogged lessons, so they don't double-count there) —
+the only place a backlogged lesson is still visible, parent-only, same as future
+content. `Database.reschedule_lesson(lesson_id, new_planned_for)` is the release
+valve: updates `planned_for` *and* `week_start` (to the new date's own Monday) on the
+existing row, nothing else — no regeneration, no new API call, content and status
+untouched. Getting `week_start` right matters beyond cosmetics: without it the moved
+lesson would still look "this week's" to its *old* week (blocking that week's planner
+from ever treating the day as missing again) while being invisible to the *new*
+week's own "already covered" check, risking a second lesson getting batch-generated
+for the same day — and Math's shared-skill continuation reads off whatever's already
+planned for the *target* week to find its `skill_id`. The "Move to" control (on each
+backlog card only — a live lesson doesn't need it) refuses the move outright, rather
+than silently colliding, when the target day already has a lesson for that same agent
+(`latest_per_day` would otherwise just let the newer one shadow the older one).
+
 ### His "Today" checklist
 
 `render_today_checklist()` in `compass/ui.py`, called from `Home.py`'s student branch
