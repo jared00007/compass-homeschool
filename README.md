@@ -2051,6 +2051,31 @@ emotion-cache class sets the competing `flex` value). Titles now wrap at
 word breaks, never mid-word, at any viewport width -- a narrow window
 scrolls the board sideways instead of crushing it.
 
+## Every board card links back to its own full content
+
+"Can the stories actually be a link to the main page that holds the content
+of said activity? ... I expand it to view and there's a link that takes me
+to the content on the [subject] page for a deeper review." Each of
+`render_board_card`'s six kinds now ends its expander body with a
+`st.page_link` to wherever that story's real content already lives, via a
+new `_BOARD_DEEP_LINK` table (page, link label, the tab that content sits
+under -- `st.tabs` can't be pre-selected from a URL, so the destination tab
+is named in a caption underneath rather than jumped to automatically).
+
+The literal reading of the request -- a lesson links to its own subject
+page (Math, Science, English, History) -- turned out to be the wrong
+target: those four pages are pure planning tools (a "Plan a lesson" form,
+a mastery grid, a coverage graph); none of them render an already-planned
+lesson's actual content. That content -- objectives, materials, activities,
+the answer key -- already renders in full via `render_assessment_card`,
+inside Activity Log's own "To review" tab (every lesson that's `planned`,
+`submitted`, or `needs_revision` lands there). So every lesson card links
+there instead, regardless of subject. The other five kinds do have a real
+content view on their own subject page already: `life_skill`,
+`coding_module`, and `choice_topic` all link to Life Skills' Checklist tab;
+`project_step` and `travel_entry` (folded into Big Projects, same as
+everywhere else in the app) both link to Big Projects' Checklist tab.
+
 ## Tests
 
 ```bash

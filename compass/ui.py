@@ -2634,6 +2634,28 @@ def render_story_move_control(
                 st.rerun()
 
 
+# Where a story's own full content already renders elsewhere in the app --
+# the Math/Science/English/History pages are planning tools with no
+# per-lesson content view, so a lesson's real "deeper review" destination is
+# Activity Log's own review queue, not its subject page. (page, link label,
+# the tab that content lives under -- st.tabs can't be pre-selected from a
+# URL, so this is named rather than jumped to.)
+_BOARD_DEEP_LINK: dict[str, tuple[str, str, str]] = {
+    "lesson": ("pages/10_Activity_Log.py", "View full lesson", "To review"),
+    "life_skill": ("pages/6_Life_Skills.py", "View full details", "Checklist"),
+    "coding_module": ("pages/6_Life_Skills.py", "View full details", "Checklist"),
+    "choice_topic": ("pages/6_Life_Skills.py", "View full details", "Checklist"),
+    "project_step": ("pages/7_Big_Projects.py", "View full details", "Checklist"),
+    "travel_entry": ("pages/7_Big_Projects.py", "View full details", "Checklist"),
+}
+
+
+def _render_board_deep_link(kind: str) -> None:
+    page, label, tab_hint = _BOARD_DEEP_LINK[kind]
+    st.page_link(page, label=label, icon="🔍")
+    st.caption(f'Under the "{tab_hint}" tab.')
+
+
 def render_board_card(
     db: Database,
     kind: str,
@@ -2720,6 +2742,7 @@ def render_board_card(
                         ),
                         validate_schedule=_validate_lesson_move,
                     )
+                _render_board_deep_link(kind)
 
         elif kind == "life_skill":
             earned = bool(item["completed_on"])
@@ -2734,6 +2757,7 @@ def render_board_card(
                     set_active=lambda a, sid=item["id"]: db.set_life_skill_active(sid, a),
                     schedule=lambda s, sid=item["id"]: db.schedule_life_skill(sid, s),
                 )
+                _render_board_deep_link(kind)
 
         elif kind == "coding_module":
             earned = bool(item["completed_on"])
@@ -2748,6 +2772,7 @@ def render_board_card(
                     set_active=lambda a, mid=item["id"]: db.set_coding_module_active(mid, a),
                     schedule=lambda s, mid=item["id"]: db.schedule_coding_module(mid, s),
                 )
+                _render_board_deep_link(kind)
 
         elif kind == "choice_topic":
             label = (
@@ -2766,6 +2791,7 @@ def render_board_card(
                     )
                 else:
                     st.caption("Closed out — nothing left to move.")
+                _render_board_deep_link(kind)
 
         elif kind == "project_step":
             done = bool(item["completed_on"])
@@ -2782,6 +2808,7 @@ def render_board_card(
                     )
                 else:
                     st.caption("Done — nothing left to move.")
+                _render_board_deep_link(kind)
 
         elif kind == "travel_entry":
             title = md(item["title"]) if item["title"] else "Untitled trip"
@@ -2797,6 +2824,7 @@ def render_board_card(
                     )
                 else:
                     st.caption("Completed — nothing left to move.")
+                _render_board_deep_link(kind)
 
 
 # --- life skill cards: the catalog grid and its manager -------------------------

@@ -288,6 +288,12 @@ def test_a_planned_lesson_shows_on_the_board_with_a_move_control(monkeypatch, tm
     assert any("Locking In the Coordinate Plane" in label for label in labels)
     backlog_key = f"move_board_lesson_{lesson_id}_backlog_True"
     assert any(c.key == backlog_key for c in board_tab.checkbox)
+    # "Deeper review" link: a lesson's real full-content view lives in
+    # Activity Log's own review queue, not the Math/Science/English/History
+    # pages -- those are planning tools with nothing to show for a lesson
+    # that's already been generated.
+    captions = " ".join(c.value for c in board_tab.caption)
+    assert 'Under the "To review" tab.' in captions
 
 
 def test_a_life_skill_shows_on_the_board_with_a_move_control(monkeypatch, tmp_path):
@@ -304,6 +310,8 @@ def test_a_life_skill_shows_on_the_board_with_a_move_control(monkeypatch, tmp_pa
     assert any(skill["title"] in label for label in labels)
     backlog_key = f"move_board_ls_{skill['id']}_backlog_True"
     assert any(c.key == backlog_key for c in board_tab.checkbox)
+    captions = " ".join(c.value for c in board_tab.caption)
+    assert 'Under the "Checklist" tab.' in captions
 
 
 def test_a_backlogged_story_shows_in_its_epics_backlog_panel_section(monkeypatch, tmp_path):
