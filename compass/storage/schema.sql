@@ -290,7 +290,14 @@ CREATE TABLE IF NOT EXISTS choice_topics (
                 CHECK (status IN ('proposed', 'approved', 'active', 'done', 'declined')),
     proposed_on TEXT NOT NULL DEFAULT (date('now')),
     decided_on  TEXT,
-    parent_note TEXT NOT NULL DEFAULT ''
+    parent_note TEXT NOT NULL DEFAULT '',
+    -- Backlog vs visible to him -- same gate life_skills.active already has,
+    -- unrelated to `status`: a proposed/approved/active topic can still be
+    -- parked out of his view. Defaults to 1 (visible), same as life_skills'
+    -- own default -- unlike lessons/project_steps, a new topic isn't backlog
+    -- by default, since this feature never hid anything before this column
+    -- existed and shouldn't start now just because it can.
+    active      INTEGER NOT NULL DEFAULT 1
 );
 
 -- ---------------------------------------------------------------------------

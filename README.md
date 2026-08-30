@@ -1493,10 +1493,26 @@ hard-locked, same parity as Life Skills), and an already-done step never offers 
 to backlog" (checking a box he's finished off and hiding it from him would be a
 strange thing to let happen by accident).
 
+**Choice Topics gets the same Backlog gate, not a merge with Life Skills.** Both are
+parent-curated lists a student pulls stories from, which reads at first glance like the
+same feature — but they diverge in enough places (Life Skills' four-tier compliance
+accounting, its own `active`/`held_back` semantics already wired through grading; Choice
+Topics' lighter propose/approve/decline flow with no tier accounting at all) that
+actually merging the tables and their logic would mean reconciling two different review
+models rather than lining up one gate. So only the gate moved over: `choice_topics.active`
+mirrors `life_skills.active` and `project_steps.active` exactly — `Database.
+set_choice_topic_active(topic_id, active)` flips it without touching `status`,
+`decided_on`, or `parent_note`, and the page's own topic list filters to `active OR
+status in ("done", "declined")` (a closed-out topic stays visible regardless of where
+it's parked, the same "never hide a finished thing" rule the other two gates use). New
+topics default `active=True`, matching Life Skills' own default rather than Big
+Project steps' backlog-by-default one — Choice Topics never hid anything from Landon
+before this, so nothing should suddenly disappear the day the column ships.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 964 tests, ~70s, no API key needed
+python -m pytest tests/ -q      # 993 tests, ~90s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

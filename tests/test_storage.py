@@ -1036,6 +1036,66 @@ def test_set_life_skill_active_toggles_visibility_without_touching_completion(db
     assert skill["completed_on"] is not None
 
 
+# --- Choice Topics: the same active/backlog gate life_skills already has --------
+
+
+def test_add_choice_topic_defaults_to_active(db, student):
+    """Unlike lessons/project_steps, this feature never hid anything before
+    the `active` column existed -- a freshly proposed topic stays exactly
+    as visible as it always was."""
+    topic_id = db.add_choice_topic(student["id"], "Learn guitar chords")
+    topic = db.list_choice_topics(student["id"])[0]
+    assert topic["id"] == topic_id
+    assert topic["active"] == 1
+
+
+def test_add_choice_topic_can_start_backlogged(db, student):
+    db.add_choice_topic(student["id"], "Learn guitar chords", active=False)
+    assert db.list_choice_topics(student["id"])[0]["active"] == 0
+
+
+def test_set_choice_topic_active_toggles_without_touching_status(db, student):
+    topic_id = db.add_choice_topic(student["id"], "Learn guitar chords")
+    db.set_choice_status(topic_id, "approved")
+    db.set_choice_topic_active(topic_id, False)
+    topic = db.list_choice_topics(student["id"])[0]
+    assert topic["active"] == 0
+    assert topic["status"] == "approved"
+    db.set_choice_topic_active(topic_id, True)
+    topic = db.list_choice_topics(student["id"])[0]
+    assert topic["active"] == 1
+    assert topic["status"] == "approved"
+
+
+def test_a_database_created_before_the_choice_topic_active_column_gets_migrated(tmp_path):
+    """`active` shipped after some real databases already existed, with
+    choice topics a student could already see. The migration backfills it
+    to 1 for every pre-existing row -- an already-visible topic must not
+    suddenly vanish into the Backlog the moment this column gets added."""
+    path = tmp_path / "pre_active.db"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE choice_topics ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL, "
+        "title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', "
+        "category TEXT NOT NULL DEFAULT '', "
+        "credit_subject TEXT NOT NULL DEFAULT 'occupational_education', "
+        "status TEXT NOT NULL DEFAULT 'proposed', "
+        "proposed_on TEXT NOT NULL DEFAULT (date('now')), "
+        "decided_on TEXT, parent_note TEXT NOT NULL DEFAULT '')"
+    )
+    conn.execute("INSERT INTO choice_topics (student_id, title) VALUES (1, 'Old topic')")
+    conn.commit()
+    conn.close()
+
+    migrated = Database(path)
+    try:
+        topic = migrated.conn.execute("SELECT * FROM choice_topics").fetchone()
+        assert topic["active"] == 1
+    finally:
+        migrated.close()
+
+
 def test_scheduling_a_life_skill_makes_it_due_on_and_after_that_day(db, student):
     skill_id = db.add_life_skill(student["id"], "Change a tire", "Vehicle")
     db.schedule_life_skill(skill_id, "2026-08-24")

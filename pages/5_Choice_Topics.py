@@ -61,9 +61,19 @@ with add_tab:
     if not topics:
         st.info("The list is empty. Add whatever he's into this week.")
 
-    for topic in topics:
+    # Backlog vs visible to him, same gate Life Skills and lessons already
+    # have, unrelated to `status` -- a proposed/approved/active topic can
+    # still be parked out of his view. He never sees a backlogged topic at
+    # all; a parent sees everything, with a way to move each one back and
+    # forth (see the "🗄️"/"➡️" button below).
+    visible_topics = (
+        topics if is_parent()
+        else [t for t in topics if t["active"] or t["status"] in ("done", "declined")]
+    )
+
+    for topic in visible_topics:
         with st.container(border=True):
-            columns = st.columns([4, 1, 1])
+            columns = st.columns([4, 1, 1, 1])
             badge = {
                 "proposed": "🕓 proposed",
                 "approved": "👍 approved",
@@ -71,6 +81,8 @@ with add_tab:
                 "done": "✅ done",
                 "declined": "🚫 declined",
             }[topic["status"]]
+            if not topic["active"]:
+                badge += " · 🗄️ backlogged"
             category = f" · *{md(topic['category'])}*" if topic["category"] else ""
             columns[0].markdown(f"**{md(topic['title'])}**{category} — {badge}")
             if topic["description"]:
@@ -102,6 +114,20 @@ with add_tab:
                 db.delete_choice_topic(topic["id"])
                 st.rerun()
 
+            # Freedom to move a topic between Backlog and visible whenever a
+            # parent decides -- same flow lessons and project steps already
+            # have. Not offered on a closed-out topic: a done or declined
+            # one is already exempt from the visibility filter above, so
+            # there's nothing left for this button to do to it.
+            if is_parent() and topic["status"] not in ("done", "declined"):
+                if topic["active"]:
+                    if columns[3].button("🗄️ Backlog", key=f"backlog_topic_{topic['id']}"):
+                        db.set_choice_topic_active(topic["id"], False)
+                        st.rerun()
+                elif columns[3].button("➡️ Un-backlog", key=f"unbacklog_topic_{topic['id']}"):
+                    db.set_choice_topic_active(topic["id"], True)
+                    st.rerun()
+
 if log_tab is not None:
   with log_tab:
     st.subheader("Log time on a choice topic")
@@ -109,13 +135,16 @@ if log_tab is not None:
         "These hours count toward the 1,000-hour floor in full. The compliance page "
         "shows Tier 3's share against the family guideline — a warning, never a block."
     )
-    active = [t for t in topics if t["status"] in ("approved", "active", "done")]
-    if not active:
+    # Named for eligibility-to-log, not the new `active` backlog column --
+    # a backlogged topic still logs fine (a parent parking it doesn't
+    # retroactively undo hours already worth logging).
+    loggable = [t for t in topics if t["status"] in ("approved", "active", "done")]
+    if not loggable:
         st.info("Approve a topic first and it'll show up here.")
     else:
         with st.form("log_choice"):
             topic = st.selectbox(
-                "Topic", active, format_func=lambda t: f"{t['title']} ({t['status']})"
+                "Topic", loggable, format_func=lambda t: f"{t['title']} ({t['status']})"
             )
             columns = st.columns(3)
             occurred_on = columns[0].date_input("Date", value=date.today())

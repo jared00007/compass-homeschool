@@ -1365,6 +1365,10 @@ class Database:
         self._ensure_column("project_steps", "active", "INTEGER NOT NULL DEFAULT 1")
         self._ensure_column("activities", "course_id", "INTEGER REFERENCES courses(id) ON DELETE SET NULL")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_activities_course ON activities (course_id)")
+        # Default 1 for the same reason project_steps' own migration is: a
+        # topic that already existed before this column did stays exactly
+        # as visible as it always was.
+        self._ensure_column("choice_topics", "active", "INTEGER NOT NULL DEFAULT 1")
         # Runs before the migration below, not after: that migration inserts
         # travel_entries rows (from the old park_visits table) through
         # add_travel_entry, which writes every one of these columns -- if
@@ -2839,11 +2843,18 @@ class Database:
         description: str = "",
         category: str = "",
         credit_subject: str = "occupational_education",
+        active: bool = True,
     ) -> int:
+        """`active=True` by default -- unlike lessons/project_steps, this
+        feature never hid anything from him before this column existed, so
+        a freshly proposed topic stays exactly as visible as it always was.
+        A parent parks one in the backlog explicitly (see
+        `set_choice_topic_active`) if they'd rather he not see it yet."""
         cur = self.conn.execute(
             "INSERT INTO choice_topics "
-            "(student_id, title, description, category, credit_subject) VALUES (?, ?, ?, ?, ?)",
-            (student_id, title, description, category, credit_subject),
+            "(student_id, title, description, category, credit_subject, active) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (student_id, title, description, category, credit_subject, int(active)),
         )
         self.conn.commit()
         return int(cur.lastrowid)
@@ -2853,6 +2864,16 @@ class Database:
             "UPDATE choice_topics SET status = ?, decided_on = date('now'), "
             "parent_note = CASE WHEN ? != '' THEN ? ELSE parent_note END WHERE id = ?",
             (status, parent_note, parent_note, topic_id),
+        )
+        self.conn.commit()
+
+    def set_choice_topic_active(self, topic_id: int, active: bool) -> None:
+        """Backlog vs visible to him -- unrelated to `status`, same as
+        `set_life_skill_active`/`set_project_step_active` are unrelated to
+        their own done-state. Never touches `status`, `decided_on`, or
+        `parent_note` -- this is purely a visibility flag layered on top."""
+        self.conn.execute(
+            "UPDATE choice_topics SET active = ? WHERE id = ?", (int(active), topic_id)
         )
         self.conn.commit()
 
