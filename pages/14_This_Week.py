@@ -93,6 +93,33 @@ def _idea_options(db, student_id: int, key: str) -> list[tuple[str, str]]:
 _WEEKDAY_COLORS = theme.PRINTED_COMIC_WEEKDAY_COLORS
 _WEEKDAY_PAPER = theme.PRINTED_COMIC_PAPER
 
+# `st.columns` splits its parent width into equal fractions with no floor --
+# on a real laptop-width browser (not just the wide monitor a screenshot
+# gets taken on), 5 even columns squeezes each card's expander label
+# narrower than a single long word, forcing it to wrap letter-by-letter
+# instead of at word breaks. Real Kanban boards (Trello, Jira) solve this
+# by giving each column a fixed minimum width and letting the *row* scroll
+# horizontally rather than letting columns keep shrinking -- this CSS does
+# the same, scoped to any st.container(key=...) whose key starts with
+# "board_days_row" (the day board) or "backlog_row_" (one per Backlog
+# panel epic's own row of cards), both wrapped around a `st.columns` call
+# below.
+_BOARD_SCROLL_CSS = """
+<style>
+div[class*="st-key-board_days_row"] div[data-testid="stHorizontalBlock"],
+div[class*="st-key-backlog_row_"] div[data-testid="stHorizontalBlock"] {
+  overflow-x: auto !important;
+  flex-wrap: nowrap !important;
+  padding-bottom: 6px;
+}
+div[class*="st-key-board_days_row"] div[data-testid="stColumn"],
+div[class*="st-key-backlog_row_"] div[data-testid="stColumn"] {
+  min-width: 220px !important;
+  flex: 0 0 220px !important;
+}
+</style>
+"""
+
 board_tab, review_tab, plan_tab = st.tabs(["📋 Board", "Review this week", "Plan next week"])
 
 # --- Board: every subject's stories, one week, one place ------------------------
@@ -142,34 +169,18 @@ with board_tab:
     all_lessons_for_board = db.list_lessons(student["id"], limit=200)
     today_iso_for_board = date.today().isoformat()
 
-    # Product Backlog panel (left) + the sprint board itself (right) --
-    # every story currently parked, any week it originally came from, is
-    # grouped by epic here rather than sitting in a sixth day-column. The
-    # move control on each card is exactly what "assign" means: opening it
-    # is how a parked story gets a day (or moves to a different one),
-    # nothing new to build for that beyond a new place to put the card.
-    panel_col, board_col = st.columns([1, 3], gap="large")
-
-    with panel_col:
-        st.markdown("**📋 Product Backlog**")
-        backlog_by_epic = weekly.group_backlog_by_epic(board["backlog"])
-        total_backlogged = sum(len(items) for items in backlog_by_epic.values())
-        if not total_backlogged:
-            st.caption("Nothing parked.")
-        for epic in weekly.EPIC_ORDER:
-            items = backlog_by_epic.get(epic, [])
-            if not items:
-                continue
-            icon = EPIC_ICONS.get(epic, "📘")
-            with st.expander(f"{icon} {epic} ({len(items)})", expanded=True):
-                for kind, item in items:
-                    render_board_card(
-                        db, kind, item,
-                        today_iso=today_iso_for_board,
-                        all_lessons_for_collision=all_lessons_for_board,
-                    )
-
-    with board_col:
+    # The sprint board itself, full width -- five columns is already a
+    # tight squeeze on a laptop-width screen; splitting that same width
+    # again with a side-by-side Backlog panel left every card title
+    # wrapping character-by-character in practice, not just word-by-word.
+    # The Product Backlog panel goes full-width below instead (see the
+    # bottom of this block) so both get the room an expander's title
+    # actually needs. Wrapped in a keyed container so _BOARD_SCROLL_CSS
+    # can give this specific row of columns a real minimum width and let
+    # it scroll horizontally, rather than keep shrinking on a narrower
+    # window -- the same fix real Kanban boards use.
+    st.markdown(_BOARD_SCROLL_CSS, unsafe_allow_html=True)
+    with st.container(key="board_days_row"):
         board_columns = st.columns(5)
         for index, (column, day_date) in enumerate(zip(board_columns, board_days)):
             color = _WEEKDAY_COLORS[index]
@@ -194,6 +205,41 @@ with board_tab:
                         all_lessons_for_collision=all_lessons_for_board,
                         accent_color=color,
                     )
+
+    st.divider()
+
+    # Product Backlog, full width below the board -- every story currently
+    # parked, any week it originally came from, grouped by epic. The move
+    # control on each card is exactly what "assign" means: opening it is
+    # how a parked story gets a day (or moves to a different one), nothing
+    # new to build for that beyond a new place to put the card.
+    st.markdown("**📋 Product Backlog**")
+    backlog_by_epic = weekly.group_backlog_by_epic(board["backlog"])
+    total_backlogged = sum(len(items) for items in backlog_by_epic.values())
+    if not total_backlogged:
+        st.caption("Nothing parked.")
+    for epic in weekly.EPIC_ORDER:
+        items = backlog_by_epic.get(epic, [])
+        if not items:
+            continue
+        icon = EPIC_ICONS.get(epic, "📘")
+        with st.expander(f"{icon} {epic} ({len(items)})", expanded=True):
+            # A row of columns, not one long vertical stack -- an epic
+            # backlog can run to a dozen items, and this is the same
+            # width problem the day board just fixed: cramming every
+            # card into one column, however wide, is worse than
+            # spreading them the way the board itself does. Same keyed
+            # min-width-plus-scroll treatment as the day board, one row
+            # per epic (the key must be unique per epic, not shared).
+            with st.container(key=f"backlog_row_{epic.replace(' ', '_')}"):
+                backlog_columns = st.columns(min(len(items), 4))
+                for position, (kind, item) in enumerate(items):
+                    with backlog_columns[position % len(backlog_columns)]:
+                        render_board_card(
+                            db, kind, item,
+                            today_iso=today_iso_for_board,
+                            all_lessons_for_collision=all_lessons_for_board,
+                        )
 
 # --- Review this week ----------------------------------------------------------
 

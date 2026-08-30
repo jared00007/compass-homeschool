@@ -2018,6 +2018,39 @@ always-visible on the card face -- a day with several stories reads as a
 handful of one-line rows, not a wall of open detail, matching what
 already worked well for the epic groupings.
 
+## The Board stops wrapping titles mid-word on a real laptop screen
+
+A screenshot of the actual running app -- not the wide monitor a mockup
+gets built on -- showed titles breaking mid-word ("Operatio ns", "Showdo
+wn", "Pressur e"): "we need to make this better, the viewing is terrible
+here." The `st.columns([1, 3])` split from the previous section put the
+Product Backlog panel and the five-day board side by side, so each day
+column only ever got a sliver of the page; even after making both
+sections full-width (board on top, Backlog below, stacked instead of
+side by side), a follow-up "improve it to the maximum" stress-test at a
+realistic 1280px laptop width reproduced the same wrapping -- five equal
+`st.columns(5)` fractions of even a full-width row still squeezes a long
+title narrower than one of its own words has room for. `st.columns` has
+no minimum-width floor; it just keeps dividing evenly as the viewport
+shrinks.
+
+The fix borrows the same move Trello and Jira make: give each column a
+fixed minimum width and let the *row* scroll horizontally instead of
+letting columns keep shrinking. Both the day board and each epic's
+backlog-card row are wrapped in `st.container(key=...)` (`"board_days_row"`,
+`"backlog_row_<epic>"`), and a `_BOARD_SCROLL_CSS` block targets them by
+that key -- the same `div[class*="st-key-..."]` pattern Home.py and the
+Life Skills page already use to scope custom CSS to one Streamlit
+container. One wrinkle the first pass missed: Streamlit renders each
+`st.columns()` call inside an extra `stLayoutWrapper` div, so a `>`
+direct-child selector never matches the actual `stHorizontalBlock` --
+the CSS has to reach it as a descendant, not a child. With that fixed,
+each column gets `min-width: 220px; flex: 0 0 220px` and the row gets
+`overflow-x: auto; flex-wrap: nowrap`, both `!important` (Streamlit's own
+emotion-cache class sets the competing `flex` value). Titles now wrap at
+word breaks, never mid-word, at any viewport width -- a narrow window
+scrolls the board sideways instead of crushing it.
+
 ## Tests
 
 ```bash
