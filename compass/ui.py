@@ -28,6 +28,7 @@ between them. In the order they appear:
     student's own lesson view       student_lesson_view, render_past_lessons
     subject icons / Friday / daily  SUBJECT_ICONS, checklist, morning routine
     life skill cards                the catalog grid + its manager
+    choice topics (Tier 3)          render_choice_topics_section, folded into Life Skills
     vocabulary review               the multiple-choice quiz, auto-graded
     API availability                api_status_banner
     first-day-of-school celebration a once-a-year full-page takeover
@@ -106,6 +107,11 @@ def page_setup(title: str, icon: str = "🧭") -> tuple[Database, dict[str, Any]
     st.set_page_config(page_title=f"Compass — {title}", page_icon=icon, layout="wide")
     db = get_db()
     student = db.ensure_default_student()
+    # Always present, not opt-in -- the Travel Journal runs all year long,
+    # same as any other Big Project, so there's no button gating whether
+    # its folder exists (see Database.ensure_travel_log_project). Cheap:
+    # a single lookup by kind once it's already there.
+    db.ensure_travel_log_project(student["id"])
     # Before anything renders, so the page never flashes unstyled.
     st.markdown(theming.css(), unsafe_allow_html=True)
     _sidebar(db, student)
@@ -135,6 +141,7 @@ def _sidebar(db: Database, student: dict[str, Any]) -> None:
         _profile_control(db, student)
         st.divider()
         _mode_control(db)
+    _hide_folded_in_nav()
     _hide_parent_only_nav()
 
 
@@ -151,6 +158,30 @@ _PARENT_ONLY_PAGES = (
     "This_Week",
     "Model_Costs",
 )
+
+# Folded into another page rather than removed -- Choice Topics now lives as
+# a tab on Life Skills (same "his to pick" list, same active/backlog gate),
+# and the Travel Journal always sits inside Big Projects as its own project
+# (see Database.ensure_travel_log_project). Hidden from the top-level nav
+# for both of you, not just for him -- the whole point was fewer sidebar
+# entries, and a parent reaches both through the page that now hosts them.
+# Neither page file is deleted here for Travels (still real, still linked to
+# from the Big Projects card); Choice Topics' own page is gone entirely --
+# see render_choice_topics_section below.
+_FOLDED_IN_PAGES = (
+    "Choice_Topics",
+    "Landons_Travels",
+)
+
+
+def _hide_folded_in_nav() -> None:
+    selector = ", ".join(
+        f'a[data-testid="stSidebarNavLink"][href$="/{slug}"]' for slug in _FOLDED_IN_PAGES
+    )
+    st.markdown(
+        f"<style>{selector} {{ display: none !important; }}</style>",
+        unsafe_allow_html=True,
+    )
 
 
 def _hide_parent_only_nav() -> None:
@@ -2043,7 +2074,7 @@ FRIDAY_PLAN_KINDS: dict[str, tuple[str, str, str | None, str | None]] = {
     ),
     "choice_topics": (
         "⭐", "Choice Topics — work on a topic",
-        "pages/5_Choice_Topics.py", "Choice Topics",
+        "pages/6_Life_Skills.py", "Life Skills",
     ),
     "custom": ("📝", "", None, None),
 }
@@ -2627,6 +2658,174 @@ def render_life_skill_catalog_manager(db: Database, skills: list[dict[str, Any]]
                 elif skill["scheduled_for"]:
                     db.schedule_life_skill(skill["id"], None)
                     st.rerun()
+
+
+# --- choice topics: Tier 3, folded into the Life Skills page --------------------
+
+_CHOICE_STATUS_FLOW = {
+    "proposed": ("Approve", "approved"),
+    "approved": ("Start", "active"),
+    "active": ("Mark done", "done"),
+}
+
+
+def render_choice_topics_section(db: Database, student: dict[str, Any]) -> None:
+    """Tier 3 -- freedom of choice. Used to be its own top-level page
+    (pages/5_Choice_Topics.py); folded in here as a Life Skills tab instead,
+    on the same "his to pick, light parent approval" reasoning that already
+    put the two side by side -- purely a nav simplification. The underlying
+    `choice_topics` table, its status flow, and its own `active` backlog
+    gate are completely untouched; only where the page lives moved.
+    """
+    st.caption(
+        "A running list he curates, with light parent approval. No prerequisite logic, no "
+        "agent picking the 'optimal' next step — this is the counterweight to Tier 1's "
+        "structure. Hours still count."
+    )
+    with st.form("add_choice", clear_on_submit=True):
+        st.markdown("**Add a topic** — goes on the list for a parent to review and approve.")
+        columns = st.columns([2, 1, 1])
+        title = columns[0].text_input("What do you want to learn?")
+        category = columns[1].text_input("Category", placeholder="e.g. coding, music, cars")
+        credit_subject = columns[2].selectbox(
+            "Credits toward",
+            subjects.SUBJECT_KEYS,
+            index=subjects.SUBJECT_KEYS.index("occupational_education"),
+            format_func=subjects.label,
+        )
+        description = st.text_area("Anything else about it?", height=80)
+        if st.form_submit_button("Add to the list", type="primary") and title.strip():
+            db.add_choice_topic(
+                student["id"],
+                title.strip(),
+                description.strip(),
+                category.strip(),
+                credit_subject,
+            )
+            st.rerun()
+
+    topics = db.list_choice_topics(student["id"])
+    if not topics:
+        st.info("The list is empty. Add whatever he's into this week.")
+
+    # Backlog vs visible to him, same gate Life Skills and lessons already
+    # have, unrelated to `status` -- a proposed/approved/active topic can
+    # still be parked out of his view. He never sees a backlogged topic at
+    # all; a parent sees everything, with a way to move each one back and
+    # forth (see the "🗄️"/"➡️" button below).
+    visible_topics = (
+        topics if is_parent()
+        else [t for t in topics if t["active"] or t["status"] in ("done", "declined")]
+    )
+
+    for topic in visible_topics:
+        with st.container(border=True):
+            columns = st.columns([4, 1, 1, 1])
+            badge = {
+                "proposed": "🕓 proposed",
+                "approved": "👍 approved",
+                "active": "🔥 active",
+                "done": "✅ done",
+                "declined": "🚫 declined",
+            }[topic["status"]]
+            if not topic["active"]:
+                badge += " · 🗄️ backlogged"
+            category_label = f" · *{md(topic['category'])}*" if topic["category"] else ""
+            columns[0].markdown(f"**{md(topic['title'])}**{category_label} — {badge}")
+            if topic["description"]:
+                columns[0].caption(md(topic["description"]))
+            columns[0].caption(f"Credits toward {subjects.label(topic['credit_subject'])}")
+            if topic["parent_note"]:
+                columns[0].caption(f"Parent: {md(topic['parent_note'])}")
+
+            # "Approve"/"Decline" are the actual review step -- he proposes,
+            # a parent decides, or the "light parent approval" this page
+            # promises is fiction and he's approving his own ideas. Once a
+            # topic clears that step, "Start"/"Mark done" are just his own
+            # progress tracking and stay open to either of you, same as a
+            # Life Skills checkbox.
+            awaiting_review = topic["status"] == "proposed"
+            action = _CHOICE_STATUS_FLOW.get(topic["status"])
+            if action and (not awaiting_review or is_parent()):
+                if columns[1].button(action[0], key=f"advance_{topic['id']}"):
+                    db.set_choice_status(topic["id"], action[1])
+                    st.rerun()
+            if awaiting_review:
+                if is_parent():
+                    if columns[2].button("Decline", key=f"decline_{topic['id']}"):
+                        db.set_choice_status(topic["id"], "declined")
+                        st.rerun()
+                else:
+                    columns[1].caption("Waiting on parent review")
+            elif columns[2].button("Remove", key=f"remove_{topic['id']}"):
+                db.delete_choice_topic(topic["id"])
+                st.rerun()
+
+            # Freedom to move a topic between Backlog and visible whenever a
+            # parent decides -- same flow lessons and project steps already
+            # have. Not offered on a closed-out topic: a done or declined
+            # one is already exempt from the visibility filter above, so
+            # there's nothing left for this button to do to it.
+            if is_parent() and topic["status"] not in ("done", "declined"):
+                if topic["active"]:
+                    if columns[3].button("🗄️ Backlog", key=f"backlog_topic_{topic['id']}"):
+                        db.set_choice_topic_active(topic["id"], False)
+                        st.rerun()
+                elif columns[3].button("➡️ Un-backlog", key=f"unbacklog_topic_{topic['id']}"):
+                    db.set_choice_topic_active(topic["id"], True)
+                    st.rerun()
+
+    if not is_parent():
+        return
+
+    st.divider()
+    st.subheader("Log time on a choice topic")
+    st.caption(
+        "These hours count toward the 1,000-hour floor in full. The compliance page "
+        "shows Tier 3's share against the family guideline — a warning, never a block."
+    )
+    # Named for eligibility-to-log, not the `active` backlog column -- a
+    # backlogged topic still logs fine (a parent parking it doesn't
+    # retroactively undo hours already worth logging).
+    loggable = [t for t in topics if t["status"] in ("approved", "active", "done")]
+    if not loggable:
+        st.info("Approve a topic first and it'll show up here.")
+        return
+
+    with st.form("log_choice"):
+        topic = st.selectbox(
+            "Topic", loggable, format_func=lambda t: f"{t['title']} ({t['status']})"
+        )
+        columns = st.columns(3)
+        occurred_on = columns[0].date_input("Date", value=date.today())
+        minutes = columns[1].number_input(
+            "Minutes", min_value=5, max_value=600, value=60, step=15
+        )
+        credit_subject = columns[2].selectbox(
+            "Credits toward",
+            subjects.SUBJECT_KEYS,
+            index=subjects.SUBJECT_KEYS.index(topic["credit_subject"])
+            if topic["credit_subject"] in subjects.SUBJECT_KEYS
+            else subjects.SUBJECT_KEYS.index("occupational_education"),
+            format_func=subjects.label,
+        )
+        note = st.text_input("What did he actually do?")
+        if st.form_submit_button("Log hours", type="primary"):
+            db.log_activity(
+                student_id=student["id"],
+                title=topic["title"],
+                tier=config.TIER_CHOICE,
+                primary_subject=credit_subject,
+                minutes=int(minutes),
+                subject_credits={credit_subject: int(minutes)},
+                occurred_on=occurred_on.isoformat(),
+                description=note,
+                source="choice",
+            )
+            if topic["status"] == "approved":
+                db.set_choice_status(topic["id"], "active")
+            st.success("Logged.")
+            st.rerun()
 
 
 # --- vocabulary review: multiple choice, auto-graded ---------------------------

@@ -1493,9 +1493,9 @@ hard-locked, same parity as Life Skills), and an already-done step never offers 
 to backlog" (checking a box he's finished off and hiding it from him would be a
 strange thing to let happen by accident).
 
-**Choice Topics gets the same Backlog gate, not a merge with Life Skills.** Both are
-parent-curated lists a student pulls stories from, which reads at first glance like the
-same feature — but they diverge in enough places (Life Skills' four-tier compliance
+**Choice Topics gets the same Backlog gate, not a table merge with Life Skills.** Both
+are parent-curated lists a student pulls stories from, which reads at first glance like
+the same feature — but they diverge in enough places (Life Skills' four-tier compliance
 accounting, its own `active`/`held_back` semantics already wired through grading; Choice
 Topics' lighter propose/approve/decline flow with no tier accounting at all) that
 actually merging the tables and their logic would mean reconciling two different review
@@ -1521,16 +1521,30 @@ purely organizational: a new `big_projects.kind` column (`'steps'`, the default 
 existing project already migrates in as, or `'travel_log'`) marks a project that has no
 `project_steps` rows at all and never will. `Database.ensure_travel_log_project
 (student_id)` creates the one `kind='travel_log'` row, found by `kind` rather than by
-title so a parent renaming it later can't spawn a duplicate; the "🧭 Fold in the Travel
-Journal" button on the Add/manage tab offers it once and hides itself once it exists.
-Its Checklist-tab card renders a trip-count summary and a link out to the real Travels
-page instead of a step list or the "chunk this into steps with AI" offer, and it's
-deliberately excluded from both the "add a step" project picker and the "work on this
-one this year" pick — the latter assumes an active project has steps with a next one
-due, which is never true for a travel log; Travel Journal keeps running on its own
-assignment schedule regardless of what's "active" among the step-based projects.
-Photo uploads and a printable trip read-out were floated as a future idea, not built
-here — this pass is just the folder.
+title so a parent renaming it later can't spawn a duplicate. Its Checklist-tab card
+renders a trip-count summary and a link out to the real Travels page instead of a step
+list or the "chunk this into steps with AI" offer, and it's deliberately excluded from
+both the "add a step" project picker and the "work on this one this year" pick — the
+latter assumes an active project has steps with a next one due, which is never true for
+a travel log; Travel Journal keeps running on its own assignment schedule regardless of
+what's "active" among the step-based projects. Photo uploads and a printable trip
+read-out were floated as a future idea, not built here — this pass is just the folder.
+
+**Both then got pulled out of the top-level sidebar entirely.** After seeing the two
+features above live, the follow-up ask was explicit: "choice and life skills are the
+same and the travel journal is really a big project... i want a consolidation of side
+bar menus." So `pages/5_Choice_Topics.py` is gone outright — its full UI (add-topic form,
+list, backlog toggle, log-time form) moved into `compass.ui.render_choice_topics_section`
+and now renders as a **"Student's Choice"** tab on the Life Skills page, right next to
+*Checklist*. `pages/9_Landons_Travels.py` stays a real, unchanged page (embedding its
+map/review-gate UI inline was judged too big a lift for a nav cleanup), but
+`Database.ensure_travel_log_project` is now called unconditionally from `page_setup()`
+on every page load — the Travel Log project is just always there from the very first
+launch, no button to click. Both pages' sidebar links are hidden unconditionally (for
+both of you, not just for him) via a small CSS rule in `compass.ui._hide_folded_in_nav`,
+the same mechanism `_hide_parent_only_nav` already used, just not gated on `is_parent()`
+this time. Every other entry point into either feature (Home's cards, the Friday plan
+picker, the Travel Log card's own link) was repointed rather than left dangling.
 
 ## Tests
 

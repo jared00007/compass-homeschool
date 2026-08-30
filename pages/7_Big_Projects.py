@@ -307,14 +307,17 @@ if log_tab is not None:
         "education -- so project time genuinely counts toward the compliance "
         "dashboard, not just the checklist."
     )
-    if not projects:
-        st.info("Add a project first -- there's nothing to log yet.")
+    all_steps = [
+        (project, step)
+        for project in projects
+        for step in db.list_project_steps(project["id"])
+    ]
+    if not all_steps:
+        # Not just "no projects" -- a fresh student always has at least the
+        # Travel Log folder now (see Database.ensure_travel_log_project),
+        # which never has steps of its own at all.
+        st.info("Add a project and a step first -- there's nothing to log yet.")
     else:
-        all_steps = [
-            (project, step)
-            for project in projects
-            for step in db.list_project_steps(project["id"])
-        ]
         with st.form("log_project_step"):
             project_step = st.selectbox(
                 "Step",
@@ -368,17 +371,6 @@ if manage_tab is not None:
         )
         if st.form_submit_button("Add project", type="primary") and title.strip():
             db.add_big_project(student["id"], title.strip(), vision.strip())
-            st.rerun()
-
-    has_travel_log = any(p["kind"] == "travel_log" for p in projects)
-    if not has_travel_log:
-        st.caption(
-            "Landon's Travels can also sit here as its own project folder -- "
-            "purely organizational, nothing about how travel entries work "
-            "changes."
-        )
-        if st.button("🧭 Fold in the Travel Journal", key="fold_in_travel_log"):
-            db.ensure_travel_log_project(student["id"])
             st.rerun()
 
     st.divider()

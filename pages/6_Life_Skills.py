@@ -24,6 +24,7 @@ from compass.ui import (
     is_parent,
     log_lesson_form,
     page_setup,
+    render_choice_topics_section,
     render_life_skill_cards,
     render_life_skill_catalog_manager,
     render_life_skill_plan,
@@ -35,7 +36,9 @@ st.title("🛠️ Core Life Skills")
 st.caption(
     "Budgeting, cooking, vehicle basics, communication. **You** decide what he learns "
     "here — there's no agent picking the next skill. The checklist unlocks gradually: "
-    "*Master list* is where you release more, at whatever pace fits the year."
+    "*Master list* is where you release more, at whatever pace fits the year. **Student's "
+    "Choice** (Tier 3) lives here too now -- a different flavor of the same idea, just "
+    "with him curating the list instead of you."
 )
 
 skills = db.list_life_skills(student["id"])
@@ -48,15 +51,25 @@ if not skills:
         st.rerun()
 
 if is_parent():
-    checklist_tab, plan_tab, log_tab, master_tab, manage_tab = st.tabs(
-        ["Checklist", "Plan a session", "Log time", "Master list", "Add a skill"]
+    checklist_tab, choice_tab, plan_tab, log_tab, master_tab, manage_tab = st.tabs(
+        ["Checklist", "Student's Choice", "Plan a session", "Log time", "Master list", "Add a skill"]
     )
 else:
-    checklist_tab = st.container()
+    checklist_tab, choice_tab = st.container(), st.container()
     plan_tab = log_tab = master_tab = manage_tab = None
 
 with checklist_tab:
     render_life_skill_cards(db, skills, can_edit=is_parent())
+
+with choice_tab:
+    if not is_parent():
+        # No tab strip to label this section in student view (checklist_tab
+        # and choice_tab are just two plain containers stacked on one page)
+        # -- a header here is the only thing marking where one ends and the
+        # other begins.
+        st.divider()
+        st.subheader("⭐ Student's Choice")
+    render_choice_topics_section(db, student)
 
 if plan_tab is not None:
   with plan_tab:

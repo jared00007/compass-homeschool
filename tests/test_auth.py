@@ -308,7 +308,7 @@ def test_student_view_hides_the_parent_only_nav_tabs(monkeypatch):
     for slug in ui._PARENT_ONLY_PAGES:
         assert f'href$="/{slug}"' in css
     # And the subjects/tiers he does use must never be targeted.
-    for kept in ("Home", "Math", "Choice_Topics", "Life_Skills", "Big_Projects", "Check_In"):
+    for kept in ("Home", "Math", "Life_Skills", "Big_Projects", "Check_In"):
         assert f'href$="/{kept}"' not in css
 
 
@@ -331,3 +331,31 @@ def test_parent_view_leaves_the_nav_untouched(monkeypatch):
     ui._hide_parent_only_nav()
 
     assert not written, "parent view must never hide nav tabs"
+
+
+def test_folded_in_pages_are_hidden_from_the_nav_for_both_of_you(monkeypatch):
+    """Choice Topics (now a Life Skills tab) and Landon's Travels (now
+    always inside Big Projects, see Database.ensure_travel_log_project)
+    are hidden from the sidebar for a parent too -- unlike _PARENT_ONLY_PAGES,
+    which only hides from him, this one isn't gated by is_parent() at all."""
+    import compass.ui as ui
+
+    written: list[str] = []
+
+    class Recorder:
+        def __getattr__(self, _name):
+            def record(*args, **kwargs):
+                for arg in args:
+                    if isinstance(arg, str):
+                        written.append(arg)
+                return Recorder()
+            return record
+
+    monkeypatch.setattr(ui, "st", Recorder())
+    ui._hide_folded_in_nav()
+
+    css = "\n".join(written)
+    for slug in ui._FOLDED_IN_PAGES:
+        assert f'href$="/{slug}"' in css
+    for kept in ("Home", "Math", "Life_Skills", "Big_Projects", "Check_In"):
+        assert f'href$="/{kept}"' not in css

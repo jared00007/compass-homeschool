@@ -241,29 +241,19 @@ def test_travel_log_is_excluded_from_the_add_a_step_project_picker(monkeypatch, 
     assert ordinary_id  # sanity: an ordinary project really was added
 
 
-def test_fold_in_travel_journal_button_creates_the_project(monkeypatch, tmp_path):
+def test_the_travel_log_project_exists_automatically_for_a_brand_new_student(monkeypatch, tmp_path):
+    """Always present, not opt-in -- page_setup calls
+    Database.ensure_travel_log_project on every load now, so a family never
+    has to find and click a button to get it; it's just there from the
+    very first page view, same as the Travel Journal itself always was."""
     db_path = tmp_path / "projects.db"
     db = Database(db_path)
     student = db.ensure_default_student()
     db.close()
 
-    at = _open_checklist_tab(monkeypatch, db_path)
-    at.button(key="fold_in_travel_log").click().run()
+    _open_checklist_tab(monkeypatch, db_path)
 
     db = Database(db_path)
     projects = db.list_big_projects(student["id"])
     db.close()
     assert any(p["kind"] == "travel_log" for p in projects)
-
-
-def test_fold_in_travel_journal_button_is_hidden_once_already_folded_in(monkeypatch, tmp_path):
-    db_path = tmp_path / "projects.db"
-    db = Database(db_path)
-    student = db.ensure_default_student()
-    db.ensure_travel_log_project(student["id"])
-    db.close()
-
-    at = _open_checklist_tab(monkeypatch, db_path)
-
-    markdowns = [m.value for m in at.markdown]
-    assert not any("Fold in the Travel Journal" in m for m in markdowns)

@@ -2,6 +2,11 @@
 steps, and Life Skills all already have. A topic can be parked out of
 Landon's own view regardless of its approval status, and a parent moves it
 back and forth freely.
+
+Choice Topics used to be its own top-level page; it's now a "Student's
+Choice" tab on pages/6_Life_Skills.py (see compass.ui.render_choice_topics_section)
+-- these tests moved with it. The underlying choice_topics table and its
+own status flow are untouched by that move.
 """
 
 from __future__ import annotations
@@ -16,7 +21,7 @@ from compass.storage.db import Database
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HOME_PATH = str(REPO_ROOT / "Home.py")
-CHOICE_TOPICS_PATH = str(REPO_ROOT / "pages" / "5_Choice_Topics.py")
+LIFE_SKILLS_PATH = str(REPO_ROOT / "pages" / "6_Life_Skills.py")
 
 
 def _open(monkeypatch, db_path, *, as_parent=True):
@@ -26,7 +31,7 @@ def _open(monkeypatch, db_path, *, as_parent=True):
     if as_parent:
         at.session_state["parent_unlocked"] = True
     at.run(timeout=30)
-    at.switch_page(CHOICE_TOPICS_PATH)
+    at.switch_page(LIFE_SKILLS_PATH)
     at.run(timeout=30)
     assert not at.exception, [e.message for e in at.exception]
     return at
@@ -124,3 +129,19 @@ def test_backlog_toggle_is_not_offered_on_a_done_topic(monkeypatch, tmp_path):
     keys = {b.key for b in at.button}
     assert f"backlog_topic_{topic_id}" not in keys
     assert f"unbacklog_topic_{topic_id}" not in keys
+
+
+def test_choice_topics_no_longer_has_its_own_page(monkeypatch, tmp_path):
+    assert not (REPO_ROOT / "pages" / "5_Choice_Topics.py").exists()
+
+
+def test_choice_topics_link_is_hidden_from_the_sidebar_for_a_parent_too(monkeypatch, tmp_path):
+    db_path = tmp_path / "topics.db"
+    db = Database(db_path)
+    db.ensure_default_student()
+    db.close()
+
+    at = _open(monkeypatch, db_path, as_parent=True)
+
+    markdowns = [m.value for m in at.markdown]
+    assert any('Choice_Topics' in m and "display: none" in m for m in markdowns)

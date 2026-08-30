@@ -327,11 +327,9 @@ if not is_parent():
             """,
             unsafe_allow_html=True,
         )
-        extra_columns = st.columns(4)
+        extra_columns = st.columns(2)
         extra_columns[0].page_link("pages/7_Big_Projects.py", label="Big Projects", icon="🎬")
         extra_columns[1].page_link("pages/6_Life_Skills.py", label="Life Skills", icon="🛠️")
-        extra_columns[2].page_link("pages/5_Choice_Topics.py", label="Choice Topics", icon="⭐")
-        extra_columns[3].page_link("pages/9_Landons_Travels.py", label="Travels", icon="🧭")
 
     this_week_start = weekly.week_start()
     this_week_end = (this_week_start + timedelta(days=4)).isoformat()  # Friday
@@ -580,7 +578,10 @@ if not is_parent():
                         st.markdown(f"- {md(topic['title'])}")
                 else:
                     st.caption("Nothing yet — add something you want to learn.")
-                st.page_link("pages/5_Choice_Topics.py", label="Add a topic", icon="➡️")
+                # Lives inside Life Skills now, its own "Student's Choice"
+                # tab -- no page_link can jump straight to a specific tab,
+                # so this just opens the page itself.
+                st.page_link("pages/6_Life_Skills.py", label="Open Life Skills", icon="➡️")
 
         render_today_checklist(db, student)
 
