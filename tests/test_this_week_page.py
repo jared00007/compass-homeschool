@@ -296,6 +296,53 @@ def test_a_planned_lesson_shows_on_the_board_with_a_move_control(monkeypatch, tm
     assert 'Under the "To review" tab.' in captions
 
 
+def test_moving_a_story_to_a_different_week_shows_a_notice_not_just_a_vanish(
+    monkeypatch, tmp_path
+):
+    """A parent moving a backlogged lesson onto a date that lands in a
+    *different* week (reported directly: "i moved two math lessons from
+    backlog to their own dates... and they have disappeared") must never
+    just vanish from the board with no explanation -- board_for_week only
+    ever returns the one week it's asked for, so the card leaving the
+    currently-viewed week is correct, but it needs to say so. This can't
+    be `st.toast` -- confirmed against this app's actual Streamlit version
+    that a toast fired in the same run as the move control's own
+    `st.rerun()` never reaches the browser at all -- so the notice has to
+    survive via session_state and render as a real `st.info` instead.
+    """
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="Locking In the Coordinate Plane",
+        payload={"title": "Locking In the Coordinate Plane", "activities": []},
+        metadata={
+            "planned_for": TARGET_MONDAY.isoformat(),
+            "week_start": TARGET_MONDAY.isoformat(),
+            "held_back": True,
+        },
+    )
+    db.close()
+
+    at, board_tab = _open_board_tab(monkeypatch, db_path)
+    date_key = f"move_board_lesson_{lesson_id}_date_{TARGET_MONDAY.isoformat()}"
+    date_widget = [d for d in board_tab.date_input if d.key == date_key][0]
+    next_week_date = TARGET_MONDAY + timedelta(days=8)  # a Tuesday, the week after
+    date_widget.set_value(next_week_date).run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    board_tab = _board_tab(at)
+    infos = [i.value for i in board_tab.info]
+    assert any(
+        next_week_date.isoformat() in text and "next week's board" in text for text in infos
+    ), infos
+    # And the notice is one-shot -- it must not still be there after another run.
+    at.run(timeout=30)
+    board_tab = _board_tab(at)
+    assert not board_tab.info
+
+
 def test_a_life_skill_shows_on_the_board_with_a_move_control(monkeypatch, tmp_path):
     db_path = tmp_path / "week.db"
     db = Database(db_path)

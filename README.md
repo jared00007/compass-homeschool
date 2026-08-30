@@ -2076,6 +2076,37 @@ content view on their own subject page already: `life_skill`,
 `project_step` and `travel_entry` (folded into Big Projects, same as
 everywhere else in the app) both link to Big Projects' Checklist tab.
 
+## A story moved across weeks says so, instead of just vanishing
+
+"I moved two math lessons from backlog to their own dates, 9/2 and 9/3, and
+they have disappeared" -- followed by a sharper restatement once the cause
+was clear: nothing generated should ever be able to vanish; backlog and
+sprint movement should only ever *relocate* a story, never lose it.
+Nothing was lost here -- `reschedule_lesson` never deletes a lesson row,
+and `board_for_week` only ever renders the one Monday-anchored week it's
+asked for, so a story moved onto a date in a *different* week correctly
+leaves the board a parent is currently looking at. It reappears the
+moment they switch to that week (the `board_week_picker` date input, or
+the This/Next week buttons) -- Activity Log's own "To review" tab already
+had a safety net for exactly this ("1 more lesson also scheduled, for a
+different week... change the date above to see them"), the lesson just
+had no equivalent voice on the Board itself, at the moment of the move.
+
+`render_board_card`'s move control now wraps every kind's `schedule`
+write in a new `_board_schedule` helper (`compass/ui.py`): compare the
+picked date's own Monday against `board_week_start` (now threaded through
+`render_board_card` from both of `pages/14_This_Week.py`'s call sites),
+and if they differ, say so. The first attempt used `st.toast` -- wrong,
+and confirmed wrong by a minimal isolated repro against this app's own
+Streamlit version (1.61.1): a toast fired in the same script run that
+immediately calls `st.rerun()` (which the move control always does right
+after) never reaches the browser at all, toast queue and all. The fix
+instead stashes the message in `st.session_state`, which *does* survive a
+rerun, and `render_board_move_notice()` -- called once, near the top of
+the Board tab, before any card can queue a new one -- pops and renders it
+as a real `st.info`, then clears itself so it never lingers into a run it
+doesn't belong to.
+
 ## Tests
 
 ```bash

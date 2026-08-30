@@ -33,6 +33,7 @@ from compass.ui import (
     page_setup,
     parent_only,
     render_board_card,
+    render_board_move_notice,
     render_friday_plan,
     render_lesson,
     render_story_move_control,
@@ -164,6 +165,7 @@ with board_tab:
     st.caption(
         f"{board_days[0].strftime('%b %-d')} – {board_days[-1].strftime('%b %-d, %Y')}"
     )
+    render_board_move_notice()
 
     board = weekly.board_for_week(db, student, board_week_start)
     all_lessons_for_board = db.list_lessons(student["id"], limit=200)
@@ -202,6 +204,7 @@ with board_tab:
                     render_board_card(
                         db, kind, item,
                         today_iso=today_iso_for_board,
+                        board_week_start=board_week_start,
                         all_lessons_for_collision=all_lessons_for_board,
                         accent_color=color,
                     )
@@ -238,6 +241,7 @@ with board_tab:
                         render_board_card(
                             db, kind, item,
                             today_iso=today_iso_for_board,
+                            board_week_start=board_week_start,
                             all_lessons_for_collision=all_lessons_for_board,
                         )
 

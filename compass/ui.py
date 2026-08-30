@@ -2656,12 +2656,61 @@ def _render_board_deep_link(kind: str) -> None:
     st.caption(f'Under the "{tab_hint}" tab.')
 
 
+_BOARD_MOVE_NOTICE_KEY = "_board_move_notice"
+
+
+def _board_schedule(
+    schedule: Callable[[str | None], None], board_week_start: date
+) -> Callable[[str | None], None]:
+    """Wraps a board card's own `schedule` write with a note whenever the
+    picked day lands outside the week currently on screen.
+
+    `board_for_week` only ever returns the one week it was asked for, so a
+    story moved to a date in a different week simply isn't in that result
+    at all -- it doesn't render anywhere on the board a parent is looking
+    at, with nothing to say where it went. It hasn't vanished; it's on
+    whatever week that date belongs to now.
+
+    This can't just call `st.toast` -- the move control that calls this
+    always follows it with `st.rerun()`, and a toast fired in the same run
+    that immediately reruns never reaches the browser at all (confirmed
+    against this app's own Streamlit version: it silently drops). Instead
+    the note is stashed in `session_state` and rendered once, as a real
+    `st.info`, by `render_board_move_notice` at the top of the Board tab
+    on the *next* run -- session_state is what actually survives a rerun.
+    """
+
+    def _wrapped(new_date: str | None) -> None:
+        schedule(new_date)
+        if not new_date:
+            return
+        moved_week = weekly.week_start(date.fromisoformat(new_date))
+        if moved_week != board_week_start:
+            when = "next week's" if moved_week > board_week_start else "an earlier week's"
+            st.session_state[_BOARD_MOVE_NOTICE_KEY] = (
+                f"Moved to {new_date} -- that's on {when} board, not this one. "
+                "Nothing was lost; switch weeks above to see it."
+            )
+
+    return _wrapped
+
+
+def render_board_move_notice() -> None:
+    """Shows and clears whatever `_board_schedule` stashed on the previous
+    run, if anything -- call once, near the top of the Board tab, before
+    any card can queue a new one of its own."""
+    notice = st.session_state.pop(_BOARD_MOVE_NOTICE_KEY, None)
+    if notice:
+        st.info(notice)
+
+
 def render_board_card(
     db: Database,
     kind: str,
     item: dict[str, Any],
     *,
     today_iso: str,
+    board_week_start: date,
     all_lessons_for_collision: list[dict[str, Any]] | None = None,
     accent_color: str | None = None,
 ) -> None:
@@ -2679,6 +2728,12 @@ def render_board_card(
     same-agent-same-day collision guard This Week's Plan-next-week tab and
     Activity Log's own move control already both run, reused here rather
     than reinvented.
+
+    `board_week_start` is the Monday of whichever week is currently on
+    screen -- every move control's `schedule` write is wrapped in
+    `_board_schedule` so moving a story to a date outside that week fires
+    a toast saying so, rather than the card just disappearing with no
+    explanation (see that function's own docstring).
 
     `accent_color`, given, paints a thin strip across the top of the card
     -- the caller's own day-of-week color (see pages/14_This_Week.py's
@@ -2737,8 +2792,11 @@ def render_board_card(
                             if a
                             else db.send_to_backlog(lid)
                         ),
-                        schedule=lambda d, lid=item["id"]: (
-                            db.reschedule_lesson(lid, d) if d else None
+                        schedule=_board_schedule(
+                            lambda d, lid=item["id"]: (
+                                db.reschedule_lesson(lid, d) if d else None
+                            ),
+                            board_week_start,
                         ),
                         validate_schedule=_validate_lesson_move,
                     )
@@ -2755,7 +2813,10 @@ def render_board_card(
                     active=bool(item["active"]),
                     scheduled_for=item["scheduled_for"],
                     set_active=lambda a, sid=item["id"]: db.set_life_skill_active(sid, a),
-                    schedule=lambda s, sid=item["id"]: db.schedule_life_skill(sid, s),
+                    schedule=_board_schedule(
+                        lambda s, sid=item["id"]: db.schedule_life_skill(sid, s),
+                        board_week_start,
+                    ),
                 )
                 _render_board_deep_link(kind)
 
@@ -2770,7 +2831,10 @@ def render_board_card(
                     active=bool(item["active"]),
                     scheduled_for=item["scheduled_for"],
                     set_active=lambda a, mid=item["id"]: db.set_coding_module_active(mid, a),
-                    schedule=lambda s, mid=item["id"]: db.schedule_coding_module(mid, s),
+                    schedule=_board_schedule(
+                        lambda s, mid=item["id"]: db.schedule_coding_module(mid, s),
+                        board_week_start,
+                    ),
                 )
                 _render_board_deep_link(kind)
 
@@ -2787,7 +2851,10 @@ def render_board_card(
                         active=bool(item["active"]),
                         scheduled_for=item["scheduled_for"],
                         set_active=lambda a, tid=item["id"]: db.set_choice_topic_active(tid, a),
-                        schedule=lambda s, tid=item["id"]: db.schedule_choice_topic(tid, s),
+                        schedule=_board_schedule(
+                            lambda s, tid=item["id"]: db.schedule_choice_topic(tid, s),
+                            board_week_start,
+                        ),
                     )
                 else:
                     st.caption("Closed out — nothing left to move.")
@@ -2804,7 +2871,10 @@ def render_board_card(
                         active=bool(item["active"]),
                         scheduled_for=item["scheduled_for"],
                         set_active=lambda a, sid=item["id"]: db.set_project_step_active(sid, a),
-                        schedule=lambda s, sid=item["id"]: db.schedule_project_step(sid, s),
+                        schedule=_board_schedule(
+                            lambda s, sid=item["id"]: db.schedule_project_step(sid, s),
+                            board_week_start,
+                        ),
                     )
                 else:
                     st.caption("Done — nothing left to move.")
@@ -2820,7 +2890,10 @@ def render_board_card(
                         active=bool(item["active"]),
                         scheduled_for=item["scheduled_for"],
                         set_active=lambda a, eid=item["id"]: db.set_travel_entry_active(eid, a),
-                        schedule=lambda s, eid=item["id"]: db.schedule_travel_entry(eid, s),
+                        schedule=_board_schedule(
+                            lambda s, eid=item["id"]: db.schedule_travel_entry(eid, s),
+                            board_week_start,
+                        ),
                     )
                 else:
                     st.caption("Completed — nothing left to move.")
