@@ -1902,6 +1902,66 @@ def test_add_big_project_defaults_to_steps_kind(db, student):
     assert project["kind"] == "steps"
 
 
+def test_add_big_project_defaults_to_linear_mode(db, student):
+    project_id = db.add_big_project(student["id"], "Test Project")
+    project = db.list_big_projects(student["id"])[0]
+    assert project["id"] == project_id
+    assert project["mode"] == "linear"
+
+
+def test_add_big_project_can_start_in_choice_mode(db, student):
+    project_id = db.add_big_project(student["id"], "Branching Project", mode="choice")
+    project = next(p for p in db.list_big_projects(student["id"]) if p["id"] == project_id)
+    assert project["mode"] == "choice"
+
+
+def test_add_big_project_rejects_an_unrecognized_mode(db, student):
+    with pytest.raises(ValueError):
+        db.add_big_project(student["id"], "Test Project", mode="sandbox")
+
+
+def test_a_database_created_before_big_project_mode_existed_gets_the_column(tmp_path):
+    """`mode` and `parent_step_id` both shipped after some real databases
+    already existed, with real linear projects and steps on them. The
+    migration backfills `mode` to 'linear' for every pre-existing project --
+    exactly what an ordinary fixed-order project already was -- and adds
+    `parent_step_id` as NULL, which is correctly "no branch" on a linear
+    project."""
+    path = tmp_path / "pre_mode.db"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE big_projects ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL, "
+        "title TEXT NOT NULL, vision TEXT NOT NULL DEFAULT '', "
+        "sort_order INTEGER NOT NULL DEFAULT 0, shelved INTEGER NOT NULL DEFAULT 0, "
+        "kind TEXT NOT NULL DEFAULT 'steps', "
+        "created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+    )
+    conn.execute(
+        "CREATE TABLE project_steps ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, "
+        "sort_order INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, "
+        "description TEXT NOT NULL DEFAULT '', materials TEXT NOT NULL DEFAULT '', "
+        "credit_subject TEXT NOT NULL DEFAULT 'occupational_education', "
+        "min_days INTEGER NOT NULL DEFAULT 1, max_days INTEGER NOT NULL DEFAULT 1, "
+        "active INTEGER NOT NULL DEFAULT 1, scheduled_for TEXT, completed_on TEXT, "
+        "created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+    )
+    conn.execute("INSERT INTO big_projects (student_id, title) VALUES (1, 'Old Project')")
+    conn.execute("INSERT INTO project_steps (project_id, title) VALUES (1, 'Old Step')")
+    conn.commit()
+    conn.close()
+
+    migrated = Database(path)
+    try:
+        project = migrated.conn.execute("SELECT * FROM big_projects").fetchone()
+        assert project["mode"] == "linear"
+        step = migrated.conn.execute("SELECT * FROM project_steps").fetchone()
+        assert step["parent_step_id"] is None
+    finally:
+        migrated.close()
+
+
 def test_ensure_travel_log_project_creates_one_project(db, student):
     project_id = db.ensure_travel_log_project(student["id"])
     projects = db.list_big_projects(student["id"])
@@ -1973,6 +2033,37 @@ def test_delete_project_step_removes_only_that_step(db, student):
     remaining = db.list_project_steps(project_id)
     assert len(remaining) == 1
     assert remaining[0]["id"] == keep_id
+
+
+def test_add_project_step_defaults_to_a_starting_option(db, student):
+    """`parent_step_id` only means anything on a choice-mode project, but
+    the column itself is generic -- NULL by default on any project."""
+    project_id = db.add_big_project(student["id"], "Branching Project", mode="choice")
+    step_id = db.add_project_step(project_id, "Path A")
+    assert db.list_project_steps(project_id)[0]["parent_step_id"] is None
+    _ = step_id  # returned id isn't needed beyond confirming the insert worked
+
+
+def test_add_project_step_can_branch_off_another_step(db, student):
+    project_id = db.add_big_project(student["id"], "Branching Project", mode="choice")
+    root_id = db.add_project_step(project_id, "Path A")
+    child_id = db.add_project_step(project_id, "A, leg two", parent_step_id=root_id)
+    child = next(s for s in db.list_project_steps(project_id) if s["id"] == child_id)
+    assert child["parent_step_id"] == root_id
+
+
+def test_deleting_a_step_cascades_to_whatever_branches_off_of_it(db, student):
+    """Same reasoning delete_big_project's own cascade already gives for a
+    whole project's steps -- removing a step that other steps branch off of
+    must not leave those children pointing at nothing."""
+    project_id = db.add_big_project(student["id"], "Branching Project", mode="choice")
+    root_id = db.add_project_step(project_id, "Path A")
+    db.add_project_step(project_id, "A, leg two", parent_step_id=root_id)
+    db.add_project_step(project_id, "A, leg three (dead end)", parent_step_id=root_id)
+
+    db.delete_project_step(root_id)
+
+    assert db.list_project_steps(project_id) == []
 
 
 def test_update_student_ignores_unknown_fields(db, student):

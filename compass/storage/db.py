@@ -1485,6 +1485,15 @@ class Database:
         # before this column did is 'steps', which is exactly what it
         # already was.
         self._ensure_column("big_projects", "kind", "TEXT NOT NULL DEFAULT 'steps'")
+        # Same reasoning as `kind` just above -- no CHECK on the ALTER-added
+        # column, enum validation enforced in Python instead (add_big_project
+        # raises on an unrecognized mode). Every project that already existed
+        # before this column did was an ordinary fixed-order project, which
+        # is exactly what 'linear' already means.
+        self._ensure_column("big_projects", "mode", "TEXT NOT NULL DEFAULT 'linear'")
+        self._ensure_column(
+            "project_steps", "parent_step_id", "INTEGER REFERENCES project_steps(id) ON DELETE CASCADE"
+        )
         # Runs before the migration below, not after: that migration inserts
         # travel_entries rows (from the old park_visits table) through
         # add_travel_entry, which writes every one of these columns -- if
@@ -3416,16 +3425,23 @@ class Database:
         )
 
     def add_big_project(
-        self, student_id: int, title: str, vision: str = "", kind: str = "steps"
+        self,
+        student_id: int,
+        title: str,
+        vision: str = "",
+        kind: str = "steps",
+        mode: str = "linear",
     ) -> int:
+        if mode not in ("linear", "choice"):
+            raise ValueError(f"invalid big project mode: {mode}")
         next_order = self.conn.execute(
             "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM big_projects WHERE student_id = ?",
             (student_id,),
         ).fetchone()[0]
         cur = self.conn.execute(
-            "INSERT INTO big_projects (student_id, title, vision, sort_order, kind) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (student_id, title, vision, next_order, kind),
+            "INSERT INTO big_projects (student_id, title, vision, sort_order, kind, mode) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (student_id, title, vision, next_order, kind, mode),
         )
         self.conn.commit()
         return int(cur.lastrowid)
@@ -3522,6 +3538,7 @@ class Database:
         min_days: int = 1,
         max_days: int = 1,
         active: bool = False,
+        parent_step_id: int | None = None,
     ) -> int:
         """`active=False` by default -- a freshly added step (by hand, or
         from the AI chunker's own insertion loop) starts in the Backlog,
@@ -3531,7 +3548,11 @@ class Database:
         starter catalog is a deliberate exception: `_insert_big_project`
         writes its own rows directly rather than through this method, so
         its steps keep coming in already-visible, matching how the catalog
-        has always worked."""
+        has always worked.
+
+        `parent_step_id` only means anything on a `mode='choice'` project
+        (see `big_projects.mode`) -- it's simply unused on an ordinary
+        linear one, where `sort_order` alone still decides the sequence."""
         next_order = self.conn.execute(
             "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM project_steps WHERE project_id = ?",
             (project_id,),
@@ -3539,9 +3560,9 @@ class Database:
         cur = self.conn.execute(
             "INSERT INTO project_steps "
             "(project_id, sort_order, title, description, materials, credit_subject, "
-            " min_days, max_days, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " min_days, max_days, active, parent_step_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (project_id, next_order, title, description, materials, credit_subject,
-             max(1, min_days), max(min_days, max_days), int(active)),
+             max(1, min_days), max(min_days, max_days), int(active), parent_step_id),
         )
         self.conn.commit()
         return int(cur.lastrowid)

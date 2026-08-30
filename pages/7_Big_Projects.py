@@ -11,6 +11,13 @@ project with nothing on it yet, drafted all at once with AI (see
 compass.agents.project_chunker) -- offered only while the project has zero
 steps, so there's never a question of reconciling an AI draft against a
 parent's own edits or his already-checked-off progress.
+
+A project is also either 'linear' (the above -- one fixed, ordered sequence)
+or 'choice' (see big_projects.mode): a branching tree instead, where
+finishing a step reveals whichever steps branch off of it (project_steps.
+parent_step_id) as the next set of paths to choose between, rather than
+there being exactly one next step. See _step_chain/_step_choices/
+_render_choice_steps below.
 """
 
 from __future__ import annotations
@@ -40,6 +47,102 @@ def _day_range(min_days: int, max_days: int) -> str:
     if min_days == max_days:
         return f"{min_days} day" if min_days == 1 else f"{min_days} days"
     return f"{min_days}-{max_days} days"
+
+
+def _step_chain(steps: list[dict]) -> list[dict]:
+    """The path actually taken through a `mode='choice'` project's tree so
+    far: starting from the roots (`parent_step_id is None`), follow whichever
+    child at each level is completed, stopping the moment no completed child
+    is found at that level. A sibling branch that was never picked just
+    never enters the chain -- it isn't deleted or hidden, it's simply not
+    part of the story so far."""
+    by_parent: dict[int | None, list[dict]] = {}
+    for step in steps:
+        by_parent.setdefault(step["parent_step_id"], []).append(step)
+    chain: list[dict] = []
+    parent_id: int | None = None
+    while True:
+        done_child = next((s for s in by_parent.get(parent_id, []) if s["completed_on"]), None)
+        if done_child is None:
+            return chain
+        chain.append(done_child)
+        parent_id = done_child["id"]
+
+
+def _step_choices(steps: list[dict], tip_id: int | None) -> list[dict]:
+    """What's on offer next at the current tip of the chain (or at the roots,
+    if nothing's been finished yet) -- unlocked, not already done. A locked
+    (still-backlogged) sibling doesn't show up as a pick here; a parent
+    unlocks it from the move control or Add / manage first, same as any
+    other story."""
+    return [
+        s for s in steps
+        if s["parent_step_id"] == tip_id and not s["completed_on"] and s["active"]
+    ]
+
+
+def _render_choice_step(step: dict, index: int) -> None:
+    """One offered-next step, same card shape the linear rendering below
+    uses for its own rows -- a checkbox that's the only thing touching
+    `completed_on`, and the shared move control for backlog/scheduling."""
+    row_key = f"step_row_next_{step['id']}"
+    with st.container(key=row_key):
+        columns = st.columns([1, 20])
+        with columns[0]:
+            checked = st.checkbox(
+                "Done", value=False, key=f"step_done_{step['id']}", label_visibility="collapsed",
+            )
+            if checked:
+                db.set_project_step_done(step["id"], True)
+                st.rerun()
+        with columns[1]:
+            pace = f" · ⏳ {_day_range(step['min_days'], step['max_days'])}"
+            with st.expander(f"{index}. {md(step['title'])}{pace} · ▶ choose this", expanded=False):
+                if step["description"]:
+                    st.write(md(step["description"]))
+                meta = []
+                if step["materials"]:
+                    meta.append(f"**You'll need:** {md(step['materials'])}")
+                meta.append(f"Credits toward {label(step['credit_subject'])}")
+                st.caption(" · ".join(meta))
+                if is_parent():
+                    render_story_move_control(
+                        key=f"step_{step['id']}",
+                        active=bool(step["active"]),
+                        scheduled_for=step["scheduled_for"],
+                        set_active=lambda a, sid=step["id"]: db.set_project_step_active(sid, a),
+                        schedule=lambda s, sid=step["id"]: db.schedule_project_step(sid, s),
+                    )
+
+
+def _render_choice_steps(steps: list[dict]) -> None:
+    """A `mode='choice'` project's Checklist body: the path taken so far as
+    a plain, read-only list, then whatever's on offer next. Nothing here is
+    hard-locked to one path -- like the linear rendering, either of you can
+    check any offered step off; the branching is in what's *offered*, not in
+    who's allowed to pick."""
+    chain = _step_chain(steps)
+    for i, step in enumerate(chain, start=1):
+        st.caption(f"✅ {i}. {md(step['title'])} · earned {step['completed_on']}")
+
+    tip_id = chain[-1]["id"] if chain else None
+    choices = _step_choices(steps, tip_id)
+    all_children = [s for s in steps if s["parent_step_id"] == tip_id]
+
+    if choices:
+        st.markdown("**Choose your next step:**")
+        for i, step in enumerate(choices, start=len(chain) + 1):
+            _render_choice_step(step, i)
+    elif not steps:
+        if is_parent():
+            st.caption("No steps yet -- add a starting step or two in the Add / manage tab.")
+    elif not all_children:
+        st.success("🏁 End of this path!")
+    elif is_parent():
+        st.caption(
+            "Nothing unlocked at this branch yet -- pull one in from "
+            "Backlog below, or the Add / manage tab."
+        )
 
 
 def _render_travel_log_summary() -> None:
@@ -127,6 +230,11 @@ with checklist_tab:
         # Database.ensure_travel_log_project -- so none of the step-list
         # machinery below applies to it at all.
         is_travel_log = project["kind"] == "travel_log"
+        # A branching project (see big_projects.mode/_render_choice_steps)
+        # doesn't have one fixed next step -- what's "up next" depends on
+        # which path was actually taken, so it gets its own rendering below
+        # instead of forcing it through the fixed-order layout underneath.
+        is_choice = project["mode"] == "choice"
         steps = [] if is_travel_log else db.list_project_steps(project["id"])
         # Visible to both of you: committed to the current plan, same as
         # Life Skills' own `active OR completed_on` gate -- a step already
@@ -159,6 +267,15 @@ with checklist_tab:
                     st.rerun()
             if is_travel_log:
                 _render_travel_log_summary()
+            elif is_choice:
+                # No single "N of M steps done" number -- a branch never
+                # taken was never really part of the plan, so there's no
+                # fixed total to divide by, only how far the path taken has
+                # gotten so far.
+                st.caption(
+                    f"🌳 Choose-your-path project · {done} step"
+                    f"{'s' if done != 1 else ''} completed so far"
+                )
             elif visible_steps:
                 st.progress(done / len(visible_steps), text=f"{done} / {len(visible_steps)} steps done")
                 total_min = sum(s["min_days"] for s in visible_steps)
@@ -178,7 +295,11 @@ with checklist_tab:
             elif is_parent():
                 # Only while it has zero steps -- see project_chunker's own
                 # docstring on why this never offers to regenerate a project
-                # that already has real progress on it.
+                # that already has real progress on it. Also not offered on
+                # a choice-mode project at all: the AI chunker only ever
+                # drafts one fixed sequence, not a branching tree, so it has
+                # nothing useful to do here -- a choice project's steps are
+                # always hand-built, in Add / manage.
                 st.caption("No steps yet.")
                 if st.button(
                     "✨ Chunk this project into steps with AI",
@@ -226,38 +347,25 @@ with checklist_tab:
 
             if project["vision"]:
                 st.caption(md(project["vision"]))
-            # The first not-done step is highlighted as "up next" -- steps
-            # aren't hard-locked (either of you can check any of them off,
-            # same parity as Life Skills), but the sprint-style point of this
-            # feature is having one clear next thing rather than a flat list.
-            # Only ever picked from visible_steps -- a backlogged step isn't
-            # committed to the plan yet, so it can't be "up next" no matter
-            # where it sits in sort_order.
-            next_step_id = next((s["id"] for s in visible_steps if not s["completed_on"]), None)
-            for index, step in enumerate(visible_steps, start=1):
-                is_next = step["id"] == next_step_id
-                row_key = f"step_row_next_{step['id']}" if is_next else f"step_row_{step['id']}"
-                with st.container(key=row_key):
-                    columns = st.columns([1, 20])
-                    with columns[0]:
-                        checked = st.checkbox(
-                            "Done",
-                            value=bool(step["completed_on"]),
-                            key=f"step_done_{step['id']}",
-                            label_visibility="collapsed",
+            if is_choice:
+                _render_choice_steps(steps)
+                if is_parent() and backlog_steps:
+                    st.markdown("**🗄️ Backlog**")
+                    st.caption(
+                        "Unlocked branches aren't offered above yet -- move one "
+                        "into play here when you're ready for it to show up as a "
+                        "choice. Parent-only: he never sees a step sitting here."
+                    )
+                    steps_by_id = {s["id"]: s for s in steps}
+                    for step in backlog_steps:
+                        parent = steps_by_id.get(step["parent_step_id"])
+                        branches_from = (
+                            f' (branches from "{md(parent["title"])}")' if parent
+                            else " (a starting option)"
                         )
-                        if checked != bool(step["completed_on"]):
-                            db.set_project_step_done(step["id"], checked)
-                            st.rerun()
-                    with columns[1]:
-                        badge = " · ▶ up next" if is_next and not checked else ""
                         pace = f" · ⏳ {_day_range(step['min_days'], step['max_days'])}"
-                        # Always collapsed on a fresh launch -- the "up next"
-                        # badge and the pace both show right in the label, so
-                        # nothing important is hidden by keeping it closed
-                        # until he actually taps it open.
                         with st.expander(
-                            f"{index}. {md(step['title'])}{pace}{badge}", expanded=False
+                            f"{md(step['title'])}{pace}{branches_from}", expanded=False
                         ):
                             if step["description"]:
                                 st.write(md(step["description"]))
@@ -266,43 +374,91 @@ with checklist_tab:
                                 meta.append(f"**You'll need:** {md(step['materials'])}")
                             meta.append(f"Credits toward {label(step['credit_subject'])}")
                             st.caption(" · ".join(meta))
-                            # The freedom to move a step to a specific day or
-                            # back to Backlog, same shared control every
-                            # other story type uses -- never offered on a
-                            # step he's already finished.
-                            if is_parent() and not checked:
-                                render_story_move_control(
-                                    key=f"step_{step['id']}",
-                                    active=bool(step["active"]),
-                                    scheduled_for=step["scheduled_for"],
-                                    set_active=lambda a, sid=step["id"]: db.set_project_step_active(sid, a),
-                                    schedule=lambda s, sid=step["id"]: db.schedule_project_step(sid, s),
-                                )
+                            render_story_move_control(
+                                key=f"step_{step['id']}",
+                                active=bool(step["active"]),
+                                scheduled_for=step["scheduled_for"],
+                                set_active=lambda a, sid=step["id"]: db.set_project_step_active(sid, a),
+                                schedule=lambda s, sid=step["id"]: db.schedule_project_step(sid, s),
+                            )
+            else:
+                # The first not-done step is highlighted as "up next" -- steps
+                # aren't hard-locked (either of you can check any of them off,
+                # same parity as Life Skills), but the sprint-style point of this
+                # feature is having one clear next thing rather than a flat list.
+                # Only ever picked from visible_steps -- a backlogged step isn't
+                # committed to the plan yet, so it can't be "up next" no matter
+                # where it sits in sort_order.
+                next_step_id = next((s["id"] for s in visible_steps if not s["completed_on"]), None)
+                for index, step in enumerate(visible_steps, start=1):
+                    is_next = step["id"] == next_step_id
+                    row_key = f"step_row_next_{step['id']}" if is_next else f"step_row_{step['id']}"
+                    with st.container(key=row_key):
+                        columns = st.columns([1, 20])
+                        with columns[0]:
+                            checked = st.checkbox(
+                                "Done",
+                                value=bool(step["completed_on"]),
+                                key=f"step_done_{step['id']}",
+                                label_visibility="collapsed",
+                            )
+                            if checked != bool(step["completed_on"]):
+                                db.set_project_step_done(step["id"], checked)
+                                st.rerun()
+                        with columns[1]:
+                            badge = " · ▶ up next" if is_next and not checked else ""
+                            pace = f" · ⏳ {_day_range(step['min_days'], step['max_days'])}"
+                            # Always collapsed on a fresh launch -- the "up next"
+                            # badge and the pace both show right in the label, so
+                            # nothing important is hidden by keeping it closed
+                            # until he actually taps it open.
+                            with st.expander(
+                                f"{index}. {md(step['title'])}{pace}{badge}", expanded=False
+                            ):
+                                if step["description"]:
+                                    st.write(md(step["description"]))
+                                meta = []
+                                if step["materials"]:
+                                    meta.append(f"**You'll need:** {md(step['materials'])}")
+                                meta.append(f"Credits toward {label(step['credit_subject'])}")
+                                st.caption(" · ".join(meta))
+                                # The freedom to move a step to a specific day or
+                                # back to Backlog, same shared control every
+                                # other story type uses -- never offered on a
+                                # step he's already finished.
+                                if is_parent() and not checked:
+                                    render_story_move_control(
+                                        key=f"step_{step['id']}",
+                                        active=bool(step["active"]),
+                                        scheduled_for=step["scheduled_for"],
+                                        set_active=lambda a, sid=step["id"]: db.set_project_step_active(sid, a),
+                                        schedule=lambda s, sid=step["id"]: db.schedule_project_step(sid, s),
+                                    )
 
-            if is_parent() and backlog_steps:
-                st.markdown("**🗄️ Backlog**")
-                st.caption(
-                    "Not part of the current plan yet -- move one into To Do above "
-                    "when you're ready for him to work on it. Parent-only: he never "
-                    "sees a step sitting here."
-                )
-                for step in backlog_steps:
-                    pace = f" · ⏳ {_day_range(step['min_days'], step['max_days'])}"
-                    with st.expander(f"{md(step['title'])}{pace}", expanded=False):
-                        if step["description"]:
-                            st.write(md(step["description"]))
-                        meta = []
-                        if step["materials"]:
-                            meta.append(f"**You'll need:** {md(step['materials'])}")
-                        meta.append(f"Credits toward {label(step['credit_subject'])}")
-                        st.caption(" · ".join(meta))
-                        render_story_move_control(
-                            key=f"step_{step['id']}",
-                            active=bool(step["active"]),
-                            scheduled_for=step["scheduled_for"],
-                            set_active=lambda a, sid=step["id"]: db.set_project_step_active(sid, a),
-                            schedule=lambda s, sid=step["id"]: db.schedule_project_step(sid, s),
-                        )
+                if is_parent() and backlog_steps:
+                    st.markdown("**🗄️ Backlog**")
+                    st.caption(
+                        "Not part of the current plan yet -- move one into To Do above "
+                        "when you're ready for him to work on it. Parent-only: he never "
+                        "sees a step sitting here."
+                    )
+                    for step in backlog_steps:
+                        pace = f" · ⏳ {_day_range(step['min_days'], step['max_days'])}"
+                        with st.expander(f"{md(step['title'])}{pace}", expanded=False):
+                            if step["description"]:
+                                st.write(md(step["description"]))
+                            meta = []
+                            if step["materials"]:
+                                meta.append(f"**You'll need:** {md(step['materials'])}")
+                            meta.append(f"Credits toward {label(step['credit_subject'])}")
+                            st.caption(" · ".join(meta))
+                            render_story_move_control(
+                                key=f"step_{step['id']}",
+                                active=bool(step["active"]),
+                                scheduled_for=step["scheduled_for"],
+                                set_active=lambda a, sid=step["id"]: db.set_project_step_active(sid, a),
+                                schedule=lambda s, sid=step["id"]: db.schedule_project_step(sid, s),
+                            )
 
             if is_parent() and st.button(
                 "Not an interest -- shelve it", key=f"shelve_project_{project['id']}"
@@ -380,8 +536,17 @@ if manage_tab is not None:
         vision = st.text_area(
             "The vision -- what does the finished thing look like?", height=80
         )
+        mode = st.radio(
+            "How should this one flow?",
+            ["linear", "choice"],
+            format_func=lambda m: (
+                "Fixed order -- step 1, then 2, then 3..." if m == "linear"
+                else "Choose your path -- finish a step, then pick what's next"
+            ),
+            horizontal=True,
+        )
         if st.form_submit_button("Add project", type="primary") and title.strip():
-            db.add_big_project(student["id"], title.strip(), vision.strip())
+            db.add_big_project(student["id"], title.strip(), vision.strip(), mode=mode)
             st.rerun()
 
     st.divider()
@@ -416,6 +581,24 @@ if manage_tab is not None:
                 max_days = pace_cols[1].number_input(
                     "up to (days)", min_value=1, max_value=60, value=1, key="step_max_days"
                 )
+            # `project` only reflects the browser's current pick once this
+            # form is actually submitted (same limitation the Log time tab's
+            # `credit_subject` default already lives with) -- good enough to
+            # scope this list, since it's just deciding what shows up in the
+            # dropdown below, not something written to the database.
+            parent_step_id = None
+            if project["mode"] == "choice":
+                existing_steps = db.list_project_steps(project["id"])
+                parent_options: list[int | None] = [None] + [s["id"] for s in existing_steps]
+                titles_by_id = {s["id"]: s["title"] for s in existing_steps}
+                parent_step_id = st.selectbox(
+                    "Branches off of",
+                    parent_options,
+                    format_func=lambda sid: (
+                        "Start of the project" if sid is None else titles_by_id[sid]
+                    ),
+                    key="step_parent",
+                )
             if st.form_submit_button("Add step", type="primary") and step_title.strip():
                 db.add_project_step(
                     project["id"],
@@ -425,6 +608,7 @@ if manage_tab is not None:
                     credit_subject,
                     int(min_days),
                     int(max_days),
+                    parent_step_id=parent_step_id,
                 )
                 st.rerun()
 

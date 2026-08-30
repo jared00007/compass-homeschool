@@ -1704,10 +1704,78 @@ unreadable single-character-per-line sliver at that width. The other two
 states (an assigned date, or `🗄️ Backlog`) already read fine there on their
 own; a `help=` tooltip on the popover covers the icon-only case.
 
+## Big Projects: a branching "choose your path" mode
+
+Requested directly, as an integration question about a hypothetical
+Occupational Education agent: "flow of potential choose your own experience
+for Landon... option to flow from prior legs of choose." What actually
+shipped is narrower and more concrete -- not a new agent, but a second mode
+for the Big Projects feature that already existed: alongside an ordinary
+`'linear'` project (one fixed, ordered sequence of steps), a project can now
+be `'choice'` (`big_projects.mode`) -- a branching tree instead, where
+finishing a step reveals whichever steps branch off of it as the next set of
+paths to pick between, rather than there being exactly one next step.
+
+The tree lives on `project_steps.parent_step_id`, a nullable self-reference
+(`ON DELETE CASCADE`, so removing a step also removes whatever branches off
+of it, the same way removing a whole project already cascades to its
+steps). `NULL` means "a starting option" on a choice-mode project; it's
+simply unused on an ordinary linear one, where `sort_order` alone still
+decides the sequence. Both columns are new, added via `_ensure_column` for
+databases that predate them -- `mode` defaults to `'linear'` (exactly what
+every pre-existing project already was) and `parent_step_id` defaults NULL.
+Following the precedent `big_projects.kind`'s own migration already set: no
+CHECK constraint on the ALTER-added `mode` column (SQLite's CHECK-on-ALTER
+support is the kind of thing not worth relitigating per column), enum
+validation enforced in Python instead -- `add_big_project` raises on an
+unrecognized mode, the same way `set_lesson_status` already does for its own
+enum.
+
+Three small pure functions in `pages/7_Big_Projects.py` do the actual tree
+logic, all pulled from a project's full step list rather than a dedicated
+query:
+
+- `_step_chain(steps)` -- the path actually taken so far: starting from the
+  roots (`parent_step_id is None`), follow whichever child at each level is
+  completed, stopping the moment no completed child is found there. A
+  sibling branch never picked just never enters the chain -- it isn't
+  deleted or hidden, it simply isn't part of the story so far.
+- `_step_choices(steps, tip_id)` -- what's on offer next at the current tip
+  of that chain (or at the roots, if nothing's finished yet): unlocked
+  (`active`), not already done. A still-backlogged sibling doesn't show up
+  as a pick; a parent unlocks it first, same as any other story.
+- `_render_choice_steps(steps)` renders the chain as a plain read-only
+  checklist, then the offered choices as cards in the same shape the linear
+  rendering already uses (a "Done" checkbox, an expander, the shared
+  `render_story_move_control`) -- branching only changes what's *offered*,
+  never who's allowed to check something off or move it around.
+
+The Checklist tab branches on `project["mode"]` early (`is_choice`): a
+choice-mode project gets `_render_choice_steps` plus its own Backlog
+listing instead of the fixed-order render loop, skips the progress bar
+(there's no single "N of M" to divide by when steps a path never took were
+never really part of the plan -- just a running "X steps completed so
+far"), and never offers the AI project-chunker button (it only ever drafts
+one fixed sequence, never a branching tree -- a choice project's steps are
+always hand-built). Backlog rows get a parenthetical -- `(branches from
+"Write the script")` or `(a starting option)` -- so a parent can tell which
+branch an unlocked-but-not-yet-offered step belongs to before pulling it in.
+
+Add / manage grew two small, targeted additions rather than a new form: a
+"How should this one flow?" radio when adding a project, and, only when the
+selected project is `'choice'`, a "Branches off of" selectbox (every
+existing step in that project, plus "Start of the project") when adding a
+step to it. That selectbox reads the *currently selected* project inside the
+same `st.form` the picker itself lives in -- accurate once the form is
+actually submitted, the same acknowledged limitation the Log Time tab's own
+`credit_subject` default already lives with (its docstring explains why:
+good enough to scope a dropdown's options, not something written to the
+database).
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1044 tests, ~100s, no API key needed
+python -m pytest tests/ -q      # 1057 tests, ~100s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

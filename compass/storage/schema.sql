@@ -447,6 +447,13 @@ CREATE TABLE IF NOT EXISTS big_projects (
     -- alongside other projects -- see Database.ensure_travel_log_project.
     -- It never gets project_steps rows of its own.
     kind        TEXT NOT NULL DEFAULT 'steps' CHECK (kind IN ('steps', 'travel_log')),
+    -- 'linear' is the ordinary project above: a fixed, ordered pipeline.
+    -- 'choice' is a branching project instead -- project_steps.parent_step_id
+    -- turns the flat sort_order sequence into a tree, and finishing a step
+    -- reveals its children as the next set of paths to choose between,
+    -- rather than there being exactly one next step. See
+    -- Database.step_children/current_step_choices.
+    mode        TEXT NOT NULL DEFAULT 'linear' CHECK (mode IN ('linear', 'choice')),
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -474,6 +481,12 @@ CREATE TABLE IF NOT EXISTS project_steps (
     -- still the default for every step nobody's explicitly moved.
     scheduled_for  TEXT,
     completed_on   TEXT,
+    -- NULL for every step on a 'linear' project (unused there). On a
+    -- 'choice' project, NULL means "a starting option"; otherwise this is
+    -- the step it branches off of -- see big_projects.mode. Cascades so
+    -- removing a step also removes whatever branches off of it, the same
+    -- way removing a project already cascades to its steps.
+    parent_step_id INTEGER REFERENCES project_steps(id) ON DELETE CASCADE,
     created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
