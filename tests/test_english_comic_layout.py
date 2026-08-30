@@ -121,6 +121,64 @@ def test_english_writing_box_still_works_inside_a_comic_panel(monkeypatch, tmp_p
     )
 
 
+def test_uploading_a_word_doc_fills_in_the_response_box(monkeypatch, tmp_path):
+    """Some kids would rather write in Word than type into the box --
+    uploading a .docx refills the same box with its text, rather than
+    opening a separate review path. Every check downstream (word count, AI
+    review, parent review) reads that same box, unchanged."""
+    import io
+
+    from docx import Document
+
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Brian's Turning Point", payload=_hatchet_payload(),
+    )
+    db.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    document = Document()
+    document.add_paragraph("He starts planning instead of just reacting.")
+    buffer = io.BytesIO()
+    document.save(buffer)
+
+    uploader = [
+        u for u in at.file_uploader if u.label == "...or upload a Word doc instead"
+    ][0]
+    uploader.set_value(
+        ("response.docx", buffer.getvalue(),
+         "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    ).run()
+
+    response_box = [t for t in at.text_area if t.label == "Your response"][0]
+    assert response_box.value == "He starts planning instead of just reacting."
+
+
+def test_uploading_something_that_isnt_a_docx_shows_a_plain_error(monkeypatch, tmp_path):
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Brian's Turning Point", payload=_hatchet_payload(),
+    )
+    db.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    uploader = [
+        u for u in at.file_uploader if u.label == "...or upload a Word doc instead"
+    ][0]
+    uploader.set_value(("notes.docx", b"not a real docx file", "text/plain")).run()
+
+    assert not at.exception, [e.message for e in at.exception]
+    assert any("doesn't look like a valid Word" in e.value for e in at.error)
+
+
 def test_english_progress_dots_cover_every_activity_not_just_writing_ones(
     monkeypatch, tmp_path
 ):

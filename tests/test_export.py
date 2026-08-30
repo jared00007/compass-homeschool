@@ -15,8 +15,10 @@ import pytest
 from docx import Document
 
 from compass.export import (
+    DocxExtractionError,
     course_filename,
     course_to_docx,
+    extract_docx_text,
     lesson_to_docx,
     suggested_filename,
     travel_journal_filename,
@@ -360,3 +362,51 @@ def test_travel_journal_filename_is_slugged_and_dated(name, expected_prefix):
     assert filename.startswith(expected_prefix)
     assert filename.endswith(".docx")
     assert " " not in filename
+
+
+# --- extract_docx_text: the import side, an uploaded response ------------------
+
+
+def _docx_bytes(paragraphs: list[str]) -> io.BytesIO:
+    document = Document()
+    for text in paragraphs:
+        document.add_paragraph(text)
+    buffer = io.BytesIO()
+    document.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+
+def test_extract_docx_text_reads_every_paragraph():
+    uploaded = _docx_bytes(["First paragraph.", "Second paragraph."])
+    assert extract_docx_text(uploaded) == "First paragraph.\nSecond paragraph."
+
+
+def test_extract_docx_text_includes_table_content():
+    document = Document()
+    document.add_paragraph("Above the table.")
+    table = document.add_table(rows=2, cols=2)
+    table.rows[0].cells[0].text = "a"
+    table.rows[0].cells[1].text = "b"
+    table.rows[1].cells[0].text = "c"
+    table.rows[1].cells[1].text = "d"
+    buffer = io.BytesIO()
+    document.save(buffer)
+    buffer.seek(0)
+
+    text = extract_docx_text(buffer)
+
+    assert "Above the table." in text
+    assert "a | b" in text
+    assert "c | d" in text
+
+
+def test_extract_docx_text_strips_leading_and_trailing_blank_lines():
+    uploaded = _docx_bytes(["", "", "The actual response.", ""])
+    assert extract_docx_text(uploaded) == "The actual response."
+
+
+def test_extract_docx_text_raises_a_clear_error_on_a_non_docx_file():
+    not_a_docx = io.BytesIO(b"this is plain text, not a real .docx")
+    with pytest.raises(DocxExtractionError, match="doesn't look like a valid Word"):
+        extract_docx_text(not_a_docx)

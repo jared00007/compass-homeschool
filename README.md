@@ -1576,10 +1576,31 @@ Both are now scoped to `kind = 'steps'` rows only, the same fix applied everywhe
 this session that a raw `list_big_projects()`/truthiness check meant "you have a real
 project" before the Travel Log row existed to complicate that.
 
+**Upload a Word doc instead of typing a written response.** Some kids would rather
+write in Word than in a browser text box. Every written-response activity now shows
+an `st.file_uploader` ("...or upload a Word doc instead", .docx only) right above the
+existing text box -- the text box stays; the upload just refills it with the doc's
+extracted text (`compass.export.extract_docx_text`, built on the `python-docx`
+dependency already used for the export direction) rather than opening a second,
+separate review path. Every check downstream -- the word-count/requirements gate in
+`check_writing`, the AI "check my work" pass, parent review -- reads that same
+`response` string, unchanged, whichever way the words got there. A non-.docx upload
+(wrong format, corrupted file) raises `DocxExtractionError` with a plain "that doesn't
+look like a valid Word file" message instead of a raw traceback. The upload widget has
+to run, and on a change rerun, *before* the text area is instantiated on the same
+script pass -- Streamlit refuses a `session_state` write to a widget's own key once
+that widget has already appeared in the current run, which is also why re-uploading
+the same file doesn't loop: the extracted text is only written (and the page only
+rerun) when it actually differs from the box's current value, so a response he's
+since edited by hand doesn't get silently clobbered by the file staying "uploaded"
+across reruns. Considered and skipped for now: spreadsheet upload (a worksheet isn't
+prose, so there's nothing for the AI check to read) and a live Google Sheets link
+(Compass has no OAuth story for reading a real Sheet).
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1013 tests, ~100s, no API key needed
+python -m pytest tests/ -q      # 1019 tests, ~100s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

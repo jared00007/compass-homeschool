@@ -67,7 +67,7 @@ from compass.agents import (
 from compass.agents import writing_review
 from compass.agents.quiz import grade, passed as quiz_passes, select_questions
 from compass.compliance import declaration_status
-from compass.export import lesson_to_docx, suggested_filename
+from compass.export import DocxExtractionError, extract_docx_text, lesson_to_docx, suggested_filename
 from compass.morning_routines import MORNING_ROUTINES, routine_for_date
 from compass.storage.db import Database
 from compass.writing_checks import check_writing
@@ -769,6 +769,34 @@ def _render_activity_body(
                 return
 
             draft_key = f"writing_draft_{lesson_id}_{index}"
+            # Some kids would rather write in Word than in the box below --
+            # the upload just refills that box with the doc's text rather
+            # than opening a separate review path, so every check further
+            # down (word count, AI review, parent review) keeps working
+            # exactly the same whichever way the words got there. Has to run
+            # -- and, on a change, rerun -- *before* the text_area below is
+            # instantiated: Streamlit refuses a session_state write to a
+            # widget's own key once that widget has already appeared this
+            # run. Uploading again overwrites whatever's in the box, same as
+            # re-typing over it would; comparing against the box's current
+            # value (rather than unconditionally rerunning) is what stops
+            # this from fighting a response he's since edited by hand -- the
+            # file stays "uploaded" across reruns even after its text has
+            # already been pulled in.
+            uploaded_doc = st.file_uploader(
+                "...or upload a Word doc instead",
+                type=["docx"],
+                key=f"writing_upload_{lesson_id}_{index}",
+            )
+            if uploaded_doc is not None:
+                try:
+                    extracted = extract_docx_text(uploaded_doc)
+                except DocxExtractionError as exc:
+                    st.error(str(exc))
+                else:
+                    if extracted != st.session_state.get(draft_key, saved):
+                        st.session_state[draft_key] = extracted
+                        st.rerun()
             response = st.text_area(
                 "Your response",
                 value=st.session_state.get(draft_key, saved),

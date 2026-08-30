@@ -1,4 +1,5 @@
-"""Turn a lesson payload -- or a whole course -- into a printable Word document.
+"""Turn a lesson payload -- or a whole course -- into a printable Word document,
+and the other direction: pull plain text back out of a .docx he hands in.
 
 The lesson export is parent-only: it includes everything `render_lesson`'s
 parent view shows, assessment and quiz answer key included. It exists because
@@ -12,6 +13,12 @@ course counts toward the diploma. `course_to_docx` produces one packet per
 course covering all seven required pieces, built from data the app already
 has (the course's own record, plus every activity/lesson tagged to it) rather
 than anything re-typed for the district.
+
+`extract_docx_text` is the import side: some kids would rather write in Word
+than in a browser text box. It feeds the exact same `response` string every
+other part of the writing-response flow already works with (word-count
+checks, the AI "check my work" pass, parent review) -- there's no separate
+review path for an uploaded doc, just a different way of getting text in.
 """
 
 from __future__ import annotations
@@ -309,3 +316,32 @@ def course_to_docx(
     buffer = io.BytesIO()
     document.save(buffer)
     return buffer.getvalue()
+
+
+class DocxExtractionError(Exception):
+    """The uploaded file isn't a .docx python-docx can actually open."""
+
+
+def extract_docx_text(file: Any) -> str:
+    """Pull plain text back out of an uploaded .docx -- one paragraph per
+    line, plus any tables (read row by row, cells joined with " | ") since a
+    written response could reasonably land in either. `file` is anything
+    python-docx's own `Document()` accepts: a path, bytes, or a file-like
+    object (Streamlit's `st.file_uploader` result works directly).
+
+    Raises `DocxExtractionError` on anything that isn't a real .docx, so the
+    caller can show a plain "that didn't look like a Word doc" message
+    instead of a raw traceback -- an uploaded .doc, .pdf, or a corrupted
+    file all land here rather than crashing the page.
+    """
+    try:
+        document = Document(file)
+    except Exception as exc:
+        raise DocxExtractionError(
+            "That doesn't look like a valid Word (.docx) file."
+        ) from exc
+    lines = [paragraph.text for paragraph in document.paragraphs]
+    for table in document.tables:
+        for row in table.rows:
+            lines.append(" | ".join(cell.text for cell in row.cells))
+    return "\n".join(lines).strip()
