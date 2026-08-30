@@ -1597,10 +1597,53 @@ across reruns. Considered and skipped for now: spreadsheet upload (a worksheet i
 prose, so there's nothing for the AI check to read) and a live Google Sheets link
 (Compass has no OAuth story for reading a real Sheet).
 
+**Coding Camp -- a new track, same shape as Core Life Skills throughout.** Requested
+directly: "code camp, code games, code use cases for a teenager to make it fun." Rather
+than a new kind of feature, it reuses the exact pattern Core Life Skills already
+established -- its own table (`coding_modules`, same columns as `life_skills`), its own
+starter catalog (`CODING_MODULE_CATALOG` in `compass/storage/db.py`, ~18 modules across
+four categories -- games, automating something annoying, things worth showing off, how
+computers actually work), the same active/backlog gate, the same schedule/due model,
+and the same "parent decides, no agent picks the next module" reasoning. Every catalog
+module is framed around something he'd actually want to build or show off (a
+choose-your-own-adventure text game, a script that cleans up a messy downloads folder, a
+personal website about something he's into) rather than an abstract exercise. Most
+credit `occupational_education` (career-relevant technical skill, same subject Life
+Skills' own catalog leans on); a few that are really about visual design credit
+`art_and_music` instead, and one about working with a real spreadsheet of data credits
+`math`. Lives at `pages/17_Coding.py`, deliberately without a "plan a session" AI agent
+tab (unlike Life Skills) -- v1 is the checklist itself; an agent is a later, separate
+addition if it turns out to be worth it. `render_coding_module_cards` and
+`render_coding_module_catalog_manager` in `compass/ui.py` use plain bordered
+containers/expanders rather than Life Skills' own custom "Neon Pop" card-grid CSS --
+a deliberate scope cut for a v1, not a design downgrade, on the same reasoning
+`render_life_skill_catalog_manager`'s own docstring already gives for its half of Life
+Skills ("plain and utilitarian on purpose").
+
+Two migrations were needed to let this exist safely on a database that predates it:
+`activities.tier` had a CHECK constraint listing every valid tier, and SQLite can't
+ALTER a CHECK constraint in place, so `_migrate_activities_allow_coding_tier` rebuilds
+the table with `'coding'` added -- same shape as the original
+`_migrate_activities_allow_projects_tier` rebuild, just careful to also declare and
+copy `course_id` (which didn't exist when that first rebuild was written) so an
+existing family's course tags survive it. `coding_modules` itself needs no migration at
+all -- it's a brand-new table, and `CREATE TABLE IF NOT EXISTS` in `schema.sql` covers
+that on its own.
+
+Building this also surfaced a real, unrelated pre-existing bug in the sidebar itself:
+Streamlit's native "View N more" collapse toggle -- which the nav-consolidation pass
+(above) unconditionally hid for the student view, on the theory that hiding the
+parent-only pages would always leave the rest fitting without it -- stopped being true
+the moment the page count grew past Streamlit's own collapse threshold. Adding Coding
+Camp pushed it over: Quizzes and Coding both silently became unreachable for him, since
+the one thing that would have revealed them (the toggle) was itself hidden by our own
+CSS. `compass.ui._hide_parent_only_nav` no longer touches that toggle at all, regardless
+of page count.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1019 tests, ~100s, no API key needed
+python -m pytest tests/ -q      # 1040 tests, ~100s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

@@ -768,6 +768,113 @@ LIFE_SKILL_CATALOG: Sequence[tuple[str, str, str, str, str, bool]] = (
      "an honest conversation", False),
 )
 
+# The Coding Camp master catalog -- same shape and same reasoning as
+# LIFE_SKILL_CATALOG: (category, title, credit_subject, description,
+# materials, active). Requested directly: "code camp, code games, code use
+# cases for a teenager to make it fun" -- every module is framed around
+# something he'd actually want to show off or use, not an abstract exercise,
+# and most credit occupational_education (career-relevant technical skill,
+# same subject Core Life Skills' own catalog leans on) except where a
+# module's real work is visual design or working with real numbers.
+CODING_MODULE_CATALOG: Sequence[tuple[str, str, str, str, str, bool]] = (
+    ("Games You Can Actually Play", "Build a choose-your-own-adventure text game",
+     "occupational_education",
+     "The player reads a scene, picks an option, and the story branches --  "
+     "that's it, that's the whole game. The real skill is tracking what the "
+     "player has already done so the story remembers it later.",
+     "a laptop, Python (or Scratch for a simpler version)", True),
+    ("Games You Can Actually Play", "Make a two-player tic-tac-toe game",
+     "occupational_education",
+     "A 3x3 grid, two players taking turns, and a check after every move for "
+     "three in a row. Small enough to actually finish, real enough to be "
+     "proud of.",
+     "a laptop, Python or a web-based editor (e.g. replit.com)", True),
+    ("Games You Can Actually Play", "Build a quiz game about something you're into",
+     "occupational_education",
+     "Pick the subject yourself -- a show, a game, a sport, whatever you "
+     "actually know a lot about -- then build the thing that asks the "
+     "questions and keeps score.",
+     "a laptop, a list of at least 10 questions you already know", True),
+    ("Games You Can Actually Play", "Add a scoring system and a high-score list",
+     "occupational_education",
+     "Take a game you already built (yours or the tic-tac-toe/quiz one "
+     "above) and bolt on real scorekeeping -- points, a running total, and "
+     "a saved list of the best runs.",
+     "a laptop, an existing game to extend", False),
+    ("Automate Something Annoying", "Write a script that renames a folder of files",
+     "occupational_education",
+     "Everyone has a folder of photos or downloads named 'IMG_2938.jpg' and "
+     "'Untitled(3).pdf'. Write something that cleans up a whole folder at "
+     "once, on purpose, instead of doing it one file at a time by hand.",
+     "a laptop, a real messy folder to practice on (a copy of one, not the original)", True),
+    ("Automate Something Annoying", "Build a countdown timer for something you care about",
+     "occupational_education",
+     "A trip, a release date, the last day of school -- pick a real date "
+     "and build something that tells you exactly how long is left, down to "
+     "the day.",
+     "a laptop, a real date worth counting down to", True),
+    ("Automate Something Annoying", "Write a script that checks a webpage for a change",
+     "occupational_education",
+     "Pick a page that changes sometimes -- a restock, a price, a schedule "
+     "-- and write something that checks it and tells you when it's "
+     "different than last time.",
+     "a laptop, a real page that actually changes sometimes", False),
+    ("Automate Something Annoying", "Build a random decision-maker",
+     "occupational_education",
+     "What to eat, what to watch, whose turn it is -- build the thing that "
+     "settles an actual argument at your house by picking for you.",
+     "a laptop, a real list of options worth arguing about", False),
+    ("Make Something You Can Show Off", "Build a simple website about something you care about",
+     "art_and_music",
+     "One page, your own words and layout, about a hobby, a game, a band -- "
+     "whatever you'd actually want to show someone. Real design choices: "
+     "colors, fonts, what goes first.",
+     "a laptop, a text editor, something you actually want to make a page about", True),
+    ("Make Something You Can Show Off", "Design and code a digital birthday card",
+     "art_and_music",
+     "A real person, a real occasion, and a page that does something when "
+     "you open it -- an animation, a message that appears, whatever you "
+     "want it to do.",
+     "a laptop, someone real to make it for", False),
+    ("Make Something You Can Show Off", "Make a drawing generator with code",
+     "art_and_music",
+     "Instead of drawing by hand, write code that draws for you -- shapes, "
+     "colors, and patterns that come out a little different every time you "
+     "run it.",
+     "a laptop, Python with turtle graphics (or p5.js in a browser)", False),
+    ("Make Something You Can Show Off", "Build a playlist generator or music trivia game",
+     "occupational_education",
+     "Pick real songs or artists you actually listen to, then build "
+     "something that quizzes you on them or picks a playlist based on a "
+     "mood you choose.",
+     "a laptop, a real list of songs or artists you know well", False),
+    ("How Computers Actually Work", "Explain what happens when you press 'search'",
+     "occupational_education",
+     "Not code this time -- research and explain, in your own words, the "
+     "real steps between typing a search and getting results back. Where "
+     "does the request even go?",
+     "internet access, something to write the explanation in", True),
+    ("How Computers Actually Work", "Build and break a password checker",
+     "occupational_education",
+     "Write something that scores a password as weak or strong, then "
+     "actually try to guess a few 'strong-looking' passwords to see how "
+     "fast a computer could do the same.",
+     "a laptop", False),
+    ("How Computers Actually Work", "Work with a real spreadsheet of data you like",
+     "math",
+     "Sports stats, game high scores, weather -- pull in a real table of "
+     "numbers you actually care about and write something that answers a "
+     "real question about it (the average, the highest, how many meet some "
+     "condition).",
+     "a laptop, a real .csv of numbers you're curious about", False),
+    ("How Computers Actually Work", "Debug a program with 5 planted bugs",
+     "occupational_education",
+     "A parent (or the AI checker) plants five real mistakes in a working "
+     "program. Find all five and explain, for each one, what it was "
+     "actually doing wrong.",
+     "a laptop, a working program to break on purpose", False),
+)
+
 # Seed catalog for Big Projects: (project title, vision, steps), where each
 # step is (title, description, materials, credit_subject). Written by hand,
 # same reasoning as LIFE_SKILL_CATALOG -- plain, casual, kid-facing, and
@@ -1391,11 +1498,13 @@ class Database:
         self._ensure_column("travel_entries", "feedback_reply", "TEXT NOT NULL DEFAULT ''")
         self._backfill_life_skill_content()
         self._backfill_life_skill_catalog()
+        self._backfill_coding_module_catalog()
         self._migrate_park_visits_to_travel_entries()
         self._migrate_interests_string_to_list()
         self._migrate_journal_entries_allow_multiple_per_day()
         self._migrate_books_allow_upcoming_status()
         self._migrate_lessons_allow_review_states()
+        self._migrate_activities_allow_coding_tier()
         # Runs after the rebuild above, not before: that rebuild recreates
         # `books` from its own hardcoded column list on a database old enough
         # to need it, which would otherwise silently drop a column added here
@@ -1488,6 +1597,66 @@ class Database:
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_activities_student_date "
             "ON activities (student_id, occurred_on)"
+        )
+        self.conn.commit()
+        self.conn.execute("PRAGMA foreign_keys = ON")
+
+    def _migrate_activities_allow_coding_tier(self) -> None:
+        """Same shape as `_migrate_activities_allow_projects_tier` -- SQLite
+        still can't ALTER a CHECK constraint in place, so this rebuilds
+        `activities` again with 'coding' added to the tier list, keeping
+        every row (same id, so activity_subject_credits' foreign keys still
+        point at the right one).
+
+        Runs after `course_id` is guaranteed to exist (see the
+        `_ensure_column` call for it, up above): unlike the *original*
+        rebuild -- which predates `course_id` entirely and so never had to
+        carry it -- this one's own `activities_new` table declares it from
+        the start and copies it across, so a family's existing course tags
+        survive this rebuild instead of getting silently dropped and then
+        recreated blank."""
+        table = _row(
+            self.conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='activities'"
+            )
+        )
+        if table is None or "'coding'" in (table["sql"] or ""):
+            return  # no table yet, or already rebuilt with the new tier
+        self.conn.commit()
+        self.conn.execute("PRAGMA foreign_keys = OFF")
+        self.conn.execute(
+            "CREATE TABLE activities_new ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,"
+            "lesson_id INTEGER REFERENCES lessons(id) ON DELETE SET NULL,"
+            "course_id INTEGER REFERENCES courses(id) ON DELETE SET NULL,"
+            "title TEXT NOT NULL,"
+            "description TEXT NOT NULL DEFAULT '',"
+            "tier TEXT NOT NULL CHECK (tier IN "
+            "('core', 'folded', 'choice', 'life_skills', 'projects', 'wellness', 'coding')),"
+            "primary_subject TEXT NOT NULL,"
+            "source TEXT NOT NULL DEFAULT 'manual',"
+            "minutes INTEGER NOT NULL CHECK (minutes > 0),"
+            "occurred_on TEXT NOT NULL,"
+            "location TEXT NOT NULL DEFAULT '',"
+            "created_at TEXT NOT NULL DEFAULT (datetime('now'))"
+            ")"
+        )
+        self.conn.execute(
+            "INSERT INTO activities_new "
+            "(id, student_id, lesson_id, course_id, title, description, tier, "
+            " primary_subject, source, minutes, occurred_on, location, created_at) "
+            "SELECT id, student_id, lesson_id, course_id, title, description, tier, "
+            "primary_subject, source, minutes, occurred_on, location, created_at FROM activities"
+        )
+        self.conn.execute("DROP TABLE activities")
+        self.conn.execute("ALTER TABLE activities_new RENAME TO activities")
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_activities_student_date "
+            "ON activities (student_id, occurred_on)"
+        )
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_activities_course ON activities (course_id)"
         )
         self.conn.commit()
         self.conn.execute("PRAGMA foreign_keys = ON")
@@ -1759,6 +1928,35 @@ class Database:
                     continue
                 self.conn.execute(
                     "INSERT INTO life_skills "
+                    "(student_id, category, title, credit_subject, description, "
+                    "materials, active, sort_order) VALUES (?, ?, ?, ?, ?, ?, 0, ?)",
+                    (student_id, category, title, subject, description, materials, order),
+                )
+
+    def _backfill_coding_module_catalog(self) -> None:
+        """Same reasoning as `_backfill_life_skill_catalog`: `seed_coding_modules`
+        only ever fires once per student, so a family that seeded before the
+        catalog grew needs the newer modules added here instead. New entries
+        always land inactive, regardless of their catalog default -- a
+        parent who already curated their active set didn't ask for anything
+        new to suddenly appear on the student's page."""
+        for row in self.conn.execute("SELECT id FROM students"):
+            student_id = row["id"]
+            existing_titles = {
+                r["title"]
+                for r in self.conn.execute(
+                    "SELECT title FROM coding_modules WHERE student_id = ?", (student_id,)
+                )
+            }
+            if not existing_titles:
+                continue  # never seeded at all -- seed_coding_modules handles that path
+            for order, (category, title, subject, description, materials, _) in enumerate(
+                CODING_MODULE_CATALOG
+            ):
+                if title in existing_titles:
+                    continue
+                self.conn.execute(
+                    "INSERT INTO coding_modules "
                     "(student_id, category, title, credit_subject, description, "
                     "materials, active, sort_order) VALUES (?, ?, ?, ?, ?, ?, 0, ?)",
                     (student_id, category, title, subject, description, materials, order),
@@ -3607,6 +3805,124 @@ class Database:
             )
         self.conn.commit()
         return len(LIFE_SKILL_CATALOG)
+
+    # -- Coding Camp ------------------------------------------------------------
+    # Same shape as Core Life Skills throughout, on purpose -- its own table,
+    # its own catalog, its own page, but the same active/backlog gate,
+    # schedule/due model, and parent-curated (not agentic) reasoning.
+
+    def list_coding_modules(self, student_id: int) -> list[dict[str, Any]]:
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM coding_modules WHERE student_id = ? "
+                "ORDER BY category, sort_order, id",
+                (student_id,),
+            )
+        )
+
+    def add_coding_module(
+        self,
+        student_id: int,
+        title: str,
+        category: str = "General",
+        description: str = "",
+        credit_subject: str = "occupational_education",
+        materials: str = "",
+    ) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO coding_modules "
+            "(student_id, title, category, description, credit_subject, materials) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (student_id, title, category, description, credit_subject, materials),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def set_coding_module_done(
+        self, module_id: int, completed: bool, notes: str = ""
+    ) -> None:
+        self.conn.execute(
+            "UPDATE coding_modules SET completed_on = ?, "
+            "notes = CASE WHEN ? != '' THEN ? ELSE notes END WHERE id = ?",
+            (date.today().isoformat() if completed else None, notes, notes, module_id),
+        )
+        self.conn.commit()
+
+    def set_coding_module_active(self, module_id: int, active: bool) -> None:
+        """Unlocks or hides a catalog module from the student view. Never
+        touches `completed_on` -- an already-earned module stays visible to
+        him regardless (see the `active OR completed_on` filter at the call
+        site), same reasoning `set_life_skill_active` already gives."""
+        self.conn.execute(
+            "UPDATE coding_modules SET active = ? WHERE id = ?", (int(active), module_id)
+        )
+        self.conn.commit()
+
+    def schedule_coding_module(self, module_id: int, scheduled_for: str | None) -> None:
+        """Assigns (or clears, with `None`) the specific day a parent picked
+        for this module -- same reasoning as `schedule_life_skill` throughout,
+        including assigning a date also unlocking the module (a still-locked
+        module is invisible on the checklist itself) and clearing the date
+        deliberately *not* re-locking it."""
+        if scheduled_for:
+            self.conn.execute(
+                "UPDATE coding_modules SET scheduled_for = ?, active = 1 WHERE id = ?",
+                (scheduled_for, module_id),
+            )
+        else:
+            self.conn.execute(
+                "UPDATE coding_modules SET scheduled_for = ? WHERE id = ?",
+                (scheduled_for, module_id),
+            )
+        self.conn.commit()
+
+    def due_coding_modules(self, student_id: int, today: str) -> list[dict[str, Any]]:
+        """Assigned modules that still need doing: scheduled for today or
+        earlier, not yet completed, still unlocked -- same reasoning as
+        `due_life_skills` throughout."""
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM coding_modules WHERE student_id = ? AND scheduled_for IS NOT NULL "
+                "AND scheduled_for <= ? AND completed_on IS NULL AND active = 1 "
+                "ORDER BY scheduled_for, sort_order, id",
+                (student_id, today),
+            )
+        )
+
+    def upcoming_coding_modules(self, student_id: int, after: str) -> list[dict[str, Any]]:
+        """Assigned modules not due yet -- same reasoning as
+        `upcoming_life_skills`."""
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM coding_modules WHERE student_id = ? AND scheduled_for IS NOT NULL "
+                "AND scheduled_for > ? AND completed_on IS NULL AND active = 1 "
+                "ORDER BY scheduled_for, sort_order, id",
+                (student_id, after),
+            )
+        )
+
+    def delete_coding_module(self, module_id: int) -> None:
+        self.conn.execute("DELETE FROM coding_modules WHERE id = ?", (module_id,))
+        self.conn.commit()
+
+    def seed_coding_modules(self, student_id: int) -> int:
+        """Seed the full master catalog, once. Whether a module starts
+        unlocked is the catalog's own `active` default -- see
+        `CODING_MODULE_CATALOG`."""
+        existing = self.list_coding_modules(student_id)
+        if existing:
+            return 0
+        for order, (category, title, subject, description, materials, active) in enumerate(
+            CODING_MODULE_CATALOG
+        ):
+            self.conn.execute(
+                "INSERT INTO coding_modules "
+                "(student_id, category, title, credit_subject, description, materials, "
+                "active, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (student_id, category, title, subject, description, materials, int(active), order),
+            )
+        self.conn.commit()
+        return len(CODING_MODULE_CATALOG)
 
     # -- Declaration of Intent (WA RCW 28A.200.010) ---------------------------
 

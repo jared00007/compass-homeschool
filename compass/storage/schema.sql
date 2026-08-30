@@ -240,7 +240,7 @@ CREATE TABLE IF NOT EXISTS activities (
     course_id       INTEGER REFERENCES courses(id) ON DELETE SET NULL,
     title           TEXT NOT NULL,
     description     TEXT NOT NULL DEFAULT '',
-    tier            TEXT NOT NULL CHECK (tier IN ('core', 'folded', 'choice', 'life_skills', 'projects', 'wellness')),
+    tier            TEXT NOT NULL CHECK (tier IN ('core', 'folded', 'choice', 'life_skills', 'projects', 'wellness', 'coding')),
     primary_subject TEXT NOT NULL,
     source          TEXT NOT NULL DEFAULT 'manual',  -- agent key, 'manual', 'choice', 'life_skills'
     minutes         INTEGER NOT NULL CHECK (minutes > 0),
@@ -317,6 +317,28 @@ CREATE TABLE IF NOT EXISTS life_skills (
     notes        TEXT NOT NULL DEFAULT '',
     sort_order   INTEGER NOT NULL DEFAULT 0,
     scheduled_for TEXT,  -- ISO date a parent assigned this skill to; NULL = do whenever
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ---------------------------------------------------------------------------
+-- Coding Camp -- same shape as life_skills on purpose (a parent-maintained
+-- checklist, same active/backlog gate, same schedule/due model), just its
+-- own catalog and its own page.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS coding_modules (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id   INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    category     TEXT NOT NULL DEFAULT 'General',
+    title        TEXT NOT NULL,
+    description  TEXT NOT NULL DEFAULT '',
+    materials    TEXT NOT NULL DEFAULT '',
+    active       INTEGER NOT NULL DEFAULT 1,  -- unlocked for the student view; parent-controlled
+    credit_subject TEXT NOT NULL DEFAULT 'occupational_education',
+    completed_on TEXT,
+    notes        TEXT NOT NULL DEFAULT '',
+    sort_order   INTEGER NOT NULL DEFAULT 0,
+    scheduled_for TEXT,  -- ISO date a parent assigned this module to; NULL = do whenever
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

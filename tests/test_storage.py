@@ -1036,6 +1036,154 @@ def test_set_life_skill_active_toggles_visibility_without_touching_completion(db
     assert skill["completed_on"] is not None
 
 
+# --- Coding Camp: same shape as Core Life Skills, its own catalog ---------------
+
+
+def test_coding_modules_seed_only_once(db, student):
+    first = db.seed_coding_modules(student["id"])
+    second = db.seed_coding_modules(student["id"])
+    assert first > 0
+    assert second == 0
+
+
+def test_coding_modules_are_seeded_with_real_idea_and_materials_text(db, student):
+    db.seed_coding_modules(student["id"])
+    modules = db.list_coding_modules(student["id"])
+    assert len(modules) >= 15
+    assert all(m["description"] for m in modules)
+    assert all(m["materials"] for m in modules)
+    assert all(m["credit_subject"] for m in modules)
+
+
+def test_add_coding_module_defaults_to_occupational_education(db, student):
+    module_id = db.add_coding_module(student["id"], "Build a text adventure")
+    module = db.list_coding_modules(student["id"])[0]
+    assert module["id"] == module_id
+    assert module["credit_subject"] == "occupational_education"
+    assert module["active"] == 1
+
+
+def test_set_coding_module_active_toggles_visibility_without_touching_completion(db, student):
+    module_id = db.add_coding_module(student["id"], "Build a text adventure")
+    db.set_coding_module_done(module_id, True)
+    db.set_coding_module_active(module_id, False)
+    module = next(m for m in db.list_coding_modules(student["id"]) if m["id"] == module_id)
+    assert module["active"] == 0
+    assert module["completed_on"] is not None
+
+
+def test_schedule_coding_module_unlocks_it(db, student):
+    module_id = db.add_coding_module(student["id"], "Build a text adventure")
+    db.set_coding_module_active(module_id, False)
+    db.schedule_coding_module(module_id, date.today().isoformat())
+    module = next(m for m in db.list_coding_modules(student["id"]) if m["id"] == module_id)
+    assert module["active"] == 1
+    assert module["scheduled_for"] == date.today().isoformat()
+
+
+def test_due_coding_modules_excludes_completed_and_locked(db, student):
+    today = date.today().isoformat()
+    due_id = db.add_coding_module(student["id"], "Due today")
+    db.schedule_coding_module(due_id, today)
+
+    done_id = db.add_coding_module(student["id"], "Already done")
+    db.schedule_coding_module(done_id, today)
+    db.set_coding_module_done(done_id, True)
+
+    locked_id = db.add_coding_module(student["id"], "Re-locked")
+    db.schedule_coding_module(locked_id, today)
+    db.set_coding_module_active(locked_id, False)
+
+    due = db.due_coding_modules(student["id"], today)
+    assert [m["id"] for m in due] == [due_id]
+
+
+def test_upcoming_coding_modules_only_includes_the_future(db, student):
+    today = date.today().isoformat()
+    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+    today_id = db.add_coding_module(student["id"], "Due today")
+    db.schedule_coding_module(today_id, today)
+    future_id = db.add_coding_module(student["id"], "Due tomorrow")
+    db.schedule_coding_module(future_id, tomorrow)
+
+    upcoming = db.upcoming_coding_modules(student["id"], today)
+    assert [m["id"] for m in upcoming] == [future_id]
+
+
+def test_delete_coding_module_removes_it(db, student):
+    module_id = db.add_coding_module(student["id"], "Build a text adventure")
+    db.delete_coding_module(module_id)
+    assert db.list_coding_modules(student["id"]) == []
+
+
+def test_backfill_coding_module_catalog_tops_up_missing_entries_as_locked(db, student):
+    """Same reasoning as the Life Skills catalog top-up: a family that
+    seeded before the catalog grew still gets the newer modules, but always
+    locked -- a parent who already curated their active set didn't ask for
+    anything new to suddenly appear."""
+    from compass.storage.db import CODING_MODULE_CATALOG
+
+    first_title = CODING_MODULE_CATALOG[0][1]
+    db.add_coding_module(student["id"], first_title)
+
+    db._backfill_coding_module_catalog()
+
+    modules = db.list_coding_modules(student["id"])
+    assert len(modules) == len(CODING_MODULE_CATALOG)
+    new_ones = [m for m in modules if m["title"] != first_title]
+    assert new_ones
+    assert all(m["active"] == 0 for m in new_ones)
+
+
+def test_a_database_created_before_coding_modules_existed_gets_the_table(tmp_path):
+    """`coding_modules` shipped after some real databases already existed --
+    `CREATE TABLE IF NOT EXISTS` in schema.sql covers this on its own (no
+    ALTER needed, it's a brand-new table), but a family's existing
+    `activities.tier` CHECK constraint predates 'coding' and needs the
+    table-rebuild migration to actually accept it."""
+    path = tmp_path / "pre_coding.db"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE students (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, "
+        "grade TEXT NOT NULL DEFAULT '', age INTEGER)"
+    )
+    conn.execute("INSERT INTO students (id, name) VALUES (1, 'Old Student')")
+    conn.execute(
+        "CREATE TABLE activities ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL, "
+        "lesson_id INTEGER, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', "
+        "tier TEXT NOT NULL CHECK (tier IN "
+        "('core', 'folded', 'choice', 'life_skills', 'projects', 'wellness')), "
+        "primary_subject TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'manual', "
+        "minutes INTEGER NOT NULL CHECK (minutes > 0), occurred_on TEXT NOT NULL, "
+        "location TEXT NOT NULL DEFAULT '', "
+        "created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+    )
+    conn.execute(
+        "INSERT INTO activities (student_id, title, tier, primary_subject, minutes, occurred_on) "
+        "VALUES (1, 'Old activity', 'core', 'math', 30, '2025-01-01')"
+    )
+    conn.commit()
+    conn.close()
+
+    migrated = Database(path)
+    try:
+        old_activity = migrated.conn.execute(
+            "SELECT * FROM activities WHERE title = 'Old activity'"
+        ).fetchone()
+        assert old_activity["tier"] == "core"  # untouched by the rebuild
+        migrated.log_activity(
+            student_id=1, title="New coding activity", tier="coding",
+            primary_subject="occupational_education", minutes=30,
+            subject_credits={"occupational_education": 30}, occurred_on="2025-01-02",
+            source="coding",
+        )
+        module_id = migrated.add_coding_module(1, "Build a text adventure")
+        assert migrated.list_coding_modules(1)[0]["id"] == module_id
+    finally:
+        migrated.close()
+
+
 # --- Choice Topics: the same active/backlog gate life_skills already has --------
 
 

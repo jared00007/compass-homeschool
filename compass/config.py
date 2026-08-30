@@ -152,8 +152,12 @@ TIER_CHOICE = "choice"  # Tier 3 — student-selected interest topics
 TIER_LIFE_SKILLS = "life_skills"  # Parent-defined checklist track
 TIER_PROJECTS = "projects"  # Parent-defined multi-step project track (e.g. the Lego film)
 TIER_WELLNESS = "wellness"  # Morning routine -- stretch/breathing/mindfulness credit
+TIER_CODING = "coding"  # Parent-defined checklist track, same shape as Life Skills
 
-TIERS = (TIER_CORE, TIER_FOLDED, TIER_CHOICE, TIER_LIFE_SKILLS, TIER_PROJECTS, TIER_WELLNESS)
+TIERS = (
+    TIER_CORE, TIER_FOLDED, TIER_CHOICE, TIER_LIFE_SKILLS, TIER_PROJECTS,
+    TIER_WELLNESS, TIER_CODING,
+)
 
 TIER_LABELS = {
     TIER_CORE: "Tier 1 — Core",
@@ -162,6 +166,7 @@ TIER_LABELS = {
     TIER_LIFE_SKILLS: "Core life skills",
     TIER_PROJECTS: "Big Projects",
     TIER_WELLNESS: "Morning Wellness",
+    TIER_CODING: "Coding Camp",
 }
 
 

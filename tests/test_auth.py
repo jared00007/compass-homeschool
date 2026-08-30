@@ -282,6 +282,37 @@ def test_profile_editor_is_parent_only(monkeypatch, tmp_path):
     assert not written, "the student-view branch must render nothing at all"
 
 
+def test_student_view_never_hides_streamlits_own_view_more_toggle(monkeypatch):
+    """Regression: this used to force-hide Streamlit's native "View N more"
+    sidebar collapse toggle for the student unconditionally, on the theory
+    that hiding the parent-only pages above would always leave the rest
+    fitting without it. That stopped being true the moment the page count
+    grew past Streamlit's own collapse threshold (adding Coding Camp pushed
+    it over) -- Quizzes and Coding both silently became unreachable for him,
+    since the toggle that would have revealed them was itself hidden. The
+    toggle must never be targeted by this CSS at all, regardless of how many
+    pages exist."""
+    import compass.ui as ui
+
+    written: list[str] = []
+
+    class Recorder:
+        def __getattr__(self, _name):
+            def record(*args, **kwargs):
+                for arg in args:
+                    if isinstance(arg, str):
+                        written.append(arg)
+                return Recorder()
+            return record
+
+    monkeypatch.setattr(ui, "st", Recorder())
+    monkeypatch.setattr(ui, "is_parent", lambda: False)
+    ui._hide_parent_only_nav()
+
+    css = "\n".join(written)
+    assert "stSidebarNavViewButton" not in css
+
+
 def test_student_view_hides_the_parent_only_nav_tabs(monkeypatch):
     """Activity Log, Compliance, Student Profile, Courses, This Week, and Model
     Costs are all parent admin -- record-keeping, settings, spend -- rather than

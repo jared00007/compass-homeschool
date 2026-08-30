@@ -28,6 +28,7 @@ between them. In the order they appear:
     student's own lesson view       student_lesson_view, render_past_lessons
     subject icons / Friday / daily  SUBJECT_ICONS, checklist, morning routine
     life skill cards                the catalog grid + its manager
+    coding camp                     render_coding_module_cards + its catalog manager
     choice topics (Tier 3)          render_choice_topics_section, folded into Life Skills
     vocabulary review               the multiple-choice quiz, auto-graded
     API availability                api_status_banner
@@ -193,10 +194,6 @@ def _hide_parent_only_nav() -> None:
     st.markdown(
         f"""<style>
         {selector} {{ display: none !important; }}
-        /* Once the pages above are hidden, the ones left over fit without
-        Streamlit's "View N more" collapse -- toggling it would just open onto
-        empty space, so it goes too rather than becoming a dead click. */
-        [data-testid="stSidebarNavViewButton"] {{ display: none !important; }}
         </style>""",
         unsafe_allow_html=True,
     )
@@ -2685,6 +2682,121 @@ def render_life_skill_catalog_manager(db: Database, skills: list[dict[str, Any]]
                         st.rerun()
                 elif skill["scheduled_for"]:
                     db.schedule_life_skill(skill["id"], None)
+                    st.rerun()
+
+
+# --- Coding Camp: same shape as Core Life Skills, its own catalog and page ------
+#
+# Plain expander rows throughout, on the same reasoning
+# render_life_skill_catalog_manager's own docstring gives for its half of Life
+# Skills -- a v1 checklist doesn't need the Neon Pop card grid Life Skills'
+# checklist has to be a real, working feature; that's a separate, later
+# polish pass, not a reason to hold this back.
+
+
+def render_coding_module_cards(db: Database, modules: list[dict[str, Any]], can_edit: bool) -> None:
+    """The checklist itself. Takes the *full* catalog, not a pre-filtered
+    list -- visibility is this function's own rule: a module shows only if
+    it's `active` (unlocked from *Master list*) or already `completed_on`,
+    same reasoning `render_life_skill_cards` already gives."""
+    modules = [m for m in modules if m["active"] or m["completed_on"]]
+    if not modules:
+        return
+
+    by_category: dict[str, list[dict[str, Any]]] = {}
+    for module in modules:
+        by_category.setdefault(module["category"], []).append(module)
+    done = sum(1 for m in modules if m["completed_on"])
+    st.caption(f"🏆 {done} / {len(modules)} built")
+
+    for category, items in by_category.items():
+        complete = sum(1 for i in items if i["completed_on"])
+        st.subheader(f"{category} — {complete}/{len(items)}")
+        for module in items:
+            earned = bool(module["completed_on"])
+            badge = f"✅ built {module['completed_on']}" if earned else (
+                f"📅 assigned {module['scheduled_for']}" if module["scheduled_for"] else ""
+            )
+            with st.container(border=True):
+                st.markdown(f"**{md(module['title'])}**" + (f" — {badge}" if badge else ""))
+                if module["description"]:
+                    st.caption(md(module["description"]))
+                if module["materials"]:
+                    st.caption(f"You'll need: {md(module['materials'])}")
+                columns = st.columns([1, 1])
+                checked = columns[0].checkbox(
+                    "Mark done", value=earned, key=f"coding_done_{module['id']}"
+                )
+                if checked != earned:
+                    db.set_coding_module_done(module["id"], checked)
+                    st.rerun()
+                if can_edit and columns[1].button("🗑️ Remove", key=f"coding_remove_{module['id']}"):
+                    db.delete_coding_module(module["id"])
+                    st.rerun()
+
+
+def render_coding_module_catalog_manager(db: Database, modules: list[dict[str, Any]]) -> None:
+    """The pace control -- identical shape to `render_life_skill_catalog_manager`,
+    just for the Coding Camp catalog: every module, active or not, one row
+    each, collapsed by default, with an unlock toggle and an optional
+    assign-to-a-day date picker layered on top."""
+    by_category: dict[str, list[dict[str, Any]]] = {}
+    for module in modules:
+        by_category.setdefault(module["category"], []).append(module)
+
+    unlocked = sum(1 for m in modules if m["active"])
+    st.caption(f"{unlocked} / {len(modules)} unlocked")
+
+    for category, items in by_category.items():
+        st.subheader(category)
+        for module in items:
+            status = (
+                "✅ built" if module["completed_on"]
+                else ("🔓 unlocked" if module["active"] else "🔒 locked")
+            )
+            if module["scheduled_for"] and not module["completed_on"]:
+                status += f" · 📅 assigned {module['scheduled_for']}"
+            with st.expander(f"{module['title']} — {status}"):
+                columns = st.columns([5, 1])
+                if module["description"]:
+                    columns[0].markdown(f"**The idea:** {module['description']}")
+                if module["materials"]:
+                    columns[0].caption(f"You'll need: {module['materials']}")
+                columns[0].caption(f"Credits toward {subjects.label(module['credit_subject'])}")
+                if module["completed_on"]:
+                    columns[0].caption(f"✅ Built {module['completed_on']}")
+                # Same reasoning render_life_skill_catalog_manager's own key
+                # gives: folding `active` into the key forces a fresh widget
+                # any time it changes for any reason, so a stale
+                # session_state value from before never writes the lock
+                # straight back.
+                active = columns[1].checkbox(
+                    "Unlocked",
+                    value=bool(module["active"]),
+                    key=f"coding_active_{module['id']}_{module['active']}",
+                )
+                if active != bool(module["active"]):
+                    db.set_coding_module_active(module["id"], active)
+                    st.rerun()
+
+                assign = columns[0].checkbox(
+                    "Assign this to a specific day",
+                    value=bool(module["scheduled_for"]),
+                    key=f"coding_assign_toggle_{module['id']}",
+                )
+                if assign:
+                    picked = columns[0].date_input(
+                        "Day",
+                        value=date.fromisoformat(module["scheduled_for"])
+                        if module["scheduled_for"]
+                        else date.today(),
+                        key=f"coding_assign_date_{module['id']}",
+                    )
+                    if picked.isoformat() != module["scheduled_for"]:
+                        db.schedule_coding_module(module["id"], picked.isoformat())
+                        st.rerun()
+                elif module["scheduled_for"]:
+                    db.schedule_coding_module(module["id"], None)
                     st.rerun()
 
 
