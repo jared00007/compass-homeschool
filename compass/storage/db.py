@@ -3383,8 +3383,14 @@ class Database:
         """Seed the starter catalog, once -- a family that already added its
         own project (or deleted every starter one on purpose) never gets it
         pushed back on them. `_backfill_big_project_catalog` is the top-up
-        path for a family that already seeded before the catalog grew."""
-        if self.list_big_projects(student_id):
+        path for a family that already seeded before the catalog grew.
+
+        Checked by `kind = 'steps'` only, not "any project at all" -- every
+        student now gets an automatic `kind='travel_log'` row starting on
+        their very first page view (see `ensure_travel_log_project`), which
+        must never itself count as "already seeded," or this would silently
+        stop doing anything for every family from day one."""
+        if any(p["kind"] == "steps" for p in self.list_big_projects(student_id)):
             return 0
         for order, (title, vision, steps) in enumerate(BIG_PROJECT_CATALOG):
             self._insert_big_project(student_id, order, title, vision, steps)
@@ -3399,13 +3405,26 @@ class Database:
         would otherwise never see them at all. Matched by title, shelved or
         not, so a project the parent shelved (see set_big_project_shelved)
         stays gone -- it's still a row, just not a *missing* one. Never
-        touches a project that's already there."""
+        touches a project that's already there.
+
+        `kind = 'steps'` only -- every student now gets an automatic
+        `kind='travel_log'` row from `ensure_travel_log_project` starting on
+        their very first page view (see page_setup), which is not "the
+        family seeded the starter catalog" and must never be read as one.
+        Without this filter, that one automatic row alone would satisfy the
+        "already has something, so top up what's missing" check below and
+        silently inject the entire starter catalog for a family that never
+        asked for it -- caught by test_backlog_tab_groups_a_projects_
+        remaining_steps_by_title, which added exactly one custom project and
+        got the whole catalog back along with it.
+        """
         for row in self.conn.execute("SELECT id FROM students"):
             student_id = row["id"]
             existing_titles = {
                 r["title"]
                 for r in self.conn.execute(
-                    "SELECT title FROM big_projects WHERE student_id = ?", (student_id,)
+                    "SELECT title FROM big_projects WHERE student_id = ? AND kind = 'steps'",
+                    (student_id,),
                 )
             }
             if not existing_titles:

@@ -275,6 +275,42 @@ all_travel_entries = db.list_travel_entries(student["id"])
 travel_to_review = [t for t in all_travel_entries if t["status"] in ("submitted", "needs_revision")]
 travel_to_review.sort(key=lambda t: 0 if t["status"] == "submitted" else 1)
 
+# Its whole week ended without being turned in -- pulled out of his own
+# view entirely (see weekly.is_backlogged/due_lessons). Hoisted up here
+# (not just computed inside the Lessons tab below) so the consolidated
+# Backlog tab can show it too, without a second, separately-maintained copy
+# of this filter.
+lesson_backlog = [
+    l for l in to_review
+    if l["status"] == "planned" and weekly.is_backlogged(l, today_iso)
+]
+lesson_backlog.sort(key=lambda l: (l.get("metadata") or {}).get("planned_for") or "")
+
+# Every non-shelved, non-travel-log project's remaining work -- backlogged
+# steps AND to-do steps not yet done both count as "what's left," the same
+# way a parent would actually describe it (reported directly: "Landon did
+# the first two legs of Lego film, backlog would clearly show what's left").
+# Skipped entirely once every step is done -- that's "finished," not "left."
+all_projects = db.list_big_projects(student["id"])
+project_backlog = []
+for project in all_projects:
+    if project["shelved"] or project["kind"] == "travel_log":
+        continue
+    remaining = [s for s in db.list_project_steps(project["id"]) if not s["completed_on"]]
+    if remaining:
+        project_backlog.append((project, remaining))
+
+all_topics = db.list_choice_topics(student["id"])
+topic_backlog = [
+    t for t in all_topics if not t["active"] and t["status"] not in ("done", "declined")
+]
+
+backlog_count = (
+    len(lesson_backlog)
+    + sum(len(steps) for _, steps in project_backlog)
+    + len(topic_backlog)
+)
+
 # The tab's own number, not just "everything not yet completed" -- reported
 # directly: a lesson simply scheduled for a future day, untouched, isn't
 # something to review yet, the same reasoning travel_to_review above
@@ -287,8 +323,13 @@ needs_review_count = (
     + len(travel_to_review)
 )
 
-log_tab, add_tab, lessons_tab = st.tabs(
-    ["The record", "Log something manually", f"To review ({needs_review_count})"]
+log_tab, add_tab, lessons_tab, backlog_tab = st.tabs(
+    [
+        "The record",
+        "Log something manually",
+        f"To review ({needs_review_count})",
+        f"🗄️ Backlog ({backlog_count})",
+    ]
 )
 
 with log_tab:
@@ -413,16 +454,10 @@ with lessons_tab:
     # with lessons still simply due, so what's on your plate versus his
     # stays visually distinct.
     sent_back = [l for l in to_review if l["status"] == "needs_revision"]
-    # Its whole week ended without being turned in -- pulled out of his own
-    # view entirely (see weekly.is_backlogged/due_lessons). This is the only
-    # place left to see it until it's explicitly moved to a new day below.
-    backlog = [
-        l for l in to_review
-        if l["status"] == "planned" and weekly.is_backlogged(l, today_iso)
-    ]
-    backlog.sort(key=lambda l: (l.get("metadata") or {}).get("planned_for") or "")
     excluded_ids = (
-        {l["id"] for l in attention} | {l["id"] for l in sent_back} | {l["id"] for l in backlog}
+        {l["id"] for l in attention}
+        | {l["id"] for l in sent_back}
+        | {l["id"] for l in lesson_backlog}
     )
     rest = [l for l in to_review if l["id"] not in excluded_ids]
 
@@ -444,16 +479,16 @@ with lessons_tab:
                 _render_review_card(lesson, today_iso)
             st.divider()
 
-        if backlog:
-            st.markdown(f"**🗄️ Backlog** ({len(backlog)})")
-            st.caption(
-                "His whole week for these came and went without being turned in -- "
-                "pulled out of his own view entirely, not just marked late. Move one "
-                "to a new day below to bring it back; it'll show up for him again "
-                "exactly like a freshly planned lesson, once it's due."
+        if lesson_backlog:
+            # Rendered in full on the dedicated 🗄️ Backlog tab instead of a
+            # second time here -- the same lesson through _render_review_card
+            # twice on one page collides on that helper's own widget keys
+            # (docx_<id>, send_to_backlog_<id>, ...), since Streamlit's key
+            # namespace isn't scoped per tab.
+            st.info(
+                f"🗄️ {len(lesson_backlog)} lesson(s) in the Backlog -- see the "
+                "**🗄️ Backlog** tab for the full picture across every item type."
             )
-            for lesson in backlog:
-                _render_review_card(lesson, today_iso, show_reschedule=True)
             st.divider()
 
         st.markdown("**📅 This week's plan**")
@@ -535,11 +570,63 @@ with lessons_tab:
         if not attention and not sent_back and not travel_to_review:
             st.success("Nothing waiting on you right now.")
 
-    show_history = st.checkbox("Also show completed and skipped lessons")
-    if show_history:
+with backlog_tab:
+    st.subheader("Everything parked, in one place")
+    st.caption(
+        "Every item type shares the same idea now: parked out of his own view until "
+        "you pull it back. This is the one flow to see all of it and spread it back "
+        "out across the weeks ahead, rather than checking four separate pages. Life "
+        "Skills isn't one of the sections below -- its own Master List tab is already "
+        "the pace-control view for that whole catalog, hundreds of entries deep by "
+        "design, not the small, situational kind of parking this page is for."
+    )
+
+    if not backlog_count:
+        st.success("Nothing parked anywhere right now.")
+
+    if lesson_backlog:
+        st.markdown(f"**📐 Lessons** ({len(lesson_backlog)})")
+        for lesson in lesson_backlog:
+            _render_review_card(lesson, today_iso, show_reschedule=True)
         st.divider()
-        st.markdown(f"**Completed & skipped** ({len(history)})")
-        if not history:
-            st.caption("Nothing logged yet.")
-        for lesson in history:
-            _render_review_card(lesson, today_iso)
+
+    if project_backlog:
+        total_remaining = sum(len(steps) for _, steps in project_backlog)
+        st.markdown(f"**🎬 Big Projects** ({total_remaining})")
+        st.caption(
+            "What's left in each project still underway -- steps not yet committed "
+            "to the plan (Backlog) and steps already in To Do but not finished yet, "
+            "together, since both are genuinely still ahead of him."
+        )
+        for project, steps in project_backlog:
+            st.markdown(f"*{md(project['title'])}*")
+            for step in steps:
+                columns = st.columns([5, 1])
+                status = "🗄️ Backlog" if not step["active"] else "▶ To Do"
+                columns[0].caption(f"{status} · {md(step['title'])}")
+                if not step["active"]:
+                    if columns[1].button(
+                        "➡️ To Do", key=f"backlog_tab_step_todo_{step['id']}"
+                    ):
+                        db.set_project_step_active(step["id"], True)
+                        st.rerun()
+            st.page_link("pages/7_Big_Projects.py", label="Open Big Projects", icon="➡️")
+        st.divider()
+
+    if topic_backlog:
+        st.markdown(f"**⭐ Choice Topics** ({len(topic_backlog)})")
+        for topic in topic_backlog:
+            columns = st.columns([5, 1])
+            columns[0].caption(f"🗄️ {md(topic['title'])} — {topic['status']}")
+            if columns[1].button("➡️ Un-backlog", key=f"backlog_tab_untopic_{topic['id']}"):
+                db.set_choice_topic_active(topic["id"], True)
+                st.rerun()
+
+show_history = st.checkbox("Also show completed and skipped lessons")
+if show_history:
+    st.divider()
+    st.markdown(f"**Completed & skipped** ({len(history)})")
+    if not history:
+        st.caption("Nothing logged yet.")
+    for lesson in history:
+        _render_review_card(lesson, today_iso)

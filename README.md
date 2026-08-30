@@ -1546,10 +1546,40 @@ the same mechanism `_hide_parent_only_nav` already used, just not gated on `is_p
 this time. Every other entry point into either feature (Home's cards, the Friday plan
 picker, the Travel Log card's own link) was repointed rather than left dangling.
 
+**A consolidated Backlog tab on Activity Log — every item type's "what's parked or
+still left," in one place.** Requested directly: a parent needs a clean view across
+item types, not just lessons — "Landon did the first two legs of Lego film, backlog
+would clearly show what's left." A new **🗄️ Backlog** tab groups three sections:
+lessons already in `lesson_backlog` (hoisted out of the "To review" tab's own
+computation so both places share one filter instead of two), every non-shelved,
+non-travel-log Big Project's remaining steps — backlogged *and* to-do-but-not-done
+together, since a parent describing "what's left" means both — grouped by project
+title with an inline "Move to To Do" action, and backlogged Choice Topics with their
+own inline "Un-backlog" action. Life Skills is deliberately **not** a fourth section:
+its own "backlog" is the 161-entry master catalog, most of it locked by design (a
+pace-control menu you release from at your own speed, not situational parking), and
+its own Master List tab already is the right view for that — listing all of it here
+with individual buttons would just bury the small, situational sections this tab is
+actually for. A lesson already in Backlog is no longer duplicated as a full card
+inside "To review" too (rendering the same lesson through `_render_review_card` twice
+on one page collided on that helper's own widget keys, since Streamlit's key
+namespace isn't scoped per tab) — just a one-line count pointing at the new tab.
+
+Building this surfaced a real, unrelated pre-existing bug: `_backfill_big_project_catalog`
+and `seed_big_projects` both treated "this student has *any* `big_projects` row" as "the
+starter catalog was already seeded, so top up what's missing" / "so don't seed again."
+Once `ensure_travel_log_project` started creating that one automatic row on every
+family's first page view, both checks fired immediately, for everyone — the starter
+catalog would get silently injected on the very next reload even though nobody clicked
+anything, and the seed button itself would permanently stop doing anything from day one.
+Both are now scoped to `kind = 'steps'` rows only, the same fix applied everywhere else
+this session that a raw `list_big_projects()`/truthiness check meant "you have a real
+project" before the Travel Log row existed to complicate that.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1003 tests, ~100s, no API key needed
+python -m pytest tests/ -q      # 1013 tests, ~100s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

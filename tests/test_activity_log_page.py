@@ -43,6 +43,10 @@ def _open_review_tab(monkeypatch, db_path):
     return at, [t for t in at.tabs if t.label.startswith("To review")][0]
 
 
+def _backlog_tab(at):
+    return [t for t in at.tabs if t.label.startswith("🗄️ Backlog")][0]
+
+
 def test_submitted_and_still_this_week_overdue_surface_regardless_of_day(monkeypatch, tmp_path):
     """A submitted lesson always needs a look, whatever weekday this test
     happens to run on. An overdue-but-still-this-week lesson does too --
@@ -114,8 +118,13 @@ def test_a_lesson_from_a_fully_elapsed_week_moves_to_backlog_not_attention(monke
 
     markdowns = [m.value for m in review_tab.markdown]
     assert not any("Needs your attention now" in m for m in markdowns)
-    assert any("Backlog" in m and "(1)" in m for m in markdowns)
+    infos = [i.value for i in review_tab.info]
+    assert any("1 lesson(s) in the Backlog" in i for i in infos)
+    # The card itself (with its reschedule action) lives on the dedicated
+    # Backlog tab now, not duplicated here too.
     labels = [e.label for e in review_tab.expander]
+    assert not any("Backlogged lesson" in l for l in labels)
+    labels = [e.label for e in _backlog_tab(at).expander]
     assert any("Backlogged lesson" in l for l in labels)
 
 
@@ -149,9 +158,11 @@ def test_sending_a_currently_due_lesson_to_backlog_pulls_it_off_the_board(monkey
     review_tab.button(key=f"send_to_backlog_{lesson_id}").click().run()
     review_tab = [t for t in at.tabs if t.label.startswith("To review")][0]
 
-    markdowns = [m.value for m in review_tab.markdown]
-    assert any("Backlog" in m and "(1)" in m for m in markdowns)
+    infos = [i.value for i in review_tab.info]
+    assert any("1 lesson(s) in the Backlog" in i for i in infos)
     labels = [e.label for e in review_tab.expander]
+    assert not any("Parked on purpose" in l for l in labels)
+    labels = [e.label for e in _backlog_tab(at).expander]
     assert any("🗄️ backlogged" in l and "Parked on purpose" in l for l in labels)
 
 
@@ -174,14 +185,19 @@ def test_moving_a_manually_backlogged_lesson_releases_it(monkeypatch, tmp_path):
     db.close()
 
     at, review_tab = _open_review_tab(monkeypatch, db_path)
-    markdowns = [m.value for m in review_tab.markdown]
-    assert any("Backlog" in m and "(1)" in m for m in markdowns)
+    infos = [i.value for i in review_tab.info]
+    assert any("1 lesson(s) in the Backlog" in i for i in infos)
 
-    review_tab.button(key=f"reschedule_{lesson_id}").click().run()
+    # The reschedule action lives on the dedicated Backlog tab now.
+    backlog_tab = _backlog_tab(at)
+    backlog_tab.button(key=f"reschedule_{lesson_id}").click().run()
+
     review_tab = [t for t in at.tabs if t.label.startswith("To review")][0]
-
-    markdowns = [m.value for m in review_tab.markdown]
-    assert not any(m.startswith("**🗄️ Backlog**") for m in markdowns)
+    assert not any(
+        "1 lesson(s) in the Backlog" in i.value for i in review_tab.info
+    )
+    labels = [e.label for e in _backlog_tab(at).expander]
+    assert not any("Parked then released" in l for l in labels)
 
 
 def test_a_held_back_lesson_not_yet_due_shows_backlogged_not_planned(monkeypatch, tmp_path):
@@ -206,7 +222,9 @@ def test_a_held_back_lesson_not_yet_due_shows_backlogged_not_planned(monkeypatch
     db.close()
 
     at, review_tab = _open_review_tab(monkeypatch, db_path)
-    labels = [e.label for e in review_tab.expander]
+    # The card itself (badge included) renders on the dedicated Backlog tab,
+    # not duplicated inside "To review" too -- see the summary info there.
+    labels = [e.label for e in _backlog_tab(at).expander]
     assert any("🗄️ backlogged" in l and "Parked ahead of time" in l for l in labels)
     assert not any("overdue" in l and "Parked ahead of time" in l for l in labels)
 
@@ -500,8 +518,151 @@ def test_history_stays_hidden_until_the_checkbox_is_checked(monkeypatch, tmp_pat
     assert not any("Finished lesson" in e.label for e in review_tab.expander)
     assert any("Nothing waiting on you" in s.value for s in review_tab.success)
 
-    checkbox = [c for c in review_tab.checkbox if c.label.startswith("Also show")][0]
+    # Rendered below all the tabs, not scoped to any one of them -- see
+    # show_history in pages/10_Activity_Log.py.
+    checkbox = [c for c in at.checkbox if c.label.startswith("Also show")][0]
     checkbox.set_value(True).run()
-    review_tab = [t for t in at.tabs if t.label.startswith("To review")][0]
 
-    assert any("Finished lesson" in e.label for e in review_tab.expander)
+    assert any("Finished lesson" in e.label for e in at.expander)
+
+
+# --- the consolidated Backlog tab: every item type parked, one place -----------
+#
+# Reported directly: a parent needs a clean view into what's backlogged (or
+# just left over in an in-progress project) across every item type, not only
+# lessons -- "Landon did the first two legs of Lego film, backlog would
+# clearly show what's left."
+
+
+def test_backlog_tab_shows_nothing_parked_when_everything_is_clear(monkeypatch, tmp_path):
+    db_path = tmp_path / "backlog.db"
+    db = Database(db_path)
+    db.ensure_default_student()
+    db.close()
+
+    at, _ = _open_review_tab(monkeypatch, db_path)
+
+    successes = [s.value for s in _backlog_tab(at).success]
+    assert any("Nothing parked anywhere" in s for s in successes)
+
+
+def test_backlog_tab_groups_a_projects_remaining_steps_by_title(monkeypatch, tmp_path):
+    """Both a step still in Backlog and a step already in To Do but not
+    finished yet count as "what's left" -- together, since a parent
+    describing an in-progress project means both."""
+    db_path = tmp_path / "backlog.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    project_id = db.add_big_project(student["id"], "Lego Stop-Motion Film")
+    done_id = db.add_project_step(project_id, "Write the script", active=True)
+    db.set_project_step_done(done_id, True)
+    todo_id = db.add_project_step(project_id, "Storyboard it", active=True)
+    backlog_id = db.add_project_step(project_id, "Film the last scene")  # defaults to Backlog
+    db.close()
+
+    at, _ = _open_review_tab(monkeypatch, db_path)
+    backlog_tab = _backlog_tab(at)
+
+    # Not an exact total -- adding any custom project also triggers
+    # _backfill_big_project_catalog's own top-up (pre-existing, unrelated
+    # behavior: a family with *any* project gets the starter catalog too),
+    # so other projects' steps count here as well.
+    markdowns = [m.value for m in backlog_tab.markdown]
+    assert any("Big Projects" in m for m in markdowns)
+    assert any("Lego Stop-Motion Film" in m for m in markdowns)
+    captions = [c.value for c in backlog_tab.caption]
+    assert any("Storyboard it" in c and "To Do" in c for c in captions)
+    assert any("Film the last scene" in c and "Backlog" in c for c in captions)
+    # The finished step isn't "left" -- it doesn't show up here at all.
+    assert not any("Write the script" in c for c in captions)
+
+    backlog_tab.button(key=f"backlog_tab_step_todo_{backlog_id}").click().run()
+
+    db = Database(db_path)
+    step = next(s for s in db.list_project_steps(project_id) if s["id"] == backlog_id)
+    db.close()
+    assert step["active"] == 1
+    assert todo_id  # sanity: the other step really was created
+
+
+def test_backlog_tab_excludes_a_project_with_nothing_left(monkeypatch, tmp_path):
+    db_path = tmp_path / "backlog.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    project_id = db.add_big_project(student["id"], "Finished Project")
+    step_id = db.add_project_step(project_id, "Only step", active=True)
+    db.set_project_step_done(step_id, True)
+    db.close()
+
+    at, _ = _open_review_tab(monkeypatch, db_path)
+    markdowns = [m.value for m in _backlog_tab(at).markdown]
+    assert not any("Finished Project" in m for m in markdowns)
+
+
+def test_backlog_tab_excludes_the_travel_log_project(monkeypatch, tmp_path):
+    """The Travel Log folder never has project_steps rows at all (see
+    Database.ensure_travel_log_project) -- it must never show up in this
+    section, since it has nothing a step-level "what's left" applies to."""
+    db_path = tmp_path / "backlog.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    db.ensure_travel_log_project(student["id"])
+    db.close()
+
+    at, _ = _open_review_tab(monkeypatch, db_path)
+    markdowns = [m.value for m in _backlog_tab(at).markdown]
+    assert not any("Travel Log" in m for m in markdowns)
+
+
+def test_backlog_tab_has_no_life_skills_section(monkeypatch, tmp_path):
+    """Life Skills' own "backlog" is its 161-entry master catalog, most of
+    it locked by design (a pace-control menu, not situational parking) --
+    listing all of it here with individual un-backlog buttons would bury
+    the small, situational sections this tab is actually for. Its own
+    Master List tab already is the right place for that."""
+    db_path = tmp_path / "backlog.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    skill_id = db.add_life_skill(student["id"], "Change a tire", "Vehicle")
+    db.set_life_skill_active(skill_id, False)
+    db.close()
+
+    at, _ = _open_review_tab(monkeypatch, db_path)
+    backlog_tab = _backlog_tab(at)
+    markdowns = [m.value for m in backlog_tab.markdown]
+    assert not any("Life Skills" in m for m in markdowns)
+    assert not any(f"backlog_tab_unls_{skill_id}" == b.key for b in backlog_tab.button)
+
+
+def test_backlog_tab_lists_a_backlogged_choice_topic_with_an_unbacklog_button(monkeypatch, tmp_path):
+    db_path = tmp_path / "backlog.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    topic_id = db.add_choice_topic(student["id"], "Learn guitar chords", active=False)
+    db.close()
+
+    at, _ = _open_review_tab(monkeypatch, db_path)
+    backlog_tab = _backlog_tab(at)
+    markdowns = [m.value for m in backlog_tab.markdown]
+    assert any("Choice Topics" in m and "(1)" in m for m in markdowns)
+
+    backlog_tab.button(key=f"backlog_tab_untopic_{topic_id}").click().run()
+
+    db = Database(db_path)
+    topic = next(t for t in db.list_choice_topics(student["id"]) if t["id"] == topic_id)
+    db.close()
+    assert topic["active"] == 1
+
+
+def test_backlog_tab_excludes_a_done_or_declined_choice_topic(monkeypatch, tmp_path):
+    db_path = tmp_path / "backlog.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    topic_id = db.add_choice_topic(student["id"], "Learn guitar chords")
+    db.set_choice_status(topic_id, "declined")
+    db.set_choice_topic_active(topic_id, False)
+    db.close()
+
+    at, _ = _open_review_tab(monkeypatch, db_path)
+    markdowns = [m.value for m in _backlog_tab(at).markdown]
+    assert not any("Choice Topics" in m for m in markdowns)

@@ -3191,7 +3191,14 @@ def _render_first_day_contents(db: Database, student: dict[str, Any], year_start
     """
     student_id = student["id"]
     books = db.list_books(student_id)
-    projects = [p for p in db.list_big_projects(student_id) if not p["shelved"]]
+    # Excludes the automatic Travel Log project (see
+    # Database.ensure_travel_log_project) -- it's not a pick among these in
+    # the sense this table of contents means, and it's always there from
+    # day one regardless of what's actually "on deck" for the year.
+    projects = [
+        p for p in db.list_big_projects(student_id)
+        if not p["shelved"] and p["kind"] != "travel_log"
+    ]
     active_project = db.active_big_project(student_id)
     choice_topics = [
         t for t in db.list_choice_topics(student_id) if t["status"] not in ("done", "declined")

@@ -45,6 +45,23 @@ def _expand_project(at, project_id):
     return at
 
 
+def test_starter_catalog_banner_still_shows_with_only_the_travel_log_project(monkeypatch, tmp_path):
+    """The automatic Travel Log project (see Database.ensure_travel_log_project,
+    always present from a student's very first page view) must not itself
+    count as "you already have a project" -- otherwise the "No projects
+    yet" banner and its seed button would never show for anyone at all."""
+    db_path = tmp_path / "projects.db"
+    db = Database(db_path)
+    db.ensure_default_student()
+    db.close()
+
+    at = _open_checklist_tab(monkeypatch, db_path)
+
+    infos = [i.value for i in at.info]
+    assert any("No projects yet" in i for i in infos)
+    assert any(b.label == "Add this year's starter projects" for b in at.button)
+
+
 def test_chunk_button_shows_only_for_a_stepless_project(monkeypatch, tmp_path):
     db_path = tmp_path / "projects.db"
     db = Database(db_path)

@@ -1463,6 +1463,34 @@ def test_seed_big_projects_adds_the_catalog_once(db, student):
     assert len(db.list_big_projects(student["id"])) == 3
 
 
+def test_seed_big_projects_still_seeds_when_only_the_travel_log_project_exists(db, student):
+    """The Travel Log project (see ensure_travel_log_project) is always
+    present from a student's very first page view now -- it must never
+    itself count as "already has projects," or the starter-catalog button
+    would silently do nothing for every family from day one."""
+    db.ensure_travel_log_project(student["id"])
+
+    added = db.seed_big_projects(student["id"])
+
+    assert added == 3
+    kinds = {p["kind"] for p in db.list_big_projects(student["id"])}
+    assert kinds == {"steps", "travel_log"}
+
+
+def test_backfill_big_project_catalog_ignores_the_travel_log_project(db, student):
+    """Same reasoning as the seeding test above -- the automatic Travel Log
+    row must not itself satisfy "this family already has something, top up
+    what's missing," or every family would get the entire starter catalog
+    injected unasked the moment that column exists."""
+    db.ensure_travel_log_project(student["id"])
+
+    db._backfill_big_project_catalog()
+
+    projects = db.list_big_projects(student["id"])
+    assert len(projects) == 1
+    assert projects[0]["kind"] == "travel_log"
+
+
 def test_backfill_big_project_catalog_tops_up_new_catalog_projects(db, student):
     """A family that seeded before the catalog grew (just the Lego film,
     say) must pick up the newer catalog projects on next launch without

@@ -61,14 +61,19 @@ def _render_travel_log_summary() -> None:
 
 projects = db.list_big_projects(student["id"])
 visible_projects = [p for p in projects if not p["shelved"]]
+# Excludes the automatic Travel Log row on purpose -- see
+# Database.ensure_travel_log_project -- it's always present starting on the
+# very first page view, but it isn't a real "you have a project" in the
+# sense this banner and the starter-catalog button below care about.
+has_steps_project = any(p["kind"] == "steps" for p in projects)
 
-if not projects:
+if not has_steps_project:
     st.info("No projects yet.")
     if st.button("Add this year's starter projects", type="primary"):
         count = db.seed_big_projects(student["id"])
         st.success(f"Added {count} project{'s' if count != 1 else ''}.")
         st.rerun()
-elif len(visible_projects) > 1:
+elif sum(1 for p in visible_projects if p["kind"] == "steps") > 1:
     st.caption(
         "A few options on purpose -- pick **one** to actually work through this "
         "year with the button on its card below. That's also what Friday's "
