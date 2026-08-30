@@ -1940,10 +1940,22 @@ card gets rendered -- a title, a one-line status, and the exact same
 including the same same-agent-same-day collision guard for lessons. Nothing
 about *how* a story moves changed; only where a parent has to go to do it.
 
+**"This week"/"Next week" quick-jump buttons**, added right after shipping
+the above: the Board's own date picker technically already covered any
+week, but reaching next week's board meant hand-picking a date -- exactly
+the wrong friction right when it matters most, the moment after a Friday
+planning session generates next week's lessons and a parent wants to see
+them laid out and rearrange them immediately. The two buttons write
+straight into the date_input's own `session_state` key and rerun, so the
+jump lands in one click; "Next week" targets the same Monday
+`weekly.default_plan_target()` already computes for Plan next week itself,
+so the two tabs agree on what "next week" means without either one having
+to ask the other.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1098 tests, ~100s, no API key needed
+python -m pytest tests/ -q      # 1100 tests, ~100s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

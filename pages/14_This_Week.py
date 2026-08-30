@@ -98,12 +98,32 @@ board_tab, review_tab, plan_tab = st.tabs(["📋 Board", "Review this week", "Pl
 # parent has to go to do it.
 
 with board_tab:
+    # Seeded once, before the buttons below ever run -- a button writes
+    # straight into this same session_state key and reruns, so the
+    # date_input picks up the jump on the very next run instead of needing
+    # a second click. Defaults to this week on a fresh session.
+    if "board_week_picker" not in st.session_state:
+        st.session_state["board_week_picker"] = date.today()
+
+    jump_columns = st.columns([1, 1, 5])
+    if jump_columns[0].button("This week", key="board_jump_this_week"):
+        st.session_state["board_week_picker"] = date.today()
+        st.rerun()
+    if jump_columns[1].button("Next week", key="board_jump_next_week"):
+        # Same Monday "Plan next week" itself targets by default -- the
+        # actual point of this button: right after a Friday planning
+        # session generates next week's lessons, this is the one click
+        # that shows them laid out on the same board, ready to move
+        # around, instead of hand-picking next week's date here too.
+        st.session_state["board_week_picker"] = weekly.default_plan_target()
+        st.rerun()
+
     board_week_start = weekly.week_start(
         st.date_input(
             "Week to view",
-            value=date.today(),
             key="board_week_picker",
-            help="Any day in the week you want to see -- snapped to that week's Monday.",
+            help="Any day in the week you want to see -- snapped to that week's Monday. "
+            "The buttons above jump straight to this week or next week.",
         )
     )
     board_days = weekly.week_dates(board_week_start, include_friday=True)

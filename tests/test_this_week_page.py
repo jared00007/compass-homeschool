@@ -340,3 +340,57 @@ def test_moving_a_life_skill_from_the_board_reschedules_it(monkeypatch, tmp_path
     reloaded = next(s for s in db.list_life_skills(student["id"]) if s["id"] == skill["id"])
     db.close()
     assert reloaded["active"] == 0
+
+
+def test_next_week_button_jumps_the_board_to_next_weeks_monday(monkeypatch, tmp_path):
+    """The actual point of the button: right after a Friday planning
+    session generates next week's lessons, this is the one click that
+    shows them on the board, ready to move around -- not hand-picking
+    next week's date via the date_input every time."""
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    # Relative to *real* today, not TARGET_MONDAY -- the button itself
+    # computes weekly.default_plan_target() off the real current date.
+    next_monday = weekly.default_plan_target()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="Next Week's Lesson",
+        payload={"title": "Next Week's Lesson", "activities": []},
+        metadata={"planned_for": next_monday.isoformat(), "week_start": next_monday.isoformat()},
+    )
+    db.close()
+
+    at, board_tab = _open_board_tab(monkeypatch, db_path)
+    # _open_board_tab already parks the picker on TARGET_MONDAY -- confirm
+    # next week's lesson isn't visible yet before the jump.
+    assert "Next Week's Lesson" not in " ".join(m.value for m in board_tab.markdown)
+
+    next_week_button = [b for b in board_tab.button if b.label == "Next week"][0]
+    next_week_button.click().run()
+
+    board_tab = _board_tab(at)
+    markdowns = " ".join(m.value for m in board_tab.markdown)
+    assert "Next Week's Lesson" in markdowns
+    date_widget = [d for d in board_tab.date_input if d.key == "board_week_picker"][0]
+    assert weekly.week_start(date_widget.value) == weekly.default_plan_target()
+    assert lesson_id  # sanity: the lesson really was created
+
+
+def test_this_week_button_returns_from_next_week(monkeypatch, tmp_path):
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    db.ensure_default_student()
+    db.close()
+
+    at, board_tab = _open_board_tab(monkeypatch, db_path)
+    next_week_button = [b for b in board_tab.button if b.label == "Next week"][0]
+    next_week_button.click().run()
+
+    board_tab = _board_tab(at)
+    this_week_button = [b for b in board_tab.button if b.label == "This week"][0]
+    this_week_button.click().run()
+
+    board_tab = _board_tab(at)
+    date_widget = [d for d in board_tab.date_input if d.key == "board_week_picker"][0]
+    assert weekly.week_start(date_widget.value) == weekly.week_start(date.today())
