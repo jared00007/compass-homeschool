@@ -1105,6 +1105,24 @@ backlog card only — a live lesson doesn't need it) refuses the move outright, 
 than silently colliding, when the target day already has a lesson for that same agent
 (`latest_per_day` would otherwise just let the newer one shadow the older one).
 
+**A parent can also send a lesson to the backlog by hand, any day, whether it's even
+due yet — not just wait for its week to quietly run out on its own.** Requested
+directly: "the freedom to move stories around as I see fit," in the same agile-board
+spirit the rest of this feature already borrows from. `metadata.held_back` is the
+whole mechanism — a second, manual way into the exact same backlog state
+`is_backlogged` already recognized for a naturally-elapsed week, checked first and
+short-circuiting the date math entirely, so it works even on a lesson with no
+`planned_for` at all. `Database.send_to_backlog(lesson_id)` sets it; every "planned"
+lesson rendered anywhere in the To Review tab (attention, the day board, unscheduled,
+a different week) gets a **"🗄️ Send to backlog"** action alongside skip/remove, since
+the whole point is picking a story off wherever it currently sits, not just off one
+particular list. `reschedule_lesson` clears the flag again the moment a lesson moves
+to a new day, regardless of which path put it in the backlog to begin with — the
+release valve is the same either way. `_review_badge` shows a distinct **"🗄️
+backlogged"** badge for a `held_back` lesson rather than falling through to "overdue"
+or "planned" — genuinely different information (a parent's own decision, not a date
+comparison), and a lesson parked ahead of its own due date isn't overdue at all.
+
 ### His "Today" checklist
 
 `render_today_checklist()` in `compass/ui.py`, called from `Home.py`'s student branch

@@ -512,8 +512,39 @@ def test_reschedule_lesson_snaps_week_start_to_the_targets_own_monday(db, studen
     assert lesson["metadata"]["week_start"] == "2026-02-16"  # that week's Monday
 
 
+def test_reschedule_lesson_clears_held_back(db, student):
+    """Moving a manually-backlogged lesson to a new day releases it the
+    exact same way an automatically-backlogged one gets released --
+    regardless of which path put it in the backlog to begin with."""
+    lesson_id = db.save_lesson(
+        student["id"], "math", "math", "topic", "title", payload={"a": 1},
+        metadata={"planned_for": "2026-01-05", "week_start": "2025-12-29", "held_back": True},
+    )
+    db.reschedule_lesson(lesson_id, "2026-02-16")
+    assert "held_back" not in db.get_lesson(lesson_id)["metadata"]
+
+
 def test_reschedule_lesson_on_a_missing_id_is_a_no_op(db, student):
     db.reschedule_lesson(999999, "2026-02-16")  # doesn't raise
+
+
+def test_send_to_backlog_sets_held_back(db, student):
+    """A parent's own "not this week" call, any lesson, any day -- the
+    manual counterpart to a whole week quietly running out on its own."""
+    lesson_id = db.save_lesson(
+        student["id"], "math", "math", "topic", "title", payload={"a": 1},
+        metadata={"planned_for": "2026-08-31", "week_start": "2026-08-31"},
+    )
+    db.send_to_backlog(lesson_id)
+    lesson = db.get_lesson(lesson_id)
+    assert lesson["metadata"]["held_back"] is True
+    # Untouched -- this is purely a visibility flag, not a reschedule.
+    assert lesson["metadata"]["planned_for"] == "2026-08-31"
+    assert lesson["status"] == "planned"
+
+
+def test_send_to_backlog_on_a_missing_id_is_a_no_op(db, student):
+    db.send_to_backlog(999999)  # doesn't raise
 
 
 def test_deleting_a_logged_lessons_activity_keeps_its_hours(db, student):

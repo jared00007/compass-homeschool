@@ -204,6 +204,30 @@ def test_is_backlogged_false_for_an_untagged_on_demand_lesson():
     assert not is_backlogged(untagged, "2026-08-18")
 
 
+def test_is_backlogged_true_when_held_back_even_within_this_week():
+    """A parent's own "not this week" call, any day -- the manual
+    counterpart to a whole week quietly running out on its own. Still
+    true even when the lesson isn't due yet, let alone overdue."""
+    lesson = {"id": 1, "agent": "math", "metadata": {"planned_for": "2026-08-14", "held_back": True}}
+    assert is_backlogged(lesson, "2026-08-10")  # planned_for is still 4 days out
+
+
+def test_is_backlogged_true_when_held_back_with_no_planned_for_at_all():
+    """Even an on-demand lesson (no week concept) can be sent to backlog
+    by hand -- it just never falls into it from time passing alone."""
+    lesson = {"id": 1, "agent": "math", "metadata": {"held_back": True}}
+    assert is_backlogged(lesson, "2026-08-18")
+
+
+def test_due_lessons_excludes_a_held_back_lesson_due_today():
+    """The actual point of the manual send-to-backlog feature: a parent
+    can pull today's own due lesson out of Landon's view the instant they
+    decide to, not just once its week eventually runs out."""
+    lesson = _lesson(1, "math", "2026-08-11")
+    lesson["metadata"]["held_back"] = True
+    assert due_lessons([lesson], "2026-08-11") == []
+
+
 # --- today_subject_status: one subject's row on Home's daily roster --------------
 
 

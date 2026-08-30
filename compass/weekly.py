@@ -325,22 +325,36 @@ def latest_per_day(lessons: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def is_backlogged(lesson: dict[str, Any], today: str) -> bool:
-    """Whether this lesson's entire week already ended without it being
-    turned in -- reported directly: a parent wants explicit control over
-    when a missed assignment reappears, not to have it silently pile up
-    as "overdue" forever on Landon's own view. A lesson in this state is
-    pulled out of `due_lessons` below entirely; Activity Log's Backlog
-    section is the only place it's still visible, until a parent
-    explicitly moves it to a new day (`Database.reschedule_lesson`), at
-    which point it's live again exactly like a freshly planned lesson.
+    """Whether this lesson belongs in the backlog -- reported directly: a
+    parent wants explicit control over when a missed assignment
+    reappears, not to have it silently pile up as "overdue" forever on
+    Landon's own view. A lesson in this state is pulled out of
+    `due_lessons` below entirely; Activity Log's Backlog section is the
+    only place it's still visible, until a parent explicitly moves it to
+    a new day (`Database.reschedule_lesson`), at which point it's live
+    again exactly like a freshly planned lesson.
 
-    Only ever true for a lesson that actually carries a `planned_for` --
-    an on-demand lesson (no week concept at all) is never backlogged,
-    matching `due_lessons`' own unbounded treatment of one below. Status
-    isn't checked here (same as `due_lessons` itself) -- every caller
-    already narrows to still-open lessons before this runs.
+    Two ways in, checked in this order:
+
+    1. `metadata.held_back` -- a parent explicitly sent it there
+       (`Database.send_to_backlog`), any lesson, any day, whether it's
+       even due yet. This is the "move a story to the backlog myself,
+       whenever I decide, not just once its whole week has quietly run
+       out" freedom, reported directly.
+    2. Its whole week already ended without it being turned in, with
+       nobody touching it by hand at all -- the original, automatic path.
+
+    Only the second check needs a `planned_for` at all -- an on-demand
+    lesson (no week concept) can still be sent to backlog by hand, but
+    never falls into it just from time passing, matching `due_lessons`'
+    own unbounded treatment of an undated lesson otherwise. Status isn't
+    checked here (same as `due_lessons` itself) -- every caller already
+    narrows to still-open lessons before this runs.
     """
-    planned_for = (lesson.get("metadata") or {}).get("planned_for") or ""
+    metadata = lesson.get("metadata") or {}
+    if metadata.get("held_back"):
+        return True
+    planned_for = metadata.get("planned_for") or ""
     if not planned_for:
         return False
     return week_start(date.fromisoformat(planned_for)) < week_start(date.fromisoformat(today))

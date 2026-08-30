@@ -119,6 +119,98 @@ def test_a_lesson_from_a_fully_elapsed_week_moves_to_backlog_not_attention(monke
     assert any("Backlogged lesson" in l for l in labels)
 
 
+def test_sending_a_currently_due_lesson_to_backlog_pulls_it_off_the_board(monkeypatch, tmp_path):
+    """The actual point of the manual send-to-backlog feature, reported
+    directly: freedom to move a story into the backlog whenever a parent
+    decides, not only once its whole week has quietly run out on its own.
+
+    Planned for this week's own Monday rather than literally today -- a
+    real day on the board no matter what weekday this test happens to run
+    on (today itself can be a weekend, which the board doesn't have a
+    column for at all)."""
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    sid = student["id"]
+    week_start = weekly.week_start(date.today())
+
+    lesson_id = db.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t", title="Parked on purpose",
+        payload={"title": "Parked on purpose", "activities": []},
+        metadata={"planned_for": week_start.isoformat(), "week_start": week_start.isoformat()},
+    )
+    db.close()
+
+    at, review_tab = _open_review_tab(monkeypatch, db_path)
+    labels = [e.label for e in review_tab.expander]
+    assert any("Parked on purpose" in l for l in labels)
+    assert not any("backlogged" in l and "Parked on purpose" in l for l in labels)
+
+    review_tab.button(key=f"send_to_backlog_{lesson_id}").click().run()
+    review_tab = [t for t in at.tabs if t.label.startswith("To review")][0]
+
+    markdowns = [m.value for m in review_tab.markdown]
+    assert any("Backlog" in m and "(1)" in m for m in markdowns)
+    labels = [e.label for e in review_tab.expander]
+    assert any("🗄️ backlogged" in l and "Parked on purpose" in l for l in labels)
+
+
+def test_moving_a_manually_backlogged_lesson_releases_it(monkeypatch, tmp_path):
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    sid = student["id"]
+    today = date.today()
+
+    lesson_id = db.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t", title="Parked then released",
+        payload={"title": "Parked then released", "activities": []},
+        metadata={
+            "planned_for": today.isoformat(),
+            "week_start": weekly.week_start(today).isoformat(),
+            "held_back": True,
+        },
+    )
+    db.close()
+
+    at, review_tab = _open_review_tab(monkeypatch, db_path)
+    markdowns = [m.value for m in review_tab.markdown]
+    assert any("Backlog" in m and "(1)" in m for m in markdowns)
+
+    review_tab.button(key=f"reschedule_{lesson_id}").click().run()
+    review_tab = [t for t in at.tabs if t.label.startswith("To review")][0]
+
+    markdowns = [m.value for m in review_tab.markdown]
+    assert not any(m.startswith("**🗄️ Backlog**") for m in markdowns)
+
+
+def test_a_held_back_lesson_not_yet_due_shows_backlogged_not_planned(monkeypatch, tmp_path):
+    """Sent to backlog ahead of its own due date -- still shown as
+    deliberately parked, not misread as merely "planned" or, worse,
+    "overdue" (it isn't due yet at all)."""
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    sid = student["id"]
+    future = date.today() + timedelta(days=3)
+
+    db.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t", title="Parked ahead of time",
+        payload={"title": "Parked ahead of time", "activities": []},
+        metadata={
+            "planned_for": future.isoformat(),
+            "week_start": weekly.week_start(future).isoformat(),
+            "held_back": True,
+        },
+    )
+    db.close()
+
+    at, review_tab = _open_review_tab(monkeypatch, db_path)
+    labels = [e.label for e in review_tab.expander]
+    assert any("🗄️ backlogged" in l and "Parked ahead of time" in l for l in labels)
+    assert not any("overdue" in l and "Parked ahead of time" in l for l in labels)
+
+
 def test_board_columns_only_show_their_own_day(monkeypatch, tmp_path):
     db_path = tmp_path / "review.db"
     db = Database(db_path)

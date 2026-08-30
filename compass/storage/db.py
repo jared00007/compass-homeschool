@@ -2280,6 +2280,11 @@ class Database:
         right `week_start` to be found by Math's shared-skill continuation,
         which reads off whatever's already planned for the *target* week.
 
+        Also clears `held_back` (see `send_to_backlog`) -- a lesson that
+        got to the backlog by a parent's own click leaves it the exact same
+        way an automatically-backlogged one does: getting moved to a new
+        day, full stop, regardless of which path put it there.
+
         `week_start` is computed inline here rather than via
         `compass.weekly.week_start` -- that module imports
         `compass.agents.framework`, which imports this one, so importing it
@@ -2293,6 +2298,29 @@ class Database:
         metadata = lesson["metadata"]
         metadata["planned_for"] = new_planned_for
         metadata["week_start"] = new_week_start.isoformat()
+        metadata.pop("held_back", None)
+        self.conn.execute(
+            "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
+        )
+        self.conn.commit()
+
+    def send_to_backlog(self, lesson_id: int) -> None:
+        """A parent's own "not this week" call on any still-open lesson,
+        any day -- the manual counterpart to `compass.weekly.is_backlogged`'s
+        automatic "its whole week already ended" check. Freedom to move a
+        story into the backlog on purpose, whenever a parent decides, not
+        only once it's quietly run out the clock on its own.
+
+        Sets the same `held_back` flag `is_backlogged`/`due_lessons`
+        already treat identically to a naturally-elapsed week, so it takes
+        effect the instant this returns: out of Landon's own view, into
+        Activity Log's Backlog section, same as always.
+        """
+        lesson = self.get_lesson(lesson_id)
+        if lesson is None:
+            return
+        metadata = lesson["metadata"]
+        metadata["held_back"] = True
         self.conn.execute(
             "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
         )

@@ -58,6 +58,12 @@ def _review_badge(lesson: dict, today_iso: str) -> str:
             "submitted": "📤 waiting on you to review",
             "needs_revision": "↩️ sent back — waiting on him",
         }[lesson["status"]]
+    # Sent there on purpose, distinct from a lesson whose own week simply
+    # ran out -- it may not even be overdue yet, so falling through to the
+    # checks below could show a wrong "overdue" badge on something a
+    # parent chose to park ahead of its due date.
+    if (lesson.get("metadata") or {}).get("held_back"):
+        return "🗄️ backlogged"
     planned_for = (lesson.get("metadata") or {}).get("planned_for")
     if planned_for and planned_for < today_iso:
         return "⚠️ overdue"
@@ -150,6 +156,14 @@ def _render_review_card(
             if remove_col.button("Remove", key=f"remove_lesson_{lesson['id']}"):
                 db.delete_lesson(lesson["id"])
                 st.rerun()
+            # The freedom to move a story into the backlog whenever a parent
+            # decides, not only once its own week has quietly run out --
+            # never offered on one already there (that's what "Move to"
+            # below is for).
+            if lesson["status"] == "planned" and not weekly.is_backlogged(lesson, today_iso):
+                if st.button("🗄️ Send to backlog", key=f"send_to_backlog_{lesson['id']}"):
+                    db.send_to_backlog(lesson["id"])
+                    st.rerun()
             # Backlog only -- an already-live lesson doesn't need this, it's
             # already showing up on whatever day it's for.
             if show_reschedule and lesson["status"] == "planned":
