@@ -1640,10 +1640,74 @@ the one thing that would have revealed them (the toggle) was itself hidden by ou
 CSS. `compass.ui._hide_parent_only_nav` no longer touches that toggle at all, regardless
 of page count.
 
+## One shared control for moving any "story" around the board
+
+Requested directly: a single, consistent way to move any in-progress item --
+a lesson, a Big Project step, a Choice Topic, a Life Skill, a Coding Camp
+module -- to a specific day, or to Backlog, from a control that lives right
+on the item's own card everywhere it renders, replacing the handful of
+scattered buttons (`🗄️ Send to backlog`, `➡️ Move to To Do`, an inline
+reschedule date input) each surface used to have its own version of.
+
+`render_story_move_control` in `compass/ui.py` is the one implementation:
+a small `st.popover` (📅, or the assigned date, or `🗄️ Backlog` once
+backlogged) holding two controls -- an "Assign to a specific day" checkbox
+plus date picker, and a "Send to backlog" checkbox. It takes `active`/
+`scheduled_for` plus two callables (`set_active`, `schedule`) rather than a
+db object directly, so every item type wires its own two db calls in and the
+control itself stays ignorant of which table it's touching. Assigning a day
+always unlocks (`active = 1`) as a side effect -- the same
+`schedule_life_skill` pattern already established -- but clearing the date
+does not re-lock; taking away an already-unlocked item just because its date
+got cleared would be a surprising side effect nobody asked for.
+
+Two item types didn't have a day to assign at all before this: `project_steps`
+had an explicit "no due_on anywhere on this table, and that's intentional"
+comment in `schema.sql`, since a step's pace was meant to be relative
+(`min_days`/`max_days`), not a calendar date -- a deliberate design this
+request explicitly overrode. Both `project_steps` and `choice_topics` gained
+a `scheduled_for TEXT` column (via `_ensure_column`) and their own
+`schedule_project_step`/`schedule_choice_topic` methods, identical in shape
+to `schedule_life_skill`.
+
+Lessons don't fit the same `active`/`scheduled_for` shape as cleanly -- a
+lesson always has *some* `planned_for` (there's no "unscheduled" state the
+way a Life Skill or Choice Topic has), and backlog only ever comes back out
+through picking a new day (`reschedule_lesson`, which clears `held_back` as
+a side effect), never through a bare "un-backlog, keep the old day" move.
+`render_story_move_control` handles this with two extra, opt-in parameters:
+`show_backlog_toggle=False` for lessons wires the un-backlog-without-a-date
+case through `set_active(True)` rescheduling to today instead, and
+`validate_schedule` lets a caller reject a specific date before it's written
+(shown as an inline error, popover left open) -- the one place this is
+needed is the lesson picker's existing "don't let two lessons from the same
+agent land on the same day" collision check, which used to disable the
+inline Move button and now runs as this callback instead.
+
+Wired into: Big Project step rows (`pages/7_Big_Projects.py`, both the To Do
+and Backlog lists), Choice Topics rows (`render_choice_topics_section`),
+Life Skills and Coding Camp checklist cards (`render_life_skill_cards`/
+`render_coding_module_cards` -- additive there, since neither had a per-card
+backlog control before, only Master List did), and lesson review cards
+(`_render_review_card` in `pages/10_Activity_Log.py`, now offered everywhere
+a lesson is still `planned`, not only in the dedicated Backlog tab). Master
+List (Life Skills/Coding Camp) keeps its own separate unlock-toggle-plus-date-picker
+UI as-is -- it serves the distinct "release this from the master catalog"
+purpose, a parent-only curation view the per-card control was never meant to
+replace.
+
+One easy-to-miss detail: the popover's label collapses to a single emoji
+(`📅` alone, no "Move" text) when there's nothing to report yet -- this
+control sits in a narrow top-right corner of a card grid (three cards to a
+row on Life Skills' Checklist tab), and a two-word label wraps into an
+unreadable single-character-per-line sliver at that width. The other two
+states (an assigned date, or `🗄️ Backlog`) already read fine there on their
+own; a `help=` tooltip on the popover covers the icon-only case.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1040 tests, ~100s, no API key needed
+python -m pytest tests/ -q      # 1044 tests, ~100s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

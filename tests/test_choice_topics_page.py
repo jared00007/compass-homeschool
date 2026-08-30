@@ -94,7 +94,7 @@ def test_backlog_button_moves_a_topic_out_of_the_students_view(monkeypatch, tmp_
     markdowns = [m.value for m in at.markdown]
     assert any("Learn guitar chords" in m and "backlogged" not in m for m in markdowns)
 
-    at.button(key=f"backlog_topic_{topic_id}").click().run()
+    at.checkbox(key=f"move_choice_{topic_id}_backlog_True").check().run()
 
     markdowns = [m.value for m in at.markdown]
     assert any("Learn guitar chords" in m and "backlogged" in m for m in markdowns)
@@ -108,7 +108,7 @@ def test_unbacklog_button_restores_a_topic(monkeypatch, tmp_path):
     db.close()
 
     at = _open(monkeypatch, db_path)
-    at.button(key=f"unbacklog_topic_{topic_id}").click().run()
+    at.checkbox(key=f"move_choice_{topic_id}_backlog_False").uncheck().run()
 
     markdowns = [m.value for m in at.markdown]
     assert any("Learn guitar chords" in m and "backlogged" not in m for m in markdowns)
@@ -126,9 +126,8 @@ def test_backlog_toggle_is_not_offered_on_a_done_topic(monkeypatch, tmp_path):
 
     at = _open(monkeypatch, db_path)
 
-    keys = {b.key for b in at.button}
-    assert f"backlog_topic_{topic_id}" not in keys
-    assert f"unbacklog_topic_{topic_id}" not in keys
+    keys = {c.key for c in at.checkbox if c.key}
+    assert not any(k.startswith(f"move_choice_{topic_id}_backlog_") for k in keys)
 
 
 def test_choice_topics_no_longer_has_its_own_page(monkeypatch, tmp_path):

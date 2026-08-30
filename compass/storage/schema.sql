@@ -297,7 +297,11 @@ CREATE TABLE IF NOT EXISTS choice_topics (
     -- own default -- unlike lessons/project_steps, a new topic isn't backlog
     -- by default, since this feature never hid anything before this column
     -- existed and shouldn't start now just because it can.
-    active      INTEGER NOT NULL DEFAULT 1
+    active      INTEGER NOT NULL DEFAULT 1,
+    -- ISO date a parent assigned this topic to a specific day -- same
+    -- reasoning schedule_life_skill already gives, layered on top of
+    -- `active` rather than replacing it. NULL = whenever, the default.
+    scheduled_for TEXT
 );
 
 -- ---------------------------------------------------------------------------
@@ -454,15 +458,21 @@ CREATE TABLE IF NOT EXISTS project_steps (
     description    TEXT NOT NULL DEFAULT '',
     materials      TEXT NOT NULL DEFAULT '',
     credit_subject TEXT NOT NULL DEFAULT 'occupational_education',
-    -- A pace, not a deadline: a loose day range shown to set the
-    -- expectation that a step is meant to take a while, on purpose --
-    -- there's no due_on anywhere on this table, and that's intentional.
+    -- A pace, not a deadline: a loose day range meant to set the
+    -- expectation that a step is meant to take a while.
     min_days       INTEGER NOT NULL DEFAULT 1,
     max_days       INTEGER NOT NULL DEFAULT 1,
     -- Backlog vs To Do -- see Database.add_project_step/set_project_step_active.
     -- Defaults to 1 at the column level so a starter-catalog step (inserted
     -- directly, not through add_project_step) comes in already visible.
     active         INTEGER NOT NULL DEFAULT 1,
+    -- ISO date a parent assigned this step to a specific day -- layered on
+    -- top of `active`/`min_days`/`max_days` rather than replacing either,
+    -- same reasoning schedule_life_skill already gives: the pace above is
+    -- still how long a step is worth taking, this is just an optional
+    -- "do this one on Wednesday" pin. NULL = whenever, the original and
+    -- still the default for every step nobody's explicitly moved.
+    scheduled_for  TEXT,
     completed_on   TEXT,
     created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );

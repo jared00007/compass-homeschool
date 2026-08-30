@@ -1215,6 +1215,23 @@ def test_set_choice_topic_active_toggles_without_touching_status(db, student):
     assert topic["status"] == "approved"
 
 
+def test_schedule_choice_topic_unlocks_it(db, student):
+    topic_id = db.add_choice_topic(student["id"], "Learn guitar chords", active=False)
+    db.schedule_choice_topic(topic_id, date.today().isoformat())
+    topic = db.list_choice_topics(student["id"])[0]
+    assert topic["active"] == 1
+    assert topic["scheduled_for"] == date.today().isoformat()
+
+
+def test_clearing_a_choice_topic_schedule_does_not_re_lock_it(db, student):
+    topic_id = db.add_choice_topic(student["id"], "Learn guitar chords")
+    db.schedule_choice_topic(topic_id, date.today().isoformat())
+    db.schedule_choice_topic(topic_id, None)
+    topic = db.list_choice_topics(student["id"])[0]
+    assert topic["scheduled_for"] is None
+    assert topic["active"] == 1
+
+
 def test_a_database_created_before_the_choice_topic_active_column_gets_migrated(tmp_path):
     """`active` shipped after some real databases already existed, with
     choice topics a student could already see. The migration backfills it
@@ -1790,6 +1807,25 @@ def test_set_project_step_active_never_touches_completed_on(db, student):
     db.set_project_step_done(step_id, True)
     db.set_project_step_active(step_id, False)
     assert db.list_project_steps(project_id)[0]["completed_on"] is not None
+
+
+def test_schedule_project_step_unlocks_it(db, student):
+    project_id = db.add_big_project(student["id"], "Test Project")
+    step_id = db.add_project_step(project_id, "Step one")
+    db.schedule_project_step(step_id, date.today().isoformat())
+    step = db.list_project_steps(project_id)[0]
+    assert step["active"] == 1
+    assert step["scheduled_for"] == date.today().isoformat()
+
+
+def test_clearing_a_project_step_schedule_does_not_re_lock_it(db, student):
+    project_id = db.add_big_project(student["id"], "Test Project")
+    step_id = db.add_project_step(project_id, "Step one")
+    db.schedule_project_step(step_id, date.today().isoformat())
+    db.schedule_project_step(step_id, None)
+    step = db.list_project_steps(project_id)[0]
+    assert step["scheduled_for"] is None
+    assert step["active"] == 1
 
 
 def test_delete_big_project_cascades_to_its_steps(db, student):

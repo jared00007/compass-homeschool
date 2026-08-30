@@ -44,7 +44,7 @@ import sqlite3
 import time
 from datetime import date
 from functools import partial
-from typing import Any
+from typing import Any, Callable
 
 import streamlit as st
 
@@ -2452,6 +2452,87 @@ def render_morning_routine(db: Database, student: dict[str, Any]) -> bool:
     return logged is not None
 
 
+# --- story movement: the one shared backlog/schedule control --------------------
+#
+# One consistent control for moving any "story" -- a lesson, a Big Project
+# step, a Choice Topic, a Life Skill, a Coding Camp module -- around the
+# board: a date picker to assign or move it to a day, or send it back to the
+# Backlog. Lives on every card that already carries an `active` flag and a
+# `scheduled_for` date, in place of that surface's own scattered buttons.
+
+
+def render_story_move_control(
+    *,
+    key: str,
+    active: bool,
+    scheduled_for: str | None,
+    set_active: Callable[[bool], None],
+    schedule: Callable[[str | None], None],
+    validate_schedule: Callable[[str], str | None] | None = None,
+    show_backlog_toggle: bool = True,
+) -> None:
+    """`key` must be unique per story (the caller's own id namespace, e.g.
+    `f"step_{step['id']}"`). `set_active`/`schedule` are the two writes this
+    control ever makes -- callers pass their own db call, e.g.
+    `lambda a: db.set_project_step_active(step["id"], a)`.
+
+    `validate_schedule`, if given, is called with the picked date before
+    `schedule` -- return an error string to block the move (shown in place,
+    the popover stays open) or `None` to let it through. Only lessons need
+    this (two lessons from the same agent can't share a day); every other
+    story type leaves it unset.
+
+    `show_backlog_toggle` is off for lessons, which reach backlog only
+    through `set_active` -- moving *to* a day already implies un-backlogging
+    as a side effect of `schedule`, so a second, separately-timed toggle for
+    the same state would just be confusing there.
+
+    Widget keys fold in the current `active`/`scheduled_for` values, the same
+    trick `render_life_skill_catalog_manager` uses for its own checkbox --
+    `schedule` can flip `active` as a side effect of a different widget's
+    write, and a fixed key would read that now-stale session_state value as
+    a fresh click on the next run and silently undo it.
+    """
+    # Icon-only when there's nothing to report yet -- this sits in a narrow
+    # top-right corner on a card grid (three cards to a row), and a two-word
+    # label wraps into an unreadable vertical sliver at that width. The
+    # other two states already read fine at that width on their own.
+    label = f"📅 {scheduled_for}" if scheduled_for else ("🗄️ Backlog" if not active else "📅")
+    with st.popover(label, use_container_width=False, help="Move to a day, or send to Backlog"):
+        assign = st.checkbox(
+            "Assign to a specific day",
+            value=bool(scheduled_for),
+            key=f"move_{key}_assign_{scheduled_for}",
+        )
+        if assign:
+            picked = st.date_input(
+                "Day",
+                value=date.fromisoformat(scheduled_for) if scheduled_for else date.today(),
+                key=f"move_{key}_date_{scheduled_for}",
+            )
+            if picked.isoformat() != scheduled_for:
+                problem = validate_schedule(picked.isoformat()) if validate_schedule else None
+                if problem:
+                    st.error(problem)
+                else:
+                    schedule(picked.isoformat())
+                    st.rerun()
+        elif scheduled_for:
+            schedule(None)
+            st.rerun()
+
+        if show_backlog_toggle:
+            st.divider()
+            backlog = st.checkbox(
+                "Send to backlog",
+                value=not active,
+                key=f"move_{key}_backlog_{active}",
+            )
+            if backlog == active:
+                set_active(not backlog)
+                st.rerun()
+
+
 # --- life skill cards: the catalog grid and its manager -------------------------
 
 LIFE_SKILL_CATEGORY_ICONS = {
@@ -2570,6 +2651,15 @@ def render_life_skill_cards(db: Database, skills: list[dict[str, Any]], can_edit
                 earned = bool(skill["completed_on"])
                 state = "earned" if earned else "locked"
                 with columns[index], st.container(key=f"ls_card_{skill['id']}_{state}"):
+                    _spacer, move_col = st.columns([5, 1])
+                    with move_col:
+                        render_story_move_control(
+                            key=f"ls_{skill['id']}",
+                            active=bool(skill["active"]),
+                            scheduled_for=skill["scheduled_for"],
+                            set_active=lambda a, sid=skill["id"]: db.set_life_skill_active(sid, a),
+                            schedule=lambda s, sid=skill["id"]: db.schedule_life_skill(sid, s),
+                        )
                     story = html.escape(skill["description"]) if skill["description"] else "No mission notes yet."
                     needs = (
                         f'<div class="cp-ls-needs"><b>You\'ll need:</b> {html.escape(skill["materials"])}</div>'
@@ -2718,7 +2808,17 @@ def render_coding_module_cards(db: Database, modules: list[dict[str, Any]], can_
                 f"📅 assigned {module['scheduled_for']}" if module["scheduled_for"] else ""
             )
             with st.container(border=True):
-                st.markdown(f"**{md(module['title'])}**" + (f" — {badge}" if badge else ""))
+                title_col, move_col = st.columns([5, 1])
+                with title_col:
+                    st.markdown(f"**{md(module['title'])}**" + (f" — {badge}" if badge else ""))
+                with move_col:
+                    render_story_move_control(
+                        key=f"coding_{module['id']}",
+                        active=bool(module["active"]),
+                        scheduled_for=module["scheduled_for"],
+                        set_active=lambda a, mid=module["id"]: db.set_coding_module_active(mid, a),
+                        schedule=lambda s, mid=module["id"]: db.schedule_coding_module(mid, s),
+                    )
                 if module["description"]:
                     st.caption(md(module["description"]))
                 if module["materials"]:
@@ -2901,19 +3001,20 @@ def render_choice_topics_section(db: Database, student: dict[str, Any]) -> None:
                 db.delete_choice_topic(topic["id"])
                 st.rerun()
 
-            # Freedom to move a topic between Backlog and visible whenever a
-            # parent decides -- same flow lessons and project steps already
-            # have. Not offered on a closed-out topic: a done or declined
-            # one is already exempt from the visibility filter above, so
-            # there's nothing left for this button to do to it.
+            # Freedom to move a topic between Backlog and a specific day
+            # whenever a parent decides -- the same shared control every
+            # other story type uses. Not offered on a closed-out topic: a
+            # done or declined one is already exempt from the visibility
+            # filter above, so there's nothing left for this to do to it.
             if is_parent() and topic["status"] not in ("done", "declined"):
-                if topic["active"]:
-                    if columns[3].button("🗄️ Backlog", key=f"backlog_topic_{topic['id']}"):
-                        db.set_choice_topic_active(topic["id"], False)
-                        st.rerun()
-                elif columns[3].button("➡️ Un-backlog", key=f"unbacklog_topic_{topic['id']}"):
-                    db.set_choice_topic_active(topic["id"], True)
-                    st.rerun()
+                with columns[3]:
+                    render_story_move_control(
+                        key=f"choice_{topic['id']}",
+                        active=bool(topic["active"]),
+                        scheduled_for=topic["scheduled_for"],
+                        set_active=lambda a, tid=topic["id"]: db.set_choice_topic_active(tid, a),
+                        schedule=lambda s, tid=topic["id"]: db.schedule_choice_topic(tid, s),
+                    )
 
     if not is_parent():
         return

@@ -11,7 +11,14 @@ from compass import config, gradebook, weekly
 from compass.agents.framework import GeneratedLesson, TopicProposal
 from compass.export import lesson_to_docx, suggested_filename
 from compass.subjects import SUBJECT_KEYS, label
-from compass.ui import log_lesson_form, md, page_setup, parent_only, render_assessment_card
+from compass.ui import (
+    log_lesson_form,
+    md,
+    page_setup,
+    parent_only,
+    render_assessment_card,
+    render_story_move_control,
+)
 
 db, student = page_setup("Activity Log", icon="🗂️")
 
@@ -70,9 +77,7 @@ def _review_badge(lesson: dict, today_iso: str) -> str:
     return "🕓 planned"
 
 
-def _render_review_card(
-    lesson: dict, today_iso: str, *, show_reschedule: bool = False
-) -> None:
+def _render_review_card(lesson: dict, today_iso: str) -> None:
     """One lesson's expander: badge + planned date + title as the header,
     full detail and the logging form inside. Shared by the attention
     list, every day column, the unscheduled section, backlog, and
@@ -157,44 +162,41 @@ def _render_review_card(
                 db.delete_lesson(lesson["id"])
                 st.rerun()
             # The freedom to move a story into the backlog whenever a parent
-            # decides, not only once its own week has quietly run out --
-            # never offered on one already there (that's what "Move to"
-            # below is for).
-            if lesson["status"] == "planned" and not weekly.is_backlogged(lesson, today_iso):
-                if st.button("🗄️ Send to backlog", key=f"send_to_backlog_{lesson['id']}"):
-                    db.send_to_backlog(lesson["id"])
-                    st.rerun()
-            # Backlog only -- an already-live lesson doesn't need this, it's
-            # already showing up on whatever day it's for.
-            if show_reschedule and lesson["status"] == "planned":
-                move_columns = st.columns([3, 1])
-                new_date = move_columns[0].date_input(
-                    "Move to",
-                    value=date.today() + timedelta(days=1),
-                    min_value=date.today(),
-                    key=f"reschedule_date_{lesson['id']}",
-                )
-                # Same agent, same target day, a different lesson already
-                # sitting there -- moving this one in would silently shadow
-                # it (latest_per_day keeps whichever lesson is newest), so
-                # the move is refused rather than letting that happen quietly.
-                collision = any(
-                    other["agent"] == lesson["agent"]
-                    and other["id"] != lesson["id"]
-                    and (other.get("metadata") or {}).get("planned_for") == new_date.isoformat()
-                    for other in all_lessons
-                )
-                if collision:
-                    move_columns[1].button(
-                        "Move", key=f"reschedule_{lesson['id']}", disabled=True
+            # decides, not only once its own week has quietly run out, or
+            # onto a specific day -- the same shared control every other
+            # story type uses. `set_active(True)` (un-backlogging without
+            # picking a day) reschedules to today: a lesson always needs
+            # *some* `planned_for`, so there's no bare "un-backlog, keep the
+            # old day" move the way other story types have one. The
+            # collision check that used to gate the inline "Move" button now
+            # runs as `validate_schedule`, shown in the popover in its place.
+            if lesson["status"] == "planned":
+                def _validate(new_date: str, lesson=lesson) -> str | None:
+                    collision = any(
+                        other["agent"] == lesson["agent"]
+                        and other["id"] != lesson["id"]
+                        and (other.get("metadata") or {}).get("planned_for") == new_date
+                        for other in all_lessons
                     )
-                    st.caption(
-                        f"⚠️ Already a {lesson['agent']} lesson planned for that day -- "
-                        "pick a different one."
-                    )
-                elif move_columns[1].button("Move", key=f"reschedule_{lesson['id']}"):
-                    db.reschedule_lesson(lesson["id"], new_date.isoformat())
-                    st.rerun()
+                    if collision:
+                        return (
+                            f"⚠️ Already a {lesson['agent']} lesson planned for that "
+                            "day -- pick a different one."
+                        )
+                    return None
+
+                render_story_move_control(
+                    key=f"lesson_{lesson['id']}",
+                    active=not weekly.is_backlogged(lesson, today_iso),
+                    scheduled_for=(lesson.get("metadata") or {}).get("planned_for"),
+                    set_active=lambda a, lid=lesson["id"]: (
+                        db.reschedule_lesson(lid, date.today().isoformat())
+                        if a
+                        else db.send_to_backlog(lid)
+                    ),
+                    schedule=lambda d, lid=lesson["id"]: db.reschedule_lesson(lid, d) if d else None,
+                    validate_schedule=_validate,
+                )
 
 
 _TRAVEL_REVIEW_BADGES = {
@@ -587,7 +589,7 @@ with backlog_tab:
     if lesson_backlog:
         st.markdown(f"**📐 Lessons** ({len(lesson_backlog)})")
         for lesson in lesson_backlog:
-            _render_review_card(lesson, today_iso, show_reschedule=True)
+            _render_review_card(lesson, today_iso)
         st.divider()
 
     if project_backlog:

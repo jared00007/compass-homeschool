@@ -22,7 +22,7 @@ import streamlit as st
 from compass import config
 from compass.agents import LessonGenerationError, project_chunker
 from compass.subjects import SUBJECT_KEYS, label
-from compass.ui import api_status_banner, is_parent, md, page_setup
+from compass.ui import api_status_banner, is_parent, md, page_setup, render_story_move_control
 
 db, student = page_setup("Big Projects", icon="🎬")
 
@@ -266,16 +266,18 @@ with checklist_tab:
                                 meta.append(f"**You'll need:** {md(step['materials'])}")
                             meta.append(f"Credits toward {label(step['credit_subject'])}")
                             st.caption(" · ".join(meta))
-                            # The freedom to pick a story off wherever it
-                            # currently sits, same flow as a lesson's own
-                            # Backlog -- never offered on a step he's already
-                            # finished.
+                            # The freedom to move a step to a specific day or
+                            # back to Backlog, same shared control every
+                            # other story type uses -- never offered on a
+                            # step he's already finished.
                             if is_parent() and not checked:
-                                if st.button(
-                                    "🗄️ Send to backlog", key=f"backlog_step_{step['id']}"
-                                ):
-                                    db.set_project_step_active(step["id"], False)
-                                    st.rerun()
+                                render_story_move_control(
+                                    key=f"step_{step['id']}",
+                                    active=bool(step["active"]),
+                                    scheduled_for=step["scheduled_for"],
+                                    set_active=lambda a, sid=step["id"]: db.set_project_step_active(sid, a),
+                                    schedule=lambda s, sid=step["id"]: db.schedule_project_step(sid, s),
+                                )
 
             if is_parent() and backlog_steps:
                 st.markdown("**🗄️ Backlog**")
@@ -294,9 +296,13 @@ with checklist_tab:
                             meta.append(f"**You'll need:** {md(step['materials'])}")
                         meta.append(f"Credits toward {label(step['credit_subject'])}")
                         st.caption(" · ".join(meta))
-                        if st.button("➡️ Move to To Do", key=f"todo_step_{step['id']}"):
-                            db.set_project_step_active(step["id"], True)
-                            st.rerun()
+                        render_story_move_control(
+                            key=f"step_{step['id']}",
+                            active=bool(step["active"]),
+                            scheduled_for=step["scheduled_for"],
+                            set_active=lambda a, sid=step["id"]: db.set_project_step_active(sid, a),
+                            schedule=lambda s, sid=step["id"]: db.schedule_project_step(sid, s),
+                        )
 
             if is_parent() and st.button(
                 "Not an interest -- shelve it", key=f"shelve_project_{project['id']}"

@@ -155,7 +155,7 @@ def test_sending_a_currently_due_lesson_to_backlog_pulls_it_off_the_board(monkey
     assert any("Parked on purpose" in l for l in labels)
     assert not any("backlogged" in l and "Parked on purpose" in l for l in labels)
 
-    review_tab.button(key=f"send_to_backlog_{lesson_id}").click().run()
+    review_tab.checkbox(key=f"move_lesson_{lesson_id}_backlog_True").check().run()
     review_tab = [t for t in at.tabs if t.label.startswith("To review")][0]
 
     infos = [i.value for i in review_tab.info]
@@ -188,9 +188,13 @@ def test_moving_a_manually_backlogged_lesson_releases_it(monkeypatch, tmp_path):
     infos = [i.value for i in review_tab.info]
     assert any("1 lesson(s) in the Backlog" in i for i in infos)
 
-    # The reschedule action lives on the dedicated Backlog tab now.
+    # The reschedule action lives on the dedicated Backlog tab now, as the
+    # shared move control's own date picker.
     backlog_tab = _backlog_tab(at)
-    backlog_tab.button(key=f"reschedule_{lesson_id}").click().run()
+    tomorrow = (today + timedelta(days=1)).isoformat()
+    backlog_tab.date_input(key=f"move_lesson_{lesson_id}_date_{today.isoformat()}").set_value(
+        date.fromisoformat(tomorrow)
+    ).run()
 
     review_tab = [t for t in at.tabs if t.label.startswith("To review")][0]
     assert not any(

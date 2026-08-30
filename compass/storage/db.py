@@ -1470,12 +1470,14 @@ class Database:
         # were. A brand new step gets its `active` value explicitly, from
         # add_project_step's own default (see there for why that one's 0).
         self._ensure_column("project_steps", "active", "INTEGER NOT NULL DEFAULT 1")
+        self._ensure_column("project_steps", "scheduled_for", "TEXT")
         self._ensure_column("activities", "course_id", "INTEGER REFERENCES courses(id) ON DELETE SET NULL")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_activities_course ON activities (course_id)")
         # Default 1 for the same reason project_steps' own migration is: a
         # topic that already existed before this column did stays exactly
         # as visible as it always was.
         self._ensure_column("choice_topics", "active", "INTEGER NOT NULL DEFAULT 1")
+        self._ensure_column("choice_topics", "scheduled_for", "TEXT")
         # No CHECK here (same reasoning travel_entries.status' own migration
         # gives, a few lines up) -- SQLite enum validation for an
         # ALTER-added column is enforced in Python instead, at
@@ -3082,6 +3084,21 @@ class Database:
         )
         self.conn.commit()
 
+    def schedule_choice_topic(self, topic_id: int, scheduled_for: str | None) -> None:
+        """Assigning a date also unlocks (`active = 1`) -- same reasoning as
+        `schedule_life_skill`. Clearing the date does not re-lock it."""
+        if scheduled_for:
+            self.conn.execute(
+                "UPDATE choice_topics SET scheduled_for = ?, active = 1 WHERE id = ?",
+                (scheduled_for, topic_id),
+            )
+        else:
+            self.conn.execute(
+                "UPDATE choice_topics SET scheduled_for = ? WHERE id = ?",
+                (scheduled_for, topic_id),
+            )
+        self.conn.commit()
+
     def delete_choice_topic(self, topic_id: int) -> None:
         self.conn.execute("DELETE FROM choice_topics WHERE id = ?", (topic_id,))
         self.conn.commit()
@@ -3546,6 +3563,21 @@ class Database:
         self.conn.execute(
             "UPDATE project_steps SET active = ? WHERE id = ?", (int(active), step_id)
         )
+        self.conn.commit()
+
+    def schedule_project_step(self, step_id: int, scheduled_for: str | None) -> None:
+        """Assigning a date also unlocks (`active = 1`) -- same reasoning as
+        `schedule_life_skill`. Clearing the date does not re-lock it."""
+        if scheduled_for:
+            self.conn.execute(
+                "UPDATE project_steps SET scheduled_for = ?, active = 1 WHERE id = ?",
+                (scheduled_for, step_id),
+            )
+        else:
+            self.conn.execute(
+                "UPDATE project_steps SET scheduled_for = ? WHERE id = ?",
+                (scheduled_for, step_id),
+            )
         self.conn.commit()
 
     def delete_project_step(self, step_id: int) -> None:
