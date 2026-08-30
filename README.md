@@ -1952,10 +1952,49 @@ jump lands in one click; "Next week" targets the same Monday
 so the two tabs agree on what "next week" means without either one having
 to ask the other.
 
+## The Board becomes a Product Backlog panel + sprint board
+
+A direct follow-up complaint: "this UI flow is not architecturally
+sound... let's talk about this in an agile, epic, sprint, story setup."
+Three sample layouts were sketched first -- epic swimlanes (one row per
+subject), a Backlog-panel-plus-board split, and a sprint-health dashboard
+-- and the second was picked, specifically because it's built for the
+moment right after a Friday planning session: generate next week's
+content, then rearrange it, without leaving the tab.
+
+The Board tab's old sixth "🗄️ Backlog" day-column is gone. In its place:
+a `st.columns([1, 3])` split -- a **Product Backlog** panel on the left,
+grouped into a `st.expander` per epic (Math, Science, English, History,
+Life Skills, Big Projects -- `weekly.EPIC_ORDER`), and the Mon-Fri board
+on the right, unchanged except for losing that sixth column. Each epic's
+expander is collapsed only because it's empty (skipped entirely, actually
+-- an epic with nothing parked doesn't render a row at all); one with
+items defaults open, directly requested ("I like how science, math,
+english, history are collapsible/expandable").
+
+Every backlog card in the panel is rendered with the exact same
+`render_board_card` call the day columns already use -- "assign" isn't a
+new action, it's the same shared move-control popover (pick a day, or
+leave it in Backlog) opened from a new location. No new write path.
+
+Two small additions make the grouping possible, both pure reshapes of
+data `board_for_week` already computes -- no new queries:
+
+- `weekly.epic_for(kind, item) -> str` -- which epic a story belongs to.
+  A lesson keys off its own `agent` (both `life_skills` and `coding`
+  fold into the Life Skills epic, matching the page they already share);
+  every other kind has one fixed epic.
+- `weekly.group_backlog_by_epic(backlog) -> dict[str, list]` -- takes
+  `board_for_week`'s own flat `"backlog"` list (already every currently
+  parked story, any week it came from -- the two-pass sweep documented
+  above) and buckets it by epic. "All stories I put into the backlog"
+  was already true of that list before this change; grouping it by epic
+  is the only thing that's new.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1100 tests, ~100s, no API key needed
+python -m pytest tests/ -q      # 1115 tests, ~100s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

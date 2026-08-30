@@ -2151,6 +2151,13 @@ BOARD_KIND_ICONS = {
     "travel_entry": "🧭",
 }
 
+# One icon per epic in weekly.EPIC_ORDER -- the Board tab's Product Backlog
+# panel groups by this, not by story kind.
+EPIC_ICONS = {
+    "Math": "📐", "Science": "🔬", "English": "📖", "History": "🏛️",
+    "Life Skills": "🛠️", "Big Projects": "🎬",
+}
+
 # Friday is deliberately never a new-content day (see compass/weekly.py), so
 # its cell on the Week grid has always shown a fixed Big Project + Travel
 # Journal pairing. friday_plan_items lets a parent replace that, one Friday

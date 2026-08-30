@@ -20,10 +20,13 @@ from compass.agents.framework import GeneratedLesson, TopicProposal
 from compass.agents.llm import LessonGenerationError
 from compass.storage.db import Database
 from compass.weekly import (
+    EPIC_ORDER,
     MATH_STAGE_NOTES,
     board_for_week,
     default_plan_target,
     due_lessons,
+    epic_for,
+    group_backlog_by_epic,
     is_backlogged,
     latest_per_day,
     math_stage_note,
@@ -836,3 +839,46 @@ def test_board_excludes_a_completed_story_from_backlog(board_db, board_student):
 
     board = board_for_week(board_db, board_student, monday)
     assert board["backlog"] == []
+
+
+# --- epic_for / group_backlog_by_epic -----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "kind,item,expected",
+    [
+        ("lesson", {"agent": "math"}, "Math"),
+        ("lesson", {"agent": "science"}, "Science"),
+        ("lesson", {"agent": "english"}, "English"),
+        ("lesson", {"agent": "history"}, "History"),
+        ("lesson", {"agent": "life_skills"}, "Life Skills"),
+        ("lesson", {"agent": "coding"}, "Life Skills"),
+        ("life_skill", {}, "Life Skills"),
+        ("coding_module", {}, "Life Skills"),
+        ("choice_topic", {}, "Life Skills"),
+        ("project_step", {}, "Big Projects"),
+        ("travel_entry", {}, "Big Projects"),
+    ],
+)
+def test_epic_for_every_board_kind(kind, item, expected):
+    assert epic_for(kind, item) == expected
+
+
+def test_group_backlog_by_epic_covers_every_epic_even_when_empty():
+    grouped = group_backlog_by_epic([])
+    assert set(grouped) == set(EPIC_ORDER)
+    assert all(items == [] for items in grouped.values())
+
+
+def test_group_backlog_by_epic_groups_life_skills_and_coding_together():
+    """Both fold into the same Life Skills epic, same as the page they
+    already share (pages/6_Life_Skills.py's Coding tab)."""
+    backlog = [
+        ("life_skill", {"id": 1, "title": "Grocery shop on a set budget"}),
+        ("coding_module", {"id": 2, "title": "Build a random decision-maker"}),
+        ("project_step", {"id": 3, "title": "Storyboard the opening scene"}),
+    ]
+    grouped = group_backlog_by_epic(backlog)
+    assert [item["id"] for _, item in grouped["Life Skills"]] == [1, 2]
+    assert [item["id"] for _, item in grouped["Big Projects"]] == [3]
+    assert grouped["Math"] == []

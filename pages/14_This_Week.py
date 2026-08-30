@@ -26,6 +26,7 @@ from compass.agents import all_agents
 from compass.agents.strategies import ERAS, SCIENCE_DOMAINS
 from compass.compliance import build_report
 from compass.ui import (
+    EPIC_ICONS,
     FRIDAY_PLAN_KINDS,
     SUBJECT_ICONS,
     md,
@@ -133,33 +134,50 @@ with board_tab:
 
     board = weekly.board_for_week(db, student, board_week_start)
     all_lessons_for_board = db.list_lessons(student["id"], limit=200)
+    today_iso_for_board = date.today().isoformat()
 
-    board_columns = st.columns(6)
-    for column, day_date in zip(board_columns[:5], board_days):
-        with column:
-            st.markdown(f"**{day_date.strftime('%a')}**")
-            st.caption(day_date.strftime("%b %-d"))
-            day_items = board[day_date.isoformat()]
-            if not day_items:
-                st.caption("Nothing here.")
-            for kind, item in day_items:
-                render_board_card(
-                    db, kind, item,
-                    today_iso=date.today().isoformat(),
-                    all_lessons_for_collision=all_lessons_for_board,
-                )
+    # Product Backlog panel (left) + the sprint board itself (right) --
+    # every story currently parked, any week it originally came from, is
+    # grouped by epic here rather than sitting in a sixth day-column. The
+    # move control on each card is exactly what "assign" means: opening it
+    # is how a parked story gets a day (or moves to a different one),
+    # nothing new to build for that beyond a new place to put the card.
+    panel_col, board_col = st.columns([1, 3], gap="large")
 
-    with board_columns[5]:
-        st.markdown("**🗄️ Backlog**")
-        st.caption("Parked -- pull one back in above whenever it's ready.")
-        if not board["backlog"]:
+    with panel_col:
+        st.markdown("**📋 Product Backlog**")
+        backlog_by_epic = weekly.group_backlog_by_epic(board["backlog"])
+        total_backlogged = sum(len(items) for items in backlog_by_epic.values())
+        if not total_backlogged:
             st.caption("Nothing parked.")
-        for kind, item in board["backlog"]:
-            render_board_card(
-                db, kind, item,
-                today_iso=date.today().isoformat(),
-                all_lessons_for_collision=all_lessons_for_board,
-            )
+        for epic in weekly.EPIC_ORDER:
+            items = backlog_by_epic.get(epic, [])
+            if not items:
+                continue
+            icon = EPIC_ICONS.get(epic, "📘")
+            with st.expander(f"{icon} {epic} ({len(items)})", expanded=True):
+                for kind, item in items:
+                    render_board_card(
+                        db, kind, item,
+                        today_iso=today_iso_for_board,
+                        all_lessons_for_collision=all_lessons_for_board,
+                    )
+
+    with board_col:
+        board_columns = st.columns(5)
+        for column, day_date in zip(board_columns, board_days):
+            with column:
+                st.markdown(f"**{day_date.strftime('%a')}**")
+                st.caption(day_date.strftime("%b %-d"))
+                day_items = board[day_date.isoformat()]
+                if not day_items:
+                    st.caption("Nothing here.")
+                for kind, item in day_items:
+                    render_board_card(
+                        db, kind, item,
+                        today_iso=today_iso_for_board,
+                        all_lessons_for_collision=all_lessons_for_board,
+                    )
 
 # --- Review this week ----------------------------------------------------------
 

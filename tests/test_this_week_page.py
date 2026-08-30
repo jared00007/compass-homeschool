@@ -9,7 +9,7 @@ of generating all four and deleting the one that didn't belong.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import streamlit as st
@@ -306,7 +306,7 @@ def test_a_life_skill_shows_on_the_board_with_a_move_control(monkeypatch, tmp_pa
     assert any(c.key == backlog_key for c in board_tab.checkbox)
 
 
-def test_a_backlogged_story_shows_in_the_backlog_column(monkeypatch, tmp_path):
+def test_a_backlogged_story_shows_in_its_epics_backlog_panel_section(monkeypatch, tmp_path):
     db_path = tmp_path / "week.db"
     db = Database(db_path)
     student = db.ensure_default_student()
@@ -318,8 +318,12 @@ def test_a_backlogged_story_shows_in_the_backlog_column(monkeypatch, tmp_path):
 
     _, board_tab = _open_board_tab(monkeypatch, db_path)
     markdowns = " ".join(m.value for m in board_tab.markdown)
-    assert skill["title"] in markdowns
-    assert "Parked" in markdowns or "🗄️ Backlog" in markdowns
+    assert "📋 Product Backlog" in markdowns
+    life_skills_expanders = [
+        e for e in board_tab.expander if e.label.startswith("🛠️ Life Skills")
+    ]
+    assert life_skills_expanders, "the Life Skills epic section must be offered"
+    assert skill["title"] in " ".join(m.value for m in life_skills_expanders[0].markdown)
 
 
 def test_moving_a_life_skill_from_the_board_reschedules_it(monkeypatch, tmp_path):
@@ -394,3 +398,50 @@ def test_this_week_button_returns_from_next_week(monkeypatch, tmp_path):
     board_tab = _board_tab(at)
     date_widget = [d for d in board_tab.date_input if d.key == "board_week_picker"][0]
     assert weekly.week_start(date_widget.value) == weekly.week_start(date.today())
+
+
+# --- Product Backlog panel: every parked story, any week it came from ----------
+
+
+def test_the_backlog_panel_includes_a_story_parked_from_a_totally_different_week(
+    monkeypatch, tmp_path
+):
+    """The actual ask this panel exists to satisfy: 'backlog should include
+    all stories I put into the backlog' -- not just ones parked from the
+    week currently being viewed."""
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="history", subject="history", topic="t",
+        title="Origins of the Cold War",
+        payload={"title": "Origins of the Cold War", "activities": []},
+        metadata={
+            "planned_for": (TARGET_MONDAY - timedelta(days=90)).isoformat(),
+            "week_start": (TARGET_MONDAY - timedelta(days=90)).isoformat(),
+        },
+    )
+    db.send_to_backlog(lesson_id)
+    db.close()
+
+    _, board_tab = _open_board_tab(monkeypatch, db_path)
+    history_expanders = [e for e in board_tab.expander if e.label.startswith("🏛️ History")]
+    assert history_expanders, "a story parked months ago must still surface in its epic's panel section"
+    assert "Origins of the Cold War" in " ".join(m.value for m in history_expanders[0].markdown)
+
+
+def test_the_board_columns_are_monday_through_friday_only_no_sixth_backlog_column(
+    monkeypatch, tmp_path
+):
+    """Backlog moved into its own panel -- the day side of the board no
+    longer carries a sixth column for it."""
+    db_path = tmp_path / "week.db"
+    Database(db_path).close()
+
+    _, board_tab = _open_board_tab(monkeypatch, db_path)
+    day_labels = {m.value for m in board_tab.markdown if m.value in ("**Mon**", "**Tue**", "**Wed**", "**Thu**", "**Fri**")}
+    assert day_labels == {"**Mon**", "**Tue**", "**Wed**", "**Thu**", "**Fri**"}
+    # The old day-column-style "**🗄️ Backlog**" header is gone -- it's now
+    # the panel's own "📋 Product Backlog" heading instead.
+    assert not any(m.value == "**🗄️ Backlog**" for m in board_tab.markdown)
+    assert any(m.value == "**📋 Product Backlog**" for m in board_tab.markdown)

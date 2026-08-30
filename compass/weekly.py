@@ -536,6 +536,51 @@ def board_for_week(
     return board
 
 
+# The order every epic-grouped view (the Board tab's Product Backlog panel)
+# lists epics in -- core subjects first in their usual order, then the two
+# catch-all epics last, matching how the parent described the grouping.
+EPIC_ORDER = ("Math", "Science", "English", "History", "Life Skills", "Big Projects")
+
+_LESSON_AGENT_EPIC = {
+    "math": "Math", "science": "Science", "english": "English", "history": "History",
+    # Both fold into the Life Skills epic, same as the page they already
+    # share (pages/6_Life_Skills.py's Coding tab) -- a generated lesson
+    # from either agent is still a Life Skills story, not a seventh epic.
+    "life_skills": "Life Skills", "coding": "Life Skills",
+}
+_KIND_EPIC = {
+    "life_skill": "Life Skills", "coding_module": "Life Skills", "choice_topic": "Life Skills",
+    # Travel Journal auto-folds into Big Projects (Database.ensure_travel_log_project),
+    # so its entries belong to that epic here too, not a standalone one.
+    "project_step": "Big Projects", "travel_entry": "Big Projects",
+}
+
+
+def epic_for(kind: str, item: dict[str, Any]) -> str:
+    """Which epic (see EPIC_ORDER) a board story belongs to. Lessons key
+    off their own agent -- every other kind has one fixed epic regardless
+    of its own fields."""
+    if kind == "lesson":
+        return _LESSON_AGENT_EPIC.get(item["agent"], item["agent"].title())
+    return _KIND_EPIC.get(kind, kind.replace("_", " ").title())
+
+
+def group_backlog_by_epic(
+    backlog: list[tuple[str, dict[str, Any]]],
+) -> dict[str, list[tuple[str, dict[str, Any]]]]:
+    """Reshapes `board_for_week`'s own flat `"backlog"` list into
+    epic-grouped order for the Board tab's Product Backlog panel -- no new
+    query, since that list is already every currently-parked story
+    regardless of which week it came from (see `board_for_week`'s own
+    docstring on its two-pass Backlog sweep). Every epic in EPIC_ORDER
+    gets an entry, empty list included, so a caller can iterate the fixed
+    order and skip whichever come back empty without a KeyError."""
+    grouped: dict[str, list[tuple[str, dict[str, Any]]]] = {epic: [] for epic in EPIC_ORDER}
+    for kind, item in backlog:
+        grouped.setdefault(epic_for(kind, item), []).append((kind, item))
+    return grouped
+
+
 def today_subject_status(
     lessons: list[dict[str, Any]], today: str
 ) -> tuple[dict[str, Any] | None, str]:
