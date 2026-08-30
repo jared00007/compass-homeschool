@@ -1462,6 +1462,37 @@ reuse) so the draft reads like the starter catalog's own steps — concrete
 instructions, a materials list, an observable "before you move on" bar — rather than
 generic advice.
 
+**A step's own Backlog vs. To Do, same flow as a lesson's own Backlog.** Requested
+directly: "the freedom to move stories around," this time for a project's individual
+steps, not just lessons — a parent moves any step between Backlog (parked, parent-only)
+and To Do (committed to the plan, visible to Landon) at will. `project_steps.active`
+is the whole mechanism, mirroring `life_skills.active` almost exactly (a catalog skill
+locked from the student view until a parent unlocks it): `Database.
+set_project_step_active(step_id, active)` flips it, and every render site (the
+Checklist tab's own step list, the "up next" pick, the First Day blurbs,
+`big_project_status_text`) filters to `active OR completed_on` — a step already
+finished stays visible regardless, same reasoning `set_life_skill_active` gives for
+never touching `completed_on`.
+
+One real difference from Life Skills' default: `add_project_step`'s own `active`
+parameter defaults to **`False`**, not `True` — a freshly added step, by hand or from
+the AI chunker's own insertion loop, starts in Backlog, not immediately committed.
+Requested directly, true Kanban-style: nothing lands in the current plan until a
+parent explicitly pulls it there. The one deliberate exception is the starter
+catalog (`BIG_PROJECT_CATALOG`) — `_insert_big_project` writes its rows directly
+rather than through `add_project_step`, so a starter project's steps keep coming in
+already-visible, exactly as they always have; extending Backlog-by-default to the
+catalog too was out of scope for what was actually asked. The column's own SQL-level
+default is `1`, the opposite of the Python parameter's — that's not an inconsistency,
+it's protecting every step that already existed before this column did, so an
+already-visible step never retroactively vanishes into the Backlog the moment a
+family updates.
+
+Landon still checks off any visible step freely (unchanged — steps were never
+hard-locked, same parity as Life Skills), and an already-done step never offers "Send
+to backlog" (checking a box he's finished off and hiding it from him would be a
+strange thing to let happen by accident).
+
 ## Tests
 
 ```bash

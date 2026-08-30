@@ -424,6 +424,10 @@ CREATE TABLE IF NOT EXISTS project_steps (
     -- there's no due_on anywhere on this table, and that's intentional.
     min_days       INTEGER NOT NULL DEFAULT 1,
     max_days       INTEGER NOT NULL DEFAULT 1,
+    -- Backlog vs To Do -- see Database.add_project_step/set_project_step_active.
+    -- Defaults to 1 at the column level so a starter-catalog step (inserted
+    -- directly, not through add_project_step) comes in already visible.
+    active         INTEGER NOT NULL DEFAULT 1,
     completed_on   TEXT,
     created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );

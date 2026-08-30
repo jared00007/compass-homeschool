@@ -102,7 +102,13 @@ with checklist_tab:
     active_id = active_project["id"] if active_project else None
     for project in visible_projects:
         steps = db.list_project_steps(project["id"])
-        done = sum(1 for s in steps if s["completed_on"])
+        # Visible to both of you: committed to the current plan, same as
+        # Life Skills' own `active OR completed_on` gate -- a step already
+        # done stays visible regardless of this flag, so backlogging never
+        # retroactively hides something he's already finished.
+        visible_steps = [s for s in steps if s["active"] or s["completed_on"]]
+        backlog_steps = [s for s in steps if not s["active"] and not s["completed_on"]]
+        done = sum(1 for s in visible_steps if s["completed_on"])
         # A real st.expander can't wrap this card -- each step below is
         # already its own expander, and Streamlit doesn't allow nesting
         # them. A toggle button driving a plain show/hide gets the same
@@ -125,13 +131,21 @@ with checklist_tab:
                 ):
                     st.session_state[open_key] = not st.session_state[open_key]
                     st.rerun()
-            if steps:
-                st.progress(done / len(steps), text=f"{done} / {len(steps)} steps done")
-                total_min = sum(s["min_days"] for s in steps)
-                total_max = sum(s["max_days"] for s in steps)
+            if visible_steps:
+                st.progress(done / len(visible_steps), text=f"{done} / {len(visible_steps)} steps done")
+                total_min = sum(s["min_days"] for s in visible_steps)
+                total_max = sum(s["max_days"] for s in visible_steps)
                 st.caption(
                     f"⏳ Roughly {_day_range(total_min, total_max)} total at a relaxed "
                     f"pace -- this is a filler for when there's time, not something to rush."
+                )
+            elif steps:
+                # Has steps, but every one of them is still sitting in
+                # Backlog -- a different state from "no steps at all", and
+                # from "all done" too.
+                st.caption(
+                    "Nothing in To Do yet"
+                    + (" -- pull a step up from Backlog below." if is_parent() else ".")
                 )
             elif is_parent():
                 # Only while it has zero steps -- see project_chunker's own
@@ -182,8 +196,11 @@ with checklist_tab:
             # aren't hard-locked (either of you can check any of them off,
             # same parity as Life Skills), but the sprint-style point of this
             # feature is having one clear next thing rather than a flat list.
-            next_step_id = next((s["id"] for s in steps if not s["completed_on"]), None)
-            for index, step in enumerate(steps, start=1):
+            # Only ever picked from visible_steps -- a backlogged step isn't
+            # committed to the plan yet, so it can't be "up next" no matter
+            # where it sits in sort_order.
+            next_step_id = next((s["id"] for s in visible_steps if not s["completed_on"]), None)
+            for index, step in enumerate(visible_steps, start=1):
                 is_next = step["id"] == next_step_id
                 row_key = f"step_row_next_{step['id']}" if is_next else f"step_row_{step['id']}"
                 with st.container(key=row_key):
@@ -215,6 +232,38 @@ with checklist_tab:
                                 meta.append(f"**You'll need:** {md(step['materials'])}")
                             meta.append(f"Credits toward {label(step['credit_subject'])}")
                             st.caption(" · ".join(meta))
+                            # The freedom to pick a story off wherever it
+                            # currently sits, same flow as a lesson's own
+                            # Backlog -- never offered on a step he's already
+                            # finished.
+                            if is_parent() and not checked:
+                                if st.button(
+                                    "🗄️ Send to backlog", key=f"backlog_step_{step['id']}"
+                                ):
+                                    db.set_project_step_active(step["id"], False)
+                                    st.rerun()
+
+            if is_parent() and backlog_steps:
+                st.markdown("**🗄️ Backlog**")
+                st.caption(
+                    "Not part of the current plan yet -- move one into To Do above "
+                    "when you're ready for him to work on it. Parent-only: he never "
+                    "sees a step sitting here."
+                )
+                for step in backlog_steps:
+                    pace = f" · ⏳ {_day_range(step['min_days'], step['max_days'])}"
+                    with st.expander(f"{md(step['title'])}{pace}", expanded=False):
+                        if step["description"]:
+                            st.write(md(step["description"]))
+                        meta = []
+                        if step["materials"]:
+                            meta.append(f"**You'll need:** {md(step['materials'])}")
+                        meta.append(f"Credits toward {label(step['credit_subject'])}")
+                        st.caption(" · ".join(meta))
+                        if st.button("➡️ Move to To Do", key=f"todo_step_{step['id']}"):
+                            db.set_project_step_active(step["id"], True)
+                            st.rerun()
+
             if is_parent() and st.button(
                 "Not an interest -- shelve it", key=f"shelve_project_{project['id']}"
             ):

@@ -1358,6 +1358,11 @@ class Database:
         self._ensure_column("project_steps", "min_days", "INTEGER NOT NULL DEFAULT 1")
         self._ensure_column("project_steps", "max_days", "INTEGER NOT NULL DEFAULT 1")
         self._ensure_column("big_projects", "shelved", "INTEGER NOT NULL DEFAULT 0")
+        # Default 1 here is purely for every step that already existed before
+        # this column did -- they stay exactly as visible as they always
+        # were. A brand new step gets its `active` value explicitly, from
+        # add_project_step's own default (see there for why that one's 0).
+        self._ensure_column("project_steps", "active", "INTEGER NOT NULL DEFAULT 1")
         self._ensure_column("activities", "course_id", "INTEGER REFERENCES courses(id) ON DELETE SET NULL")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_activities_course ON activities (course_id)")
         # Runs before the migration below, not after: that migration inserts
@@ -3244,7 +3249,17 @@ class Database:
         credit_subject: str = "occupational_education",
         min_days: int = 1,
         max_days: int = 1,
+        active: bool = False,
     ) -> int:
+        """`active=False` by default -- a freshly added step (by hand, or
+        from the AI chunker's own insertion loop) starts in the Backlog,
+        same as any other new story, rather than immediately committed to
+        the current plan. A parent pulls it into To Do explicitly (see
+        `set_project_step_active`) when they're ready to work on it. The
+        starter catalog is a deliberate exception: `_insert_big_project`
+        writes its own rows directly rather than through this method, so
+        its steps keep coming in already-visible, matching how the catalog
+        has always worked."""
         next_order = self.conn.execute(
             "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM project_steps WHERE project_id = ?",
             (project_id,),
@@ -3252,9 +3267,9 @@ class Database:
         cur = self.conn.execute(
             "INSERT INTO project_steps "
             "(project_id, sort_order, title, description, materials, credit_subject, "
-            " min_days, max_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            " min_days, max_days, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (project_id, next_order, title, description, materials, credit_subject,
-             max(1, min_days), max(min_days, max_days)),
+             max(1, min_days), max(min_days, max_days), int(active)),
         )
         self.conn.commit()
         return int(cur.lastrowid)
@@ -3263,6 +3278,18 @@ class Database:
         self.conn.execute(
             "UPDATE project_steps SET completed_on = ? WHERE id = ?",
             (date.today().isoformat() if completed else None, step_id),
+        )
+        self.conn.commit()
+
+    def set_project_step_active(self, step_id: int, active: bool) -> None:
+        """Moves a step between Backlog and To Do -- the freedom to pick a
+        story off wherever it currently sits, same flow as a lesson's own
+        Backlog. Never touches `completed_on`: an already-done step stays
+        visible regardless of this flag (see the `active OR completed_on`
+        filter at the call sites), the same reasoning
+        `set_life_skill_active` already gives for its own skill."""
+        self.conn.execute(
+            "UPDATE project_steps SET active = ? WHERE id = ?", (int(active), step_id)
         )
         self.conn.commit()
 

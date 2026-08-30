@@ -17,7 +17,7 @@ from unittest.mock import patch
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
-from compass import config
+from compass import auth, config
 from compass.storage.db import Database
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -25,15 +25,23 @@ HOME_PATH = str(REPO_ROOT / "Home.py")
 BIG_PROJECTS_PATH = str(REPO_ROOT / "pages" / "7_Big_Projects.py")
 
 
-def _open_checklist_tab(monkeypatch, db_path):
+def _open_checklist_tab(monkeypatch, db_path, *, as_parent=True):
     st.cache_resource.clear()
     monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
     at = AppTest.from_file(HOME_PATH)
-    at.session_state["parent_unlocked"] = True
+    if as_parent:
+        at.session_state["parent_unlocked"] = True
     at.run(timeout=30)
     at.switch_page(BIG_PROJECTS_PATH)
     at.run(timeout=30)
     assert not at.exception, [e.message for e in at.exception]
+    return at
+
+
+def _expand_project(at, project_id):
+    """The card is collapsed on every fresh load -- the step list (and the
+    Backlog section) only render once "Show" is clicked."""
+    at.button(key=f"toggle_project_{project_id}").click().run()
     return at
 
 
@@ -65,3 +73,113 @@ def test_chunk_button_is_disabled_when_the_api_is_unavailable(monkeypatch, tmp_p
 
     button = at.button(key=f"chunk_project_{project_id}")
     assert button.disabled
+
+
+# --- Backlog / To Do, same flow as a lesson's own Backlog -----------------------
+
+
+def test_a_backlogged_step_is_hidden_from_the_student_view(monkeypatch, tmp_path):
+    """The actual point: a step sitting in Backlog is parent-only, same as
+    a backlogged lesson never showing up on Landon's own Home page."""
+    db_path = tmp_path / "projects.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")  # is_parent() defaults True with no PIN set at all
+    project_id = db.add_big_project(student["id"], "Stop-Motion Film")
+    db.add_project_step(project_id, "Write the script")  # defaults to Backlog
+    db.close()
+
+    at = _open_checklist_tab(monkeypatch, db_path, as_parent=False)
+    at = _expand_project(at, project_id)
+
+    labels = [e.label for e in at.expander]
+    assert not any("Write the script" in l for l in labels)
+
+
+def test_an_active_step_shows_in_the_students_checklist(monkeypatch, tmp_path):
+    db_path = tmp_path / "projects.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    project_id = db.add_big_project(student["id"], "Stop-Motion Film")
+    db.add_project_step(project_id, "Write the script", active=True)
+    db.close()
+
+    at = _open_checklist_tab(monkeypatch, db_path, as_parent=False)
+    at = _expand_project(at, project_id)
+
+    labels = [e.label for e in at.expander]
+    assert any("Write the script" in l for l in labels)
+
+
+def test_backlog_section_never_renders_for_the_student(monkeypatch, tmp_path):
+    db_path = tmp_path / "projects.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    project_id = db.add_big_project(student["id"], "Stop-Motion Film")
+    db.add_project_step(project_id, "Write the script")  # defaults to Backlog
+    db.close()
+
+    at = _open_checklist_tab(monkeypatch, db_path, as_parent=False)
+    at = _expand_project(at, project_id)
+
+    markdowns = [m.value for m in at.markdown]
+    assert not any("Backlog" in m for m in markdowns)
+
+
+def test_send_to_backlog_moves_a_step_out_of_to_do(monkeypatch, tmp_path):
+    db_path = tmp_path / "projects.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    project_id = db.add_big_project(student["id"], "Stop-Motion Film")
+    step_id = db.add_project_step(project_id, "Write the script", active=True)
+    db.close()
+
+    at = _open_checklist_tab(monkeypatch, db_path)
+    at = _expand_project(at, project_id)
+    labels = [e.label for e in at.expander]
+    assert any("Write the script" in l and "up next" in l for l in labels)
+
+    at.button(key=f"backlog_step_{step_id}").click().run()
+
+    markdowns = [m.value for m in at.markdown]
+    assert any("Backlog" in m for m in markdowns)
+    labels = [e.label for e in at.expander]
+    assert not any("up next" in l for l in labels)
+    assert any("Write the script" in l for l in labels)  # still visible, in Backlog now
+
+
+def test_move_to_to_do_promotes_a_backlogged_step(monkeypatch, tmp_path):
+    db_path = tmp_path / "projects.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    project_id = db.add_big_project(student["id"], "Stop-Motion Film")
+    step_id = db.add_project_step(project_id, "Write the script")  # defaults to Backlog
+    db.close()
+
+    at = _open_checklist_tab(monkeypatch, db_path)
+    at = _expand_project(at, project_id)
+
+    at.button(key=f"todo_step_{step_id}").click().run()
+
+    labels = [e.label for e in at.expander]
+    assert any("Write the script" in l and "up next" in l for l in labels)
+    markdowns = [m.value for m in at.markdown]
+    assert not any("Backlog" in m for m in markdowns)
+
+
+def test_send_to_backlog_is_not_offered_on_an_already_done_step(monkeypatch, tmp_path):
+    db_path = tmp_path / "projects.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    project_id = db.add_big_project(student["id"], "Stop-Motion Film")
+    step_id = db.add_project_step(project_id, "Write the script", active=True)
+    db.set_project_step_done(step_id, True)
+    db.close()
+
+    at = _open_checklist_tab(monkeypatch, db_path)
+    at = _expand_project(at, project_id)
+
+    keys = {b.key for b in at.button}
+    assert f"backlog_step_{step_id}" not in keys

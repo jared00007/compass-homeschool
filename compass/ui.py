@@ -2057,12 +2057,14 @@ def big_project_status_text(db: Database, student_id: int) -> str:
     active = db.active_big_project(student_id)
     if active is None:
         return "Big Projects — pick one to work on this year"
-    next_step = next(
-        (s for s in db.list_project_steps(active["id"]) if not s["completed_on"]),
-        None,
-    )
+    steps = db.list_project_steps(active["id"])
+    next_step = next((s for s in steps if s["active"] and not s["completed_on"]), None)
     if next_step:
         return f"{md(active['title'])} — {md(next_step['title'])}"
+    # Steps exist and aren't all done, but none of them are in To Do yet --
+    # a real, different state from "all done", not the same thing.
+    if any(not s["completed_on"] for s in steps):
+        return f"{md(active['title'])} — pull a step into To Do"
     return f"{md(active['title'])} — all done! 🎉"
 
 
@@ -2919,7 +2921,8 @@ def render_first_day_celebration(db: Database, student: dict[str, Any]) -> bool:
         blurbs.append(("THIS ISSUE:", _FIRST_DAY_COLORS[0], text))
     if project:
         next_step = next(
-            (s for s in db.list_project_steps(project["id"]) if not s["completed_on"]), None
+            (s for s in db.list_project_steps(project["id"]) if s["active"] and not s["completed_on"]),
+            None,
         )
         text = f"His **{md(project['title'])}**"
         text += (
@@ -3078,7 +3081,7 @@ def _render_first_day_contents(db: Database, student: dict[str, Any], year_start
             item += f"  \n{md(project['vision'])}" if project["vision"] else "  \nNo objective set yet."
             if is_active:
                 steps = db.list_project_steps(project["id"])
-                next_step = next((s for s in steps if not s["completed_on"]), None)
+                next_step = next((s for s in steps if s["active"] and not s["completed_on"]), None)
                 if next_step:
                     item += f"  \nNext up: {md(next_step['title'])}"
             items.append(item)

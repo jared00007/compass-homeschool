@@ -1215,7 +1215,7 @@ def test_big_project_status_text_nudges_when_none_is_active(db, student):
 
 def test_big_project_status_text_shows_the_next_step(db, student):
     project_id = db.add_big_project(student["id"], "Stop-motion film")
-    db.add_project_step(project_id, "Write the script")
+    db.add_project_step(project_id, "Write the script", active=True)
     db.set_active_big_project(project_id)
     text = ui.big_project_status_text(db, student["id"])
     assert "Stop-motion film" in text
@@ -1356,7 +1356,7 @@ def test_blurbs_mention_the_active_big_project_next_step(monkeypatch, db, studen
     db.set_setting("school_year_start", "09-01")
     _fix_today(monkeypatch, date(2026, 9, 1))
     project_id = db.add_big_project(student["id"], "Stop-motion film")
-    db.add_project_step(project_id, "Write the script")
+    db.add_project_step(project_id, "Write the script", active=True)
     db.set_active_big_project(project_id)
     page, shown, _ = render_first_day(monkeypatch, db, student)
     assert shown is True
@@ -1384,7 +1384,7 @@ def test_see_whats_inside_flips_to_a_table_of_contents(monkeypatch, db, student)
     _fix_today(monkeypatch, date(2026, 9, 1))
     db.add_book(student["id"], "Holes", status="reading")
     project_id = db.add_big_project(student["id"], "Stop-Motion Film", vision="A short stop-motion film he writes, builds, and shoots himself.")
-    db.add_project_step(project_id, "Write the script")
+    db.add_project_step(project_id, "Write the script", active=True)
     db.set_active_big_project(project_id)
     db.add_choice_topic(student["id"], "Learn guitar chords", description="Enough chords to play a few songs.")
     db.add_life_skill(student["id"], "Change a tire", description="How to safely swap a flat for the spare.")

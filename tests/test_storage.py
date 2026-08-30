@@ -1181,6 +1181,42 @@ def test_a_database_created_before_the_materials_column_gets_migrated(tmp_path):
         migrated.close()
 
 
+def test_a_database_created_before_the_step_active_column_gets_migrated(tmp_path):
+    """`active` shipped after some real databases already existed, with
+    project steps a parent could already see. The migration backfills it
+    to 1 for every pre-existing row -- an already-visible step must not
+    suddenly vanish into the Backlog the moment this column gets added."""
+    path = tmp_path / "pre_active.db"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE big_projects ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL, "
+        "title TEXT NOT NULL, vision TEXT NOT NULL DEFAULT '', "
+        "sort_order INTEGER NOT NULL DEFAULT 0, "
+        "created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+    )
+    conn.execute("INSERT INTO big_projects (id, student_id, title) VALUES (1, 1, 'Old project')")
+    conn.execute(
+        "CREATE TABLE project_steps ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, "
+        "sort_order INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, "
+        "description TEXT NOT NULL DEFAULT '', materials TEXT NOT NULL DEFAULT '', "
+        "credit_subject TEXT NOT NULL DEFAULT 'occupational_education', "
+        "min_days INTEGER NOT NULL DEFAULT 1, max_days INTEGER NOT NULL DEFAULT 1, "
+        "completed_on TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+    )
+    conn.execute("INSERT INTO project_steps (project_id, title) VALUES (1, 'Old step')")
+    conn.commit()
+    conn.close()
+
+    migrated = Database(path)
+    try:
+        step = migrated.conn.execute("SELECT * FROM project_steps").fetchone()
+        assert step["active"] == 1
+    finally:
+        migrated.close()
+
+
 def test_a_checklist_seeded_before_mission_text_existed_gets_backfilled(db, student):
     """A checklist seeded in an earlier build (blank description/materials,
     since `seed_life_skills` only ever inserts once per student) must pick up
@@ -1457,6 +1493,41 @@ def test_set_project_step_done_toggles_completed_on(db, student):
     assert db.list_project_steps(project_id)[0]["completed_on"] is not None
     db.set_project_step_done(step_id, False)
     assert db.list_project_steps(project_id)[0]["completed_on"] is None
+
+
+def test_add_project_step_defaults_to_backlog(db, student):
+    """A freshly added step -- by hand, or from the AI chunker -- starts
+    parked, not immediately committed to the plan. A parent pulls it into
+    To Do explicitly."""
+    project_id = db.add_big_project(student["id"], "Test Project")
+    db.add_project_step(project_id, "Step one")
+    assert db.list_project_steps(project_id)[0]["active"] == 0
+
+
+def test_add_project_step_can_start_in_to_do(db, student):
+    project_id = db.add_big_project(student["id"], "Test Project")
+    db.add_project_step(project_id, "Step one", active=True)
+    assert db.list_project_steps(project_id)[0]["active"] == 1
+
+
+def test_set_project_step_active_moves_between_backlog_and_to_do(db, student):
+    project_id = db.add_big_project(student["id"], "Test Project")
+    step_id = db.add_project_step(project_id, "Step one")
+    assert db.list_project_steps(project_id)[0]["active"] == 0
+    db.set_project_step_active(step_id, True)
+    assert db.list_project_steps(project_id)[0]["active"] == 1
+    db.set_project_step_active(step_id, False)
+    assert db.list_project_steps(project_id)[0]["active"] == 0
+
+
+def test_set_project_step_active_never_touches_completed_on(db, student):
+    """Same reasoning set_life_skill_active gives for its own skill: an
+    already-done step's completion record is untouched by this flag."""
+    project_id = db.add_big_project(student["id"], "Test Project")
+    step_id = db.add_project_step(project_id, "Step one", active=True)
+    db.set_project_step_done(step_id, True)
+    db.set_project_step_active(step_id, False)
+    assert db.list_project_steps(project_id)[0]["completed_on"] is not None
 
 
 def test_delete_big_project_cascades_to_its_steps(db, student):
