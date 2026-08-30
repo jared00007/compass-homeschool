@@ -19,6 +19,7 @@ from compass.agents import life_skills
 from compass.agents import course_summary
 from compass.agents import book_summary
 from compass.agents import writing_review
+from compass.agents import project_chunker
 
 from compass.agents.math_agent import AGENT as MATH_AGENT
 from compass.agents.science_agent import AGENT as SCIENCE_AGENT
@@ -46,5 +47,6 @@ __all__ = [
     "course_summary",
     "book_summary",
     "writing_review",
+    "project_chunker",
     "register",
 ]

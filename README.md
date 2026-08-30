@@ -1412,10 +1412,42 @@ declarations of intent, and uploaded district documents — none of those are
 a single year's assignments, so clearing them isn't this script's call to
 make.
 
+## Big Projects: chunking a new project into steps with AI
+
+Every Big Project's steps used to be entirely hand-authored — either typed in one
+at a time on the Add/manage tab, or seeded from the fixed `BIG_PROJECT_CATALOG` in
+`compass/storage/db.py`. Requested directly, to lower the barrier for a parent's own
+project idea: **✨ Chunk this project into steps with AI**, on the Checklist tab,
+turns a project's title and vision alone into an ordered list of steps in that exact
+same shape (`title`, `description`, `materials`, `credit_subject`, `min_days`,
+`max_days`) — `compass.agents.project_chunker.generate_project_steps` is a single
+on-demand model call, modeled directly on `course_summary.py` rather than the daily
+Tier 1 `LessonAgent` framework: chunking is occasional, not a recurring per-day call,
+so it doesn't need a next-topic strategy or a review gate. Saved to the `lessons`
+table under its own agent key purely for the Costs page (never shown to the student —
+Home's roster only ever queries the four core agent keys, so this one is already
+invisible there with no extra exclusion needed, same reasoning `course_summary`'s own
+call already relies on).
+
+**Offered only while a project has zero steps, on purpose — there's deliberately no
+"regenerate" story here.** A project with any steps at all already has real state
+worth not silently clobbering: a parent's own hand-written step, a step Landon's
+already checked off. Reconciling an AI rewrite against that safely is a genuinely
+different, harder feature; restricting this to a blank project sidesteps the whole
+question; nothing existing is ever at risk of being overwritten. `credit_subject` is
+drawn from the full `SUBJECT_KEYS` enum, unlike Life Skills' own narrower per-skill
+allowed set — a project's steps routinely span several different subjects across one
+plan (writing the story, building the set, editing the film), so there's no single
+subject to narrow against the way one skill has. The prompt includes one real step
+from `BIG_PROJECT_CATALOG` as a few-shot voice/detail-level example (never content to
+reuse) so the draft reads like the starter catalog's own steps — concrete
+instructions, a materials list, an observable "before you move on" bar — rather than
+generic advice.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 913 tests, ~62s, no API key needed
+python -m pytest tests/ -q      # 964 tests, ~70s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

@@ -4,8 +4,13 @@ one small enough to actually finish in a sitting, each with its own
 materials list and its own subject credit. The starter catalog seeds a
 handful of options at once (Lego stop-motion film, mini podcast, toy
 photography) so there's a real menu to pick from and stick with, rather
-than one thing pushed on him -- more can be added the same way Life Skills
-grows, by hand, not generated.
+than one thing pushed on him.
+
+A step can be added by hand (same as Life Skills) or, for a brand-new
+project with nothing on it yet, drafted all at once with AI (see
+compass.agents.project_chunker) -- offered only while the project has zero
+steps, so there's never a question of reconciling an AI draft against a
+parent's own edits or his already-checked-off progress.
 """
 
 from __future__ import annotations
@@ -15,8 +20,9 @@ from datetime import date
 import streamlit as st
 
 from compass import config
+from compass.agents import LessonGenerationError, project_chunker
 from compass.subjects import SUBJECT_KEYS, label
-from compass.ui import is_parent, md, page_setup
+from compass.ui import api_status_banner, is_parent, md, page_setup
 
 db, student = page_setup("Big Projects", icon="🎬")
 
@@ -54,9 +60,11 @@ elif len(visible_projects) > 1:
 
 if is_parent():
     checklist_tab, log_tab, manage_tab = st.tabs(["Checklist", "Log time", "Add / manage"])
+    api_ok = api_status_banner()
 else:
     checklist_tab = st.container()
     log_tab = manage_tab = None
+    api_ok = True
 
 _STEP_CARD_CSS = """
 <style>
@@ -125,6 +133,34 @@ with checklist_tab:
                     f"⏳ Roughly {_day_range(total_min, total_max)} total at a relaxed "
                     f"pace -- this is a filler for when there's time, not something to rush."
                 )
+            elif is_parent():
+                # Only while it has zero steps -- see project_chunker's own
+                # docstring on why this never offers to regenerate a project
+                # that already has real progress on it.
+                st.caption("No steps yet.")
+                if st.button(
+                    "✨ Chunk this project into steps with AI",
+                    key=f"chunk_project_{project['id']}",
+                    disabled=not api_ok,
+                ):
+                    with st.spinner("Drafting a step-by-step plan…"):
+                        try:
+                            drafted = project_chunker.generate_project_steps(
+                                db, student, project
+                            )
+                            for step in drafted:
+                                db.add_project_step(
+                                    project["id"],
+                                    step["title"],
+                                    step["description"],
+                                    step["materials"],
+                                    step["credit_subject"],
+                                    step["min_days"],
+                                    step["max_days"],
+                                )
+                            st.rerun()
+                        except LessonGenerationError as exc:
+                            st.error(str(exc))
 
             # Deliberately no default -- Friday's nudge on Home only ever
             # points at what's chosen here, never an arbitrary guess, so
