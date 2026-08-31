@@ -900,7 +900,7 @@ def test_an_earlier_days_vocab_mark_is_not_shown_as_todays(monkeypatch, db, stud
     assert "Vocabulary reviewed" not in page
 
 
-# --- render_life_skill_cards: always-visible cards, a checkbox is the only action ---
+# --- render_student_life_skills: his badges up top, assigned skills below ---
 
 
 def checkbox_stub(written: list[str], key_pressed: str):
@@ -930,7 +930,11 @@ def render_cards(monkeypatch, db, skills, *, can_edit=True, button_pressed=None,
     # `set_life_skill_done(id, <Recorder object>)` on every render.
     recorder.checkbox = checkbox_stub(written, checkbox_pressed)
     monkeypatch.setattr(ui, "st", recorder)
-    ui.render_life_skill_cards(db, skills, can_edit)
+    # `can_edit` is accepted for the handful of callers that still pass it,
+    # but the student surface has no parent-only controls to gate any more
+    # (unlock / assign a day / remove all moved to the Master list), so it's
+    # ignored here.
+    ui.render_student_life_skills(db, skills)
     return "\n".join(written)
 
 
@@ -991,18 +995,27 @@ def test_checking_the_box_marks_the_skill_done(monkeypatch, db, student):
     assert updated["completed_on"] is not None
 
 
-def test_unchecking_an_earned_skill_marks_it_not_done(monkeypatch, db, student):
+def test_an_earned_skill_shows_as_a_badge_with_no_mark_done_checkbox(monkeypatch, db, student):
+    """Earned skills move up into the badges row -- there's no `ls_done_`
+    checkbox on a badge, so a badge can't be un-marked from his own view
+    (that's a parent action on the Master list now). The badge still shows
+    its title and the date he earned it."""
     db.seed_life_skills(student["id"])
     skills = db.list_life_skills(student["id"])
     budget = next(s for s in skills if s["title"] == "Build and follow a monthly budget")
     db.set_life_skill_done(budget["id"], True)
 
+    page = render_cards(monkeypatch, db, db.list_life_skills(student["id"]))
+    assert "🏅 Badges earned" in page
+    assert "Build and follow a monthly budget" in page
+    # Pressing what would have been its checkbox key does nothing -- a badge
+    # has no such checkbox, so the earned state is untouched.
     render_cards(
         monkeypatch, db, db.list_life_skills(student["id"]),
         checkbox_pressed=f"ls_done_{budget['id']}",
     )
     updated = next(s for s in db.list_life_skills(student["id"]) if s["id"] == budget["id"])
-    assert updated["completed_on"] is None
+    assert updated["completed_on"] is not None
 
 
 def test_materials_only_show_when_present(monkeypatch, db, student):
@@ -1038,26 +1051,12 @@ def test_a_skill_title_and_description_are_escaped(monkeypatch, db, student):
     assert "&lt;b&gt;bold&lt;/b&gt; mission" in page
 
 
-def test_students_do_not_see_the_remove_control(monkeypatch, db, student):
+def test_his_life_skills_view_has_no_remove_control(monkeypatch, db, student):
+    """Removing a skill is a management action -- it lives on the Master list
+    now, never on his own badges-and-assignments view."""
     db.seed_life_skills(student["id"])
-    page = render_cards(monkeypatch, db, db.list_life_skills(student["id"]), can_edit=False)
+    page = render_cards(monkeypatch, db, db.list_life_skills(student["id"]))
     assert "🗑️ Remove" not in page
-
-
-def test_parents_see_the_remove_control(monkeypatch, db, student):
-    db.seed_life_skills(student["id"])
-    page = render_cards(monkeypatch, db, db.list_life_skills(student["id"]), can_edit=True)
-    assert "🗑️ Remove" in page
-
-
-def test_removing_a_skill_deletes_it(monkeypatch, db, student):
-    db.seed_life_skills(student["id"])
-    skills = db.list_life_skills(student["id"])
-    budget = next(s for s in skills if s["title"] == "Build and follow a monthly budget")
-
-    render_cards(monkeypatch, db, skills, can_edit=True, button_pressed=f"ls_remove_{budget['id']}")
-    remaining_titles = {s["title"] for s in db.list_life_skills(student["id"])}
-    assert "Build and follow a monthly budget" not in remaining_titles
 
 
 def test_a_student_cannot_remove_a_skill_even_if_the_button_key_matched(monkeypatch, db, student):

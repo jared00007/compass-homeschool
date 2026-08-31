@@ -3913,7 +3913,7 @@ class Database:
         """Assigns (or clears, with `None`) the specific day a parent picked
         for this skill. Assigning a date also unlocks the skill (`active =
         1`) -- a still-locked skill is invisible on the checklist itself
-        (see render_life_skill_cards' `active OR completed_on` filter), so
+        (see render_student_life_skills. `active OR completed_on` filter), so
         without this a skill could show up as "due" on Home while linking to
         a checklist page that doesn't display it at all. Clearing the date
         (`None`) deliberately does *not* re-lock it -- taking away an

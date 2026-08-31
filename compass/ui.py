@@ -3223,97 +3223,111 @@ div[class*="st-key-ls_card_"][class*="_earned"] .cp-ls-seal { display: flex; }
 .cp-ls-needs b { color: var(--c-text); }
 div[class*="st-key-ls_card_"] input[type="checkbox"] { accent-color: var(--c-primary); }
 div[class*="st-key-ls_card_"] [data-testid="stWidgetLabel"] p { font-weight: 700; font-size: 12.5px; }
+/* His view (render_student_life_skills): earned badges up top, then the
+   skills a parent assigned him as bordered cards below. */
+div[class*="st-key-ls_badge_"] {
+  border-radius: var(--c-radius) !important;
+  border: 2px solid var(--c-primary) !important;
+  padding: 12px 10px !important;
+  background: var(--c-panel) !important;
+  box-shadow: 0 4px 18px rgba(242, 183, 5, .25);
+  text-align: center;
+  margin-bottom: 14px;
+}
+.cp-ls-badge-seal { font-size: 30px; line-height: 1; }
+.cp-ls-badge-title { font-weight: 800; font-size: 13px; color: var(--c-text); line-height: 1.25; margin-top: 4px; }
+.cp-ls-badge-cat {
+  font-size: 10px; color: var(--c-border); text-transform: uppercase; letter-spacing: .08em;
+  font-family: var(--c-mono); margin-top: 2px;
+}
+.cp-ls-badge-date { font-size: 10.5px; color: var(--c-dim); margin-top: 3px; }
+div[class*="st-key-ls_assigned_"] {
+  border-radius: var(--c-radius) !important;
+  border: 1px solid var(--c-border) !important;
+  padding: 12px 16px 6px !important;
+  background: var(--c-panel) !important;
+  box-shadow: var(--c-glow);
+  margin-bottom: 12px;
+}
+.cp-ls-atitle { font-weight: 800; font-size: 14.5px; color: var(--c-text); line-height: 1.3; }
+div[class*="st-key-ls_assigned_"] input[type="checkbox"] { accent-color: var(--c-primary); }
 </style>
 """
 
 
-def render_life_skill_cards(db: Database, skills: list[dict[str, Any]], can_edit: bool) -> None:
-    """The checklist itself -- a grid of cards, one per skill, grouped by
-    category. Every card always shows its own story: what the skill is and
-    what it takes to finish. A checkbox is the only thing that changes
-    `completed_on`; check it and the card itself turns gold, no separate
-    view to open first.
+def render_student_life_skills(db: Database, skills: list[dict[str, Any]]) -> None:
+    """His own Life Skills surface: the badges he's already earned up top,
+    then the skills a parent has assigned him below, each a bordered card in
+    the same "what's on your plate" style the rest of the app uses. Not a
+    checklist grid, and no move control -- choosing which skills he works on,
+    and pinning them to specific days, is a parent's call on the Master list;
+    his job here is to do the assigned ones and mark them done. Reported
+    directly: "his activity q of assigned life task skills... badges unlocked
+    up top, and below in the backlog style uniform across app, are ones i
+    select for him. these can and will be assigned during the week on specific
+    dates of my chosing."
 
-    Takes the *full* catalog, not a pre-filtered list -- visibility is this
-    function's own rule, not every caller's to remember: a skill shows only
-    if it's `active` (unlocked from *Master list*) or already `completed_on`.
-    An earned skill stays visible even if a parent re-locks it later; taking
-    away an already-shown badge is a worse experience than an inactive skill
-    just never appearing yet.
-
-    `can_edit` gates the remove button -- a management action, same tier as
-    *Add a skill*. Marking a skill done is deliberately not gated: the
-    original checkbox let either of you check one off, and this keeps that
-    same parity rather than quietly taking it away from him.
+    Visibility is this function's own rule (unchanged): a skill shows only if
+    it's `active` (unlocked/assigned from the Master list) or already
+    `completed_on` -- an earned badge stays even if a parent later re-locks it.
+    Marking one done is his to do; un-marking and removing are parent actions
+    on the Master list, deliberately not offered here.
     """
-    skills = [s for s in skills if s["active"] or s["completed_on"]]
-    if not skills:
+    visible = [s for s in skills if s["active"] or s["completed_on"]]
+    if not visible:
         return
+    earned = [s for s in visible if s["completed_on"]]
+    assigned = [s for s in visible if not s["completed_on"]]
 
     st.markdown(_LIFE_SKILL_CARD_CSS, unsafe_allow_html=True)
-
-    by_category: dict[str, list[dict[str, Any]]] = {}
-    for skill in skills:
-        by_category.setdefault(skill["category"], []).append(skill)
-    done = sum(1 for s in skills if s["completed_on"])
     st.markdown(
-        f'<div class="cp-ls-tallybar">🥇 <span class="cp-ls-tally">{done} / {len(skills)} earned</span></div>',
+        f'<div class="cp-ls-tallybar">🥇 <span class="cp-ls-tally">'
+        f"{len(earned)} / {len(visible)} earned</span></div>",
         unsafe_allow_html=True,
     )
 
-    for category, items in by_category.items():
-        icon = LIFE_SKILL_CATEGORY_ICONS.get(category, LIFE_SKILL_DEFAULT_ICON)
-        complete = sum(1 for i in items if i["completed_on"])
-        st.subheader(f"{category} — {complete}/{len(items)}")
-
-        for row_start in range(0, len(items), LIFE_SKILL_CARDS_PER_ROW):
-            row = items[row_start : row_start + LIFE_SKILL_CARDS_PER_ROW]
+    if earned:
+        st.markdown("**🏅 Badges earned**")
+        for row_start in range(0, len(earned), LIFE_SKILL_CARDS_PER_ROW):
+            row = earned[row_start : row_start + LIFE_SKILL_CARDS_PER_ROW]
             columns = st.columns(LIFE_SKILL_CARDS_PER_ROW)
             for index, skill in enumerate(row):
-                earned = bool(skill["completed_on"])
-                state = "earned" if earned else "locked"
-                with columns[index], st.container(key=f"ls_card_{skill['id']}_{state}"):
-                    if is_parent():
-                        _spacer, move_col = st.columns([5, 1])
-                        with move_col:
-                            render_story_move_control(
-                                key=f"ls_{skill['id']}",
-                                active=bool(skill["active"]),
-                                scheduled_for=skill["scheduled_for"],
-                                set_active=lambda a, sid=skill["id"]: db.set_life_skill_active(sid, a),
-                                schedule=lambda s, sid=skill["id"]: db.schedule_life_skill(sid, s),
-                            )
-                    story = html.escape(skill["description"]) if skill["description"] else "No mission notes yet."
-                    needs = (
-                        f'<div class="cp-ls-needs"><b>You\'ll need:</b> {html.escape(skill["materials"])}</div>'
-                        if skill["materials"]
-                        else ""
-                    )
-                    assigned = (
-                        f'<div class="cp-ls-needs">📅 <b>Assigned:</b> {skill["scheduled_for"]}</div>'
-                        if skill["scheduled_for"] and not earned
-                        else ""
-                    )
+                icon = LIFE_SKILL_CATEGORY_ICONS.get(skill["category"], LIFE_SKILL_DEFAULT_ICON)
+                with columns[index], st.container(key=f"ls_badge_{skill['id']}"):
                     st.markdown(
-                        f'<div class="cp-ls-seal">{icon}</div>'
-                        f'<div class="cp-ls-title">{html.escape(skill["title"])}</div>'
-                        f'<div class="cp-ls-cat">{html.escape(category)}</div>'
-                        f'<div class="cp-ls-story">{story}</div>'
-                        f"{needs}"
-                        f"{assigned}",
+                        f'<div class="cp-ls-badge-seal">{icon}</div>'
+                        f'<div class="cp-ls-badge-title">{html.escape(skill["title"])}</div>'
+                        f'<div class="cp-ls-badge-cat">{html.escape(skill["category"])}</div>'
+                        f'<div class="cp-ls-badge-date">✅ {skill["completed_on"]}</div>',
                         unsafe_allow_html=True,
                     )
-                    checked = st.checkbox(
-                        f"Earned {skill['completed_on']}" if earned else "Mark done",
-                        value=earned,
-                        key=f"ls_done_{skill['id']}",
-                    )
-                    if checked != earned:
-                        db.set_life_skill_done(skill["id"], checked)
-                        st.rerun()
-                    if can_edit and st.button("🗑️ Remove", key=f"ls_remove_{skill['id']}"):
-                        db.delete_life_skill(skill["id"])
-                        st.rerun()
+
+    st.markdown("**📋 Assigned to you**")
+    if not assigned:
+        st.caption("Nothing assigned right now — your parent will add some here.")
+    for skill in assigned:
+        icon = LIFE_SKILL_CATEGORY_ICONS.get(skill["category"], LIFE_SKILL_DEFAULT_ICON)
+        with st.container(key=f"ls_assigned_{skill['id']}"):
+            when = f" · 📅 {skill['scheduled_for']}" if skill["scheduled_for"] else ""
+            st.markdown(
+                f'<div class="cp-ls-atitle">{icon} {html.escape(skill["title"])}</div>'
+                f'<div class="cp-ls-cat">{html.escape(skill["category"])}{when}</div>',
+                unsafe_allow_html=True,
+            )
+            if skill["description"]:
+                st.markdown(
+                    f'<div class="cp-ls-story">{html.escape(skill["description"])}</div>',
+                    unsafe_allow_html=True,
+                )
+            if skill["materials"]:
+                st.markdown(
+                    f'<div class="cp-ls-needs"><b>You\'ll need:</b> '
+                    f'{html.escape(skill["materials"])}</div>',
+                    unsafe_allow_html=True,
+                )
+            if st.checkbox("Mark done", value=False, key=f"ls_done_{skill['id']}"):
+                db.set_life_skill_done(skill["id"], True)
+                st.rerun()
 
 
 def render_life_skill_catalog_manager(db: Database, skills: list[dict[str, Any]]) -> None:
@@ -3413,7 +3427,7 @@ def render_coding_module_cards(db: Database, modules: list[dict[str, Any]], can_
     """The checklist itself. Takes the *full* catalog, not a pre-filtered
     list -- visibility is this function's own rule: a module shows only if
     it's `active` (unlocked from *Master list*) or already `completed_on`,
-    same reasoning `render_life_skill_cards` already gives."""
+    same reasoning render_student_life_skills already gives."""
     modules = [m for m in modules if m["active"] or m["completed_on"]]
     if not modules:
         return

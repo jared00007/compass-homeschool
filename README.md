@@ -2332,10 +2332,34 @@ the move-control popover is safe inside an expander, and this keeps each
 step's detail visible the moment the project's open rather than one more
 click deep.)
 
+## Life Skills: no more checklist; his view is badges + assignments
+
+Reported across two messages: "we dont need a checklist. lets redo this. all
+skills sit in the master list. coding no changes" and "landons view of core
+life skills... his activity q of assigned life task skills... badges unlocked
+up top, and below in the backlog style uniform across app, are ones i select
+for him. these can and will be assigned during the week on specific dates."
+
+The parent's **Checklist** tab is gone. Every skill lives in the **Master
+list**, which is where a parent unlocks one and pins it to a specific day
+(that surface already had the unlock + assign-a-day controls). Removing the
+checklist grid also removed the squished date-button that lived in its narrow
+per-card move-control column -- the reported "fix this bug with the date
+button... should match growing up."
+
+His own Life Skills view (`ui.render_student_life_skills`) is now: the
+**badges he's earned** up top (gold-bordered chips, icon + title + earned
+date), then **Assigned to you** below -- the skills a parent unlocked/assigned
+him, each a bordered card in the same "what's on your plate" style the rest of
+the app uses, carrying its detail (description, materials), its scheduled day
+when one's been pinned, and a single **Mark done** checkbox. Un-marking and
+removing are parent actions on the Master list, deliberately not offered on
+his view. Coding Camp is unchanged.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1134 tests, ~110s, no API key needed
+python -m pytest tests/ -q      # 1132 tests, ~110s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

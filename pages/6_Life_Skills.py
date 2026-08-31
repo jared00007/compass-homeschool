@@ -30,9 +30,9 @@ from compass.ui import (
     render_coding_module_cards,
     render_coding_module_catalog_manager,
     render_coding_plan,
-    render_life_skill_cards,
     render_life_skill_catalog_manager,
     render_life_skill_plan,
+    render_student_life_skills,
 )
 
 db, student = page_setup("Life Skills", icon="🛠️")
@@ -40,32 +40,37 @@ db, student = page_setup("Life Skills", icon="🛠️")
 st.title("🛠️ Core Life Skills")
 st.caption(
     "Budgeting, cooking, vehicle basics, communication. **You** decide what he learns "
-    "here — there's no agent picking the next skill. The checklist unlocks gradually: "
-    "*Master list* is where you release more, at whatever pace fits the year. **Student's "
-    "Choice** (Tier 3) and **Coding Camp** both live here too now -- different flavors of "
-    "the same idea (a parent- or student-curated checklist, no agent picking what's next), "
-    "folded in rather than each keeping its own top-level page."
+    "here — there's no agent picking the next skill. *Master list* is where you unlock a "
+    "skill and pin it to a specific day; his own view shows the badges he's earned plus "
+    "whatever you've assigned him. **Student's Choice** (Tier 3) and **Coding Camp** both "
+    "live here too now -- different flavors of the same idea (a parent- or student-curated "
+    "list, no agent picking what's next), folded in rather than each keeping its own "
+    "top-level page."
 )
 
 skills = db.list_life_skills(student["id"])
 
 if not skills:
-    st.info("No checklist yet.")
-    if st.button("Seed the starter checklist", type="primary"):
+    st.info("No skills yet.")
+    if st.button("Seed the starter list", type="primary"):
         count = db.seed_life_skills(student["id"])
         st.success(f"Added {count} skills to the master list — 15 unlocked to start.")
         st.rerun()
 
 if is_parent():
-    checklist_tab, choice_tab, coding_tab, plan_tab, log_tab, master_tab, manage_tab = st.tabs(
-        ["Checklist", "Student's Choice", "Coding", "Plan a session", "Log time", "Master list", "Add a skill"]
+    # No "Checklist" tab any more -- every skill lives in the Master list,
+    # which is where you unlock one and pin it to a specific day. His own
+    # view (below) is the badges-and-assignments surface that used to be the
+    # checklist grid.
+    choice_tab, coding_tab, plan_tab, log_tab, master_tab, manage_tab = st.tabs(
+        ["Student's Choice", "Coding", "Plan a session", "Log time", "Master list", "Add a skill"]
     )
 else:
-    checklist_tab, choice_tab, coding_tab = st.container(), st.container(), st.container()
+    # Student view: his earned badges + the skills a parent has assigned him,
+    # then Student's Choice and Coding stacked below it (no tab strip for him).
+    render_student_life_skills(db, skills)
+    choice_tab, coding_tab = st.container(), st.container()
     plan_tab = log_tab = master_tab = manage_tab = None
-
-with checklist_tab:
-    render_life_skill_cards(db, skills, can_edit=is_parent())
 
 with choice_tab:
     if not is_parent():
