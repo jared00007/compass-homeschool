@@ -604,21 +604,38 @@ with backlog_tab:
         st.caption(
             "What's left in each project still underway -- steps not yet committed "
             "to the plan (Backlog) and steps already in To Do but not finished yet, "
-            "together, since both are genuinely still ahead of him."
+            "together, since both are genuinely still ahead of him. One collapsible "
+            "row per project; open it to see and move its remaining steps."
         )
+        # One expander per project (collapsible, closed by default), each
+        # remaining step a bordered card inside it with its own detail and the
+        # same move-control popover every other story type uses -- rather than
+        # the old flat wall of grey captions you couldn't tell apart or act on.
+        # Bordered containers rather than render_board_card's own st.expander so
+        # the step's description/materials show inline the moment the project's
+        # open, no second click into a nested expander just to read what a step
+        # is -- which is exactly the "can't tell what they are" complaint.
         for project, steps in project_backlog:
-            st.markdown(f"*{md(project['title'])}*")
-            for step in steps:
-                columns = st.columns([5, 1])
-                status = "🗄️ Backlog" if not step["active"] else "▶ To Do"
-                columns[0].caption(f"{status} · {md(step['title'])}")
-                if not step["active"]:
-                    if columns[1].button(
-                        "➡️ To Do", key=f"backlog_tab_step_todo_{step['id']}"
-                    ):
-                        db.set_project_step_active(step["id"], True)
-                        st.rerun()
-            st.page_link("pages/7_Big_Projects.py", label="Open Big Projects", icon="➡️")
+            with st.expander(f"🎬 {md(project['title'])} — {len(steps)} left", expanded=False):
+                for step in steps:
+                    with st.container(border=True):
+                        status = "🗄️ Backlog" if not step["active"] else "▶ To Do"
+                        st.markdown(f"**{md(step['title'])}** · {status}")
+                        if step["description"]:
+                            st.caption(md(step["description"]))
+                        meta = []
+                        if step["materials"]:
+                            meta.append(f"**You'll need:** {md(step['materials'])}")
+                        meta.append(f"Credits toward {label(step['credit_subject'])}")
+                        st.caption(" · ".join(meta))
+                        render_story_move_control(
+                            key=f"backlog_step_{step['id']}",
+                            active=bool(step["active"]),
+                            scheduled_for=step["scheduled_for"],
+                            set_active=lambda a, sid=step["id"]: db.set_project_step_active(sid, a),
+                            schedule=lambda s, sid=step["id"]: db.schedule_project_step(sid, s),
+                        )
+                st.page_link("pages/7_Big_Projects.py", label="Open Big Projects", icon="➡️")
         st.divider()
 
     if topic_backlog:

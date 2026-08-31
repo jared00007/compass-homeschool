@@ -2317,6 +2317,21 @@ one **Board** nav view with a This-week / Next-week toggle, matching the
 parent's own. Review-this-week and Plan-next-week stay parent-only on the
 This Week page, exactly as before.
 
+## The Backlog's Big Projects section becomes collapsible per project
+
+Reported directly against the old flat rendering: "theres a huge list of
+things i cant click on and cant tell what they are... should just be
+collapsible list of what each project is made up of. detail. ability to
+expand, review." Each project is now its own collapsible expander ("🎬
+<title> — N left"), and each remaining step inside is a bordered card
+carrying its real detail (the step's description, its materials, the subject
+it credits) plus the same move-control popover every other story type uses --
+instead of a wall of identical grey captions with a single tiny button. (The
+step cards are bordered containers, not `render_board_card`'s own expander:
+the move-control popover is safe inside an expander, and this keeps each
+step's detail visible the moment the project's open rather than one more
+click deep.)
+
 ## Tests
 
 ```bash

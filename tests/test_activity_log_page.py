@@ -631,14 +631,20 @@ def test_backlog_tab_groups_a_projects_remaining_steps_by_title(monkeypatch, tmp
     # so other projects' steps count here as well.
     markdowns = [m.value for m in backlog_tab.markdown]
     assert any("Big Projects" in m for m in markdowns)
-    assert any("Lego Stop-Motion Film" in m for m in markdowns)
-    captions = [c.value for c in backlog_tab.caption]
-    assert any("Storyboard it" in c and "To Do" in c for c in captions)
-    assert any("Film the last scene" in c and "Backlog" in c for c in captions)
+    # Each project is now its own collapsible expander (title + count),
+    # rather than a bold caption; its remaining steps render as bordered
+    # cards inside, each step's title/status a markdown line.
+    assert any("Lego Stop-Motion Film" in (e.label or "") for e in backlog_tab.expander)
+    assert any("Storyboard it" in m and "To Do" in m for m in markdowns)
+    assert any("Film the last scene" in m and "Backlog" in m for m in markdowns)
     # The finished step isn't "left" -- it doesn't show up here at all.
-    assert not any("Write the script" in c for c in captions)
+    assert not any("Write the script" in m for m in markdowns)
 
-    backlog_tab.button(key=f"backlog_tab_step_todo_{backlog_id}").click().run()
+    # Un-backlogging is now the shared move control's own button, not a
+    # bespoke "➡️ To Do" one -- same "Take out of Backlog" every story type uses.
+    backlog_tab.button(
+        key=f"move_backlog_step_{backlog_id}_take_out_of_backlog"
+    ).click().run()
 
     db = Database(db_path)
     step = next(s for s in db.list_project_steps(project_id) if s["id"] == backlog_id)
