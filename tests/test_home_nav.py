@@ -73,19 +73,34 @@ def test_clicking_a_second_view_after_a_first_does_not_leave_the_first_looking_p
     assert "Nothing here is based on how long you worked" in text
 
 
-def test_board_toggles_between_this_week_and_next_week(monkeypatch, tmp_path):
+def test_board_pages_forward_several_weeks(monkeypatch, tmp_path):
     """The old This Week + Upcoming Week nav buttons are now one Board view
-    with its own This-week / Next-week toggle, matching the parent's own
-    Board on This Week."""
+    with a forward week-pager (◀ Earlier / This week / Later ▶) -- so he can
+    look not just at next week but several weeks out, matching the fact that
+    a parent can plan that far ahead now."""
     at = _open_home(monkeypatch, _seed(tmp_path))
     _nav_button(at, "Board").click().run()
     assert _nav_button(at, "Board").proto.type == "primary"
 
-    # Defaults to this week; the Next-week toggle flips the caption.
-    next_button = [b for b in at.button if b.key == "student_board_next_week"][0]
-    next_button.click().run()
+    # Defaults to this week; "Earlier" is disabled at the near edge.
+    prev_button = [b for b in at.button if b.key == "student_board_prev"][0]
+    assert prev_button.disabled is True
+
+    later = [b for b in at.button if b.key == "student_board_next"][0]
+    later.click().run()
     text = " ".join(c.value for c in at.caption)
-    assert "next week's plan" in text
+    assert "next week" in text
+
+    later = [b for b in at.button if b.key == "student_board_next"][0]
+    later.click().run()
+    text = " ".join(c.value for c in at.caption)
+    assert "2 weeks out" in text
+
+    # And "This week" jumps straight back to the near edge.
+    this_button = [b for b in at.button if b.key == "student_board_this"][0]
+    this_button.click().run()
+    prev_button = [b for b in at.button if b.key == "student_board_prev"][0]
+    assert prev_button.disabled is True
 
 
 def test_the_student_board_is_read_only_no_move_controls(monkeypatch, tmp_path):

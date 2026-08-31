@@ -2356,10 +2356,27 @@ when one's been pinned, and a single **Mark done** checkbox. Un-marking and
 removing are parent actions on the Master list, deliberately not offered on
 his view. Coding Camp is unchanged.
 
+## Future weeks: page the board several weeks out
+
+Reported directly: "i also think i want to start thinking about future weeks,
+going out a few weeks and being able to schedule this out quite a bit... levels
+up this app to more sustainable." The scheduling machinery already reaches any
+future date -- the move control's date picker takes any day, and "Plan next
+week" takes any target week -- so what was missing was *visibility* into those
+further-out weeks.
+
+Both boards now page a week at a time rather than only jumping this/next. His
+Home Board became a forward pager (**◀ Earlier / This week / Later ▶**, "Earlier"
+disabled at this week) that captions the week it's showing ("the plan for 2
+weeks out…"), so he can look as far ahead as a parent has planned. The parent's
+This Week Board keeps its This-week / Next-week jumps and free date picker, and
+gains **◀ Prev / Next ▶** arrows to step through the weeks between without
+typing a date.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1132 tests, ~110s, no API key needed
+python -m pytest tests/ -q      # 1133 tests, ~110s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

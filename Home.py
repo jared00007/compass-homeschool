@@ -409,47 +409,48 @@ if not is_parent():
         render_today_checklist(db, student)
 
     # === Board ===================================================================
-    # The exact same This-week / Next-week sprint board a parent sees on This
-    # Week, rendered read-only for him (render_board_days(interactive=False) --
-    # no move controls, no parent management deep links, just the cards and, on
-    # a lesson, the View-full-lesson dialog). This folds the old separate This
-    # Week + Upcoming Week grids into one Board with a This/Next toggle,
-    # matching the parent view rather than keeping its own layout. Read-only
-    # either way: the plan is set by a parent's Friday planning; this only lays
-    # out what's already scheduled. Next week is only ever as full as however
-    # far ahead a parent has actually planned -- usually nothing until Friday.
-
-    next_week_start = this_week_start + timedelta(days=7)
+    # The exact same sprint board a parent sees on This Week, rendered
+    # read-only for him (render_board_days(interactive=False) -- no move
+    # controls, no parent management deep links, just the cards and, on a
+    # lesson, the View-full-lesson dialog). A forward week-pager, not just a
+    # this/next toggle: a parent can plan several weeks ahead now (This Week's
+    # "Plan next week" takes any target week), so he can page forward as far as
+    # there's anything to see. Read-only either way -- the plan is set by a
+    # parent's Friday planning; this only lays out what's already scheduled.
 
     if active_view == "board":
-        if "student_board_week" not in st.session_state:
-            st.session_state["student_board_week"] = "this"
-        showing_next = st.session_state["student_board_week"] == "next"
+        # 0 = this week; never goes before it (the past is on the record, not
+        # something he re-plans), and forward as far as he likes.
+        offset = max(0, int(st.session_state.get("student_board_offset", 0)))
 
-        toggle_columns = st.columns([1, 1, 4])
-        if toggle_columns[0].button(
-            "This week", key="student_board_this_week",
-            width="stretch", type="secondary" if showing_next else "primary",
+        nav_columns = st.columns([1, 1, 1, 3])
+        if nav_columns[0].button(
+            "◀ Earlier", key="student_board_prev", width="stretch", disabled=offset == 0
         ):
-            st.session_state["student_board_week"] = "this"
+            st.session_state["student_board_offset"] = max(0, offset - 1)
             st.rerun()
-        if toggle_columns[1].button(
-            "Next week", key="student_board_next_week",
-            width="stretch", type="primary" if showing_next else "secondary",
+        if nav_columns[1].button(
+            "This week", key="student_board_this", width="stretch",
+            type="primary" if offset == 0 else "secondary",
         ):
-            st.session_state["student_board_week"] = "next"
+            st.session_state["student_board_offset"] = 0
+            st.rerun()
+        if nav_columns[2].button("Later ▶", key="student_board_next", width="stretch"):
+            st.session_state["student_board_offset"] = offset + 1
             st.rerun()
 
-        board_week_start = next_week_start if showing_next else this_week_start
+        board_week_start = this_week_start + timedelta(days=7 * offset)
         board_range = weekly.week_dates(board_week_start, include_friday=True)
+        when = "this week" if offset == 0 else "next week" if offset == 1 else f"{offset} weeks out"
+        tail = (
+            "what's planned this week -- anything generated on the fly still shows up "
+            "on **Today**, not here."
+            if offset == 0
+            else f"the plan for {when}, once your parent sets it up -- usually on a Friday."
+        )
         st.caption(
-            f"{board_range[0].strftime('%b %-d')} – {board_range[-1].strftime('%b %-d, %Y')} · "
-            + (
-                "next week's plan, once your parent sets it up -- usually on a Friday."
-                if showing_next
-                else "what's planned this week -- anything generated on the fly still "
-                "shows up on **Today**, not here."
-            )
+            f"{board_range[0].strftime('%b %-d')} – "
+            f"{board_range[-1].strftime('%b %-d, %Y')} · {tail}"
         )
         student_board = weekly.board_for_week(db, student, board_week_start)
         render_board_days(

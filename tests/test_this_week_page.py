@@ -512,6 +512,31 @@ def test_this_week_button_returns_from_next_week(monkeypatch, tmp_path):
     assert weekly.week_start(date_widget.value) == weekly.week_start(date.today())
 
 
+def test_the_board_arrows_step_the_viewed_week_one_at_a_time(monkeypatch, tmp_path):
+    """Planning several weeks out is already supported, so a parent needs to
+    be able to page forward (and back) through those weeks on the board a week
+    at a time, not just jump to this-or-next."""
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    db.ensure_default_student()
+    db.close()
+
+    at, board_tab = _open_board_tab(monkeypatch, db_path)  # parked on TARGET_MONDAY
+    # Two steps forward = two weeks past the currently-viewed Monday.
+    for _ in range(2):
+        board_tab = _board_tab(at)
+        [b for b in board_tab.button if b.label == "Next ▶"][0].click().run()
+    board_tab = _board_tab(at)
+    date_widget = [d for d in board_tab.date_input if d.key == "board_week_picker"][0]
+    assert weekly.week_start(date_widget.value) == TARGET_MONDAY + timedelta(days=14)
+
+    # One step back = one week earlier.
+    [b for b in board_tab.button if b.label == "◀ Prev"][0].click().run()
+    board_tab = _board_tab(at)
+    date_widget = [d for d in board_tab.date_input if d.key == "board_week_picker"][0]
+    assert weekly.week_start(date_widget.value) == TARGET_MONDAY + timedelta(days=7)
+
+
 def test_view_full_lesson_works_for_a_story_on_next_weeks_board(monkeypatch, tmp_path):
     """Reported directly: "the navigation for next weeks board, go to full
     lesson, doesnt actually work." It couldn't have -- a st.page_link only

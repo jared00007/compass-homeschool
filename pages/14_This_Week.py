@@ -140,11 +140,20 @@ with board_tab:
     if "board_week_picker" not in st.session_state:
         st.session_state["board_week_picker"] = date.today()
 
-    jump_columns = st.columns([1, 1, 5])
-    if jump_columns[0].button("This week", key="board_jump_this_week"):
+    # ◀/▶ step the viewed week by one at a time; This week / Next week jump
+    # straight to those two. Planning several weeks out is already supported
+    # (Plan next week takes any target week), so paging forward here is how a
+    # parent reviews and rearranges those further-out weeks without typing a
+    # date each time.
+    jump_columns = st.columns([1, 1, 1, 1, 4])
+    if jump_columns[0].button("◀ Prev", key="board_jump_prev"):
+        current = st.session_state.get("board_week_picker", date.today())
+        st.session_state["board_week_picker"] = weekly.week_start(current) - timedelta(days=7)
+        st.rerun()
+    if jump_columns[1].button("This week", key="board_jump_this_week"):
         st.session_state["board_week_picker"] = date.today()
         st.rerun()
-    if jump_columns[1].button("Next week", key="board_jump_next_week"):
+    if jump_columns[2].button("Next week", key="board_jump_next_week"):
         # Same Monday "Plan next week" itself targets by default -- the
         # actual point of this button: right after a Friday planning
         # session generates next week's lessons, this is the one click
@@ -152,13 +161,17 @@ with board_tab:
         # around, instead of hand-picking next week's date here too.
         st.session_state["board_week_picker"] = weekly.default_plan_target()
         st.rerun()
+    if jump_columns[3].button("Next ▶", key="board_jump_next"):
+        current = st.session_state.get("board_week_picker", date.today())
+        st.session_state["board_week_picker"] = weekly.week_start(current) + timedelta(days=7)
+        st.rerun()
 
     board_week_start = weekly.week_start(
         st.date_input(
             "Week to view",
             key="board_week_picker",
             help="Any day in the week you want to see -- snapped to that week's Monday. "
-            "The buttons above jump straight to this week or next week.",
+            "The buttons above step a week at a time, or jump to this week or next.",
         )
     )
     board_days = weekly.week_dates(board_week_start, include_friday=True)
