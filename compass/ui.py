@@ -2195,6 +2195,23 @@ def board_card_tag(kind: str, item: dict[str, Any]) -> tuple[str, str, str]:
         BOARD_TAG_LABELS.get(kind, kind.replace("_", " ").title()),
     )
 
+
+def _board_identity(kind: str, item: dict[str, Any]) -> str:
+    """The row a card belongs to on the aligned week grid: a lesson's agent,
+    or the kind itself for everything else -- the same key board_card_tag
+    colors by, so a subject/kind reads as one straight row across the week."""
+    return item.get("agent", "") if kind == "lesson" else kind
+
+
+# Fixed top-to-bottom order for the week grid's rows, so a subject sits in the
+# same row every week regardless of which days it happens to have cards on.
+# The four core subjects first (they're the daily spine), then the elective
+# kinds; any identity not listed falls in after these, in first-seen order.
+_BOARD_ROW_ORDER = [
+    "math", "science", "english", "history",
+    "life_skill", "coding_module", "choice_topic", "project_step", "travel_entry",
+]
+
 # One icon per epic in weekly.EPIC_ORDER -- the Board tab's Product Backlog
 # panel groups by this, not by story kind.
 EPIC_ICONS = {
@@ -3000,21 +3017,33 @@ def render_board_card(
 
 # --- shared weekly board day grid: parent This Week tab + student Home board ---
 
-# One min-width-plus-scroll rule for every board's day row, matched on any
-# container key ending in "_days_row" (st.columns has no minimum width, so
-# five equal fractions of even a full-width row squeeze a long title
-# narrower than one of its own words on a real laptop screen -- real Kanban
-# boards fix this by giving each column a floor and letting the row scroll).
+# The grid is a header row plus one row per subject/kind, each its own
+# st.columns(5). To keep every row's five day columns lined up under the same
+# day headers -- and scrolling together on a narrow screen rather than each
+# row scrolling on its own -- the horizontal scroll lives on the OUTER
+# container (the one keyed "..._days_row"); every inner row is forced to the
+# same fixed width (5 columns x 220px, never wrapping), so they all move as
+# one when the container scrolls. Column min-width also stops a long title
+# from squeezing narrower than one of its own words on a laptop screen.
 _WEEK_BOARD_SCROLL_CSS = """
 <style>
-div[class*="st-key-"][class*="_days_row"] div[data-testid="stHorizontalBlock"] {
+div[class*="st-key-"][class*="_days_row"] {
   overflow-x: auto !important;
-  flex-wrap: nowrap !important;
   padding-bottom: 6px;
+}
+div[class*="st-key-"][class*="_days_row"] div[data-testid="stHorizontalBlock"] {
+  flex-wrap: nowrap !important;
+  min-width: max-content !important;
 }
 div[class*="st-key-"][class*="_days_row"] div[data-testid="stColumn"] {
   min-width: 220px !important;
   flex: 0 0 220px !important;
+}
+/* Same floor height on every card so a row of them reads as one even band
+   across the week, short titles and long ones alike. */
+div[class*="st-key-"][class*="_days_row"] div[data-testid="stColumn"]
+  div[data-testid="stExpander"] {
+  min-height: 84px;
 }
 </style>
 """
@@ -3041,17 +3070,35 @@ def render_board_days(
     `key_prefix` namespaces the horizontal-scroll container so two boards
     rendered in one script run (the student's this-week and next-week views,
     say) never share a container key. The colored day pills are the same
-    "Sunday Funnies" palette Home's own Week grid and the parent Board use."""
+    "Sunday Funnies" palette Home's own Week grid and the parent Board use.
+
+    Laid out as a subject x day matrix: a header row of day pills, then one
+    row per subject/kind that has anything this week, each row the same five
+    day columns. So a subject reads as one straight line across the week (Math
+    always the top row, Science under it, ...) and lines up cell-for-cell with
+    every other, instead of cards stacking in arrival order per day. An empty
+    cell just leaves its fixed-width column blank, holding the alignment.
+    """
     days = weekly.week_dates(week_start, include_friday=True)
     today = date.today()
     today_iso = today.isoformat()
     if all_lessons_for_collision is None:
         all_lessons_for_collision = db.list_lessons(student["id"], limit=200)
 
+    # identity -> {day_index -> [(kind, item), ...]}
+    by_row: dict[str, dict[int, list[tuple[str, dict[str, Any]]]]] = {}
+    for day_index, day_date in enumerate(days):
+        for kind, item in board[day_date.isoformat()]:
+            ident = _board_identity(kind, item)
+            by_row.setdefault(ident, {}).setdefault(day_index, []).append((kind, item))
+    ordered_rows = [i for i in _BOARD_ROW_ORDER if i in by_row]
+    ordered_rows += [i for i in by_row if i not in ordered_rows]
+
     st.markdown(_WEEK_BOARD_SCROLL_CSS, unsafe_allow_html=True)
     with st.container(key=f"{key_prefix}_days_row"):
-        columns = st.columns(5)
-        for index, (column, day_date) in enumerate(zip(columns, days)):
+        # Header row: the day pills, aligned above their own column of cards.
+        header_columns = st.columns(5)
+        for index, (column, day_date) in enumerate(zip(header_columns, days)):
             color = theming.PRINTED_COMIC_WEEKDAY_COLORS[index]
             with column:
                 today_tag = " · Today" if day_date == today else ""
@@ -3065,17 +3112,24 @@ def render_board_days(
                     unsafe_allow_html=True,
                 )
                 st.caption(day_date.strftime("%b %-d") + today_tag)
-                day_items = board[day_date.isoformat()]
-                if not day_items:
-                    st.caption("Nothing here.")
-                for kind, item in day_items:
-                    render_board_card(
-                        db, kind, item,
-                        today_iso=today_iso,
-                        board_week_start=week_start,
-                        all_lessons_for_collision=all_lessons_for_collision,
-                        interactive=interactive,
-                    )
+
+        if not ordered_rows:
+            st.caption("Nothing planned this week.")
+
+        # One row per subject/kind, each the same five day columns -- so the
+        # whole thing lines up as a grid you can read across or down.
+        for ident in ordered_rows:
+            row_columns = st.columns(5)
+            for day_index, column in enumerate(row_columns):
+                with column:
+                    for kind, item in by_row[ident].get(day_index, []):
+                        render_board_card(
+                            db, kind, item,
+                            today_iso=today_iso,
+                            board_week_start=week_start,
+                            all_lessons_for_collision=all_lessons_for_collision,
+                            interactive=interactive,
+                        )
 
 
 # --- per-subject week view: the same day board, scoped to one agent ------------

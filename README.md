@@ -2389,10 +2389,25 @@ kind), so the whole board, the per-subject week views, and the Product Backlog
 all speak one color language. Replaced the old per-card day-color strip, which
 just repeated the column header.
 
+## The board is a subject x day grid, aligned into rows
+
+Reported directly: "can we get better formatting here... so we see each subject
+as straight across the week all even in a line?" The day board is now a
+subject x day matrix rather than per-day stacks: a header row of day pills,
+then one row per subject/kind that has anything that week, each row the same
+five day columns in a fixed order (Math, Science, English, History, then the
+elective kinds). So a subject reads as one straight line across the week and
+lines up cell-for-cell with every other; an empty cell just leaves its
+fixed-width column blank, holding the alignment. Every card carries a floor
+height so a row of them reads as one even band. The horizontal scroll lives on
+the outer container (not each row), so on a narrow screen every row scrolls
+together and stays aligned under its day headers. Both boards (parent This Week
+and Landon's Home) share this via `render_board_days`.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1137 tests, ~110s, no API key needed
+python -m pytest tests/ -q      # 1138 tests, ~110s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

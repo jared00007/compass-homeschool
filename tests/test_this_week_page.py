@@ -268,6 +268,41 @@ def test_board_is_the_first_tab(monkeypatch, tmp_path):
     assert at.tabs[0].label == "📋 Board"
 
 
+def test_the_board_groups_cards_into_subject_rows_not_day_stacks(monkeypatch, tmp_path):
+    """The board is a subject x day matrix: each subject reads as one straight
+    row across the week, in a fixed order (Math, Science, ...), rather than
+    cards stacking per day in arrival order. So a Math lesson on Monday and one
+    on Wednesday render together (the Math row) *before* a Science lesson on
+    Tuesday (the Science row) -- day order would have put Science between them.
+    """
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    for agent, title, day_offset in [
+        ("math", "Math Monday", 0),
+        ("science", "Science Tuesday", 1),
+        ("math", "Math Wednesday", 2),
+    ]:
+        day = (TARGET_MONDAY + timedelta(days=day_offset)).isoformat()
+        db.save_lesson(
+            student_id=student["id"], agent=agent, subject=agent, topic="t", title=title,
+            payload={"title": title, "activities": []},
+            metadata={"planned_for": day, "week_start": TARGET_MONDAY.isoformat()},
+        )
+    db.close()
+
+    _, board_tab = _open_board_tab(monkeypatch, db_path)
+    order = [e.label for e in board_tab.expander]
+
+    def _pos(needle):
+        return next(i for i, label in enumerate(order) if needle in label)
+
+    # Both Math cards come before the Science card -- proof the layout groups
+    # by subject row, not by day column.
+    assert _pos("Math Monday") < _pos("Science Tuesday")
+    assert _pos("Math Wednesday") < _pos("Science Tuesday")
+
+
 def test_a_planned_lesson_shows_on_the_board_with_a_move_control(monkeypatch, tmp_path):
     db_path = tmp_path / "week.db"
     db = Database(db_path)
