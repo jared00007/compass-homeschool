@@ -2201,6 +2201,33 @@ after the fix above) -- "Take out of Backlog" exists only for
 reactivating *without* also changing the day. Neither button can be
 misread as doing the opposite of what it says.
 
+## "View full lesson" becomes a dialog, not a broken link
+
+Reported directly: "the navigation for next weeks board, go to full
+lesson, doesnt actually work." It couldn't have -- `st.page_link` can only
+ever open a page on its *first* tab, with no way to request another one.
+Life Skills' and Big Projects' own Checklist tab happen to each be their
+page's first tab, so their "View full details" links were never actually
+broken; a lesson's link was the one real exception, since Activity Log's
+"To review" tab is its *third* one (behind "The record" and "Log
+something manually"). Every click landed on an empty, unrelated log
+view, regardless of which week the lesson was on -- confirmed live by
+reproducing the exact click path on a real next-week lesson.
+
+Rather than reorder Activity Log's own tabs (which would just move the
+same "only the first tab is reachable" problem, not fix it, and would
+change the page's landing tab for every other visitor too), a lesson's
+"🔍 View full lesson" is now a button that opens an `st.dialog` right on
+the Board -- `render_lesson(item["payload"], for_parent=True,
+lesson_id=item["id"])` rendered inline, in the same "plain" layout
+(objectives, materials, an expander per activity, the parent-only
+assessment section) `render_lesson` already gives everywhere else. No
+navigation, no tab to land on wrong -- works identically for a lesson on
+this week's board or next week's, which is exactly what a same-page modal
+sidesteps by never leaving the page at all. The other five kinds' own
+`_BOARD_DEEP_LINK` page_links are untouched -- their destination tabs
+really were already correct.
+
 ## Tests
 
 ```bash

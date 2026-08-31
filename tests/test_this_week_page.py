@@ -283,17 +283,23 @@ def test_a_planned_lesson_shows_on_the_board_with_a_move_control(monkeypatch, tm
     )
     db.close()
 
-    _, board_tab = _open_board_tab(monkeypatch, db_path)
+    at, board_tab = _open_board_tab(monkeypatch, db_path)
     labels = [e.label for e in board_tab.expander]
     assert any("Locking In the Coordinate Plane" in label for label in labels)
     backlog_key = f"move_board_lesson_{lesson_id}_send_to_backlog"
     assert any(b.key == backlog_key for b in board_tab.button)
-    # "Deeper review" link: a lesson's real full-content view lives in
-    # Activity Log's own review queue, not the Math/Science/English/History
-    # pages -- those are planning tools with nothing to show for a lesson
-    # that's already been generated.
-    captions = " ".join(c.value for c in board_tab.caption)
-    assert 'Under the "To review" tab.' in captions
+
+    # "Deeper review": a lesson's real full-content view can't be a
+    # st.page_link -- Activity Log's own review tab isn't its first tab,
+    # and a page_link can only ever open a page on its first one. A
+    # same-page st.dialog sidesteps that entirely; opening it here must
+    # show the lesson's actual content, not just a link that goes nowhere
+    # useful.
+    view_key = f"board_view_lesson_{lesson_id}"
+    assert any(b.key == view_key for b in board_tab.button)
+    at.button(key=view_key).click().run()
+    assert not at.exception, [e.message for e in at.exception]
+    assert any("Locking In the Coordinate Plane" in s.value for s in at.subheader)
 
 
 def test_moving_a_story_to_a_different_week_shows_a_notice_not_just_a_vanish(
@@ -504,6 +510,47 @@ def test_this_week_button_returns_from_next_week(monkeypatch, tmp_path):
     board_tab = _board_tab(at)
     date_widget = [d for d in board_tab.date_input if d.key == "board_week_picker"][0]
     assert weekly.week_start(date_widget.value) == weekly.week_start(date.today())
+
+
+def test_view_full_lesson_works_for_a_story_on_next_weeks_board(monkeypatch, tmp_path):
+    """Reported directly: "the navigation for next weeks board, go to full
+    lesson, doesnt actually work." It couldn't have -- a st.page_link only
+    ever opens a page on its *first* tab, and Activity Log's "To review"
+    tab is its third, so the link landed on an unrelated empty screen no
+    matter which week the lesson was on. The dialog-based replacement
+    needs no tab at all, so it has to work identically here as it does
+    for a lesson on the currently-displayed week.
+    """
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    next_monday = weekly.default_plan_target()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="Next Week's Full Lesson Content",
+        payload={
+            "title": "Next Week's Full Lesson Content",
+            "overview": "A lesson genuinely worth reading in full.",
+            "activities": [],
+        },
+        metadata={"planned_for": next_monday.isoformat(), "week_start": next_monday.isoformat()},
+    )
+    db.close()
+
+    at, board_tab = _open_board_tab(monkeypatch, db_path)
+    next_week_button = [b for b in board_tab.button if b.label == "Next week"][0]
+    next_week_button.click().run()
+
+    board_tab = _board_tab(at)
+    view_key = f"board_view_lesson_{lesson_id}"
+    assert any(
+        b.key == view_key for b in board_tab.button
+    ), "the View full lesson button must be offered for a lesson on next week's board"
+    at.button(key=view_key).click().run()
+    assert not at.exception, [e.message for e in at.exception]
+    assert any(
+        "A lesson genuinely worth reading in full." in m.value for m in at.markdown
+    ), "the dialog must show the lesson's actual content, not just navigate away"
 
 
 # --- Product Backlog panel: every parked story, any week it came from ----------

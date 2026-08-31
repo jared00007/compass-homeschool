@@ -2652,10 +2652,18 @@ def render_story_move_control(
 # the Math/Science/English/History pages are planning tools with no
 # per-lesson content view, so a lesson's real "deeper review" destination is
 # Activity Log's own review queue, not its subject page. (page, link label,
-# the tab that content lives under -- st.tabs can't be pre-selected from a
-# URL, so this is named rather than jumped to.)
+# the tab that content lives under.)
+#
+# Life Skills' and Big Projects' own Checklist tab is each page's first tab,
+# so a plain st.page_link there already lands exactly where it says --
+# Streamlit opens a page on its first tab with no way to request another
+# one. Activity Log's own "To review" tab is its *third* tab (behind "The
+# record" and "Log something manually"), so the exact same page_link there
+# always landed on the wrong screen instead -- confirmed live: "the
+# navigation for next week's board, go to full lesson, doesn't actually
+# work." A lesson's own deep link is handled separately below instead of
+# through this table, as a same-page dialog that needs no tab at all.
 _BOARD_DEEP_LINK: dict[str, tuple[str, str, str]] = {
-    "lesson": ("pages/10_Activity_Log.py", "View full lesson", "To review"),
     "life_skill": ("pages/6_Life_Skills.py", "View full details", "Checklist"),
     "coding_module": ("pages/6_Life_Skills.py", "View full details", "Checklist"),
     "choice_topic": ("pages/6_Life_Skills.py", "View full details", "Checklist"),
@@ -2664,7 +2672,24 @@ _BOARD_DEEP_LINK: dict[str, tuple[str, str, str]] = {
 }
 
 
-def _render_board_deep_link(kind: str) -> None:
+def _render_board_deep_link(kind: str, item: dict[str, Any] | None = None) -> None:
+    if kind == "lesson":
+        # A page_link can only ever open a page on its *first* tab, and
+        # Activity Log's lesson-review tab isn't its first -- no target
+        # this function could name would ever actually land there. A
+        # same-page st.dialog sidesteps the whole problem: no navigation,
+        # no tab to miss, works identically for a lesson on this week's
+        # board or next week's.
+        assert item is not None
+
+        @st.dialog(f"📘 {item['title']}", width="large")
+        def _show_full_lesson() -> None:
+            render_lesson(item["payload"], for_parent=True, lesson_id=item["id"])
+
+        if st.button("🔍 View full lesson", key=f"board_view_lesson_{item['id']}"):
+            _show_full_lesson()
+        return
+
     page, label, tab_hint = _BOARD_DEEP_LINK[kind]
     st.page_link(page, label=label, icon="🔍")
     st.caption(f'Under the "{tab_hint}" tab.')
@@ -2812,7 +2837,7 @@ def render_board_card(
                         ),
                         validate_schedule=_validate_lesson_move,
                     )
-                _render_board_deep_link(kind)
+                _render_board_deep_link(kind, item)
 
         elif kind == "life_skill":
             earned = bool(item["completed_on"])
