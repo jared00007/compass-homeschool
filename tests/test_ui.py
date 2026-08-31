@@ -1589,3 +1589,44 @@ def test_lets_go_from_the_contents_view_also_dismisses_it(monkeypatch, db, stude
     state = {"first_day_view": "contents"}
     render_first_day(monkeypatch, db, student, button_pressed="first_day_go_from_toc", state=state)
     assert db.get_setting("first_day_celebrated_start", "") == "2026-09-01"
+
+
+# --- board_card_tag: every board card's colored, labeled kind bar ---------------
+
+
+def test_board_card_tag_keys_a_lesson_by_its_agent():
+    """A lesson's colored bar names its subject (the agent that made it), so a
+    Math lesson and a Science lesson read as different at a glance -- not both
+    just "lesson"."""
+    math_color, math_icon, math_label = ui.board_card_tag("lesson", {"agent": "math"})
+    sci_color, _, sci_label = ui.board_card_tag("lesson", {"agent": "science"})
+    assert math_label == "Math" and sci_label == "Science"
+    assert math_color != sci_color
+    assert math_icon == ui.SUBJECT_ICONS["math"]
+
+
+def test_board_card_tag_keys_every_other_kind_by_the_kind():
+    for kind, label in [
+        ("life_skill", "Life Skill"),
+        ("coding_module", "Coding"),
+        ("choice_topic", "Choice"),
+        ("project_step", "Big Project"),
+        ("travel_entry", "Travel"),
+    ]:
+        color, icon, got_label = ui.board_card_tag(kind, {})
+        assert got_label == label
+        assert color == ui.BOARD_TAG_COLORS[kind]
+        assert icon == ui.BOARD_KIND_ICONS[kind]
+
+
+def test_every_board_card_color_is_distinct():
+    """The whole point is telling cards apart -- no two identities may share a
+    color."""
+    colors = list(ui.BOARD_TAG_COLORS.values())
+    assert len(colors) == len(set(colors))
+
+
+def test_board_card_tag_falls_back_for_an_unknown_identity():
+    color, _, label = ui.board_card_tag("lesson", {"agent": "astronomy"})
+    assert color == ui.BOARD_TAG_COLORS.get("astronomy", "#8a7a5c")
+    assert label == "Astronomy"

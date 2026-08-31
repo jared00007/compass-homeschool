@@ -2373,10 +2373,26 @@ This Week Board keeps its This-week / Next-week jumps and free date picker, and
 gains **◀ Prev / Next ▶** arrows to step through the weeks between without
 typing a date.
 
+## Every board card is color-coded by what it is
+
+Reported directly: "the days are easy to tell difference with the colors. for
+the lessons under the days, we have the small icons... was hoping for something
+better." The day is already unmistakable from the big colored column header, so
+each card's own color was free to mean *subject/kind* instead of repeating the
+day. Every board card now wears a small colored, labeled bar across its top --
+color + icon + word together (**MATH** indigo, **SCIENCE** green, **ENGLISH**
+orange, **HISTORY** rust, **LIFE SKILL** teal, **CODING** violet, **CHOICE**
+gold, **BIG PROJECT** magenta, **TRAVEL** cyan) -- so what a card *is* reads at
+a glance, collapsed or open, whichever day it sits under. Driven by
+`ui.board_card_tag` (a lesson keys off its agent, every other kind off the
+kind), so the whole board, the per-subject week views, and the Product Backlog
+all speak one color language. Replaced the old per-card day-color strip, which
+just repeated the column header.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1133 tests, ~110s, no API key needed
+python -m pytest tests/ -q      # 1137 tests, ~110s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

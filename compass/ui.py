@@ -2151,6 +2151,50 @@ BOARD_KIND_ICONS = {
     "travel_entry": "🧭",
 }
 
+# One color + display name per board-card identity -- for a lesson that's its
+# agent (a Math lesson vs a Science lesson); for every other kind it's the kind
+# itself. Rendered as a small colored bar across the top of each board card
+# (see render_board_card) so "what is this" reads at a glance from color and
+# word together, without opening the card. Days are already unmistakable from
+# the big colored column headers, so a card's own color is free to mean
+# subject/kind instead of repeating the day. Hues chosen to be distinct from
+# each other and legible under white text.
+BOARD_TAG_COLORS = {
+    "math": "#3f6bd8",
+    "science": "#2f9e5f",
+    "english": "#e0871a",
+    "history": "#c0553b",
+    "life_skill": "#0f9b9b",
+    "coding_module": "#7c5cd6",
+    "choice_topic": "#b9932b",
+    "project_step": "#c0398f",
+    "travel_entry": "#2c9cc9",
+}
+BOARD_TAG_LABELS = {
+    "math": "Math", "science": "Science", "english": "English", "history": "History",
+    "life_skill": "Life Skill", "coding_module": "Coding", "choice_topic": "Choice",
+    "project_step": "Big Project", "travel_entry": "Travel",
+}
+_BOARD_TAG_FALLBACK_COLOR = "#8a7a5c"
+
+
+def board_card_tag(kind: str, item: dict[str, Any]) -> tuple[str, str, str]:
+    """(color, icon, label) for a board card's colored kind bar. A lesson's
+    identity is its agent (Math/Science/English/History); every other kind is
+    identified by the kind itself."""
+    if kind == "lesson":
+        agent = item.get("agent", "")
+        return (
+            BOARD_TAG_COLORS.get(agent, _BOARD_TAG_FALLBACK_COLOR),
+            SUBJECT_ICONS.get(agent, "📘"),
+            BOARD_TAG_LABELS.get(agent, (agent.replace("_", " ").title() or "Lesson")),
+        )
+    return (
+        BOARD_TAG_COLORS.get(kind, _BOARD_TAG_FALLBACK_COLOR),
+        BOARD_KIND_ICONS.get(kind, "📘"),
+        BOARD_TAG_LABELS.get(kind, kind.replace("_", " ").title()),
+    )
+
 # One icon per epic in weekly.EPIC_ORDER -- the Board tab's Product Backlog
 # panel groups by this, not by story kind.
 EPIC_ICONS = {
@@ -2751,7 +2795,6 @@ def render_board_card(
     today_iso: str,
     board_week_start: date,
     all_lessons_for_collision: list[dict[str, Any]] | None = None,
-    accent_color: str | None = None,
     interactive: bool = True,
 ) -> None:
     """One compact card for the unified weekly board (the "Board" tab on
@@ -2775,12 +2818,10 @@ def render_board_card(
     a toast saying so, rather than the card just disappearing with no
     explanation (see that function's own docstring).
 
-    `accent_color`, given, paints a thin strip across the top of the card
-    -- the caller's own day-of-week color (see pages/14_This_Week.py's
-    `_WEEKDAY_COLORS`, the same "Sunday Funnies" palette Home's Week grid
-    already uses) so a story reads as "this is a Tuesday card" at a
-    glance. Left unset for the Product Backlog panel's own cards -- they
-    don't belong to a day, so nothing here should imply one.
+    Every card wears a colored, labeled bar naming its subject (for a lesson)
+    or kind (for everything else) -- see board_card_tag. The day itself is
+    already unmistakable from the big colored column header, so the card's own
+    color is free to encode "what is this" instead of repeating the day.
 
     Each story collapses into its own expander, title as the header --
     same "closed until you need it" rhythm as the Backlog panel's own
@@ -2797,12 +2838,17 @@ def render_board_card(
     card reads identically on either board.
     """
     with st.container(border=True):
-        if accent_color:
-            st.markdown(
-                f'<div style="height:4px; margin:-1px -1px 8px; border-radius:2px 2px 0 0; '
-                f'background:{accent_color};"></div>',
-                unsafe_allow_html=True,
-            )
+        # A colored, labeled bar across the top -- color + word together name
+        # the subject (for a lesson) or kind (for everything else) at a glance,
+        # collapsed or open, whichever day it sits under. See board_card_tag.
+        tag_color, tag_icon, tag_label = board_card_tag(kind, item)
+        st.markdown(
+            f'<div style="background:{tag_color}; color:#fff; margin:-1px -1px 8px; '
+            f'padding:3px 9px 3px; border-radius:2px 2px 0 0; font-size:10.5px; '
+            f'font-weight:800; text-transform:uppercase; letter-spacing:.06em;">'
+            f"{tag_icon} {tag_label}</div>",
+            unsafe_allow_html=True,
+        )
         if kind == "lesson":
             icon = SUBJECT_ICONS.get(item["agent"], "📘")
             done = bool((item.get("metadata") or {}).get("student_done_on"))
@@ -3028,7 +3074,6 @@ def render_board_days(
                         today_iso=today_iso,
                         board_week_start=week_start,
                         all_lessons_for_collision=all_lessons_for_collision,
-                        accent_color=color,
                         interactive=interactive,
                     )
 
@@ -3134,7 +3179,6 @@ def render_subject_week_tab(db: Database, student: dict[str, Any], agent: str) -
                         today_iso=today_iso,
                         board_week_start=week_start,
                         all_lessons_for_collision=all_lessons,
-                        accent_color=color,
                     )
 
     backlog_items = [
