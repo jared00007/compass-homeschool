@@ -2788,9 +2788,7 @@ def render_board_card(
                         active=not weekly.is_backlogged(item, today_iso),
                         scheduled_for=(item.get("metadata") or {}).get("planned_for"),
                         set_active=lambda a, lid=item["id"]: (
-                            db.reschedule_lesson(lid, date.today().isoformat())
-                            if a
-                            else db.send_to_backlog(lid)
+                            db.unhold_lesson(lid) if a else db.send_to_backlog(lid)
                         ),
                         schedule=_board_schedule(
                             lambda d, lid=item["id"]: (

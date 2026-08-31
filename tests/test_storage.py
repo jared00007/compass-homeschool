@@ -547,6 +547,35 @@ def test_send_to_backlog_on_a_missing_id_is_a_no_op(db, student):
     db.send_to_backlog(999999)  # doesn't raise
 
 
+def test_unhold_lesson_clears_held_back_without_touching_the_date(db, student):
+    """The actual bug this guards: the move control's "Send to backlog"
+    checkbox, unchecked, used to call reschedule_lesson(lid, today) to
+    reactivate a lesson -- which silently overwrote whatever day a parent
+    had *just* picked in the same popover back to today. A parent moving
+    a lesson to a real future day, then also unchecking a checkbox that
+    still read checked (its own rerun hadn't settled yet), lost that day
+    entirely -- and when today lands on a weekend, board_for_week never
+    renders it at all, so the lesson vanished from every view. Reported
+    directly: "i moved two math lessons from backlog to their own
+    dates... and they have disappeared." unhold_lesson must leave
+    planned_for/week_start exactly as they already are.
+    """
+    lesson_id = db.save_lesson(
+        student["id"], "math", "math", "topic", "title", payload={"a": 1},
+        metadata={"planned_for": "2026-09-02", "week_start": "2026-08-31", "held_back": True},
+    )
+    db.unhold_lesson(lesson_id)
+    lesson = db.get_lesson(lesson_id)
+    assert "held_back" not in lesson["metadata"]
+    assert lesson["metadata"]["planned_for"] == "2026-09-02"
+    assert lesson["metadata"]["week_start"] == "2026-08-31"
+    assert lesson["status"] == "planned"
+
+
+def test_unhold_lesson_on_a_missing_id_is_a_no_op(db, student):
+    db.unhold_lesson(999999)  # doesn't raise
+
+
 def test_deleting_a_logged_lessons_activity_keeps_its_hours(db, student):
     """A lesson can be deleted even after it's been logged -- the activity
     (and its hours/credit) survives; it just loses the back-link, per

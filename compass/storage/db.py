@@ -2568,6 +2568,40 @@ class Database:
         )
         self.conn.commit()
 
+    def unhold_lesson(self, lesson_id: int) -> None:
+        """Takes a lesson back out of the backlog *without* touching its
+        scheduled day -- the counterpart to `send_to_backlog`, and the
+        one this move control actually needs for its "Send to backlog"
+        checkbox's un-checked state.
+
+        `reschedule_lesson(lid, date.today())` is the wrong tool for that:
+        a parent who's just picked a real day for a lesson in the same
+        popover, then also un-checks "Send to backlog" (its own checkbox
+        still reads checked until the date-pick's own rerun settles, so
+        this reads as a natural next step, not a redundant one) had that
+        second click silently overwrite the day they just chose back to
+        today -- and today is a weekend more often than not, a day
+        `board_for_week` never renders at all, so the lesson vanished
+        from every view: not backlogged (today's week isn't overdue),
+        not on any of the five weekday columns either. Reported directly:
+        "i moved two math lessons from backlog to their own dates... and
+        they have disappeared."
+
+        This only clears `held_back`, leaving `planned_for`/`week_start`
+        exactly as they already are -- whatever day a parent already
+        chose (or the lesson's original day, if they never touched it at
+        all) stays put.
+        """
+        lesson = self.get_lesson(lesson_id)
+        if lesson is None:
+            return
+        metadata = lesson["metadata"]
+        metadata.pop("held_back", None)
+        self.conn.execute(
+            "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
+        )
+        self.conn.commit()
+
     def set_activity_collapsed(
         self, lesson_id: int, activity_index: int, collapsed: bool
     ) -> None:

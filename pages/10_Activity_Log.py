@@ -198,9 +198,7 @@ def _render_review_card(lesson: dict, today_iso: str) -> None:
                     active=not weekly.is_backlogged(lesson, today_iso),
                     scheduled_for=(lesson.get("metadata") or {}).get("planned_for"),
                     set_active=lambda a, lid=lesson["id"]: (
-                        db.reschedule_lesson(lid, date.today().isoformat())
-                        if a
-                        else db.send_to_backlog(lid)
+                        db.unhold_lesson(lid) if a else db.send_to_backlog(lid)
                     ),
                     schedule=lambda d, lid=lesson["id"]: db.reschedule_lesson(lid, d) if d else None,
                     validate_schedule=_validate,

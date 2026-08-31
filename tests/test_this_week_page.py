@@ -402,6 +402,63 @@ def test_moving_a_life_skill_from_the_board_reschedules_it(monkeypatch, tmp_path
     assert reloaded["active"] == 0
 
 
+def test_reactivating_a_lesson_from_the_board_does_not_clobber_its_picked_day(
+    monkeypatch, tmp_path
+):
+    """The actual bug behind "i moved two math lessons from backlog to
+    their own dates, 9/2 and 9/3, and they have disappeared": the move
+    control's "Send to backlog" checkbox used to reactivate a lesson by
+    calling reschedule_lesson(lid, date.today()) -- clobbering whatever
+    day a parent had already picked for it back to today, whenever the
+    checkbox got toggled after the fact. Exercised end to end here: pick
+    a real day, send it back to the backlog, then take it back out --
+    the day picked in step one must survive all of it.
+    """
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="history", subject="history", topic="t",
+        title="1776: The Year the Colonies Broke Up With a King",
+        payload={"title": "1776: The Year the Colonies Broke Up With a King", "activities": []},
+        metadata={
+            "planned_for": TARGET_MONDAY.isoformat(),
+            "week_start": TARGET_MONDAY.isoformat(),
+            "held_back": True,
+        },
+    )
+    db.close()
+
+    picked_day = TARGET_MONDAY + timedelta(days=1)  # a Tuesday, same week
+
+    at, board_tab = _open_board_tab(monkeypatch, db_path)
+    date_key = f"move_board_lesson_{lesson_id}_date_{TARGET_MONDAY.isoformat()}"
+    date_widget = [d for d in board_tab.date_input if d.key == date_key][0]
+    date_widget.set_value(picked_day).run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    # Send it back to the backlog, then take it out again -- the exact
+    # two-step sequence the "Send to backlog" checkbox's un-check path
+    # used to get wrong.
+    board_tab = _board_tab(at)
+    backlog_on_key = f"move_board_lesson_{lesson_id}_backlog_True"
+    backlog_on = [c for c in board_tab.checkbox if c.key == backlog_on_key][0]
+    backlog_on.set_value(True).run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    board_tab = _board_tab(at)
+    backlog_off_key = f"move_board_lesson_{lesson_id}_backlog_False"
+    backlog_off = [c for c in board_tab.checkbox if c.key == backlog_off_key][0]
+    backlog_off.set_value(False).run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db = Database(db_path)
+    reloaded = db.get_lesson(lesson_id)
+    db.close()
+    assert reloaded["metadata"]["planned_for"] == picked_day.isoformat()
+    assert "held_back" not in reloaded["metadata"]
+
+
 def test_next_week_button_jumps_the_board_to_next_weeks_monday(monkeypatch, tmp_path):
     """The actual point of the button: right after a Friday planning
     session generates next week's lessons, this is the one click that

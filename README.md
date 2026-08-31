@@ -2107,6 +2107,39 @@ the Board tab, before any card can queue a new one -- pops and renders it
 as a real `st.info`, then clears itself so it never lingers into a run it
 doesn't belong to.
 
+## ...except the actual bug was the "Send to backlog" checkbox silently resetting the date
+
+The notice above turned out to be treating a symptom, not the disease --
+a screenshot of the parent's real screen showed the two moved lessons
+genuinely gone from *every* view: not on the target week's board, not in
+its Backlog panel, not even under Math's own "Fill in missing days" list
+for that week. A live reproduction of their exact steps found it:
+`render_story_move_control`'s "Send to backlog" checkbox still read
+*checked* right after picking a real day in the same popover (its own
+`value=not active` reflects the pre-pick snapshot until the date-pick's
+own rerun settles), reading like a leftover step that still needed
+unchecking. For every other story kind that's harmless -- `active` is
+its own stored column, untouched by scheduling. For a lesson it wasn't:
+`set_active(True)` -- the checkbox's own un-check action -- called
+`db.reschedule_lesson(lid, date.today().isoformat())`, silently
+overwriting whatever day was just picked back to *today*. Today is a
+weekend far more often than a weekday, and `board_for_week` only ever
+renders Monday-Friday -- so the lesson landed on a day the board never
+shows at all, while no longer counting as backlogged either (its week
+hadn't "ended" yet). Invisible everywhere, by design, once both actions
+landed in sequence -- confirmed with a script that replays exactly that:
+pick a day, then toggle the checkbox, and check where the lesson lands.
+
+The fix is a new `Database.unhold_lesson(lesson_id)`, the actual
+counterpart `send_to_backlog` needed all along: it clears `held_back`
+and leaves `planned_for`/`week_start` completely alone. All three
+lesson move controls in the app (the Board, This Week's "Plan next
+week" tab, and Activity Log's own review cards) now call it instead of
+`reschedule_lesson(lid, date.today())` for the checkbox's un-checked
+state -- `reschedule_lesson` stays exactly what it always was: the tool
+for a parent *deliberately* picking a new day, never an implicit
+side effect of un-backlogging one.
+
 ## Tests
 
 ```bash
