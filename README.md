@@ -2293,10 +2293,34 @@ renders exactly like a parent-assigned specific trip -- "📝 Not written
 yet," ready for him to write the story -- rather than another open pick he
 has to name himself first.
 
+## The student gets the parent's Board, read-only
+
+Reported directly: "this board view for parent... this week and next week...
+needs to be in the student view... replaced, with a 'board' button that
+contains this week and next. just like the parent view... obviously not
+including the review this week and plan this week options. those are parents
+only."
+
+The parent's This Week Board tab and the student's Home Board now render
+through one shared `ui.render_board_days(...)`: the five Mon-Fri columns of
+`weekly.board_for_week`, each card via `render_board_card`. The only
+difference is a single `interactive` flag threaded into `render_board_card` --
+False on the student side drops every parent-only affordance (the
+reschedule/backlog move control, and the "View full details" deep links into
+management tabs), leaving just the cards and, on a lesson, the "View full
+lesson" dialog, which is his to open too. Nothing about a card's data or
+layout changes, so a Tuesday card reads identically on either board.
+
+On Home, this folded the old separate **This Week** + **Upcoming Week** week
+grids (and their ~180 lines of bespoke "Sunday Funnies" grid rendering) into
+one **Board** nav view with a This-week / Next-week toggle, matching the
+parent's own. Review-this-week and Plan-next-week stay parent-only on the
+This Week page, exactly as before.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1131 tests, ~110s, no API key needed
+python -m pytest tests/ -q      # 1134 tests, ~110s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

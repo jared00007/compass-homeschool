@@ -6,7 +6,7 @@ from datetime import date, timedelta
 
 import streamlit as st
 
-from compass import config, theme, weekly
+from compass import config, weekly
 from compass.agents import all_agents
 from compass.compliance import build_report
 from compass.curriculum import frontier_report
@@ -17,10 +17,10 @@ from compass.ui import (
     is_parent,
     md,
     page_setup,
+    render_board_days,
     render_card_heading,
     render_declaration_banner,
     render_first_day_celebration,
-    render_friday_plan,
     render_fun_fact,
     render_morning_routine,
     render_report_card,
@@ -51,8 +51,7 @@ if not is_parent():
     # below the whole tab widget, not between its bar and its panel.
     _HOME_VIEWS = (
         ("today", "📅", "Today"),
-        ("week", "🗓️", "This Week"),
-        ("upcoming", "🔜", "Upcoming Week"),
+        ("board", "🗓️", "Board"),
         ("grades", "🎓", "Grades"),
     )
     # A Streamlit button's default padding is sized for one button standing
@@ -72,7 +71,12 @@ if not is_parent():
         unsafe_allow_html=True,
     )
     active_view = st.session_state.get("home_view", "today")
-    nav_columns = st.columns(4)
+    # A view key left over from before This Week + Upcoming Week were folded
+    # into one Board -- snap it to the Board so an old session_state value
+    # doesn't land on a view that no longer has a nav button.
+    if active_view in ("week", "upcoming"):
+        active_view = "board"
+    nav_columns = st.columns(3)
     for nav_column, (view_key, view_icon, view_label) in zip(nav_columns, _HOME_VIEWS):
         with nav_column:
             if st.button(
@@ -128,187 +132,6 @@ if not is_parent():
         "submitted": "📤",
         "needs_revision": "↩️",
     }
-
-    # "Sunday Funnies" week-grid styling -- one of three retro comic
-    # directions sampled and approved before building (see Home's own week
-    # tab). Deliberately this one fixed printed-poster palette, not
-    # theme.py's own themed `Theme` tokens -- see compass/theme.py's own
-    # PRINTED_COMIC_* constants, shared with the first-day celebration so
-    # the two can't drift out of sync with each other.
-    _WEEK_DAY_COLORS = theme.PRINTED_COMIC_WEEKDAY_COLORS  # Mon-Fri
-    _WEEK_INK = theme.PRINTED_COMIC_INK
-    _WEEK_PAPER = theme.PRINTED_COMIC_PAPER
-    _WEEK_TODAY_BURST = (
-        '<div style="position:absolute; top:-14px; right:-10px; width:46px; height:46px; '
-        f'border-radius:999px; background:{_WEEK_DAY_COLORS[1]}; border:2.5px solid {_WEEK_INK}; '
-        'display:flex; align-items:center; justify-content:center; font-weight:900; '
-        f'font-size:9px; color:{_WEEK_INK}; letter-spacing:-.02em; transform:rotate(-12deg); '
-        f'box-shadow:3px 3px 0 0 {_WEEK_INK}; z-index:1;">TODAY!</div>'
-    )
-    _WEEK_CARD_CSS = (
-        "<style>\n"
-        'div[class*="st-key-week_day_"] {\n'
-        f"  background: {_WEEK_PAPER};\n"
-        f"  border: 3px solid {_WEEK_INK};\n"
-        "  border-radius: 3px;\n"
-        "  padding: 14px 14px 4px;\n"
-        "  position: relative;\n"
-        f"  box-shadow: 6px 6px 0 0 {_WEEK_INK};\n"
-        "  margin-bottom: 10px;\n"
-        "}\n"
-        'div[class*="st-key-week_day_"] [data-testid="stCaptionContainer"] { color: #6b5f4d; }\n'
-        'div[class*="st-key-week_day_0"] { transform: rotate(-1.1deg); }\n'
-        'div[class*="st-key-week_day_1"] { transform: rotate(.8deg); }\n'
-        'div[class*="st-key-week_day_2"] { transform: rotate(-.6deg); }\n'
-        'div[class*="st-key-week_day_3"] { transform: rotate(1deg); }\n'
-        'div[class*="st-key-week_day_4"] { transform: rotate(-1deg); }\n'
-        + "".join(
-            f'div[class*="st-key-week_day_{i}"]::before {{ content:""; position:absolute; '
-            "inset:0; border-radius:2px; pointer-events:none; opacity:.16; "
-            f"background-image: radial-gradient(circle, {c} 1.6px, transparent 1.7px); "
-            "background-size: 9px 9px; }\n"
-            for i, c in enumerate(_WEEK_DAY_COLORS)
-        )
-        + "</style>"
-    )
-
-    def _render_week_grid(week_start_date: date) -> None:
-        """The 5-column Monday-Friday layout, shared by This Week and
-        Upcoming Week -- same read-only glance at whatever's been planned,
-        just pointed at a different Monday. Monday-Thursday get whatever
-        Tier 1 subject was planned for that day; Friday is a new-content
-        day only when This Week's school-days picker opted it in for that
-        particular week (a holiday landing on another weekday, say) --
-        otherwise it points at the next step on whichever Big Project he's
-        chosen as this year's (db.active_big_project -- picked on the Big
-        Projects page, never guessed at here) plus a Travel Journal entry
-        -- low-effort, but each is enough on its own to make Friday an
-        instructional day that counts, which a truly empty "light day"
-        isn't guaranteed to be (see compass.compliance's day-count pace
-        warning). The two aren't mutually exclusive: a Friday lesson still
-        shows alongside the usual light-day plan, never in place of it.
-
-        Styled as a "Sunday Funnies" comic strip -- thick ink border, a hard
-        offset shadow instead of a soft glow, a halftone dot tint, and a
-        different classic comic color per weekday -- picked from three
-        sample directions shown and approved before building. A fixed
-        "printed" look on purpose, like the rest of this app's styling:
-        colors are hardcoded, not pulled from theme.py's tokens, the same
-        way a printed comic page doesn't re-theme itself for the room it's
-        read in.
-        """
-        day_dates = [week_start_date + timedelta(days=i) for i in range(5)]
-        day_names = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
-        today_date = date.today()
-
-        week_lessons = weekly.latest_per_day(
-            db.lessons_for_week(student["id"], week_start_date.isoformat())
-        )
-        lessons_by_day: dict[str, list[dict]] = {}
-        for lesson in week_lessons:
-            planned_for = lesson["metadata"].get("planned_for", "")
-            lessons_by_day.setdefault(planned_for, []).append(lesson)
-
-        week_skills = db.life_skills_for_week(student["id"], week_start_date.isoformat())
-        skills_by_day: dict[str, list[dict]] = {}
-        for skill in week_skills:
-            skills_by_day.setdefault(skill["scheduled_for"], []).append(skill)
-
-        week_trips = db.travel_entries_for_week(student["id"], week_start_date.isoformat())
-        trips_by_day: dict[str, list[dict]] = {}
-        for trip in week_trips:
-            trips_by_day.setdefault(trip["scheduled_for"], []).append(trip)
-
-        checked_in_dates = {
-            e["entry_date"] for e in db.list_journal_entries(student["id"], limit=60)
-        }
-
-        st.markdown(_WEEK_CARD_CSS, unsafe_allow_html=True)
-        day_columns = st.columns(5)
-        for index, (column, day_name, day_date) in enumerate(
-            zip(day_columns, day_names, day_dates)
-        ):
-            day_iso = day_date.isoformat()
-            color = _WEEK_DAY_COLORS[index]
-            # week_start_date in the key, not just the index -- this
-            # function runs once per tab (This Week, Upcoming Week), and a
-            # bare "week_day_0" key would collide the second time it's
-            # called in the same script run. The CSS below still matches on
-            # the "week_day_N" prefix alone, so this doesn't need a second
-            # set of style rules.
-            with column, st.container(key=f"week_day_{index}_{week_start_date.isoformat()}"):
-                if day_date == today_date:
-                    st.markdown(_WEEK_TODAY_BURST, unsafe_allow_html=True)
-                st.markdown(
-                    f'<span style="display:inline-block; padding:2px 10px 3px; '
-                    f'border-radius:3px; background:{color}; color:{_WEEK_PAPER}; '
-                    f'font-weight:900; font-size:15px; text-transform:uppercase; '
-                    f'letter-spacing:-.01em; text-shadow:1.5px 1.5px 0 rgba(0,0,0,.35);">'
-                    f"{day_name}</span>",
-                    unsafe_allow_html=True,
-                )
-                st.caption(day_date.strftime("%b %-d"))
-
-                # Nothing shown at all for a day that hasn't arrived yet -- a
-                # check-in can't have happened, so a "—" here was never a
-                # status, just noise (every cell reads that way at once on
-                # Upcoming Week, where every day is still in the future).
-                if day_iso in checked_in_dates:
-                    st.caption("💬 Checked in")
-                elif day_date <= today_date:
-                    st.caption("💬 No check-in yet")
-
-                day_skills = skills_by_day.get(day_iso, [])
-                day_trips = trips_by_day.get(day_iso, [])
-                day_lessons = lessons_by_day.get(day_iso, [])
-
-                if day_name == "Friday":
-                    # Ordinarily empty -- Friday only carries a subject
-                    # lesson when This Week's school-days picker opted it in
-                    # as a substitute for a holiday elsewhere that week, and
-                    # a lesson planned there needs to actually show up here,
-                    # not be silently swallowed by the light-day framing below.
-                    for lesson in day_lessons:
-                        icon = SUBJECT_ICONS.get(lesson["agent"], "📘")
-                        done = bool(lesson["metadata"].get("student_done_on"))
-                        marker = "✅" if done else "⬜"
-                        quiz = lesson["metadata"].get("quiz_result") or {}
-                        badge = " 🎯" if quiz.get("passed") else ""
-                        st.markdown(f"{marker} {icon} {md(lesson['title'])}{badge}")
-                    st.caption("🎬 Light day — review the week, plus a quick win:")
-                    render_friday_plan(db, student, day_iso)
-                else:
-                    if not day_lessons and not day_skills and not day_trips:
-                        st.caption("Nothing planned yet.")
-                    for lesson in day_lessons:
-                        icon = SUBJECT_ICONS.get(lesson["agent"], "📘")
-                        done = bool(lesson["metadata"].get("student_done_on"))
-                        marker = "✅" if done else "⬜"
-                        quiz = lesson["metadata"].get("quiz_result") or {}
-                        badge = " 🎯" if quiz.get("passed") else ""
-                        st.markdown(f"{marker} {icon} {md(lesson['title'])}{badge}")
-
-                # Life skills render after whatever else the day already
-                # shows -- including Friday's own Big Project/Travel Journal
-                # plan -- since assigning one doesn't care what else is
-                # scheduled that day.
-                for skill in day_skills:
-                    done = bool(skill["completed_on"])
-                    marker = "✅" if done else "⬜"
-                    st.markdown(f"{marker} 🛠️ {md(skill['title'])}")
-
-                # Same reasoning as life skills just above -- renders after
-                # everything else the day already shows. Uses the same
-                # four-state marker set Lessons uses (not skills' plain
-                # done/not-done) since a travel entry goes through the same
-                # review gate a lesson does once it's been assigned.
-                for trip in day_trips:
-                    trip_marker = (
-                        "✅" if trip["status"] == "completed"
-                        else TRAVEL_MARKERS.get(trip["status"], "⬜")
-                    )
-                    trip_label = trip["title"] or trip["state"] or "Pick a trip to write about"
-                    st.markdown(f"{trip_marker} 🧭 {md(trip_label)}")
 
     def _render_extra_activities() -> None:
         st.markdown(
@@ -585,33 +408,54 @@ if not is_parent():
 
         render_today_checklist(db, student)
 
-    # === This Week / Upcoming Week ===============================================
-    # Both read-only -- the plan itself is set by a parent on This Week (Friday
-    # planning), these just lay out what's already there day by day so he can
-    # see the week ahead without clicking into Monday through Friday one at a
-    # time. Upcoming Week is only ever as populated as however far ahead a
-    # parent has actually planned -- usually nothing until the Friday before.
+    # === Board ===================================================================
+    # The exact same This-week / Next-week sprint board a parent sees on This
+    # Week, rendered read-only for him (render_board_days(interactive=False) --
+    # no move controls, no parent management deep links, just the cards and, on
+    # a lesson, the View-full-lesson dialog). This folds the old separate This
+    # Week + Upcoming Week grids into one Board with a This/Next toggle,
+    # matching the parent view rather than keeping its own layout. Read-only
+    # either way: the plan is set by a parent's Friday planning; this only lays
+    # out what's already scheduled. Next week is only ever as full as however
+    # far ahead a parent has actually planned -- usually nothing until Friday.
 
     next_week_start = this_week_start + timedelta(days=7)
 
-    if active_view == "week":
-        st.caption(
-            f"{this_week_start.strftime('%b %-d')} – "
-            f"{(this_week_start + timedelta(days=4)).strftime('%b %-d')} · "
-            "only shows what's been planned through weekly planning -- anything "
-            "generated on the fly still shows up on **Today**, not here."
-        )
-        _render_week_grid(this_week_start)
-        _render_extra_activities()
+    if active_view == "board":
+        if "student_board_week" not in st.session_state:
+            st.session_state["student_board_week"] = "this"
+        showing_next = st.session_state["student_board_week"] == "next"
 
-    elif active_view == "upcoming":
+        toggle_columns = st.columns([1, 1, 4])
+        if toggle_columns[0].button(
+            "This week", key="student_board_this_week",
+            width="stretch", type="secondary" if showing_next else "primary",
+        ):
+            st.session_state["student_board_week"] = "this"
+            st.rerun()
+        if toggle_columns[1].button(
+            "Next week", key="student_board_next_week",
+            width="stretch", type="primary" if showing_next else "secondary",
+        ):
+            st.session_state["student_board_week"] = "next"
+            st.rerun()
+
+        board_week_start = next_week_start if showing_next else this_week_start
+        board_range = weekly.week_dates(board_week_start, include_friday=True)
         st.caption(
-            f"{next_week_start.strftime('%b %-d')} – "
-            f"{(next_week_start + timedelta(days=4)).strftime('%b %-d')} · "
-            "next week's plan, once your parent sets it up -- usually on a "
-            "Friday, for the week ahead."
+            f"{board_range[0].strftime('%b %-d')} – {board_range[-1].strftime('%b %-d, %Y')} · "
+            + (
+                "next week's plan, once your parent sets it up -- usually on a Friday."
+                if showing_next
+                else "what's planned this week -- anything generated on the fly still "
+                "shows up on **Today**, not here."
+            )
         )
-        _render_week_grid(next_week_start)
+        student_board = weekly.board_for_week(db, student, board_week_start)
+        render_board_days(
+            db, student, board_week_start, student_board,
+            key_prefix="student_board", interactive=False,
+        )
         _render_extra_activities()
 
     elif active_view == "grades":

@@ -400,18 +400,26 @@ def test_a_skill_assigned_for_later_shows_an_upcoming_hint_on_home(monkeypatch, 
     assert not any("Read a map" in label for label in labels)
 
 
-def test_a_life_skill_assigned_this_week_shows_on_the_week_grid(monkeypatch, tmp_path):
+def test_a_life_skill_assigned_this_week_shows_on_the_student_board(monkeypatch, tmp_path):
+    """His Home Board (the read-only sprint board that replaced the old week
+    grid) surfaces a life skill a parent scheduled for a day this week, as a
+    board card in that day's column -- same board_for_week the parent's own
+    Board reads, just interactive=False."""
+    from compass import weekly
+
     db_path = tmp_path / "home.db"
     database = Database(db_path)
     s = database.ensure_default_student()
     auth.set_pin(database, "1234")
     skill_id = database.add_life_skill(s["id"], "Change a tire", "Vehicle")
-    database.schedule_life_skill(skill_id, date.today().isoformat())
+    # This week's Monday, not date.today(): guarantees a tracked weekday
+    # column regardless of what day the suite runs on (a weekend date would
+    # land in the Backlog, which the student board deliberately never shows).
+    database.schedule_life_skill(skill_id, weekly.week_start().isoformat())
     database.close()
 
     at = _open_home(monkeypatch, db_path)
-    week_button = [b for b in at.button if "This Week" in (b.label or "")][0]
-    week_button.click().run()
+    board_button = [b for b in at.button if "Board" in (b.label or "")][0]
+    board_button.click().run()
     assert not at.exception, [e.message for e in at.exception]
-    text = " ".join(m.value for m in at.markdown)
-    assert "Change a tire" in text
+    assert any("Change a tire" in (e.label or "") for e in at.expander)

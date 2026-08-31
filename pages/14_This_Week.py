@@ -21,7 +21,7 @@ from datetime import date, timedelta
 
 import streamlit as st
 
-from compass import theme, weekly
+from compass import weekly
 from compass.agents import all_agents
 from compass.agents.strategies import ERAS, SCIENCE_DOMAINS
 from compass.compliance import build_report
@@ -33,6 +33,7 @@ from compass.ui import (
     page_setup,
     parent_only,
     render_board_card,
+    render_board_days,
     render_board_move_notice,
     render_friday_plan,
     render_lesson,
@@ -88,11 +89,10 @@ def _idea_options(db, student_id: int, key: str) -> list[tuple[str, str]]:
     return options
 
 
-# Same "Sunday Funnies" Mon-Fri palette Home's own Week grid already uses
-# (compass.theme.PRINTED_COMIC_WEEKDAY_COLORS) -- reused here rather than
-# invented, so a Tuesday card reads the same color everywhere in the app.
-_WEEKDAY_COLORS = theme.PRINTED_COMIC_WEEKDAY_COLORS
-_WEEKDAY_PAPER = theme.PRINTED_COMIC_PAPER
+# The day grid's colored pills and its own horizontal-scroll fix now live in
+# ui.render_board_days (shared with the student's Home board). The backlog
+# panel below keeps its own row-scroll CSS, since it's parent-only and not
+# part of that shared grid.
 
 # `st.columns` splits its parent width into equal fractions with no floor --
 # on a real laptop-width browser (not just the wide monitor a screenshot
@@ -182,32 +182,11 @@ with board_tab:
     # it scroll horizontally, rather than keep shrinking on a narrower
     # window -- the same fix real Kanban boards use.
     st.markdown(_BOARD_SCROLL_CSS, unsafe_allow_html=True)
-    with st.container(key="board_days_row"):
-        board_columns = st.columns(5)
-        for index, (column, day_date) in enumerate(zip(board_columns, board_days)):
-            color = _WEEKDAY_COLORS[index]
-            with column:
-                today_tag = " · Today" if day_date == date.today() else ""
-                st.markdown(
-                    f'<span style="display:inline-block; padding:2px 10px 3px; '
-                    f'border-radius:3px; background:{color}; color:{_WEEKDAY_PAPER}; '
-                    f'font-weight:900; font-size:15px; text-transform:uppercase; '
-                    f'letter-spacing:-.01em; text-shadow:1.5px 1.5px 0 rgba(0,0,0,.35);">'
-                    f"{day_date.strftime('%a')}</span>",
-                    unsafe_allow_html=True,
-                )
-                st.caption(day_date.strftime("%b %-d") + today_tag)
-                day_items = board[day_date.isoformat()]
-                if not day_items:
-                    st.caption("Nothing here.")
-                for kind, item in day_items:
-                    render_board_card(
-                        db, kind, item,
-                        today_iso=today_iso_for_board,
-                        board_week_start=board_week_start,
-                        all_lessons_for_collision=all_lessons_for_board,
-                        accent_color=color,
-                    )
+    render_board_days(
+        db, student, board_week_start, board,
+        key_prefix="board",
+        all_lessons_for_collision=all_lessons_for_board,
+    )
 
     st.divider()
 

@@ -2752,6 +2752,7 @@ def render_board_card(
     board_week_start: date,
     all_lessons_for_collision: list[dict[str, Any]] | None = None,
     accent_color: str | None = None,
+    interactive: bool = True,
 ) -> None:
     """One compact card for the unified weekly board (the "Board" tab on
     `pages/14_This_Week.py`) -- a title, a one-line status, and the same
@@ -2785,6 +2786,15 @@ def render_board_card(
     same "closed until you need it" rhythm as the Backlog panel's own
     epic sections, so a board with a dozen cards in one column reads as a
     dozen one-line rows, not a wall of open detail.
+
+    `interactive` (default True) is what lets the exact same card serve both
+    the parent's This Week Board tab and the student's own read-only Board on
+    Home. False drops every parent-only affordance -- the move control (a
+    parent reschedules/backlogs, he never does) and the "View full details"
+    deep links into parent management tabs -- leaving just the card's own
+    content and, for a lesson, the "View full lesson" dialog, which is his to
+    open too. Nothing about a card's data or layout changes, so a Tuesday
+    card reads identically on either board.
     """
     with st.container(border=True):
         if accent_color:
@@ -2805,7 +2815,7 @@ def render_board_card(
                 }.get(item["status"])
                 if status_note:
                     st.caption(status_note)
-                if item["status"] in ("planned", "needs_revision"):
+                if interactive and item["status"] in ("planned", "needs_revision"):
                     lessons_for_collision = all_lessons_for_collision or []
 
                     def _validate_lesson_move(new_date: str, lesson=item) -> str | None:
@@ -2845,17 +2855,18 @@ def render_board_card(
             label = f"{marker} {BOARD_KIND_ICONS['life_skill']} **{md(item['title'])}**"
             with st.expander(label, expanded=False):
                 st.caption(item["category"])
-                render_story_move_control(
-                    key=f"board_ls_{item['id']}",
-                    active=bool(item["active"]),
-                    scheduled_for=item["scheduled_for"],
-                    set_active=lambda a, sid=item["id"]: db.set_life_skill_active(sid, a),
-                    schedule=_board_schedule(
-                        lambda s, sid=item["id"]: db.schedule_life_skill(sid, s),
-                        board_week_start,
-                    ),
-                )
-                _render_board_deep_link(kind)
+                if interactive:
+                    render_story_move_control(
+                        key=f"board_ls_{item['id']}",
+                        active=bool(item["active"]),
+                        scheduled_for=item["scheduled_for"],
+                        set_active=lambda a, sid=item["id"]: db.set_life_skill_active(sid, a),
+                        schedule=_board_schedule(
+                            lambda s, sid=item["id"]: db.schedule_life_skill(sid, s),
+                            board_week_start,
+                        ),
+                    )
+                    _render_board_deep_link(kind)
 
         elif kind == "coding_module":
             earned = bool(item["completed_on"])
@@ -2863,17 +2874,18 @@ def render_board_card(
             label = f"{marker} {BOARD_KIND_ICONS['coding_module']} **{md(item['title'])}**"
             with st.expander(label, expanded=False):
                 st.caption(item["category"])
-                render_story_move_control(
-                    key=f"board_coding_{item['id']}",
-                    active=bool(item["active"]),
-                    scheduled_for=item["scheduled_for"],
-                    set_active=lambda a, mid=item["id"]: db.set_coding_module_active(mid, a),
-                    schedule=_board_schedule(
-                        lambda s, mid=item["id"]: db.schedule_coding_module(mid, s),
-                        board_week_start,
-                    ),
-                )
-                _render_board_deep_link(kind)
+                if interactive:
+                    render_story_move_control(
+                        key=f"board_coding_{item['id']}",
+                        active=bool(item["active"]),
+                        scheduled_for=item["scheduled_for"],
+                        set_active=lambda a, mid=item["id"]: db.set_coding_module_active(mid, a),
+                        schedule=_board_schedule(
+                            lambda s, mid=item["id"]: db.schedule_coding_module(mid, s),
+                            board_week_start,
+                        ),
+                    )
+                    _render_board_deep_link(kind)
 
         elif kind == "choice_topic":
             label = (
@@ -2882,59 +2894,143 @@ def render_board_card(
             with st.expander(label, expanded=False):
                 if item["category"]:
                     st.caption(item["category"])
-                if item["status"] not in ("done", "declined"):
-                    render_story_move_control(
-                        key=f"board_choice_{item['id']}",
-                        active=bool(item["active"]),
-                        scheduled_for=item["scheduled_for"],
-                        set_active=lambda a, tid=item["id"]: db.set_choice_topic_active(tid, a),
-                        schedule=_board_schedule(
-                            lambda s, tid=item["id"]: db.schedule_choice_topic(tid, s),
-                            board_week_start,
-                        ),
-                    )
-                else:
-                    st.caption("Closed out — nothing left to move.")
-                _render_board_deep_link(kind)
+                if interactive:
+                    if item["status"] not in ("done", "declined"):
+                        render_story_move_control(
+                            key=f"board_choice_{item['id']}",
+                            active=bool(item["active"]),
+                            scheduled_for=item["scheduled_for"],
+                            set_active=lambda a, tid=item["id"]: db.set_choice_topic_active(tid, a),
+                            schedule=_board_schedule(
+                                lambda s, tid=item["id"]: db.schedule_choice_topic(tid, s),
+                                board_week_start,
+                            ),
+                        )
+                    else:
+                        st.caption("Closed out — nothing left to move.")
+                    _render_board_deep_link(kind)
 
         elif kind == "project_step":
             done = bool(item["completed_on"])
             marker = "✅" if done else "⬜"
             label = f"{marker} {BOARD_KIND_ICONS['project_step']} **{md(item['title'])}**"
             with st.expander(label, expanded=False):
-                if not done:
-                    render_story_move_control(
-                        key=f"board_step_{item['id']}",
-                        active=bool(item["active"]),
-                        scheduled_for=item["scheduled_for"],
-                        set_active=lambda a, sid=item["id"]: db.set_project_step_active(sid, a),
-                        schedule=_board_schedule(
-                            lambda s, sid=item["id"]: db.schedule_project_step(sid, s),
-                            board_week_start,
-                        ),
-                    )
-                else:
-                    st.caption("Done — nothing left to move.")
-                _render_board_deep_link(kind)
+                if interactive:
+                    if not done:
+                        render_story_move_control(
+                            key=f"board_step_{item['id']}",
+                            active=bool(item["active"]),
+                            scheduled_for=item["scheduled_for"],
+                            set_active=lambda a, sid=item["id"]: db.set_project_step_active(sid, a),
+                            schedule=_board_schedule(
+                                lambda s, sid=item["id"]: db.schedule_project_step(sid, s),
+                                board_week_start,
+                            ),
+                        )
+                    else:
+                        st.caption("Done — nothing left to move.")
+                    _render_board_deep_link(kind)
 
         elif kind == "travel_entry":
             title = md(item["title"]) if item["title"] else "Untitled trip"
             label = f"{BOARD_KIND_ICONS['travel_entry']} **{title}** — {item['status']}"
             with st.expander(label, expanded=False):
-                if item["status"] != "completed":
-                    render_story_move_control(
-                        key=f"board_travel_{item['id']}",
-                        active=bool(item["active"]),
-                        scheduled_for=item["scheduled_for"],
-                        set_active=lambda a, eid=item["id"]: db.set_travel_entry_active(eid, a),
-                        schedule=_board_schedule(
-                            lambda s, eid=item["id"]: db.schedule_travel_entry(eid, s),
-                            board_week_start,
-                        ),
+                if interactive:
+                    if item["status"] != "completed":
+                        render_story_move_control(
+                            key=f"board_travel_{item['id']}",
+                            active=bool(item["active"]),
+                            scheduled_for=item["scheduled_for"],
+                            set_active=lambda a, eid=item["id"]: db.set_travel_entry_active(eid, a),
+                            schedule=_board_schedule(
+                                lambda s, eid=item["id"]: db.schedule_travel_entry(eid, s),
+                                board_week_start,
+                            ),
+                        )
+                    else:
+                        st.caption("Completed — nothing left to move.")
+                    _render_board_deep_link(kind)
+
+
+# --- shared weekly board day grid: parent This Week tab + student Home board ---
+
+# One min-width-plus-scroll rule for every board's day row, matched on any
+# container key ending in "_days_row" (st.columns has no minimum width, so
+# five equal fractions of even a full-width row squeeze a long title
+# narrower than one of its own words on a real laptop screen -- real Kanban
+# boards fix this by giving each column a floor and letting the row scroll).
+_WEEK_BOARD_SCROLL_CSS = """
+<style>
+div[class*="st-key-"][class*="_days_row"] div[data-testid="stHorizontalBlock"] {
+  overflow-x: auto !important;
+  flex-wrap: nowrap !important;
+  padding-bottom: 6px;
+}
+div[class*="st-key-"][class*="_days_row"] div[data-testid="stColumn"] {
+  min-width: 220px !important;
+  flex: 0 0 220px !important;
+}
+</style>
+"""
+
+
+def render_board_days(
+    db: Database,
+    student: dict[str, Any],
+    week_start: date,
+    board: dict[str, list[tuple[str, dict[str, Any]]]],
+    *,
+    key_prefix: str,
+    interactive: bool = True,
+    all_lessons_for_collision: list[dict[str, Any]] | None = None,
+) -> None:
+    """The five Mon-Fri day columns of the weekly sprint board, for one
+    already-computed `board` (from weekly.board_for_week). Shared verbatim
+    between the parent's This Week Board tab and the student's own read-only
+    Board on Home -- the only difference between the two is `interactive`,
+    threaded straight through to render_board_card (see its docstring). The
+    caller owns week selection and, on the parent side, the Product Backlog
+    panel below; this is only the day grid the two have in common.
+
+    `key_prefix` namespaces the horizontal-scroll container so two boards
+    rendered in one script run (the student's this-week and next-week views,
+    say) never share a container key. The colored day pills are the same
+    "Sunday Funnies" palette Home's own Week grid and the parent Board use."""
+    days = weekly.week_dates(week_start, include_friday=True)
+    today = date.today()
+    today_iso = today.isoformat()
+    if all_lessons_for_collision is None:
+        all_lessons_for_collision = db.list_lessons(student["id"], limit=200)
+
+    st.markdown(_WEEK_BOARD_SCROLL_CSS, unsafe_allow_html=True)
+    with st.container(key=f"{key_prefix}_days_row"):
+        columns = st.columns(5)
+        for index, (column, day_date) in enumerate(zip(columns, days)):
+            color = theming.PRINTED_COMIC_WEEKDAY_COLORS[index]
+            with column:
+                today_tag = " · Today" if day_date == today else ""
+                st.markdown(
+                    f'<span style="display:inline-block; padding:2px 10px 3px; '
+                    f'border-radius:3px; background:{color}; '
+                    f'color:{theming.PRINTED_COMIC_PAPER}; font-weight:900; font-size:15px; '
+                    f'text-transform:uppercase; letter-spacing:-.01em; '
+                    f'text-shadow:1.5px 1.5px 0 rgba(0,0,0,.35);">'
+                    f"{day_date.strftime('%a')}</span>",
+                    unsafe_allow_html=True,
+                )
+                st.caption(day_date.strftime("%b %-d") + today_tag)
+                day_items = board[day_date.isoformat()]
+                if not day_items:
+                    st.caption("Nothing here.")
+                for kind, item in day_items:
+                    render_board_card(
+                        db, kind, item,
+                        today_iso=today_iso,
+                        board_week_start=week_start,
+                        all_lessons_for_collision=all_lessons_for_collision,
+                        accent_color=color,
+                        interactive=interactive,
                     )
-                else:
-                    st.caption("Completed — nothing left to move.")
-                _render_board_deep_link(kind)
 
 
 # --- per-subject week view: the same day board, scoped to one agent ------------

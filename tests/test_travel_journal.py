@@ -102,23 +102,30 @@ def test_home_shows_no_travel_journal_card_when_nothing_is_assigned(monkeypatch,
     assert "Travel Journal" not in text
 
 
-def test_a_trip_assigned_this_week_shows_on_the_week_grid(monkeypatch, tmp_path):
+def test_a_trip_assigned_this_week_shows_on_the_student_board(monkeypatch, tmp_path):
+    """His Home Board (the read-only sprint board that replaced the old week
+    grid) surfaces a trip a parent scheduled for a day this week, as a board
+    card in that day's column."""
+    from compass import weekly
+
     db_path = tmp_path / "home.db"
     database = Database(db_path)
     s = database.ensure_default_student()
     auth.set_pin(database, "1234")
+    monday = weekly.week_start().isoformat()
     entry_id = database.add_travel_entry(
-        s["id"], "Wyoming", date.today().isoformat(), title="Yellowstone", status="planned"
+        s["id"], "Wyoming", monday, title="Yellowstone", status="planned"
     )
-    database.schedule_travel_entry(entry_id, date.today().isoformat())
+    # This week's Monday, not date.today() -- a weekend date would land in
+    # the Backlog, which the student board never shows.
+    database.schedule_travel_entry(entry_id, monday)
     database.close()
 
     at = _open_home(monkeypatch, db_path)
-    week_button = [b for b in at.button if "This Week" in (b.label or "")][0]
-    week_button.click().run()
+    board_button = [b for b in at.button if "Board" in (b.label or "")][0]
+    board_button.click().run()
     assert not at.exception, [e.message for e in at.exception]
-    text = " ".join(m.value for m in at.markdown)
-    assert "Yellowstone" in text
+    assert any("Yellowstone" in (e.label or "") for e in at.expander)
 
 
 # --- Adding an entry: story decides submitted vs. planned -----------------------
