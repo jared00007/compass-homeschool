@@ -155,7 +155,7 @@ def test_sending_a_currently_due_lesson_to_backlog_pulls_it_off_the_board(monkey
     assert any("Parked on purpose" in l for l in labels)
     assert not any("backlogged" in l and "Parked on purpose" in l for l in labels)
 
-    review_tab.checkbox(key=f"move_lesson_{lesson_id}_backlog_True").check().run()
+    review_tab.button(key=f"move_lesson_{lesson_id}_send_to_backlog").click().run()
     review_tab = [t for t in at.tabs if t.label.startswith("To review")][0]
 
     infos = [i.value for i in review_tab.info]
@@ -225,10 +225,10 @@ def test_a_lesson_sent_back_for_revision_can_still_be_rescheduled(monkeypatch, t
     db.close()
 
     at, review_tab = _open_review_tab(monkeypatch, db_path)
-    backlog_key = f"move_lesson_{lesson_id}_backlog_True"
-    checkbox = [c for c in review_tab.checkbox if c.key == backlog_key]
-    assert checkbox, "the move control must still be offered on a needs_revision lesson"
-    checkbox[0].set_value(True).run()
+    backlog_key = f"move_lesson_{lesson_id}_send_to_backlog"
+    button = [b for b in review_tab.button if b.key == backlog_key]
+    assert button, "the move control must still be offered on a needs_revision lesson"
+    button[0].click().run()
 
     db = Database(db_path)
     lesson = db.get_lesson(lesson_id)

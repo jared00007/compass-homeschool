@@ -2140,6 +2140,67 @@ state -- `reschedule_lesson` stays exactly what it always was: the tool
 for a parent *deliberately* picking a new day, never an implicit
 side effect of un-backlogging one.
 
+## No story can fall off the board entirely, for any kind, ever
+
+"Fix this so it never happens again. All stories should survive movement
+across the boards" -- the reactivate-checkbox fix above closed the one
+path that had actually bitten a real lesson, but it was one instance of a
+wider structural gap: `board_for_week`'s own placement logic could drop
+*any* of the six story kinds, silently, whenever its scheduled date
+landed on a day the board simply doesn't track.
+
+Two separate holes, found by tracing every kind through the aggregator,
+not just lessons:
+
+- `_place_scheduled` (the day-vs-backlog router every kind funnels
+  through) fell through both of its branches for a date that wasn't
+  "backlogged" *and* wasn't one of the five rendered weekday columns --
+  a Saturday or Sunday, most plausibly. Not placed on a day, not counted
+  as backlogged, not anywhere. Fixed by making Backlog the fallback:
+  `if backlogged or day_iso not in board: board["backlog"].append(...)`.
+- For the five non-lesson kinds, the hole goes a layer deeper: each
+  one's own `X_for_week` query filters `scheduled_for BETWEEN week_start
+  AND week_start + 4 days` (Monday-Friday) -- a weekend date never
+  matches *any* week's version of that range, so it never even reaches
+  `_place_scheduled` to be caught by the fix above. The "every other
+  currently-parked story" second pass didn't help either -- it only
+  ever looked for `active == False`, and a story stuck this way is
+  still `active` (nobody backlogged it on purpose). Fixed with a new
+  `_stuck_on_an_untracked_weekday(scheduled_for)` helper, OR'd into all
+  five second-pass conditions alongside `not active` -- a story lands in
+  Backlog if it's genuinely parked *or* if its own date makes it
+  permanently unfindable any other way.
+
+One more inconsistency turned up during this pass: `schedule_travel_entry`
+was the only one of the five `schedule_X` methods that didn't also set
+`active = 1` when assigning a date -- meaning a backlogged trip needed an
+extra, separate un-backlog step the other four kinds didn't. Brought in
+line with `schedule_life_skill`/`schedule_project_step`/etc.
+
+## The backlog checkbox becomes two one-way buttons
+
+A direct follow-up once the disappearing-lesson bug's real cause was
+clear: "when an item is in backlog, the action item shouldn't be uncheck
+send to backlog... it should be like assign back to a date and then date
+calendar selection." The single `st.checkbox("Send to backlog", value=not
+active)` a story's move control used to show was the actual UI root of
+the reactivate bug above -- reading the *same* checkbox as "send to
+backlog" when active and "take out of backlog" when not is exactly the
+kind of control where the direction of a click reads ambiguous, and for
+lessons specifically, un-checking it used to carry a real destructive
+side effect (silently overwriting a just-picked day).
+
+`render_story_move_control` now shows a `st.caption("🗄️ Currently in
+the Backlog.")` plus two mutually-exclusive, always one-directional
+buttons instead of the one bidirectional checkbox: **🗄️ Send to
+backlog** only appears when the story is active, **↩️ Take out of
+Backlog** only when it isn't. Picking a new day in "Assign to a specific
+day" already takes a story out of the backlog on its own for every kind
+(each one's own `schedule` write does this now, travel entries included
+after the fix above) -- "Take out of Backlog" exists only for
+reactivating *without* also changing the day. Neither button can be
+misread as doing the opposite of what it says.
+
 ## Tests
 
 ```bash

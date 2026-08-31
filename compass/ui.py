@@ -2568,19 +2568,30 @@ def render_story_move_control(
     this (two lessons from the same agent can't share a day); every other
     story type leaves it unset.
 
-    `show_backlog_toggle` stays on its default (on) for every caller today,
-    lessons included -- a lesson always keeps its old `planned_for` even
-    once backlogged (there's no bare "un-assign" for a lesson the way other
-    story types have one, since a lesson always needs *some* planned day),
-    so the checkbox below is the *only* way to backlog one. Turning it off
-    for lessons would remove that ability entirely, not just tidy up a
-    redundant control.
+    `show_backlog_toggle` stays on its default (on) for every caller today.
+    Backlogging and un-backlogging are each their own one-way button --
+    "Send to backlog" only when `active`, "Take out of Backlog" only when
+    not -- never a single checkbox meaning opposite things depending on
+    which state it started in. That used to read as "uncheck this to
+    bring it back," which for a lesson meant something genuinely
+    destructive: unchecking it called `set_active(True)`, and a lesson's
+    own implementation of that used to silently reschedule to *today*,
+    overwriting whatever day a parent had just picked in the very same
+    popover (reported directly -- "i moved two math lessons from backlog
+    to their own dates... and they have disappeared"). Picking a new day
+    in "Assign to a specific day" already takes a story out of the
+    backlog on its own, for every story kind (each one's own `schedule`
+    write does this) -- "Take out of Backlog" is only there for
+    reactivating *without* also changing the day.
 
-    Widget keys fold in the current `active`/`scheduled_for` values, the same
-    trick `render_life_skill_catalog_manager` uses for its own checkbox --
-    `schedule` can flip `active` as a side effect of a different widget's
-    write, and a fixed key would read that now-stale session_state value as
-    a fresh click on the next run and silently undo it.
+    Widget keys fold in the current `scheduled_for` value for the date
+    picker (the same trick `render_life_skill_catalog_manager` uses for
+    its own checkbox -- `schedule` can change what's "current" as a side
+    effect of a different widget's write, and a fixed key would read a
+    stale session_state value as a fresh pick on the next run and
+    silently redo it) -- but not for the backlog buttons, since a
+    `st.button`'s own return value never persists across a rerun the way
+    a checkbox's does, so there's no stale state for a fixed key to leak.
     """
     # Icon-only when there's nothing to report yet -- this sits in a narrow
     # top-right corner on a card grid (three cards to a row), and a two-word
@@ -2600,6 +2611,9 @@ def render_story_move_control(
     else:
         label = "📅"
     with st.popover(label, use_container_width=False, help="Move to a day, or send to Backlog"):
+        if not active:
+            st.caption("🗄️ Currently in the Backlog.")
+
         assign = st.checkbox(
             "Assign to a specific day",
             value=bool(scheduled_for),
@@ -2624,14 +2638,14 @@ def render_story_move_control(
 
         if show_backlog_toggle:
             st.divider()
-            backlog = st.checkbox(
-                "Send to backlog",
-                value=not active,
-                key=f"move_{key}_backlog_{active}",
-            )
-            if backlog == active:
-                set_active(not backlog)
-                st.rerun()
+            if active:
+                if st.button("🗄️ Send to backlog", key=f"move_{key}_send_to_backlog"):
+                    set_active(False)
+                    st.rerun()
+            else:
+                if st.button("↩️ Take out of Backlog", key=f"move_{key}_take_out_of_backlog"):
+                    set_active(True)
+                    st.rerun()
 
 
 # Where a story's own full content already renders elsewhere in the app --

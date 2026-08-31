@@ -44,6 +44,12 @@ class _FakeSt:
     def error(self, *args, **kwargs):
         pass
 
+    def caption(self, *args, **kwargs):
+        pass
+
+    def button(self, *args, **kwargs):
+        return False
+
     def rerun(self):
         pass
 

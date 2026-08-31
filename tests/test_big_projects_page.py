@@ -158,7 +158,7 @@ def test_send_to_backlog_moves_a_step_out_of_to_do(monkeypatch, tmp_path):
     labels = [e.label for e in at.expander]
     assert any("Write the script" in l and "up next" in l for l in labels)
 
-    at.checkbox(key=f"move_step_{step_id}_backlog_True").check().run()
+    at.button(key=f"move_step_{step_id}_send_to_backlog").click().run()
 
     markdowns = [m.value for m in at.markdown]
     assert any("Backlog" in m for m in markdowns)
@@ -178,7 +178,7 @@ def test_move_to_to_do_promotes_a_backlogged_step(monkeypatch, tmp_path):
     at = _open_checklist_tab(monkeypatch, db_path)
     at = _expand_project(at, project_id)
 
-    at.checkbox(key=f"move_step_{step_id}_backlog_False").uncheck().run()
+    at.button(key=f"move_step_{step_id}_take_out_of_backlog").click().run()
 
     labels = [e.label for e in at.expander]
     assert any("Write the script" in l and "up next" in l for l in labels)
@@ -198,8 +198,12 @@ def test_send_to_backlog_is_not_offered_on_an_already_done_step(monkeypatch, tmp
     at = _open_checklist_tab(monkeypatch, db_path)
     at = _expand_project(at, project_id)
 
-    keys = {c.key for c in at.checkbox if c.key}
-    assert not any(k.startswith(f"move_step_{step_id}_backlog_") for k in keys)
+    keys = {b.key for b in at.button if b.key}
+    assert not any(
+        k.startswith(f"move_step_{step_id}_send_to_backlog")
+        or k.startswith(f"move_step_{step_id}_take_out_of_backlog")
+        for k in keys
+    )
 
 
 def test_travel_log_card_shows_a_trip_summary_and_link_instead_of_steps(monkeypatch, tmp_path):

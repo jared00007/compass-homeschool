@@ -828,6 +828,47 @@ def test_board_never_floods_backlog_with_the_untouched_catalog(board_db, board_s
     assert board["backlog"] == []
 
 
+def test_board_never_lets_a_weekend_date_fall_off_the_board_entirely(
+    board_db, board_student
+):
+    """The actual bug this guards: the board's five day-columns are
+    Monday-Friday only, so a story whose own date lands on a Saturday or
+    Sunday used to match neither a day column nor "backlogged" (its
+    active flag says it's not parked) -- falling through both branches of
+    _place_scheduled and vanishing from the board outright, not even
+    visible in the Backlog panel. Reported directly, and confirmed
+    against a real lesson stuck exactly this way after a move-control bug
+    reset its date to a Sunday: "i moved two math lessons from backlog to
+    their own dates... and they have disappeared." Every story kind goes
+    through the same _place_scheduled helper, so this is checked across
+    more than just lessons -- the fix has to hold board-wide, not just
+    for the one kind that happened to surface it.
+    """
+    monday = week_start()
+    saturday = monday + timedelta(days=5)
+    sunday = monday + timedelta(days=6)
+    sid = board_student["id"]
+
+    lesson_id = board_db.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t", title="Stuck Lesson",
+        payload={"activities": []},
+        metadata={"planned_for": sunday.isoformat(), "week_start": monday.isoformat()},
+    )
+    skills = board_db.list_life_skills(sid)
+    skill_id = skills[0]["id"]
+    board_db.schedule_life_skill(skill_id, saturday.isoformat())
+
+    board = board_for_week(board_db, board_student, monday)
+
+    backlog_ids = {(kind, item["id"]) for kind, item in board["backlog"]}
+    assert ("lesson", lesson_id) in backlog_ids
+    assert ("life_skill", skill_id) in backlog_ids
+    # And not double-placed anywhere else on the board.
+    all_placed = [pair for day, items in board.items() for pair in items if day != "backlog"]
+    assert ("lesson", lesson_id) not in {(k, i["id"]) for k, i in all_placed}
+    assert ("life_skill", skill_id) not in {(k, i["id"]) for k, i in all_placed}
+
+
 def test_board_excludes_a_completed_story_from_backlog(board_db, board_student):
     monday = week_start()
     sid = board_student["id"]

@@ -674,10 +674,10 @@ def test_the_move_control_can_backlog_an_assigned_trip(monkeypatch, tmp_path):
 
     at = _open_travels(monkeypatch, db_path, as_parent=True)
     tab = _journal_tab(at)
-    backlog_key = f"move_travel_{entry_id}_backlog_True"
-    checkbox = [c for c in tab.checkbox if c.key == backlog_key]
-    assert checkbox, "the move control must be offered on an assigned, not-yet-written trip"
-    checkbox[0].set_value(True).run()
+    backlog_key = f"move_travel_{entry_id}_send_to_backlog"
+    button = [b for b in tab.button if b.key == backlog_key]
+    assert button, "the move control must be offered on an assigned, not-yet-written trip"
+    button[0].click().run()
 
     database = Database(db_path)
     entry = database.list_travel_entries(s["id"])[0]

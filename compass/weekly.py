@@ -394,6 +394,20 @@ def due_lessons(lessons: list[dict[str, Any]], today: str) -> list[dict[str, Any
     return due
 
 
+def _stuck_on_an_untracked_weekday(scheduled_for: str | None) -> bool:
+    """Whether a scheduled date can *never* be found by any week's own
+    `_for_week` query -- every one of those (life_skills_for_week and its
+    four counterparts) filters `scheduled_for BETWEEN week_start AND
+    week_start + 4 days`, i.e. Monday-Friday. A Saturday or Sunday date is
+    permanently outside that range for every week, not just the current
+    one, so a story stuck there needs a different way back onto the
+    board's radar -- see `board_for_week`'s own "every other
+    currently-parked story" pass below."""
+    if not scheduled_for:
+        return False
+    return date.fromisoformat(scheduled_for).weekday() >= 5
+
+
 def board_for_week(
     db: Any, student: dict[str, Any], week_start_date: date, today: date | None = None
 ) -> dict[str, list[tuple[str, dict[str, Any]]]]:
@@ -441,10 +455,22 @@ def board_for_week(
     def _place_scheduled(
         day_iso: str, backlogged: bool, kind: str, item: dict[str, Any]
     ) -> None:
-        if backlogged:
+        # A story's own date can land on a day this board simply doesn't
+        # track -- a weekend, most commonly, since the five day-columns
+        # are Monday-Friday only -- without being "backlogged" by any of
+        # the checks above. That used to fall through both branches here
+        # and vanish outright: not on any day column, not in the Backlog
+        # panel either, invisible on the one page meant to show every
+        # story at once. Reported directly, and confirmed against a real
+        # lesson stuck exactly this way: "i moved two math lessons from
+        # backlog to their own dates... and they have disappeared."
+        # Backlog is the fallback now -- a story with nowhere else to go
+        # is still a story a parent can find and re-place, never one that
+        # just silently isn't anywhere.
+        if backlogged or day_iso not in board:
             board["backlog"].append((kind, item))
             backlogged_ids.setdefault(kind, set()).add(item["id"])
-        elif day_iso in board:
+        else:
             board[day_iso].append((kind, item))
 
     for lesson in latest_per_day(db.lessons_for_week(student_id, week_start_iso)):
@@ -470,6 +496,18 @@ def board_for_week(
     # it originally belonged to. Only closed-out stories are excluded --
     # same "nothing left for a move to do" reasoning every subject's own
     # Backlog section already applies.
+    #
+    # `_stuck_on_an_untracked_weekday` catches a second, harder-to-see way
+    # a story can go permanently invisible: life_skills_for_week and its
+    # four counterparts below all query `scheduled_for BETWEEN week_start
+    # AND week_start + 4 days` (Monday-Friday) -- a story scheduled for a
+    # Saturday or Sunday never falls in *any* week's version of that range,
+    # so it never reaches `_place_scheduled` at all, for any week, ever.
+    # Since it's also still `active` (a parent never sent it to backlog on
+    # purpose), the "every other currently-parked story" checks below used
+    # to miss it too -- those only ever looked for `not active`. A story
+    # stuck this way needs to surface here regardless of its active flag,
+    # or nothing on the whole Board would ever show it again.
     for lesson in db.list_lessons(student_id, limit=200):
         if (
             lesson["status"] == "planned"
@@ -491,26 +529,26 @@ def board_for_week(
     for skill in db.list_life_skills(student_id):
         if (
             not skill["completed_on"]
-            and not skill["active"]
             and skill["scheduled_for"]
             and skill["id"] not in backlogged_ids.get("life_skill", set())
+            and (not skill["active"] or _stuck_on_an_untracked_weekday(skill["scheduled_for"]))
         ):
             board["backlog"].append(("life_skill", skill))
 
     for module in db.list_coding_modules(student_id):
         if (
             not module["completed_on"]
-            and not module["active"]
             and module["scheduled_for"]
             and module["id"] not in backlogged_ids.get("coding_module", set())
+            and (not module["active"] or _stuck_on_an_untracked_weekday(module["scheduled_for"]))
         ):
             board["backlog"].append(("coding_module", module))
 
     for topic in db.list_choice_topics(student_id):
         if (
             topic["status"] not in ("done", "declined")
-            and not topic["active"]
             and topic["id"] not in backlogged_ids.get("choice_topic", set())
+            and (not topic["active"] or _stuck_on_an_untracked_weekday(topic["scheduled_for"]))
         ):
             board["backlog"].append(("choice_topic", topic))
 
@@ -520,16 +558,16 @@ def board_for_week(
         for step in db.list_project_steps(project["id"]):
             if (
                 not step["completed_on"]
-                and not step["active"]
                 and step["id"] not in backlogged_ids.get("project_step", set())
+                and (not step["active"] or _stuck_on_an_untracked_weekday(step["scheduled_for"]))
             ):
                 board["backlog"].append(("project_step", step))
 
     for trip in db.list_travel_entries(student_id):
         if (
             trip["status"] != "completed"
-            and not trip["active"]
             and trip["id"] not in backlogged_ids.get("travel_entry", set())
+            and (not trip["active"] or _stuck_on_an_untracked_weekday(trip["scheduled_for"]))
         ):
             board["backlog"].append(("travel_entry", trip))
 

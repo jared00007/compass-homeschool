@@ -207,10 +207,10 @@ def test_the_move_control_can_send_a_planned_lesson_to_backlog(monkeypatch, tmp_
     db.close()
 
     at, plan_tab = _open_plan_tab(monkeypatch, db_path)
-    backlog_key = f"move_weekplan_lesson_{lesson_id}_backlog_True"
-    checkbox = [c for c in plan_tab.checkbox if c.key == backlog_key]
-    assert checkbox, "the move control's backlog toggle must be offered on a planned lesson"
-    checkbox[0].set_value(True).run()
+    backlog_key = f"move_weekplan_lesson_{lesson_id}_send_to_backlog"
+    button = [b for b in plan_tab.button if b.key == backlog_key]
+    assert button, "the move control's Send to backlog button must be offered on a planned lesson"
+    button[0].click().run()
 
     db = Database(db_path)
     lesson = db.get_lesson(lesson_id)
@@ -286,8 +286,8 @@ def test_a_planned_lesson_shows_on_the_board_with_a_move_control(monkeypatch, tm
     _, board_tab = _open_board_tab(monkeypatch, db_path)
     labels = [e.label for e in board_tab.expander]
     assert any("Locking In the Coordinate Plane" in label for label in labels)
-    backlog_key = f"move_board_lesson_{lesson_id}_backlog_True"
-    assert any(c.key == backlog_key for c in board_tab.checkbox)
+    backlog_key = f"move_board_lesson_{lesson_id}_send_to_backlog"
+    assert any(b.key == backlog_key for b in board_tab.button)
     # "Deeper review" link: a lesson's real full-content view lives in
     # Activity Log's own review queue, not the Math/Science/English/History
     # pages -- those are planning tools with nothing to show for a lesson
@@ -355,8 +355,8 @@ def test_a_life_skill_shows_on_the_board_with_a_move_control(monkeypatch, tmp_pa
     _, board_tab = _open_board_tab(monkeypatch, db_path)
     labels = [e.label for e in board_tab.expander]
     assert any(skill["title"] in label for label in labels)
-    backlog_key = f"move_board_ls_{skill['id']}_backlog_True"
-    assert any(c.key == backlog_key for c in board_tab.checkbox)
+    backlog_key = f"move_board_ls_{skill['id']}_send_to_backlog"
+    assert any(b.key == backlog_key for b in board_tab.button)
     captions = " ".join(c.value for c in board_tab.caption)
     assert 'Under the "Checklist" tab.' in captions
 
@@ -392,9 +392,8 @@ def test_moving_a_life_skill_from_the_board_reschedules_it(monkeypatch, tmp_path
     db.close()
 
     _, board_tab = _open_board_tab(monkeypatch, db_path)
-    backlog_key = f"move_board_ls_{skill['id']}_backlog_True"
-    checkbox = [c for c in board_tab.checkbox if c.key == backlog_key][0]
-    checkbox.set_value(True).run()
+    send_key = f"move_board_ls_{skill['id']}_send_to_backlog"
+    board_tab.button(key=send_key).click().run()
 
     db = Database(db_path)
     reloaded = next(s for s in db.list_life_skills(student["id"]) if s["id"] == skill["id"])
@@ -406,13 +405,12 @@ def test_reactivating_a_lesson_from_the_board_does_not_clobber_its_picked_day(
     monkeypatch, tmp_path
 ):
     """The actual bug behind "i moved two math lessons from backlog to
-    their own dates, 9/2 and 9/3, and they have disappeared": the move
-    control's "Send to backlog" checkbox used to reactivate a lesson by
-    calling reschedule_lesson(lid, date.today()) -- clobbering whatever
-    day a parent had already picked for it back to today, whenever the
-    checkbox got toggled after the fact. Exercised end to end here: pick
-    a real day, send it back to the backlog, then take it back out --
-    the day picked in step one must survive all of it.
+    their own dates, 9/2 and 9/3, and they have disappeared": reactivating
+    a backlogged lesson used to call reschedule_lesson(lid, date.today())
+    -- clobbering whatever day a parent had already picked for it back to
+    today. Exercised end to end here: pick a real day, send it back to
+    the backlog, then take it back out via the "Take out of Backlog"
+    button -- the day picked in step one must survive all of it.
     """
     db_path = tmp_path / "week.db"
     db = Database(db_path)
@@ -437,19 +435,15 @@ def test_reactivating_a_lesson_from_the_board_does_not_clobber_its_picked_day(
     date_widget.set_value(picked_day).run()
     assert not at.exception, [e.message for e in at.exception]
 
-    # Send it back to the backlog, then take it out again -- the exact
-    # two-step sequence the "Send to backlog" checkbox's un-check path
-    # used to get wrong.
+    # Send it back to the backlog, then take it out again with the
+    # dedicated button -- the exact two-step sequence the old bidirectional
+    # checkbox's un-check path used to get wrong.
     board_tab = _board_tab(at)
-    backlog_on_key = f"move_board_lesson_{lesson_id}_backlog_True"
-    backlog_on = [c for c in board_tab.checkbox if c.key == backlog_on_key][0]
-    backlog_on.set_value(True).run()
+    board_tab.button(key=f"move_board_lesson_{lesson_id}_send_to_backlog").click().run()
     assert not at.exception, [e.message for e in at.exception]
 
     board_tab = _board_tab(at)
-    backlog_off_key = f"move_board_lesson_{lesson_id}_backlog_False"
-    backlog_off = [c for c in board_tab.checkbox if c.key == backlog_off_key][0]
-    backlog_off.set_value(False).run()
+    board_tab.button(key=f"move_board_lesson_{lesson_id}_take_out_of_backlog").click().run()
     assert not at.exception, [e.message for e in at.exception]
 
     db = Database(db_path)

@@ -3254,13 +3254,22 @@ class Database:
 
     def schedule_travel_entry(self, entry_id: int, scheduled_for: str | None) -> None:
         """Assigns (or clears, with `None`) the day a parent wants this
-        trip written up by. Same reasoning as `schedule_life_skill` for
-        the rest: doesn't touch `active`, so backlogging and rescheduling
-        stay two separately-timed moves through the shared move control."""
-        self.conn.execute(
-            "UPDATE travel_entries SET scheduled_for = ? WHERE id = ?",
-            (scheduled_for, entry_id),
-        )
+        trip written up by. Assigning a date also unlocks it (`active =
+        1`) -- same reasoning as `schedule_life_skill`/`schedule_project_step`:
+        picking a real day through the move control is itself how a
+        backlogged story comes back out, one action instead of two.
+        Clearing the date (`None`) deliberately does *not* re-lock it,
+        same as those two."""
+        if scheduled_for:
+            self.conn.execute(
+                "UPDATE travel_entries SET scheduled_for = ?, active = 1 WHERE id = ?",
+                (scheduled_for, entry_id),
+            )
+        else:
+            self.conn.execute(
+                "UPDATE travel_entries SET scheduled_for = ? WHERE id = ?",
+                (scheduled_for, entry_id),
+            )
         self.conn.commit()
 
     def set_travel_entry_active(self, entry_id: int, active: bool) -> None:
