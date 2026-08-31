@@ -17,7 +17,7 @@ comes from.
 from __future__ import annotations
 
 import html
-from datetime import date
+from datetime import date, timedelta
 from functools import partial
 
 import streamlit as st
@@ -346,6 +346,7 @@ def _render_entry(entry: dict) -> None:
                     scheduled_for=entry["scheduled_for"],
                     set_active=lambda a, eid=entry["id"]: db.set_travel_entry_active(eid, a),
                     schedule=lambda s, eid=entry["id"]: db.schedule_travel_entry(eid, s),
+                    show_backlog_toggle=False,
                 )
         if button_columns[3].button("Suggest lesson", key=f"suggest_entry_{entry['id']}"):
             rationale = (
@@ -616,6 +617,27 @@ with journal_tab:
                     student["id"], int(open_pick_count), open_pick_due.isoformat()
                 )
                 st.rerun()
+
+        st.caption(
+            "Or keep the portfolio growing without deciding anything yourself -- "
+            "picks a real state (sometimes paired with one of its National Parks) "
+            "he hasn't logged a trip for yet, due in a week."
+        )
+        if st.button("🎲 Assign a random trip", key="assign_random_travel_prompt"):
+            state, park = parks.random_unvisited_prompt(visited_states, visited_park_keys)
+            due = date.today() + timedelta(days=7)
+            title = park.name if park else f"A trip to {state}"
+            new_id = db.add_travel_entry(
+                student["id"],
+                state,
+                due.isoformat(),
+                title=title,
+                park_key=park.key if park else None,
+                status="planned",
+            )
+            db.schedule_travel_entry(new_id, due.isoformat())
+            st.success(f"Assigned: {title} -- due {due.isoformat()}.")
+            st.rerun()
 
     with st.form("add_travel_entry", clear_on_submit=True):
         top_columns = st.columns([2, 1])

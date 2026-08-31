@@ -2256,10 +2256,47 @@ dialog and the move control (send to backlog / take out of backlog /
 assign to a specific day) work identically here as they do on the Board,
 since they're the same `render_board_card` call underneath.
 
+## "Send to backlog" drops out of Big Project steps and Travel entries
+
+Reported directly against a screenshot of the exact popover: "this action
+shouldnt be send to backlog, i should be able to push this to any date this
+week or next week. just assign to date." A project step's own move control
+is sequential and up-next-driven, not a flexible weekly board -- parking an
+active step mid-plan never had a real use, and the button read as the only
+offered action when picking a new day (which already reschedules the
+moment it's picked, no confirm click needed) was the actual point.
+
+`render_story_move_control`'s existing `show_backlog_toggle` parameter
+already covered this per caller -- `pages/7_Big_Projects.py`'s active-step
+call sites (the choice-mode "choose this" step and the linear mode's
+visible/up-next steps) now pass `show_backlog_toggle=False`, and
+`pages/9_Landons_Travels.py`'s own entry move control does too ("same
+thing with travel log," reported directly, right after). Both pages' own
+already-backlogged sections (Big Projects' `Backlog` list) keep the
+default -- "Take out of Backlog" still makes sense there. The Board tab's
+own project_step/travel_entry cards are untouched, so backlogging either
+kind from the sprint board still works exactly as before.
+
+## Assigning a random trip keeps the Travel Journal portfolio growing
+
+A follow-up in the same breath: "i need the ability to send off writing
+assignment at random to keep that project going. end goal is a portfolio
+of travel entries with landon notes/summary." Unlike the existing "Assign
+him to pick & write up" (a blank stub -- he picks the state himself), the
+new **🎲 Assign a random trip** button on the journal tab decides the
+destination itself: `national_parks.random_unvisited_prompt` picks a real
+state (sometimes paired with one of its National Parks) he hasn't logged a
+trip for yet, falling back to any state at all once everything's visited
+so the button never comes up empty. The new entry gets a real title (the
+park's name, or "A trip to <state>") and a due date one week out, so it
+renders exactly like a parent-assigned specific trip -- "📝 Not written
+yet," ready for him to write the story -- rather than another open pick he
+has to name himself first.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1126 tests, ~105s, no API key needed
+python -m pytest tests/ -q      # 1131 tests, ~110s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

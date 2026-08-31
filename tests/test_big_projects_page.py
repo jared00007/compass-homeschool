@@ -11,6 +11,7 @@ doesn't touch the network at all.
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -145,7 +146,20 @@ def test_backlog_section_never_renders_for_the_student(monkeypatch, tmp_path):
     assert not any("Backlog" in m for m in markdowns)
 
 
-def test_send_to_backlog_moves_a_step_out_of_to_do(monkeypatch, tmp_path):
+def test_send_to_backlog_is_not_offered_on_an_active_step_only_date_assignment_is(
+    monkeypatch, tmp_path
+):
+    """Reported directly against a live screenshot of this exact popover:
+    "this action shouldnt be send to backlog, i should be able to push
+    this to any date this week or next week. just assign to date." A
+    project step is a sequential, up-next-driven plan, not a flexible
+    weekly board -- parking an active step doesn't make sense mid-plan,
+    and the "Send to backlog" button read as the only offered action when
+    what a parent actually wants is just to move it to a different day.
+    `show_backlog_toggle=False` on this call site drops the button
+    entirely; assigning a day is still the one and only action, and it
+    still works exactly as before (the date_input's own on-change already
+    reschedules with no separate confirm step)."""
     db_path = tmp_path / "projects.db"
     db = Database(db_path)
     student = db.ensure_default_student()
@@ -158,13 +172,29 @@ def test_send_to_backlog_moves_a_step_out_of_to_do(monkeypatch, tmp_path):
     labels = [e.label for e in at.expander]
     assert any("Write the script" in l and "up next" in l for l in labels)
 
-    at.button(key=f"move_step_{step_id}_send_to_backlog").click().run()
+    keys = {b.key for b in at.button if b.key}
+    assert not any(k.startswith(f"move_step_{step_id}_send_to_backlog") for k in keys)
 
-    markdowns = [m.value for m in at.markdown]
-    assert any("Backlog" in m for m in markdowns)
-    labels = [e.label for e in at.expander]
-    assert not any("up next" in l for l in labels)
-    assert any("Write the script" in l for l in labels)  # still visible, in Backlog now
+    checkbox = [c for c in at.checkbox if c.key == f"move_step_{step_id}_assign_None"]
+    assert checkbox, "the date checkbox must still be offered on an active step"
+    checkbox[0].set_value(True).run()
+    assert not at.exception, [e.message for e in at.exception]
+    # Checking the box on its own already assigns today's date (the same
+    # behavior every other move control has) -- the date_input's own key
+    # folds in whatever's now current, so it moves too.
+
+    date_widget = [
+        d for d in at.date_input if d.key and d.key.startswith(f"move_step_{step_id}_date_")
+    ][0]
+    target_day = date.today() + timedelta(days=9)  # some day next week
+    date_widget.set_value(target_day).run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db = Database(db_path)
+    step = next(s for s in db.list_project_steps(project_id) if s["id"] == step_id)
+    db.close()
+    assert step["scheduled_for"] == target_day.isoformat()
+    assert step["active"] == 1  # still active, still up next -- just moved
 
 
 def test_move_to_to_do_promotes_a_backlogged_step(monkeypatch, tmp_path):

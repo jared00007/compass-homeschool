@@ -7,6 +7,8 @@ bounding box.
 
 from __future__ import annotations
 
+import random
+
 from compass import national_parks as parks
 
 
@@ -139,3 +141,65 @@ def test_cluster_and_place_leaves_isolated_points_untouched():
     placed, leaders = parks._cluster_and_place(far_apart, min_dist=15, spread_radius=20)
     assert leaders == []
     assert {(x, y) for _, x, y in placed} == {(10.0, 10.0), (500.0, 300.0)}
+
+
+# --- random_unvisited_prompt: the Travel Journal's "keep the portfolio
+# growing" quick-assign button, reported directly -- "i need the ability to
+# send off writing assignment at random to keep that project going" -------
+
+
+def test_random_unvisited_prompt_never_offers_an_already_visited_state_alone():
+    """A plain-state pick (park is None) must never be one Landon's already
+    logged -- otherwise the button could "assign" a trip he's already
+    written about."""
+    visited = set(parks.STATES) - {"Wyoming"}
+    for _ in range(50):
+        state, park = parks.random_unvisited_prompt(visited, set())
+        if park is None:
+            assert state == "Wyoming"
+
+
+def test_random_unvisited_prompt_never_offers_an_already_visited_park():
+    visited_park_keys = {p.key for p in parks.PARKS} - {"zion"}
+    for _ in range(50):
+        _, park = parks.random_unvisited_prompt(set(), visited_park_keys)
+        if park is not None:
+            assert park.key == "zion"
+
+
+def test_random_unvisited_prompt_falls_back_once_everything_is_visited():
+    """Every state and every park already logged -- the button must still
+    hand back *something* rather than erroring or returning nothing."""
+    state, park = parks.random_unvisited_prompt(
+        set(parks.STATES), {p.key for p in parks.PARKS}
+    )
+    assert state in parks.STATES
+    assert park is None
+
+
+def test_random_unvisited_prompt_is_deterministic_with_a_seeded_rng():
+    rng_a = random.Random(42)
+    rng_b = random.Random(42)
+    assert parks.random_unvisited_prompt(set(), set(), rng=rng_a) == (
+        parks.random_unvisited_prompt(set(), set(), rng=rng_b)
+    )
+
+
+def test_random_unvisited_prompt_a_parks_state_is_one_of_its_own_states():
+    """A park's assigned state must actually be one of the states listed in
+    its own `states` field (e.g. Yellowstone -> WY, not some unrelated
+    state) -- unless the park's field lists only a territory STATE_ABBR
+    doesn't cover (e.g. American Samoa), where STATES[0] is the documented
+    fallback (see test_state_abbr_covers_every_state_a_park_lists above)."""
+    rng = random.Random(7)
+    seen_park = False
+    for _ in range(200):
+        state, park = parks.random_unvisited_prompt(set(), set(), rng=rng)
+        if park is not None:
+            seen_park = True
+            abbrs = park.states.split("/")
+            real_states = {
+                parks.STATE_ABBR[a] for a in abbrs if a in parks.STATE_ABBR
+            }
+            assert state in real_states if real_states else state == parks.STATES[0]
+    assert seen_park, "50 states and 63 parks -- a park pick should turn up in 200 tries"

@@ -112,6 +112,7 @@ def _render_choice_step(step: dict, index: int) -> None:
                         scheduled_for=step["scheduled_for"],
                         set_active=lambda a, sid=step["id"]: db.set_project_step_active(sid, a),
                         schedule=lambda s, sid=step["id"]: db.schedule_project_step(sid, s),
+                        show_backlog_toggle=False,
                     )
 
 
@@ -433,6 +434,7 @@ with checklist_tab:
                                         scheduled_for=step["scheduled_for"],
                                         set_active=lambda a, sid=step["id"]: db.set_project_step_active(sid, a),
                                         schedule=lambda s, sid=step["id"]: db.schedule_project_step(sid, s),
+                                        show_backlog_toggle=False,
                                     )
 
                 if is_parent() and backlog_steps:

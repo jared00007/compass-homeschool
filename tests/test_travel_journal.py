@@ -14,6 +14,7 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 from compass import auth, config
+from compass import national_parks as parks
 from compass.storage.db import Database
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -598,6 +599,69 @@ def test_a_too_short_open_pick_story_does_not_submit(monkeypatch, tmp_path):
     assert any("needs at least" in w.value for w in at.warning)
 
 
+# --- Assigning a random trip -- "keep the portfolio growing" without --------
+# picking anything yourself, reported directly: "i need the ability to send
+# off writing assignment at random to keep that project going. end goal is a
+# portfolio of travel entries with landon notes/summary."
+
+
+def test_assigning_a_random_trip_creates_a_titled_planned_stub_due_in_a_week(
+    monkeypatch, tmp_path
+):
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=True)
+    tab = _journal_tab(at)
+    random_button = [b for b in tab.button if b.key == "assign_random_travel_prompt"][0]
+    random_button.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    entries = database.list_travel_entries(s["id"])
+    database.close()
+    assert len(entries) == 1
+    entry = entries[0]
+    # Unlike an open pick, a random assignment already knows the state (and
+    # maybe a park) -- title and state are never blank, so it renders as a
+    # normal graded entry with "Not written yet," not another open pick he
+    # has to name himself first.
+    assert entry["state"] != ""
+    assert entry["title"] != ""
+    assert entry["status"] == "planned"
+    assert entry["scheduled_for"] == (date.today() + timedelta(days=7)).isoformat()
+    assert entry["active"] == 1
+
+
+def test_a_randomly_assigned_trip_never_repeats_an_already_visited_state(monkeypatch, tmp_path):
+    """The whole point -- it has to keep the portfolio *growing*, so it
+    must never hand back a state (with no park) Landon's already logged a
+    trip for."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    for state in parks.STATES:
+        if state != "Wyoming":
+            database.add_travel_entry(s["id"], state, "2025-06-01", title=f"{state} trip", story="x")
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=True)
+    tab = _journal_tab(at)
+    random_button = [b for b in tab.button if b.key == "assign_random_travel_prompt"][0]
+    random_button.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    newest = max(database.list_travel_entries(s["id"]), key=lambda e: e["id"])
+    database.close()
+    assert newest["state"] == "Wyoming" or newest["park_key"]  # a park pick can sit anywhere
+
+
 def test_a_too_short_story_on_the_add_form_saves_as_a_stub_not_submitted(monkeypatch, tmp_path):
     db_path = tmp_path / "home.db"
     database = Database(db_path)
@@ -658,10 +722,17 @@ def test_a_parent_sending_a_submitted_entry_back_with_a_note(monkeypatch, tmp_pa
 # other story type, not just a one-time day assignment at creation --------
 
 
-def test_the_move_control_can_backlog_an_assigned_trip(monkeypatch, tmp_path):
-    """The actual gap this closes: previously a trip could only be assigned
-    a day once, at creation -- there was no way to park it in Backlog or
-    move it to a different day afterward, unlike every other story type."""
+def test_the_move_control_can_reschedule_an_assigned_trip_to_a_different_day(
+    monkeypatch, tmp_path
+):
+    """The actual gap this originally closed: previously a trip could only
+    be assigned a day once, at creation -- there was no way to move it to a
+    different day afterward, unlike every other story type. "Send to
+    backlog" is no longer part of this control (same follow-up as Big
+    Project steps -- "same thing with travel log," reported directly,
+    against the same popover): the only action offered is picking a new
+    day, since parking a trip mid-project doesn't need its own button when
+    reassigning the day already does the job."""
     db_path = tmp_path / "home.db"
     database = Database(db_path)
     s = database.ensure_default_student()
@@ -669,20 +740,27 @@ def test_the_move_control_can_backlog_an_assigned_trip(monkeypatch, tmp_path):
     entry_id = database.add_travel_entry(
         s["id"], "Wyoming", date.today().isoformat(), title="Yellowstone", status="planned"
     )
-    database.schedule_travel_entry(entry_id, date.today().isoformat())
+    original_day = date.today()
+    database.schedule_travel_entry(entry_id, original_day.isoformat())
     database.close()
 
     at = _open_travels(monkeypatch, db_path, as_parent=True)
     tab = _journal_tab(at)
     backlog_key = f"move_travel_{entry_id}_send_to_backlog"
-    button = [b for b in tab.button if b.key == backlog_key]
-    assert button, "the move control must be offered on an assigned, not-yet-written trip"
-    button[0].click().run()
+    assert not any(b.key == backlog_key for b in tab.button)
+
+    date_key = f"move_travel_{entry_id}_date_{original_day.isoformat()}"
+    date_widget = [d for d in tab.date_input if d.key == date_key]
+    assert date_widget, "the move control's date picker must still be offered"
+    target_day = original_day + timedelta(days=9)  # some day next week
+    date_widget[0].set_value(target_day).run()
+    assert not at.exception, [e.message for e in at.exception]
 
     database = Database(db_path)
     entry = database.list_travel_entries(s["id"])[0]
     database.close()
-    assert entry["active"] == 0
+    assert entry["scheduled_for"] == target_day.isoformat()
+    assert entry["active"] == 1
 
 
 def test_a_backlogged_trip_is_hidden_from_the_student_view(monkeypatch, tmp_path):

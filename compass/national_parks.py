@@ -14,6 +14,7 @@ call.
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 
 
@@ -256,6 +257,36 @@ def state_inset(name: str) -> dict | None:
 
 
 STATES: tuple[str, ...] = tuple(sorted(_STATE_PATHS))
+
+
+def random_unvisited_prompt(
+    visited_states: set[str],
+    visited_park_keys: set[str],
+    *,
+    rng: random.Random | None = None,
+) -> tuple[str, Park | None]:
+    """Picks one random (state, park-or-None) trip Landon hasn't logged yet
+    -- for "keep the portfolio growing" quick-assign buttons that don't
+    need him to have already picked a destination himself. A park's state
+    comes from its own `states` field (its first STATE_ABBR match); a
+    plain-state pick carries no park. Falls back to any state at all if
+    every state and park is already logged, so the button always has
+    something to offer."""
+    picker = rng or random
+    candidates: list[tuple[str, Park | None]] = [
+        (state, None) for state in STATES if state not in visited_states
+    ]
+    for park in PARKS:
+        if park.key in visited_park_keys:
+            continue
+        park_states = [
+            STATE_ABBR[abbr] for abbr in park.states.split("/") if abbr in STATE_ABBR
+        ]
+        state = park_states[0] if park_states else STATES[0]
+        candidates.append((state, park))
+    if not candidates:
+        return picker.choice(STATES), None
+    return picker.choice(candidates)
 
 
 # --- terrain icons -----------------------------------------------------------
