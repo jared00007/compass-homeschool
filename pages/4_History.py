@@ -16,6 +16,7 @@ from compass.ui import (
     page_setup,
     render_past_lessons,
     render_proposal,
+    render_subject_week_tab,
     student_lesson_view,
 )
 
@@ -34,7 +35,10 @@ if not is_parent():
     render_past_lessons(db, student, "history", "history")
     st.stop()
 
-plan_tab, timeline_tab = st.tabs(["Plan a lesson", "Timeline coverage"])
+week_tab, plan_tab, timeline_tab = st.tabs(["This week", "Plan a lesson", "Timeline coverage"])
+
+with week_tab:
+    render_subject_week_tab(db, student, "history")
 
 with plan_tab:
     api_ok = api_status_banner()

@@ -2228,10 +2228,38 @@ sidesteps by never leaving the page at all. The other five kinds' own
 `_BOARD_DEEP_LINK` page_links are untouched -- their destination tabs
 really were already correct.
 
+## Each core subject gets its own "This week" board
+
+Follow-up once the dialog fix above landed: "shouldnt i still be able to
+go to each core curriculum tab like math, english, science, history etc
+and also get the level of detail and view into lessons... kinda like the
+board view of this week and next." Math, Science, English, and History
+each gained a new first tab, **"This week"**, alongside their existing
+"Plan a lesson" and subject-specific tabs.
+
+`render_subject_week_tab(db, student, agent)` in `compass/ui.py` reuses
+`weekly.board_for_week` and `render_board_card` verbatim -- the exact
+same aggregation and card rendering the Board tab uses -- filtered down
+to `kind == "lesson"` and that one agent. This was a deliberate choice
+over building a second lesson-rendering path: any future fix to the
+Board's own behavior (the weekend-stuck-story fix, the dialog fix, the
+move-control redesign, all above) applies here automatically, with
+nothing to keep in sync by hand.
+
+Each subject page's week view has its own "This week"/"Next week" jump
+buttons and its own date picker, namespaced per agent
+(`subject_week_{agent}_picker`, etc.) so Math's and Science's own pickers
+never collide with each other or with the Board tab's own
+`board_week_picker` -- all sharing one `st.session_state`, since that's
+scoped to the browser session, not the page. The "View full lesson"
+dialog and the move control (send to backlog / take out of backlog /
+assign to a specific day) work identically here as they do on the Board,
+since they're the same `render_board_card` call underneath.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1115 tests, ~100s, no API key needed
+python -m pytest tests/ -q      # 1126 tests, ~105s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

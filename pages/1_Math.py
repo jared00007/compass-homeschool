@@ -22,6 +22,7 @@ from compass.ui import (
     page_setup,
     render_past_lessons,
     render_proposal,
+    render_subject_week_tab,
     student_lesson_view,
 )
 
@@ -46,7 +47,14 @@ if not is_parent():
     render_past_lessons(db, student, "math", "math")
     st.stop()
 
-plan_tab, mastery_tab, graph_tab = st.tabs(["Plan a lesson", "Record mastery", "The graph"])
+week_tab, plan_tab, mastery_tab, graph_tab = st.tabs(
+    ["This week", "Plan a lesson", "Record mastery", "The graph"]
+)
+
+# --- this week's (and next's) own board, scoped to Math ------------------------
+
+with week_tab:
+    render_subject_week_tab(db, student, "math")
 
 # --- plan --------------------------------------------------------------------
 

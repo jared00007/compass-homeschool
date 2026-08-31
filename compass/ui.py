@@ -2937,6 +2937,128 @@ def render_board_card(
                 _render_board_deep_link(kind)
 
 
+# --- per-subject week view: the same day board, scoped to one agent ------------
+
+# Same min-width-plus-scroll fix This Week's own Board tab uses (see
+# pages/14_This_Week.py's own _BOARD_SCROLL_CSS and the README section on
+# why: st.columns has no minimum width, so five equal fractions of even a
+# full-width row squeeze a long title narrower than one of its own words
+# has room for on a real laptop screen). Kept as its own copy rather than
+# imported from that page -- a page can't import from another page in
+# this app's layout -- scoped to this function's own container keys.
+_SUBJECT_WEEK_SCROLL_CSS = """
+<style>
+div[class*="st-key-subject_week_days_row"] div[data-testid="stHorizontalBlock"],
+div[class*="st-key-subject_week_backlog_row"] div[data-testid="stHorizontalBlock"] {
+  overflow-x: auto !important;
+  flex-wrap: nowrap !important;
+  padding-bottom: 6px;
+}
+div[class*="st-key-subject_week_days_row"] div[data-testid="stColumn"],
+div[class*="st-key-subject_week_backlog_row"] div[data-testid="stColumn"] {
+  min-width: 220px !important;
+  flex: 0 0 220px !important;
+}
+</style>
+"""
+
+
+def render_subject_week_tab(db: Database, student: dict[str, Any], agent: str) -> None:
+    """The same This/Next week day board This Week's own Board tab already
+    gives, scoped to just this one subject's own lessons -- so a parent
+    checking in on Math, say, can see, move, or open a lesson in full
+    detail without a separate trip to This Week. Reported directly: "shouldn't
+    I still be able to go to each core curriculum tab... and also get the
+    level of detail and view into lessons, kinda like the board view of
+    this week and next."
+
+    Reuses `weekly.board_for_week` and `render_board_card` verbatim -- both
+    are already kind- and agent-agnostic -- so this is purely a filtered
+    view over the exact same data This Week's Board tab reads, never a
+    second query or a second card renderer to keep in sync. Session-state
+    keys are namespaced per agent (`f"subject_week_{agent}_..."`), so
+    Math's own "week to view" and Science's don't collide with each other
+    or with This Week's own `board_week_picker`, even though session_state
+    is shared across every page in one browser session.
+    """
+    key_prefix = f"subject_week_{agent}"
+    picker_key = f"{key_prefix}_picker"
+    if picker_key not in st.session_state:
+        st.session_state[picker_key] = date.today()
+
+    jump_columns = st.columns([1, 1, 5])
+    if jump_columns[0].button("This week", key=f"{key_prefix}_jump_this"):
+        st.session_state[picker_key] = date.today()
+        st.rerun()
+    if jump_columns[1].button("Next week", key=f"{key_prefix}_jump_next"):
+        st.session_state[picker_key] = weekly.default_plan_target()
+        st.rerun()
+
+    week_start = weekly.week_start(st.date_input("Week to view", key=picker_key))
+    days = weekly.week_dates(week_start, include_friday=True)
+    st.caption(f"{days[0].strftime('%b %-d')} – {days[-1].strftime('%b %-d, %Y')}")
+
+    # Any cross-week move made from here needs the same explanation This
+    # Week's own Board tab gives -- otherwise a story moved from this page
+    # would just vanish from view with nothing to say where it went (see
+    # _board_schedule's own docstring).
+    render_board_move_notice()
+
+    board = weekly.board_for_week(db, student, week_start)
+    today_iso = date.today().isoformat()
+    all_lessons = db.list_lessons(student["id"], limit=200)
+
+    st.markdown(_SUBJECT_WEEK_SCROLL_CSS, unsafe_allow_html=True)
+    with st.container(key=f"subject_week_days_row_{agent}"):
+        columns = st.columns(5)
+        for index, (column, day) in enumerate(zip(columns, days)):
+            color = theming.PRINTED_COMIC_WEEKDAY_COLORS[index]
+            with column:
+                today_tag = " · Today" if day == date.today() else ""
+                st.markdown(
+                    f'<span style="display:inline-block; padding:2px 10px 3px; '
+                    f'border-radius:3px; background:{color}; '
+                    f'color:{theming.PRINTED_COMIC_PAPER}; font-weight:900; font-size:15px; '
+                    f'text-transform:uppercase; letter-spacing:-.01em; '
+                    f'text-shadow:1.5px 1.5px 0 rgba(0,0,0,.35);">'
+                    f"{day.strftime('%a')}</span>",
+                    unsafe_allow_html=True,
+                )
+                st.caption(day.strftime("%b %-d") + today_tag)
+                day_items = [
+                    (kind, item)
+                    for kind, item in board[day.isoformat()]
+                    if kind == "lesson" and item["agent"] == agent
+                ]
+                if not day_items:
+                    st.caption("Nothing here.")
+                for kind, item in day_items:
+                    render_board_card(
+                        db, kind, item,
+                        today_iso=today_iso,
+                        board_week_start=week_start,
+                        all_lessons_for_collision=all_lessons,
+                        accent_color=color,
+                    )
+
+    backlog_items = [
+        (kind, item) for kind, item in board["backlog"] if kind == "lesson" and item["agent"] == agent
+    ]
+    if backlog_items:
+        st.divider()
+        st.markdown(f"**📋 Backlog** ({len(backlog_items)})")
+        with st.container(key=f"subject_week_backlog_row_{agent}"):
+            backlog_columns = st.columns(min(len(backlog_items), 4))
+            for position, (kind, item) in enumerate(backlog_items):
+                with backlog_columns[position % len(backlog_columns)]:
+                    render_board_card(
+                        db, kind, item,
+                        today_iso=today_iso,
+                        board_week_start=week_start,
+                        all_lessons_for_collision=all_lessons,
+                    )
+
+
 # --- life skill cards: the catalog grid and its manager -------------------------
 
 LIFE_SKILL_CATEGORY_ICONS = {
