@@ -2405,7 +2405,7 @@ class Database:
 
     def lessons_for_week(self, student_id: int, week_start: str) -> list[dict[str, Any]]:
         """Every lesson planned for one Monday-anchored week, earliest planned
-        day first -- the raw material for both halves of `pages/14_This_Week.py`.
+        day first -- the raw material for both halves of `pages/14_Mission_Control.py`.
 
         Matched on `metadata.week_start`, not `created_at`: a lesson planned
         on Friday for the following Tuesday still belongs to *that* week's

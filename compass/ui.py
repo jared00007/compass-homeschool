@@ -163,7 +163,7 @@ _PARENT_ONLY_PAGES = (
     "Compliance",
     "Student_Profile",
     "Courses",
-    "This_Week",
+    "Mission_Control",
     "Model_Costs",
 )
 
@@ -2763,16 +2763,19 @@ def _render_board_deep_link(kind: str, item: dict[str, Any] | None = None) -> No
             # for_parent is left unset so render_lesson falls back to
             # is_parent() -- on Landon's own board the assessment and answer
             # key stay hidden, exactly as they do in his normal lesson view.
-            # The PDF carries the whole lesson (answer key included), so it's a
-            # parent-only download, never offered from his side.
-            if is_parent():
-                st.download_button(
-                    "🖨️ Print to PDF",
-                    data=partial(lesson_to_pdf, item["payload"]),
-                    file_name=suggested_pdf_filename(item["payload"]),
-                    mime="application/pdf",
-                    key=f"board_pdf_{item['id']}",
-                )
+            # The PDF matches: parent=is_parent() gives the parent the whole
+            # lesson (answer key included) and Landon a clean copy of just the
+            # lesson itself (no answer key, no assessment, no parent notes), so
+            # he can print his own board lesson without it carrying anything he
+            # isn't meant to see.
+            parent = is_parent()
+            st.download_button(
+                "🖨️ Print to PDF",
+                data=partial(lesson_to_pdf, item["payload"], parent=parent),
+                file_name=suggested_pdf_filename(item["payload"]),
+                mime="application/pdf",
+                key=f"board_pdf_{item['id']}",
+            )
             render_lesson(item["payload"], lesson_id=item["id"])
 
         if st.button("🔍 View full lesson", key=f"board_view_lesson_{item['id']}"):
@@ -2782,6 +2785,96 @@ def _render_board_deep_link(kind: str, item: dict[str, Any] | None = None) -> No
     page, label, tab_hint = _BOARD_DEEP_LINK[kind]
     st.page_link(page, label=label, icon="🔍")
     st.caption(f'Under the "{tab_hint}" tab.')
+
+
+def _render_board_detail(
+    description: str | None = None,
+    materials: str | None = None,
+    *,
+    pace: str | None = None,
+    note: str | None = None,
+) -> None:
+    """The actual content of a non-lesson board card -- what the step/skill/
+    trip *is* -- rendered inside the expander regardless of `interactive`.
+
+    Without this, a life-skill or coding card showed only its category and a
+    project-step or travel card showed nothing at all: on Landon's read-only
+    board (interactive=False) every parent-only affordance is stripped, so
+    those cards opened to an empty body. Reported directly against his board:
+    "life skill and big project arent loading in the board correctly with the
+    lesson or steps." The description is the lesson/step itself and belongs on
+    both boards; the move control and deep link stay parent-only above this."""
+    if description:
+        st.write(md(description))
+    if materials:
+        st.caption(f"🧰 You'll need: {md(materials)}")
+    if pace:
+        st.caption(f"⏳ {pace}")
+    if note:
+        st.caption(note)
+
+
+def _project_step_pace(item: dict[str, Any]) -> str | None:
+    """A step's loose day range as a pace phrase -- "a few days to a week is
+    the idea", never a deadline (same framing pages/7_Big_Projects.py's own
+    step rows use). None when the step carries no range to show."""
+    lo, hi = item.get("min_days"), item.get("max_days")
+    if not lo and not hi:
+        return None
+    if lo == hi:
+        return f"about {lo} day" if lo == 1 else f"about {lo} days"
+    return f"about {lo}-{hi} days"
+
+
+_TRAVEL_BOARD_PROMPTS = {
+    "planned": "✍️ Time to write this trip up.",
+    "needs_revision": "↩️ Sent back — give it another pass.",
+    "submitted": "📤 Written up — waiting on a parent to read it.",
+    "completed": "✅ Written up and in the journal.",
+}
+
+
+def board_item_minutes(kind: str, item: dict[str, Any]) -> int:
+    """A rough minutes estimate for one board story, so the weekly board can
+    show a per-card time and sum a per-day total -- the "is this day too heavy
+    or too light" gauge a parent asked for. A lesson carries a real estimate
+    (its own `estimated_minutes`, else the sum of its activities' minutes, else
+    its credited minutes); a travel entry uses the journal's writing +
+    social-studies credit; every other kind has no stored duration, so it falls
+    back to a round, tunable per-kind block (config.BOARD_BLOCK_MINUTES). These
+    are estimates for balancing a week, not a claim of exact time -- callers
+    render them with a "≈"."""
+    if kind == "lesson":
+        payload = item.get("payload") or {}
+        est = payload.get("estimated_minutes")
+        if est:
+            return int(est)
+        activity_total = sum(int(a.get("minutes") or 0) for a in payload.get("activities") or [])
+        if activity_total:
+            return activity_total
+        credit_total = sum(int(c.get("minutes") or 0) for c in payload.get("subject_credits") or [])
+        if credit_total:
+            return credit_total
+        return int(config.DEFAULT_SETTINGS["default_lesson_minutes"])
+    if kind == "travel_entry":
+        return (
+            config.TRAVEL_JOURNAL_WRITING_MINUTES
+            + config.TRAVEL_JOURNAL_SOCIAL_STUDIES_MINUTES
+        )
+    return config.BOARD_BLOCK_MINUTES.get(kind, 30)
+
+
+def format_board_minutes(total: int) -> str:
+    """Whole minutes as a compact "1h 30m" / "45m" / "2h" -- the board's own
+    time labels. 0 or negative reads as "0m" rather than a blank."""
+    if total <= 0:
+        return "0m"
+    hours, minutes = divmod(int(total), 60)
+    if hours and minutes:
+        return f"{hours}h {minutes}m"
+    if hours:
+        return f"{hours}h"
+    return f"{minutes}m"
 
 
 _BOARD_MOVE_NOTICE_KEY = "_board_move_notice"
@@ -2843,7 +2936,7 @@ def render_board_card(
     interactive: bool = True,
 ) -> None:
     """One compact card for the unified weekly board (the "Board" tab on
-    `pages/14_This_Week.py`) -- a title, a one-line status, and the same
+    `pages/14_Mission_Control.py`) -- a title, a one-line status, and the same
     shared move control every other surface already uses, right on the
     card face instead of nested inside an expander several clicks deep.
     This is the whole point of the board: one place to see and rearrange
@@ -2887,11 +2980,17 @@ def render_board_card(
         # the subject (for a lesson) or kind (for everything else) at a glance,
         # collapsed or open, whichever day it sits under. See board_card_tag.
         tag_color, tag_icon, tag_label = board_card_tag(kind, item)
+        # The estimate sits on the right of the always-visible tag bar (so it
+        # reads whether the card is open or collapsed) -- one glance tells you
+        # how heavy this block is, and the day header below sums them.
+        est = format_board_minutes(board_item_minutes(kind, item))
         st.markdown(
             f'<div style="background:{tag_color}; color:#fff; margin:-1px -1px 8px; '
             f'padding:3px 9px 3px; border-radius:2px 2px 0 0; font-size:10.5px; '
-            f'font-weight:800; text-transform:uppercase; letter-spacing:.06em;">'
-            f"{tag_icon} {tag_label}</div>",
+            f'font-weight:800; text-transform:uppercase; letter-spacing:.06em; '
+            f'display:flex; justify-content:space-between; gap:8px;">'
+            f"<span>{tag_icon} {tag_label}</span>"
+            f'<span style="opacity:.9; font-weight:700;">≈{est}</span></div>',
             unsafe_allow_html=True,
         )
         if kind == "lesson":
@@ -2946,6 +3045,7 @@ def render_board_card(
             label = f"{marker} {BOARD_KIND_ICONS['life_skill']} **{md(item['title'])}**"
             with st.expander(label, expanded=False):
                 st.caption(item["category"])
+                _render_board_detail(item.get("description"), item.get("materials"))
                 if interactive:
                     render_story_move_control(
                         key=f"board_ls_{item['id']}",
@@ -2965,6 +3065,7 @@ def render_board_card(
             label = f"{marker} {BOARD_KIND_ICONS['coding_module']} **{md(item['title'])}**"
             with st.expander(label, expanded=False):
                 st.caption(item["category"])
+                _render_board_detail(item.get("description"), item.get("materials"))
                 if interactive:
                     render_story_move_control(
                         key=f"board_coding_{item['id']}",
@@ -2985,6 +3086,7 @@ def render_board_card(
             with st.expander(label, expanded=False):
                 if item["category"]:
                     st.caption(item["category"])
+                _render_board_detail(item.get("description"))
                 if interactive:
                     if item["status"] not in ("done", "declined"):
                         render_story_move_control(
@@ -3006,6 +3108,11 @@ def render_board_card(
             marker = "✅" if done else "⬜"
             label = f"{marker} {BOARD_KIND_ICONS['project_step']} **{md(item['title'])}**"
             with st.expander(label, expanded=False):
+                _render_board_detail(
+                    item.get("description"),
+                    item.get("materials"),
+                    pace=_project_step_pace(item),
+                )
                 if interactive:
                     if not done:
                         render_story_move_control(
@@ -3026,6 +3133,10 @@ def render_board_card(
             title = md(item["title"]) if item["title"] else "Untitled trip"
             label = f"{BOARD_KIND_ICONS['travel_entry']} **{title}** — {item['status']}"
             with st.expander(label, expanded=False):
+                where = item.get("state") or ""
+                if where:
+                    st.caption(f"📍 {md(where)}")
+                _render_board_detail(note=_TRAVEL_BOARD_PROMPTS.get(item["status"]))
                 if interactive:
                     if item["status"] != "completed":
                         render_story_move_control(
@@ -3139,7 +3250,15 @@ def render_board_days(
                     f"{day_date.strftime('%a')}</span>",
                     unsafe_allow_html=True,
                 )
-                st.caption(day_date.strftime("%b %-d") + today_tag)
+                # A day's own total, so a heavy day (or a suspiciously light
+                # one) reads at a glance right under its date -- the sum of
+                # every card's own estimate below it (see board_item_minutes).
+                day_items = board[day_date.isoformat()]
+                day_minutes = sum(board_item_minutes(k, it) for k, it in day_items)
+                total_note = (
+                    f" · ≈{format_board_minutes(day_minutes)}" if day_items else ""
+                )
+                st.caption(day_date.strftime("%b %-d") + today_tag + total_note)
 
         if not ordered_rows:
             st.caption("Nothing planned this week.")
@@ -3163,7 +3282,7 @@ def render_board_days(
 # --- per-subject week view: the same day board, scoped to one agent ------------
 
 # Same min-width-plus-scroll fix This Week's own Board tab uses (see
-# pages/14_This_Week.py's own _BOARD_SCROLL_CSS and the README section on
+# pages/14_Mission_Control.py's own _BOARD_SCROLL_CSS and the README section on
 # why: st.columns has no minimum width, so five equal fractions of even a
 # full-width row squeeze a long title narrower than one of its own words
 # has room for on a real laptop screen). Kept as its own copy rather than

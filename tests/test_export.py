@@ -443,6 +443,45 @@ def test_lesson_to_pdf_strips_emoji_that_have_no_print_glyph():
     assert data[:5] == b"%PDF-"
 
 
+def test_student_pdf_drops_the_answer_key_and_parent_material():
+    """`parent=False` gives Landon a clean printable copy of a lesson --
+    overview, objectives, materials, activities -- with the assessment, quiz
+    answer key, parent notes and subject credit all left out, exactly the
+    sections `render_lesson`'s student view hides. Since reportlab embeds a
+    TTF subset (the text isn't ASCII in the bytes), the observable, stable
+    signal is that dropping four whole sections makes the student cut of the
+    *same* lesson materially smaller than the parent cut."""
+    from compass.export import lesson_to_pdf
+
+    lesson = a_lesson()  # carries assessment, quiz, parent_notes, subject_credits
+    parent_pdf = lesson_to_pdf(lesson, parent=True)
+    student_pdf = lesson_to_pdf(lesson, parent=False)
+    assert parent_pdf[:5] == b"%PDF-"
+    assert student_pdf[:5] == b"%PDF-"
+    assert len(student_pdf) < len(parent_pdf)
+
+
+def test_student_pdf_keeps_the_lesson_itself():
+    """The redaction is surgical: a lesson with *no* parent-only sections at
+    all renders the same either way, proving `parent=False` drops only the
+    gated material, never the lesson content Landon is meant to have."""
+    from compass.export import lesson_to_pdf
+
+    plain = {
+        "title": "Two-Step Equations",
+        "overview": "Undo the addition, then the multiplication.",
+        "learning_objectives": ["Solve for x"],
+        "materials": ["Pencil"],
+        "activities": [{"title": "Practice", "kind": "practice", "minutes": 30,
+                        "instructions": "Solve problems 1-10."}],
+    }
+    parent_pdf = lesson_to_pdf(plain, parent=True)
+    student_pdf = lesson_to_pdf(plain, parent=False)
+    assert student_pdf[:5] == b"%PDF-"
+    # No gated sections to drop, so both cuts are the same size.
+    assert len(student_pdf) == len(parent_pdf)
+
+
 def test_suggested_pdf_filename_slugs_the_title_and_ends_in_pdf():
     from datetime import date
 

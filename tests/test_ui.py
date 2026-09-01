@@ -1636,3 +1636,47 @@ def test_board_card_tag_falls_back_for_an_unknown_identity():
     color, _, label = ui.board_card_tag("lesson", {"agent": "astronomy"})
     assert color == ui.BOARD_TAG_COLORS.get("astronomy", "#8a7a5c")
     assert label == "Astronomy"
+
+
+# --- board_item_minutes / format_board_minutes: the per-card + per-day time gauge ---
+
+
+def test_a_lesson_estimate_prefers_its_own_estimated_minutes():
+    assert ui.board_item_minutes("lesson", {"payload": {"estimated_minutes": 75}}) == 75
+
+
+def test_a_lesson_estimate_sums_activity_minutes_when_no_explicit_estimate():
+    payload = {"activities": [{"minutes": 30}, {"minutes": 20}]}
+    assert ui.board_item_minutes("lesson", {"payload": payload}) == 50
+
+
+def test_a_lesson_estimate_falls_back_to_the_default_day_length():
+    from compass import config
+
+    default = int(config.DEFAULT_SETTINGS["default_lesson_minutes"])
+    assert ui.board_item_minutes("lesson", {"payload": {"title": "t"}}) == default
+
+
+def test_a_travel_entry_estimate_is_its_writing_plus_social_studies_credit():
+    from compass import config
+
+    expected = (
+        config.TRAVEL_JOURNAL_WRITING_MINUTES
+        + config.TRAVEL_JOURNAL_SOCIAL_STUDIES_MINUTES
+    )
+    assert ui.board_item_minutes("travel_entry", {}) == expected
+
+
+def test_other_kinds_use_their_tunable_block_estimate():
+    from compass import config
+
+    for kind, minutes in config.BOARD_BLOCK_MINUTES.items():
+        assert ui.board_item_minutes(kind, {}) == minutes
+
+
+@pytest.mark.parametrize(
+    "total, expected",
+    [(0, "0m"), (-5, "0m"), (45, "45m"), (60, "1h"), (90, "1h 30m"), (120, "2h")],
+)
+def test_format_board_minutes_reads_as_hours_and_minutes(total, expected):
+    assert ui.format_board_minutes(total) == expected

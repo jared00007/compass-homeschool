@@ -311,7 +311,7 @@ def latest_per_day(lessons: list[dict[str, Any]]) -> list[dict[str, Any]]:
     `lessons` must already be sorted oldest-first (planned_for, id), which
     is exactly what `Database.lessons_for_week` returns -- iterating in that
     order and overwriting a dict keyed by (agent, planned_for) naturally
-    keeps the newest entry for each day. Shared by `pages/14_This_Week.py`
+    keeps the newest entry for each day. Shared by `pages/14_Mission_Control.py`
     (the parent's planner) and Home's Week tab (the student's read-only
     view of the same plan).
     """
@@ -413,7 +413,7 @@ def board_for_week(
 ) -> dict[str, list[tuple[str, dict[str, Any]]]]:
     """Every story assigned to one Monday-anchored week, or currently
     backlogged regardless of which week it was originally for -- the raw
-    material for the unified weekly board (pages/14_This_Week.py's own
+    material for the unified weekly board (pages/14_Mission_Control.py's own
     "Board" tab, the one place a parent can see and rearrange every
     subject's stories at once instead of hunting through each subject's
     own page).
@@ -731,7 +731,7 @@ def plan_missing_days(
     (`missing_dates`, always a subset) for one subject/agent.
 
     `target_dates` is the full checked-days list for the week (see the
-    school-days picker on pages/14_This_Week.py) -- `math_stage_note` and
+    school-days picker on pages/14_Mission_Control.py) -- `math_stage_note` and
     `seed_topics`/`node_ids` both need a day's position in the *whole*
     week, not just its position among the days still missing a lesson, so
     both lists are taken separately rather than one being inferred from

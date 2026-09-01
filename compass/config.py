@@ -76,6 +76,19 @@ TRAVEL_JOURNAL_MAX_OPEN_PICKS = 5
 # enough to rule out a one-word dodge like "ok" or "k".
 TRAVEL_JOURNAL_FEEDBACK_REPLY_MIN_WORDS = 4
 
+# Rough per-block time estimates for the weekly board's "how heavy is this day"
+# gauge (see ui.board_item_minutes). A lesson carries its own real estimate
+# (its activities' minutes) and a travel entry uses the two constants above; the
+# rest have no stored duration, so these are deliberately round, tunable
+# defaults -- enough to let a parent eyeball whether a day is packed or light,
+# never a claim of exact time spent. Shown with a "≈" so they read as estimates.
+BOARD_BLOCK_MINUTES: dict[str, int] = {
+    "life_skill": 30,
+    "coding_module": 45,
+    "choice_topic": 30,
+    "project_step": 45,
+}
+
 # --- Family policy defaults (editable in Settings) ---------------------------
 
 DEFAULT_SETTINGS: dict[str, str] = {

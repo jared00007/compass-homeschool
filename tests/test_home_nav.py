@@ -133,6 +133,46 @@ def test_the_student_board_is_read_only_no_move_controls(monkeypatch, tmp_path):
     assert not any(k.startswith("move_board_") for k in move_keys)
 
 
+def test_the_student_board_shows_life_skill_and_step_detail(monkeypatch, tmp_path):
+    """Reported directly against his board: "life skill and big project arent
+    loading in the board correctly with the lesson or steps." On the read-only
+    student board (interactive=False) the move control and deep link are
+    stripped -- which left a life-skill card showing only its category and a
+    project-step card showing an empty body. The card must still carry what the
+    skill/step actually *is* (its description), independent of interactive."""
+    db_path = tmp_path / "nav.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    from compass import weekly
+
+    monday = weekly.week_start().isoformat()
+
+    skill_id = db.add_life_skill(
+        student["id"], "Do the laundry", category="Home",
+        description="Sort lights from darks, then run a full cycle.",
+        materials="Detergent",
+    )
+    db.set_life_skill_active(skill_id, True)
+    db.schedule_life_skill(skill_id, monday)
+
+    project_id = db.add_big_project(student["id"], "Stop-motion film", "a film")
+    step_id = db.add_project_step(
+        project_id, "Storyboard the opening",
+        description="Sketch the first ten shots before touching the camera.",
+        active=True,
+    )
+    db.schedule_project_step(step_id, monday)
+    db.close()
+
+    at = _open_home(monkeypatch, db_path)
+    _nav_button(at, "Board").click().run()
+    assert not at.exception, [e.message for e in at.exception]
+    body = " ".join(m.value for m in at.markdown)
+    assert "Sort lights from darks" in body, "the life-skill detail must render on his board"
+    assert "Sketch the first ten shots" in body, "the project-step detail must render on his board"
+
+
 def test_the_student_board_full_lesson_hides_the_answer_key(monkeypatch, tmp_path):
     """Reported directly: "on landons board, his stories hold the answer
     keys?" The board's "View full lesson" dialog used to force
@@ -140,8 +180,9 @@ def test_the_student_board_full_lesson_hides_the_answer_key(monkeypatch, tmp_pat
     student opening one of his own board lessons saw the quiz answer key and
     the assessment mastery criteria -- both parent-only everywhere else. On
     his own board the dialog must fall back to is_parent() (PIN set, not
-    unlocked -> student), hiding the key, and the answer-key-carrying PDF must
-    not be offered from his side at all."""
+    unlocked -> student), hiding the key. He still gets a Print to PDF button,
+    but it's his redacted cut (parent=False, no answer key) -- so the rendered
+    dialog carries none of the parent-only text."""
     db_path = tmp_path / "nav.db"
     db = Database(db_path)
     student = db.ensure_default_student()
@@ -187,8 +228,12 @@ def test_the_student_board_full_lesson_hides_the_answer_key(monkeypatch, tmp_pat
     body = " ".join(m.value for m in at.markdown)
     assert "Counts as mastered when" not in body
     assert "3/8" not in body  # the assessment answer must not leak either
-    pdf_keys = [d.key for d in at.get("download_button")]
-    assert not any(k and k.startswith("board_pdf_") for k in pdf_keys)
+    # He still gets a Print to PDF button -- but it's his redacted cut (no
+    # answer key, no assessment), produced with parent=False. The redaction of
+    # the PDF's own content is pinned in test_export.py; here it's enough that
+    # the button is offered from his side at all.
+    pdf = [d for d in at.get("download_button") if d.key == f"board_pdf_{lesson_id}"]
+    assert pdf, "the student board should still offer a (redacted) Print to PDF"
 
 
 def test_switching_views_and_back_to_today_still_shows_the_roster(monkeypatch, tmp_path):

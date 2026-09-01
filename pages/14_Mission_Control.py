@@ -1,6 +1,9 @@
-"""This Week -- Friday reviews the week just finished, then plans the week
-ahead, so Monday through Thursday he opens a lesson that's already sitting
-there instead of someone remembering to generate one that morning.
+"""Mission Control -- the parent's weekly planner. Friday reviews the week just
+finished, then plans the week ahead, so Monday through Thursday he opens a
+lesson that's already sitting there instead of someone remembering to generate
+one that morning. (Named "This Week" originally; renamed because reviewing and
+planning several weeks out from one screen is the main planning surface, not a
+this-week-only view -- "That function is the main planner.")
 
 Math is handled differently from the other three subjects here -- see
 compass/weekly.py's module docstring for why: its next skill only unlocks
@@ -40,9 +43,9 @@ from compass.ui import (
     render_story_move_control,
 )
 
-db, student = page_setup("This Week", icon="🗓️")
+db, student = page_setup("Mission Control", icon="🚀")
 
-st.title("🗓️ This Week")
+st.title("🚀 Mission Control")
 st.caption(
     "Friday reviews the week that just finished, then plans the next one -- "
     "so Monday through Thursday, a lesson is already waiting instead of "

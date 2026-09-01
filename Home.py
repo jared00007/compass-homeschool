@@ -245,7 +245,7 @@ if not is_parent():
             if later_this_week:
                 st.caption(
                     f"{later_this_week} more lesson(s) planned for later this week — "
-                    "see **This Week**."
+                    "see **Mission Control**."
                 )
             if later_week:
                 st.caption(
@@ -288,7 +288,7 @@ if not is_parent():
                 if later_trips_this_week:
                     st.caption(
                         f"{later_trips_this_week} more trip(s) assigned for later this "
-                        "week — see **This Week**."
+                        "week — see **Mission Control**."
                     )
                 if later_trips_week:
                     st.caption(

@@ -2432,17 +2432,65 @@ key, parent notes, credit) with reportlab, embedding a bundled Unicode font
 (`compass/assets/fonts/DejaVuSans*`) so curly quotes and accents come out right
 and there's **no LibreOffice dependency** -- just `pip install reportlab`.
 Generation is deferred behind a callable (like the .docx button), so
-a page listing many lessons never builds every PDF on each rerun. The button
-appears wherever a *parent* sees a full lesson: the Activity Log's per-lesson
-card, right after a lesson is generated, and the board's "View full lesson"
-dialog when a parent opens it -- but never in that same dialog on Landon's own
-read-only board, since the PDF carries the whole lesson (answer key included)
-and that's parent-only.
+a page listing many lessons never builds every PDF on each rerun.
+
+`lesson_to_pdf` takes a `parent` flag that gates exactly the sections
+`render_lesson` gates. The parent cut (the default) has everything above; the
+**student cut** (`parent=False`) drops the assessment, quiz answer key, parent
+notes and subject credit, leaving just the lesson itself -- overview,
+objectives, materials, activities. So the "🖨️ Print to PDF" button shows up
+wherever a full lesson does, on either side: the Activity Log's per-lesson card
+and the just-generated lesson (parent), and the board's "View full lesson"
+dialog for both -- the parent gets the whole thing, and Landon gets his clean
+redacted copy of his own board lesson (reported directly: "i also want to see
+print to pdf from landon, students board... since its text is a bit different
+and doesnt contain the answer key and parent stuff"). The redaction is proven
+in `tests/test_export.py` by the student cut of a lesson coming out materially
+smaller than the parent cut of the same lesson.
+
+## "This Week" becomes "Mission Control"
+
+Reported directly: "for the parent tab 'this week' dont think thats names
+appropriatley. That function is the main planner." It is -- Friday review plus
+planning several weeks ahead from one screen is the app's main planning
+surface, not a this-week-only view. The page file is now
+`pages/14_Mission_Control.py` (Streamlit takes the sidebar label from the
+filename), titled **🚀 Mission Control**, and `_PARENT_ONLY_PAGES`'s nav-hide
+slug and Home's "see **Mission Control**" pointers moved with it. Nothing about
+what the page *does* changed -- only its name.
+
+## Board cards carry their own detail, on both boards
+
+Reported directly against Landon's board: "life skill and big project arent
+loading in the board correctly with the lesson or steps." On his read-only
+board (`interactive=False`) every parent-only affordance is stripped -- the
+move control and the "View full details" deep link -- which had left a
+life-skill card showing only its category and a project-step or travel card
+opening to a completely empty body. `_render_board_detail` now renders what a
+card actually *is* -- the skill/step's own `description` and `materials`, a
+step's pace, a trip's status prompt -- inside the expander regardless of
+`interactive`, so the content he's meant to read is on both boards while the
+planning controls stay parent-only above it.
+
+## Per-card time and a per-day total on the board
+
+Reported directly: "i want to see at the block level, the total time for each
+and quick sum of total for the day in the board views to ensure balance and not
+too heavy or too light days." `board_item_minutes(kind, item)` gives each story
+a minutes estimate -- a lesson's own `estimated_minutes` (else the sum of its
+activities' minutes, else its credited minutes), a travel entry's writing +
+social-studies credit, and a round, tunable per-kind block
+(`config.BOARD_BLOCK_MINUTES`) for the rest, which carry no stored duration.
+Every card wears its own estimate on the right of its colored tag bar (`≈45m`),
+visible open or collapsed, and each day's header sums the cards beneath it
+(`Aug 31 · ≈2h 15m`) -- one glance tells a parent whether a day is packed or
+light. They're estimates for balancing a week, shown with a `≈`, never a claim
+of exact time; the block defaults live in one config dict to tune.
 
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1144 tests, ~130s, no API key needed
+python -m pytest tests/ -q      # 1153 tests, ~130s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

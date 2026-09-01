@@ -20,7 +20,7 @@ from compass.storage.db import Database
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HOME_PATH = str(REPO_ROOT / "Home.py")
-THIS_WEEK_PATH = str(REPO_ROOT / "pages" / "14_This_Week.py")
+THIS_WEEK_PATH = str(REPO_ROOT / "pages" / "14_Mission_Control.py")
 
 # A fixed Monday, not date.today() -- the page's own date_input is set
 # explicitly below regardless, so this just needs to be *a* Monday.
@@ -335,6 +335,31 @@ def test_a_planned_lesson_shows_on_the_board_with_a_move_control(monkeypatch, tm
     at.button(key=view_key).click().run()
     assert not at.exception, [e.message for e in at.exception]
     assert any("Locking In the Coordinate Plane" in s.value for s in at.subheader)
+
+
+def test_the_board_day_header_shows_a_per_day_time_total(monkeypatch, tmp_path):
+    """A parent asked to see "the total time for each and quick sum of total
+    for the day... to ensure balance and not too heavy or too light days." Two
+    lessons on Monday summing to 2h must show ≈2h under Monday's date, so a
+    heavy day reads at a glance."""
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    for agent, title, minutes in (("math", "Fractions", 75), ("science", "Volcanoes", 45)):
+        db.save_lesson(
+            student_id=student["id"], agent=agent, subject=agent, topic="t",
+            title=title,
+            payload={"title": title, "activities": [], "estimated_minutes": minutes},
+            metadata={
+                "planned_for": TARGET_MONDAY.isoformat(),
+                "week_start": TARGET_MONDAY.isoformat(),
+            },
+        )
+    db.close()
+
+    at, _ = _open_board_tab(monkeypatch, db_path)
+    captions = " ".join(c.value for c in at.caption)
+    assert "≈2h" in captions, "Monday's header should sum its two lessons to ≈2h"
 
 
 def test_the_parent_board_full_lesson_still_shows_the_answer_key(monkeypatch, tmp_path):

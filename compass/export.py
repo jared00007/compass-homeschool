@@ -1,11 +1,17 @@
 """Turn a lesson payload -- or a whole course -- into a printable Word document,
 and the other direction: pull plain text back out of a .docx he hands in.
 
-The lesson export is parent-only: it includes everything `render_lesson`'s
-parent view shows, assessment and quiz answer key included. It exists because
-reading an assessment off a laptop screen while scoring a kid's paper
-worksheet is awkward — a printed page isn't. Callers must not offer this from
-a student-view context; nothing here re-checks who's asking.
+The lesson export comes in two cuts, chosen by the caller via `lesson_to_pdf`'s
+`parent` flag (the .docx export stays parent-only). The parent cut includes
+everything `render_lesson`'s parent view shows, assessment and quiz answer key
+included -- it exists because reading an assessment off a laptop screen while
+scoring a kid's paper worksheet is awkward, a printed page isn't. The student
+cut (`parent=False`) mirrors `render_lesson`'s student view exactly: the
+lesson itself (overview, objectives, materials, activities) with the answer
+key, assessment, parent notes, and credit left out, so Landon can print his
+own copy of a lesson off his board without it carrying anything he isn't meant
+to see. Nothing here re-checks who's asking -- the caller passes the right
+`parent` value for the context it's rendering in.
 
 The course export exists for a different, higher-stakes reason: Sumner-Bonney
 Lake requires this exact documentation set, per course, before a grade 6-12
@@ -186,13 +192,18 @@ def suggested_pdf_filename(lesson: dict[str, Any]) -> str:
     return f"{slug}-{date.today().isoformat()}.pdf"
 
 
-def lesson_to_pdf(lesson: dict[str, Any]) -> bytes:
+def lesson_to_pdf(lesson: dict[str, Any], *, parent: bool = True) -> bytes:
     """Render a lesson payload to a print-ready PDF, returned as bytes -- the
     same structure lesson_to_docx builds (title, overview, objectives,
     materials, activities, assessment, quiz key, parent notes, credit), so a
     parent can print any one lesson for paper work or the record. reportlab is
     imported lazily so a missing install only disables this button, never the
-    whole app."""
+    whole app.
+
+    `parent` gates the same sections `render_lesson` gates: with `parent=False`
+    the assessment, quiz answer key, parent notes, and subject credit are all
+    left out, giving Landon a clean printable copy of a lesson (overview,
+    objectives, materials, activities) with nothing he isn't meant to see."""
     from reportlab.lib.enums import TA_LEFT
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.styles import ParagraphStyle
@@ -257,7 +268,7 @@ def lesson_to_pdf(lesson: dict[str, Any]) -> bytes:
                 flow.append(Paragraph(_pdf_text(activity["instructions"]), body))
 
     assessment = lesson.get("assessment") or {}
-    if assessment:
+    if assessment and parent:
         flow.append(Paragraph("Assessment", h2))
         if assessment.get("kind"):
             flow.append(Paragraph(f"<b>{_pdf_text(assessment['kind'])}</b>", body))
@@ -267,7 +278,7 @@ def lesson_to_pdf(lesson: dict[str, Any]) -> bytes:
             flow.append(Paragraph(f"<b>Mastery:</b> {_pdf_text(assessment['mastery_criteria'])}", body))
 
     quiz = lesson.get("quiz") or []
-    if quiz:
+    if quiz and parent:
         flow.append(Paragraph("Quiz answer key", h2))
         for index, item in enumerate(quiz, start=1):
             flow.append(Paragraph(f"<b>{index}. {_pdf_text(item.get('question', ''))}</b>", body))
@@ -292,11 +303,11 @@ def lesson_to_pdf(lesson: dict[str, Any]) -> bytes:
             if item.get("explanation"):
                 flow.append(Paragraph(f"<i>{_pdf_text(item['explanation'])}</i>", body))
 
-    if lesson.get("parent_notes"):
+    if lesson.get("parent_notes") and parent:
         flow += [Paragraph("Notes for the parent", h2), Paragraph(_pdf_text(lesson["parent_notes"]), body)]
 
     credits = lesson.get("subject_credits") or []
-    if credits:
+    if credits and parent:
         flow.append(Paragraph("Subject credit", h2))
         for credit in credits:
             line = (
