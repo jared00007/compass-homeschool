@@ -5,3 +5,7 @@ anthropic>=0.116.0
 streamlit>=1.52.0
 pandas>=2.0.0
 python-docx>=1.1.0
+# Per-lesson "print to PDF" export (compass/export.py:lesson_to_pdf). Pure
+# Python, no LibreOffice needed; the Unicode font it uses is bundled under
+# compass/assets/fonts/.
+reportlab>=4.0.0

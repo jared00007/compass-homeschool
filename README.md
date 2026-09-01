@@ -2404,10 +2404,25 @@ the outer container (not each row), so on a narrow screen every row scrolls
 together and stays aligned under its day headers. Both boards (parent This Week
 and Landon's Home) share this via `render_board_days`.
 
+## Print any lesson to PDF
+
+Reported directly: "i need a print to pdf of each activity itself." The app
+already built a clean `.docx` per lesson; this adds a matching **🖨️ Print to
+PDF** next to it, so a parent can print any single lesson for paper work or the
+record. `export.lesson_to_pdf` renders the same sections the Word export does
+(title, overview, objectives, materials, activities, assessment, quiz answer
+key, parent notes, credit) with reportlab, embedding a bundled Unicode font
+(`compass/assets/fonts/DejaVuSans*`) so curly quotes and accents come out right
+and there's **no LibreOffice dependency** -- just `pip install reportlab`. The
+button appears wherever a full lesson does: the board's "View full lesson"
+dialog, the Activity Log's per-lesson card, and right after a lesson is
+generated. Generation is deferred behind a callable (like the .docx button), so
+a page listing many lessons never builds every PDF on each rerun.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1138 tests, ~110s, no API key needed
+python -m pytest tests/ -q      # 1142 tests, ~110s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

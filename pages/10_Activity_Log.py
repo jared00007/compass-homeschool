@@ -9,7 +9,12 @@ import streamlit as st
 
 from compass import config, gradebook, weekly
 from compass.agents.framework import GeneratedLesson, TopicProposal
-from compass.export import lesson_to_docx, suggested_filename
+from compass.export import (
+    lesson_to_docx,
+    lesson_to_pdf,
+    suggested_filename,
+    suggested_pdf_filename,
+)
 from compass.subjects import SUBJECT_KEYS, label
 from compass.ui import (
     log_lesson_form,
@@ -112,8 +117,16 @@ def _render_review_card(lesson: dict, today_iso: str) -> None:
                 "Credit: "
                 + " · ".join(f"{label(c['subject'])} {c['minutes']}m" for c in credits)
             )
-        st.download_button(
-            "📄 Download as Word doc",
+        download_columns = st.columns(2)
+        download_columns[0].download_button(
+            "🖨️ Print to PDF",
+            data=partial(lesson_to_pdf, lesson["payload"]),
+            file_name=suggested_pdf_filename(lesson["payload"]),
+            mime="application/pdf",
+            key=f"pdf_{lesson['id']}",
+        )
+        download_columns[1].download_button(
+            "📄 Word doc",
             data=partial(lesson_to_docx, lesson["payload"]),
             file_name=suggested_filename(lesson["payload"]),
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",

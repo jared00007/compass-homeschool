@@ -235,16 +235,18 @@ def test_a_generated_lesson_offers_a_word_doc_download(monkeypatch, db, student)
         warnings=[],
     )
     page, _ = run(monkeypatch, db, student, generated=generated)
-    assert "Download as Word doc" in page
+    assert "Print to PDF" in page  # per-lesson PDF export sits beside the Word doc
+    assert "Word doc" in page
 
 
 def test_word_doc_download_defers_docx_generation(monkeypatch, db, student):
     """`data` must be a callable, not already-built bytes -- otherwise a page
 
     listing many lessons (Activity Log's "Generated lessons" tab) would rebuild
-    every lesson's .docx on every rerun, not just the one being downloaded.
+    every lesson's export on every rerun, not just the one being downloaded.
     Requires streamlit>=1.52.0, which is why requirements.txt's floor was
     bumped -- an older streamlit would reject or mishandle a callable here.
+    Both exports (PDF and Word) defer the same way.
     """
     calls: list[dict] = []
     written: list[str] = []
@@ -266,9 +268,13 @@ def test_word_doc_download_defers_docx_generation(monkeypatch, db, student):
         primary_subject="math", spinner="x", api_ok=True,
     )
 
-    assert len(calls) == 1
-    assert callable(calls[0]["data"])
-    assert calls[0]["data"]().startswith(b"PK")  # a real docx when actually invoked
+    # Two export buttons now -- Print to PDF and Word doc -- each deferring its
+    # own generation behind a callable.
+    assert len(calls) == 2
+    assert all(callable(call["data"]) for call in calls)
+    outputs = [call["data"]() for call in calls]
+    assert any(out.startswith(b"%PDF") for out in outputs)  # the PDF
+    assert any(out.startswith(b"PK") for out in outputs)  # the .docx (a zip)
 
 
 def test_the_optional_trailing_note_is_shown_when_given(monkeypatch, db, student):

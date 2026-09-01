@@ -26,6 +26,7 @@ from __future__ import annotations
 import io
 import re
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 from docx import Document
@@ -133,6 +134,187 @@ def lesson_to_docx(lesson: dict[str, Any]) -> bytes:
 
     buffer = io.BytesIO()
     document.save(buffer)
+    return buffer.getvalue()
+
+
+_PDF_FONTS_REGISTERED = False
+
+
+def _register_pdf_fonts() -> None:
+    """Register the bundled DejaVu Sans (regular + bold) with reportlab, once.
+    reportlab's built-in fonts are Latin-1 only -- a curly quote or accent in a
+    lesson would come out as a black box. DejaVu is a full-Unicode TTF, shipped
+    in compass/assets/fonts/ so the PDF export needs no system font and no
+    LibreOffice, just `pip install reportlab`."""
+    global _PDF_FONTS_REGISTERED
+    if _PDF_FONTS_REGISTERED:
+        return
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    fonts_dir = Path(__file__).resolve().parent / "assets" / "fonts"
+    pdfmetrics.registerFont(TTFont("DejaVu", str(fonts_dir / "DejaVuSans.ttf")))
+    pdfmetrics.registerFont(TTFont("DejaVu-Bold", str(fonts_dir / "DejaVuSans-Bold.ttf")))
+    pdfmetrics.registerFontFamily(
+        "DejaVu", normal="DejaVu", bold="DejaVu-Bold",
+        italic="DejaVu", boldItalic="DejaVu-Bold",
+    )
+    _PDF_FONTS_REGISTERED = True
+
+
+# Color emoji have no glyphs in DejaVu (or any print font) -- left in, they draw
+# as notdef boxes, so strip them from the printable copy. The lesson's actual
+# text (objectives, instructions, ...) carries no emoji; they're UI chrome.
+_PDF_EMOJI_RE = re.compile(
+    "[\U0001F000-\U0001FAFF\U00002600-\U000027BF\U00002B00-\U00002BFF"
+    "\U0001F1E6-\U0001F1FF\U0000FE00-\U0000FE0F\U0000200D\U00002190-\U000021FF]"
+)
+
+
+def _pdf_text(value: Any) -> str:
+    """Emoji-stripped, XML-escaped text safe to drop into a reportlab
+    Paragraph (whose own markup would otherwise choke on a bare & or <)."""
+    from xml.sax.saxutils import escape
+
+    return escape(_PDF_EMOJI_RE.sub("", str(value)).strip())
+
+
+def suggested_pdf_filename(lesson: dict[str, Any]) -> str:
+    """A readable .pdf filename: the lesson title, slugged, plus today's date."""
+    title = lesson.get("title") or "lesson"
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "lesson"
+    return f"{slug}-{date.today().isoformat()}.pdf"
+
+
+def lesson_to_pdf(lesson: dict[str, Any]) -> bytes:
+    """Render a lesson payload to a print-ready PDF, returned as bytes -- the
+    same structure lesson_to_docx builds (title, overview, objectives,
+    materials, activities, assessment, quiz key, parent notes, credit), so a
+    parent can print any one lesson for paper work or the record. reportlab is
+    imported lazily so a missing install only disables this button, never the
+    whole app."""
+    from reportlab.lib.enums import TA_LEFT
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import (
+        ListFlowable,
+        ListItem,
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+    )
+
+    _register_pdf_fonts()
+
+    title_style = ParagraphStyle(
+        "cp_title", fontName="DejaVu-Bold", fontSize=18, leading=22, spaceAfter=8,
+        alignment=TA_LEFT,
+    )
+    h2 = ParagraphStyle(
+        "cp_h2", fontName="DejaVu-Bold", fontSize=13, leading=16,
+        spaceBefore=12, spaceAfter=4,
+    )
+    h3 = ParagraphStyle(
+        "cp_h3", fontName="DejaVu-Bold", fontSize=11.5, leading=15,
+        spaceBefore=8, spaceAfter=2,
+    )
+    body = ParagraphStyle("cp_body", fontName="DejaVu", fontSize=11, leading=15, spaceAfter=4)
+
+    def bullets(items: list[Any]) -> ListFlowable:
+        return ListFlowable(
+            [ListItem(Paragraph(_pdf_text(i), body), leftIndent=12) for i in items],
+            bulletType="bullet", start="•", leftIndent=14,
+        )
+
+    flow: list[Any] = [Paragraph(_pdf_text(lesson.get("title") or "Lesson"), title_style)]
+    if lesson.get("overview"):
+        flow.append(Paragraph(_pdf_text(lesson["overview"]), body))
+
+    if lesson.get("learning_objectives"):
+        flow += [Paragraph("Learning objectives", h2), bullets(lesson["learning_objectives"])]
+    if lesson.get("materials"):
+        flow += [Paragraph("Materials", h2), bullets(lesson["materials"])]
+
+    activities = lesson.get("activities") or []
+    if activities:
+        flow.append(Paragraph("Activities", h2))
+        for index, activity in enumerate(activities, start=1):
+            heading = (
+                f"{index}. {activity.get('title', 'Activity')} "
+                f"({activity.get('kind', '')}, {activity.get('minutes', 0)} min)"
+            )
+            flow.append(Paragraph(_pdf_text(heading), h3))
+            video = activity.get("video") or {}
+            if video.get("found") and video.get("url"):
+                flow.append(Paragraph(f"<b>Video:</b> {_pdf_text(video.get('title') or 'Watch')}", body))
+                flow.append(Paragraph(_pdf_text(video["url"]), body))
+                if video.get("why"):
+                    flow.append(Paragraph(f"<i>{_pdf_text(video['why'])}</i>", body))
+            if activity.get("example"):
+                flow.append(Paragraph(f"<b>Here's how:</b> {_pdf_text(activity['example'])}", body))
+            if activity.get("instructions"):
+                flow.append(Paragraph(_pdf_text(activity["instructions"]), body))
+
+    assessment = lesson.get("assessment") or {}
+    if assessment:
+        flow.append(Paragraph("Assessment", h2))
+        if assessment.get("kind"):
+            flow.append(Paragraph(f"<b>{_pdf_text(assessment['kind'])}</b>", body))
+        if assessment.get("description"):
+            flow.append(Paragraph(_pdf_text(assessment["description"]), body))
+        if assessment.get("mastery_criteria"):
+            flow.append(Paragraph(f"<b>Mastery:</b> {_pdf_text(assessment['mastery_criteria'])}", body))
+
+    quiz = lesson.get("quiz") or []
+    if quiz:
+        flow.append(Paragraph("Quiz answer key", h2))
+        for index, item in enumerate(quiz, start=1):
+            flow.append(Paragraph(f"<b>{index}. {_pdf_text(item.get('question', ''))}</b>", body))
+            correct_index = item.get("correct_index")
+            choices = item.get("choices") or []
+            flow.append(
+                ListFlowable(
+                    [
+                        ListItem(
+                            Paragraph(
+                                _pdf_text(choice)
+                                + (" <b>(correct)</b>" if choice_index == correct_index else ""),
+                                body,
+                            ),
+                            leftIndent=12,
+                        )
+                        for choice_index, choice in enumerate(choices)
+                    ],
+                    bulletType="bullet", start="•", leftIndent=14,
+                )
+            )
+            if item.get("explanation"):
+                flow.append(Paragraph(f"<i>{_pdf_text(item['explanation'])}</i>", body))
+
+    if lesson.get("parent_notes"):
+        flow += [Paragraph("Notes for the parent", h2), Paragraph(_pdf_text(lesson["parent_notes"]), body)]
+
+    credits = lesson.get("subject_credits") or []
+    if credits:
+        flow.append(Paragraph("Subject credit", h2))
+        for credit in credits:
+            line = (
+                f"<b>{_pdf_text(subjects.label(credit.get('subject', '')))}</b> — "
+                f"{_pdf_text(credit.get('minutes', ''))} min"
+            )
+            if credit.get("justification"):
+                line += f": {_pdf_text(credit['justification'])}"
+            flow.append(Paragraph(line, body))
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=letter,
+        leftMargin=0.9 * inch, rightMargin=0.9 * inch,
+        topMargin=0.8 * inch, bottomMargin=0.8 * inch,
+        title=(lesson.get("title") or "Lesson"),
+    )
+    doc.build(flow + [Spacer(1, 2)])
     return buffer.getvalue()
 
 

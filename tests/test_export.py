@@ -410,3 +410,44 @@ def test_extract_docx_text_raises_a_clear_error_on_a_non_docx_file():
     not_a_docx = io.BytesIO(b"this is plain text, not a real .docx")
     with pytest.raises(DocxExtractionError, match="doesn't look like a valid Word"):
         extract_docx_text(not_a_docx)
+
+
+# --- lesson_to_pdf: the per-lesson "print to PDF" export ------------------------
+
+
+def test_lesson_to_pdf_produces_a_valid_pdf():
+    from compass.export import lesson_to_pdf
+
+    data = lesson_to_pdf(a_lesson())
+    assert data[:5] == b"%PDF-"
+    assert len(data) > 1000  # a real multi-section document, not an empty stub
+
+
+def test_lesson_to_pdf_survives_a_bare_or_empty_lesson():
+    """Optional sections missing (or the whole payload empty) must render a
+    valid one-liner PDF, never crash on a missing key -- same resilience the
+    .docx export has."""
+    from compass.export import lesson_to_pdf
+
+    for payload in ({}, {"title": "Just a Title"}, {"activities": [], "quiz": []}):
+        data = lesson_to_pdf(payload)
+        assert data[:5] == b"%PDF-"
+
+
+def test_lesson_to_pdf_strips_emoji_that_have_no_print_glyph():
+    """Emoji have no glyph in the print font, so they're stripped rather than
+    left to render as notdef boxes -- the surrounding real text stays."""
+    from compass.export import lesson_to_pdf
+
+    data = lesson_to_pdf(a_lesson(title="📐 Two-Step Equations 🎯"))
+    assert data[:5] == b"%PDF-"
+
+
+def test_suggested_pdf_filename_slugs_the_title_and_ends_in_pdf():
+    from datetime import date
+
+    from compass.export import suggested_pdf_filename
+
+    name = suggested_pdf_filename({"title": "Two-Step Equations!"})
+    assert name == f"two-step-equations-{date.today().isoformat()}.pdf"
+    assert suggested_pdf_filename({}).endswith(".pdf")

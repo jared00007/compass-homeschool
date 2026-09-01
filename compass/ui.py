@@ -68,7 +68,14 @@ from compass.agents import (
 from compass.agents import writing_review
 from compass.agents.quiz import grade, passed as quiz_passes, select_questions
 from compass.compliance import declaration_status
-from compass.export import DocxExtractionError, extract_docx_text, lesson_to_docx, suggested_filename
+from compass.export import (
+    DocxExtractionError,
+    extract_docx_text,
+    lesson_to_docx,
+    lesson_to_pdf,
+    suggested_filename,
+    suggested_pdf_filename,
+)
 from compass.morning_routines import MORNING_ROUTINES, routine_for_date
 from compass.storage.db import Database
 from compass.writing_checks import check_writing
@@ -362,8 +369,16 @@ def generate_and_log(
     for warning in generated.warnings:
         st.caption(f"⚠️ {warning}")
     render_lesson(generated.payload)
-    st.download_button(
-        "📄 Download as Word doc",
+    download_columns = st.columns(2)
+    download_columns[0].download_button(
+        "🖨️ Print to PDF",
+        data=partial(lesson_to_pdf, generated.payload),
+        file_name=suggested_pdf_filename(generated.payload),
+        mime="application/pdf",
+        key=f"{agent.key}_pdf_download",
+    )
+    download_columns[1].download_button(
+        "📄 Word doc",
         data=partial(lesson_to_docx, generated.payload),
         file_name=suggested_filename(generated.payload),
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -2745,6 +2760,13 @@ def _render_board_deep_link(kind: str, item: dict[str, Any] | None = None) -> No
 
         @st.dialog(f"📘 {item['title']}", width="large")
         def _show_full_lesson() -> None:
+            st.download_button(
+                "🖨️ Print to PDF",
+                data=partial(lesson_to_pdf, item["payload"]),
+                file_name=suggested_pdf_filename(item["payload"]),
+                mime="application/pdf",
+                key=f"board_pdf_{item['id']}",
+            )
             render_lesson(item["payload"], for_parent=True, lesson_id=item["id"])
 
         if st.button("🔍 View full lesson", key=f"board_view_lesson_{item['id']}"):
