@@ -2510,13 +2510,22 @@ placed it on no day column -- yet Home's own daily roster still listed it,
 because `due_lessons` treats an undated open lesson as due right now. So Home
 showed today's work while the board's Today column sat empty.
 
-`board_for_week` now surfaces those still-open, undated lessons on today's
-column (newest-per-subject, to match Home's one-row-per-subject roster), but
-only when today is actually one of the five day columns on screen -- a past or
-future week's board still shows that week's own plan, never today's ad-hoc
-work. Batch-planned lessons are unaffected (they already have a day). The
-student board's caption dropped its old "generated on the fly still shows up on
-Today, not here" hedge, since that's no longer true.
+Two coordinated fixes close the gap. First, at the source: an on-demand lesson
+is now **scheduled for today the moment it's generated**
+(`db.schedule_lesson_today_if_unscheduled`, called from `generate_and_log`), so
+it's genuine today-scheduled work -- it lands on the board's Today column by the
+normal day-placement path and shows on Home's roster, the same day, because it
+finally has a day. A no-op once a lesson already has one, so it never overrides
+a batch-planned schedule. Second, as a safety net for any lesson that predates
+that (already sitting undated in the database), `board_for_week` also surfaces
+still-open, undated lessons on today's column (newest-per-subject, to match
+Home's one-row-per-subject roster) -- but only when today is actually one of the
+five day columns on screen, so a past or future week's board still shows that
+week's own plan. Between the two, whatever counts as today's work on Home is
+the same as what's on the board's Today. The student board's caption dropped its
+old "generated on the fly still shows up on Today, not here" hedge, since that's
+no longer true. (After pulling these changes, restart the app so a running
+instance picks them up.)
 
 And, reported in the same breath: "on the home screen, can we add the date for
 landon to see somewhere." His greeting now carries the full weekday + date
@@ -2526,7 +2535,7 @@ what day it is and which day's work he's looking at.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1168 tests, ~150s, no API key needed
+python -m pytest tests/ -q      # 1170 tests, ~150s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

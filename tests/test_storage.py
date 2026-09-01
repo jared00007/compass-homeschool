@@ -2502,3 +2502,34 @@ def test_set_board_estimate_ignores_an_unknown_kind(db, student):
     """An unknown kind is a no-op, never a SQL error -- the board only ever
     passes one of the six it renders, but a stray call must not raise."""
     db.set_board_estimate("not_a_real_kind", 1, 30)  # must not raise
+
+
+def test_schedule_lesson_today_if_unscheduled_stamps_an_undated_lesson(db, student):
+    """On-demand lessons come in with no day; this gives them today's date (and
+    today's own Monday as week_start) so they're real today-scheduled work,
+    while leaving an already-scheduled lesson alone."""
+    from datetime import date, timedelta
+
+    sid = student["id"]
+    undated = db.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t", title="On demand",
+        payload={"activities": []}, metadata={},
+    )
+    db.schedule_lesson_today_if_unscheduled(undated)
+    lesson = db.get_lesson(undated)
+    today = date.today()
+    monday = today - timedelta(days=today.weekday())
+    assert lesson["metadata"]["planned_for"] == today.isoformat()
+    assert lesson["metadata"]["week_start"] == monday.isoformat()
+
+
+def test_schedule_lesson_today_leaves_an_already_scheduled_lesson_alone(db, student):
+    sid = student["id"]
+    dated = db.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t", title="Planned",
+        payload={"activities": []},
+        metadata={"planned_for": "2026-11-25", "week_start": "2026-11-23"},
+    )
+    db.schedule_lesson_today_if_unscheduled(dated)
+    lesson = db.get_lesson(dated)
+    assert lesson["metadata"]["planned_for"] == "2026-11-25"  # untouched

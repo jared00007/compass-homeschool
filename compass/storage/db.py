@@ -2583,6 +2583,28 @@ class Database:
         )
         self.conn.commit()
 
+    def schedule_lesson_today_if_unscheduled(self, lesson_id: int) -> None:
+        """Give a still-`planned` lesson today's date if it has none yet.
+
+        On-demand lessons (generated from a subject page, not batch-planned)
+        used to be saved with no planned_for/week_start at all -- "do it now"
+        work with no day attached. That made them show on Home's daily roster
+        (due_lessons treats an undated open lesson as due) while landing on no
+        day column of the board, so the two disagreed -- reported directly:
+        "today should only display lessons he is expected to review TODAY... he
+        has nothing scheduled in the boardview for today?" Stamping today at
+        generation makes an on-demand lesson genuine today-scheduled work: it
+        shows on Home's today and on the board's Today column, the same day,
+        because it now actually has a day. A no-op once a lesson already has a
+        day (a batch-planned or already-stamped one), so it never overrides a
+        real schedule."""
+        lesson = self.get_lesson(lesson_id)
+        if lesson is None or lesson["status"] != "planned":
+            return
+        if (lesson["metadata"] or {}).get("planned_for"):
+            return
+        self.reschedule_lesson(lesson_id, date.today().isoformat())
+
     def send_to_backlog(self, lesson_id: int) -> None:
         """A parent's own "not this week" call on any still-open lesson,
         any day -- the manual counterpart to `compass.weekly.is_backlogged`'s

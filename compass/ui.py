@@ -365,6 +365,14 @@ def generate_and_log(
     if not generated:
         return
 
+    # An on-demand lesson is "do this now" work -- stamp it for today so it's
+    # real today-scheduled work on both Home and the board, rather than a
+    # dateless lesson that shows on Home's roster but nowhere on the schedule
+    # (reported: "today should only display lessons he is expected to review
+    # TODAY... he has nothing scheduled in the boardview for today?"). A no-op
+    # once it already has a day, so it never fights a real schedule.
+    db.schedule_lesson_today_if_unscheduled(generated.lesson_id)
+
     st.divider()
     for warning in generated.warnings:
         st.caption(f"⚠️ {warning}")
