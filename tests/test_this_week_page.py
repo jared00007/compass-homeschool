@@ -337,6 +337,44 @@ def test_a_planned_lesson_shows_on_the_board_with_a_move_control(monkeypatch, tm
     assert any("Locking In the Coordinate Plane" in s.value for s in at.subheader)
 
 
+def test_the_parent_board_full_lesson_still_shows_the_answer_key(monkeypatch, tmp_path):
+    """The flip side of the student redaction: on the *parent's* This Week
+    board (parent_unlocked), the "View full lesson" dialog is a planning tool,
+    so it must still show the quiz answer key and offer the whole-lesson PDF --
+    the same content the parent gets everywhere else."""
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="Fractions Face-Off",
+        payload={
+            "title": "Fractions Face-Off",
+            "activities": [],
+            "quiz": [
+                {
+                    "question": "What is 1/2 + 1/4?",
+                    "choices": ["3/4", "2/6", "1/6"],
+                    "correct_index": 0,
+                }
+            ],
+        },
+        metadata={
+            "planned_for": TARGET_MONDAY.isoformat(),
+            "week_start": TARGET_MONDAY.isoformat(),
+        },
+    )
+    db.close()
+
+    at, _ = _open_board_tab(monkeypatch, db_path)
+    at.button(key=f"board_view_lesson_{lesson_id}").click().run()
+    assert not at.exception, [e.message for e in at.exception]
+    expander_labels = " ".join(e.label for e in at.expander)
+    assert "Quiz answer key" in expander_labels
+    pdf_keys = [d.key for d in at.get("download_button")]
+    assert f"board_pdf_{lesson_id}" in pdf_keys
+
+
 def test_moving_a_story_to_a_different_week_shows_a_notice_not_just_a_vanish(
     monkeypatch, tmp_path
 ):

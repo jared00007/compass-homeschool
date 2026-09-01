@@ -2760,14 +2760,20 @@ def _render_board_deep_link(kind: str, item: dict[str, Any] | None = None) -> No
 
         @st.dialog(f"📘 {item['title']}", width="large")
         def _show_full_lesson() -> None:
-            st.download_button(
-                "🖨️ Print to PDF",
-                data=partial(lesson_to_pdf, item["payload"]),
-                file_name=suggested_pdf_filename(item["payload"]),
-                mime="application/pdf",
-                key=f"board_pdf_{item['id']}",
-            )
-            render_lesson(item["payload"], for_parent=True, lesson_id=item["id"])
+            # for_parent is left unset so render_lesson falls back to
+            # is_parent() -- on Landon's own board the assessment and answer
+            # key stay hidden, exactly as they do in his normal lesson view.
+            # The PDF carries the whole lesson (answer key included), so it's a
+            # parent-only download, never offered from his side.
+            if is_parent():
+                st.download_button(
+                    "🖨️ Print to PDF",
+                    data=partial(lesson_to_pdf, item["payload"]),
+                    file_name=suggested_pdf_filename(item["payload"]),
+                    mime="application/pdf",
+                    key=f"board_pdf_{item['id']}",
+                )
+            render_lesson(item["payload"], lesson_id=item["id"])
 
         if st.button("🔍 View full lesson", key=f"board_view_lesson_{item['id']}"):
             _show_full_lesson()

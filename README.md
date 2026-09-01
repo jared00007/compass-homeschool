@@ -2218,15 +2218,32 @@ Rather than reorder Activity Log's own tabs (which would just move the
 same "only the first tab is reachable" problem, not fix it, and would
 change the page's landing tab for every other visitor too), a lesson's
 "🔍 View full lesson" is now a button that opens an `st.dialog` right on
-the Board -- `render_lesson(item["payload"], for_parent=True,
-lesson_id=item["id"])` rendered inline, in the same "plain" layout
-(objectives, materials, an expander per activity, the parent-only
-assessment section) `render_lesson` already gives everywhere else. No
-navigation, no tab to land on wrong -- works identically for a lesson on
-this week's board or next week's, which is exactly what a same-page modal
-sidesteps by never leaving the page at all. The other five kinds' own
-`_BOARD_DEEP_LINK` page_links are untouched -- their destination tabs
+the Board -- `render_lesson(item["payload"], lesson_id=item["id"])`
+rendered inline, in the same "plain" layout (objectives, materials, an
+expander per activity, and the assessment/answer-key section *only when
+the viewer is a parent*) `render_lesson` already gives everywhere else.
+No navigation, no tab to land on wrong -- works identically for a lesson
+on this week's board or next week's, which is exactly what a same-page
+modal sidesteps by never leaving the page at all. The other five kinds'
+own `_BOARD_DEEP_LINK` page_links are untouched -- their destination tabs
 really were already correct.
+
+**The dialog respects who's looking.** The Board isn't parent-only --
+Landon has his own read-only copy on Home (`interactive=False`), and the
+"View full lesson" dialog is offered there too so he can actually read
+what's planned. That dialog used to force `render_lesson(...,
+for_parent=True)` and unconditionally offered a whole-lesson "🖨️ Print to
+PDF" download, so opening one of his own board lessons showed him the quiz
+answer key and the assessment mastery criteria -- reported directly: "on
+landons board, his stories hold the answer keys? that is for parent
+only?" It is. The dialog now leaves `for_parent` unset so `render_lesson`
+falls back to `is_parent()` -- the same gate his normal subject-page
+lesson view already uses, hiding the answer key and assessment from him --
+and the PDF button (which carries the *whole* lesson, answer key included)
+is wrapped in `if is_parent():`, so it never appears on his side at all.
+On the parent's own This Week board (`parent_unlocked`) both the answer
+key and the PDF are still right there, since planning is what that board
+is for.
 
 ## Each core subject gets its own "This week" board
 
@@ -2413,21 +2430,34 @@ record. `export.lesson_to_pdf` renders the same sections the Word export does
 (title, overview, objectives, materials, activities, assessment, quiz answer
 key, parent notes, credit) with reportlab, embedding a bundled Unicode font
 (`compass/assets/fonts/DejaVuSans*`) so curly quotes and accents come out right
-and there's **no LibreOffice dependency** -- just `pip install reportlab`. The
-button appears wherever a full lesson does: the board's "View full lesson"
-dialog, the Activity Log's per-lesson card, and right after a lesson is
-generated. Generation is deferred behind a callable (like the .docx button), so
-a page listing many lessons never builds every PDF on each rerun.
+and there's **no LibreOffice dependency** -- just `pip install reportlab`.
+Generation is deferred behind a callable (like the .docx button), so
+a page listing many lessons never builds every PDF on each rerun. The button
+appears wherever a *parent* sees a full lesson: the Activity Log's per-lesson
+card, right after a lesson is generated, and the board's "View full lesson"
+dialog when a parent opens it -- but never in that same dialog on Landon's own
+read-only board, since the PDF carries the whole lesson (answer key included)
+and that's parent-only.
 
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1142 tests, ~110s, no API key needed
+python -m pytest tests/ -q      # 1144 tests, ~130s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the
 compliance arithmetic, the credit-normalization guardrails, and all four
 strategies' selection logic.
+
+One environment note lives in `tests/conftest.py`: an autouse fixture stubs
+`render_first_day_celebration` out for every Home-page AppTest (except
+`test_ui.py`, which drives the celebration directly). The "Issue #1" first-day
+cover fires on the actual first day of the school year and `st.stop()`s the rest
+of Home -- exactly as intended -- but `school_year_bounds()` returns "the year
+containing today," so on a machine whose clock happens to sit on that start date
+the cover would otherwise intercept every AppTest that opens Home and hide the
+content those tests assert on. The fixture pins Home to its steady state (cover
+already seen), which is what those tests mean to exercise.
 
 ## Not built, on purpose
 

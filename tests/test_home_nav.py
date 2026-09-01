@@ -133,6 +133,64 @@ def test_the_student_board_is_read_only_no_move_controls(monkeypatch, tmp_path):
     assert not any(k.startswith("move_board_") for k in move_keys)
 
 
+def test_the_student_board_full_lesson_hides_the_answer_key(monkeypatch, tmp_path):
+    """Reported directly: "on landons board, his stories hold the answer
+    keys?" The board's "View full lesson" dialog used to force
+    render_lesson(for_parent=True) and offered a whole-lesson PDF, so a
+    student opening one of his own board lessons saw the quiz answer key and
+    the assessment mastery criteria -- both parent-only everywhere else. On
+    his own board the dialog must fall back to is_parent() (PIN set, not
+    unlocked -> student), hiding the key, and the answer-key-carrying PDF must
+    not be offered from his side at all."""
+    db_path = tmp_path / "nav.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    from compass import weekly
+
+    monday = weekly.week_start()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="Fractions Face-Off",
+        payload={
+            "title": "Fractions Face-Off",
+            "activities": [],
+            "assessment": {
+                "kind": "oral check",
+                "description": "Ask him to halve a recipe.",
+                "mastery_criteria": "Explains why 1/2 of 3/4 is 3/8.",
+            },
+            "quiz": [
+                {
+                    "question": "What is 1/2 + 1/4?",
+                    "choices": ["3/4", "2/6", "1/6"],
+                    "correct_index": 0,
+                    "explanation": "Common denominator of 4.",
+                }
+            ],
+        },
+        metadata={"planned_for": monday.isoformat(), "week_start": monday.isoformat()},
+    )
+    db.close()
+
+    at = _open_home(monkeypatch, db_path)
+    _nav_button(at, "Board").click().run()
+    view = [b for b in at.button if b.key == f"board_view_lesson_{lesson_id}"][0]
+    view.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    # The dialog opened (its title renders as a subheader)...
+    assert any("Fractions Face-Off" in s.value for s in at.subheader)
+    # ...but with none of the parent-only material.
+    expander_labels = " ".join(e.label for e in at.expander)
+    assert "Quiz answer key" not in expander_labels
+    body = " ".join(m.value for m in at.markdown)
+    assert "Counts as mastered when" not in body
+    assert "3/8" not in body  # the assessment answer must not leak either
+    pdf_keys = [d.key for d in at.get("download_button")]
+    assert not any(k and k.startswith("board_pdf_") for k in pdf_keys)
+
+
 def test_switching_views_and_back_to_today_still_shows_the_roster(monkeypatch, tmp_path):
     at = _open_home(monkeypatch, _seed(tmp_path))
     _nav_button(at, "Grades").click().run()
