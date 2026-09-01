@@ -508,13 +508,35 @@ def board_for_week(
     # to miss it too -- those only ever looked for `not active`. A story
     # stuck this way needs to surface here regardless of its active flag,
     # or nothing on the whole Board would ever show it again.
+    # On-the-fly lessons -- generated on demand from a subject page rather than
+    # batch-planned -- carry no planned_for/week_start, so they never land on
+    # any day column above and (unless a parent parked them) aren't backlogged
+    # either. Home's own daily roster still shows them as due today
+    # (due_lessons treats an undated open lesson as due now), which made the
+    # board read empty on a day Landon actually had work -- reported directly:
+    # "there is not assigned work today for landon on the board but his home
+    # screen shows different?" Surface the still-open ones on today's column so
+    # the board and Home agree, newest-per-subject to match Home's
+    # one-row-per-subject roster, and only when today is one of the five day
+    # columns (a past/future week's board shows that week's plan, not today's
+    # ad-hoc work).
+    seen_undated_agents: set[str] = set()
     for lesson in db.list_lessons(student_id, limit=200):
-        if (
-            lesson["status"] == "planned"
-            and lesson["id"] not in backlogged_ids.get("lesson", set())
-            and is_backlogged(lesson, today_iso)
-        ):
+        if lesson["id"] in backlogged_ids.get("lesson", set()):
+            continue
+        metadata = lesson.get("metadata") or {}
+        if lesson["status"] == "planned" and is_backlogged(lesson, today_iso):
             board["backlog"].append(("lesson", lesson))
+            continue
+        if (
+            today_iso in board
+            and lesson["status"] == "planned"
+            and not metadata.get("planned_for")
+            and not metadata.get("student_done_on")
+            and lesson["agent"] not in seen_undated_agents
+        ):
+            seen_undated_agents.add(lesson["agent"])
+            board[today_iso].append(("lesson", lesson))
 
     # `scheduled_for is not None` is doing real work here, not just
     # matching the other passes' shape: life_skills/coding_modules are

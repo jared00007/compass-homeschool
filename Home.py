@@ -107,6 +107,15 @@ if not is_parent():
         f'margin-bottom:2px;">Hi {md(student["name"].split()[0])} 👋</div>',
         unsafe_allow_html=True,
     )
+    # The date, right under his name -- reported directly: "on the home screen,
+    # can we add the date for landon to see somewhere." A real, readable
+    # weekday + date (not the ISO string), so he always knows what day it is
+    # and which day's work he's looking at.
+    st.markdown(
+        f'<div style="font-size:15px; font-weight:600; color:var(--c-primary); '
+        f'margin:0 0 4px;">📅 {date.today().strftime("%A, %B %-d, %Y")}</div>',
+        unsafe_allow_html=True,
+    )
     st.caption("Here's what's set up for you. Work down the list, or jump around — up to you.")
 
     # Streak and fun fact are a matched pair, side by side, same width and
@@ -443,8 +452,7 @@ if not is_parent():
         board_range = weekly.week_dates(board_week_start, include_friday=True)
         when = "this week" if offset == 0 else "next week" if offset == 1 else f"{offset} weeks out"
         tail = (
-            "what's planned this week -- anything generated on the fly still shows up "
-            "on **Today**, not here."
+            "everything set up for you this week — today's work included."
             if offset == 0
             else f"the plan for {when}, once your parent sets it up -- usually on a Friday."
         )

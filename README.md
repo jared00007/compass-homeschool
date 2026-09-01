@@ -2500,10 +2500,33 @@ total both re-sum from the parent's number on the next run -- the day header is
 the balance dial. The editor is parent-only (`interactive`); Landon's board
 still just shows the estimates, never edits them.
 
+## The board and Home agree about today; the date is on Home
+
+Reported directly against Landon's board: "there is not assigned work today for
+landon on the board but his home screen shows different?" The cause was a real
+split between two views of "today." A lesson generated **on the fly** from a
+subject page carries no `planned_for`/`week_start`, so `weekly.board_for_week`
+placed it on no day column -- yet Home's own daily roster still listed it,
+because `due_lessons` treats an undated open lesson as due right now. So Home
+showed today's work while the board's Today column sat empty.
+
+`board_for_week` now surfaces those still-open, undated lessons on today's
+column (newest-per-subject, to match Home's one-row-per-subject roster), but
+only when today is actually one of the five day columns on screen -- a past or
+future week's board still shows that week's own plan, never today's ad-hoc
+work. Batch-planned lessons are unaffected (they already have a day). The
+student board's caption dropped its old "generated on the fly still shows up on
+Today, not here" hedge, since that's no longer true.
+
+And, reported in the same breath: "on the home screen, can we add the date for
+landon to see somewhere." His greeting now carries the full weekday + date
+(`📅 Tuesday, September 1, 2026`) right under "Hi Landon 👋", so he always knows
+what day it is and which day's work he's looking at.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1165 tests, ~150s, no API key needed
+python -m pytest tests/ -q      # 1168 tests, ~150s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

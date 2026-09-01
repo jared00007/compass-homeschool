@@ -882,6 +882,67 @@ def test_board_excludes_a_completed_story_from_backlog(board_db, board_student):
     assert board["backlog"] == []
 
 
+def test_board_surfaces_an_on_the_fly_lesson_on_today(board_db, board_student):
+    """Reported directly: "there is not assigned work today for landon on the
+    board but his home screen shows different?" An on-demand lesson (generated
+    from a subject page, so no planned_for/week_start) is due today on Home but
+    used to land on no day column at all. It must appear on today's column so
+    the board and Home agree."""
+    from datetime import date
+
+    monday = week_start()
+    today_iso = date.today().isoformat()
+    sid = board_student["id"]
+    lesson_id = board_db.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t",
+        title="Order of Operations", payload={"activities": []},
+        metadata={},  # on the fly: no planned_for, no week_start
+    )
+
+    board = board_for_week(board_db, board_student, monday)
+    assert ("lesson", lesson_id) in {(k, i["id"]) for k, i in board[today_iso]}
+    # and not duplicated into the backlog
+    assert ("lesson", lesson_id) not in {(k, i["id"]) for k, i in board["backlog"]}
+
+
+def test_board_keeps_only_the_newest_on_the_fly_lesson_per_subject(board_db, board_student):
+    """Matching Home's one-row-per-subject roster: two undated math lessons
+    don't stack two math cards on today -- only the newest surfaces."""
+    from datetime import date
+
+    monday = week_start()
+    today_iso = date.today().isoformat()
+    sid = board_student["id"]
+    older = board_db.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t",
+        title="Older Math", payload={"activities": []}, metadata={},
+    )
+    newer = board_db.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t",
+        title="Newer Math", payload={"activities": []}, metadata={},
+    )
+    board = board_for_week(board_db, board_student, monday)
+    today_lesson_ids = {i["id"] for k, i in board[today_iso] if k == "lesson"}
+    assert newer in today_lesson_ids
+    assert older not in today_lesson_ids
+
+
+def test_board_leaves_an_on_the_fly_lesson_off_a_week_that_isnt_todays(board_db, board_student):
+    """An undated 'do it now' lesson is today's work, not a future week's plan
+    -- viewing next week's board must not carry it along, since today isn't one
+    of that week's day columns."""
+    monday = week_start()
+    next_monday = monday + timedelta(days=7)
+    sid = board_student["id"]
+    board_db.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t",
+        title="Order of Operations", payload={"activities": []}, metadata={},
+    )
+    board = board_for_week(board_db, board_student, next_monday)
+    placed = [pair for day, items in board.items() for pair in items if day != "backlog"]
+    assert placed == []
+
+
 # --- epic_for / group_backlog_by_epic -----------------------------------------------
 
 
