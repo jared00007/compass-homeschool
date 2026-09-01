@@ -2814,6 +2814,34 @@ def _render_board_detail(
         st.caption(note)
 
 
+def _render_board_estimate_editor(db: Database, kind: str, item: dict[str, Any]) -> None:
+    """A compact, parent-only "how long is this block" input on a board card --
+    the sprint-points-style estimate a parent asked to be able to set ("just
+    like point scorng in sprints"). Pre-filled with the card's current
+    effective estimate (their own saved one, or the rough default); saving a
+    new number stores an override, and setting it to 0 clears back to the
+    default. The day header's total and the card's own tag re-sum from this on
+    the next run, so it doubles as the balance dial for the whole day."""
+    widget_key = f"board_est_{kind}_{item['id']}"
+
+    def _save(kind=kind, item_id=item["id"], key=widget_key) -> None:
+        raw = st.session_state.get(key)
+        # 0 (or blank) clears the override so the card falls back to its
+        # default; any other number is stored as the parent's own estimate.
+        db.set_board_estimate(kind, item_id, int(raw) if raw else None)
+
+    st.number_input(
+        "⏱️ Estimate (min)",
+        min_value=0,
+        max_value=600,
+        step=5,
+        value=board_item_minutes(kind, item),
+        key=widget_key,
+        on_change=_save,
+        help="Your rough time for this block — feeds the day's total. Set to 0 to use the default.",
+    )
+
+
 def _project_step_pace(item: dict[str, Any]) -> str | None:
     """A step's loose day range as a pace phrase -- "a few days to a week is
     the idea", never a deadline (same framing pages/7_Big_Projects.py's own
@@ -2835,15 +2863,22 @@ _TRAVEL_BOARD_PROMPTS = {
 
 
 def board_item_minutes(kind: str, item: dict[str, Any]) -> int:
-    """A rough minutes estimate for one board story, so the weekly board can
-    show a per-card time and sum a per-day total -- the "is this day too heavy
-    or too light" gauge a parent asked for. A lesson carries a real estimate
-    (its own `estimated_minutes`, else the sum of its activities' minutes, else
-    its credited minutes); a travel entry uses the journal's writing +
-    social-studies credit; every other kind has no stored duration, so it falls
-    back to a round, tunable per-kind block (config.BOARD_BLOCK_MINUTES). These
-    are estimates for balancing a week, not a claim of exact time -- callers
+    """A minutes estimate for one board story, so the weekly board can show a
+    per-card time and sum a per-day total -- the "is this day too heavy or too
+    light" gauge a parent asked for.
+
+    A parent's own saved estimate wins first (`item["estimate_minutes"]`, set by
+    set_board_estimate -- the sprint-points-style override, any int including 0).
+    With none saved it falls back to a sensible default: a lesson's real
+    estimate (its own `estimated_minutes`, else the sum of its activities'
+    minutes, else its credited minutes); a travel entry's writing +
+    social-studies credit; and a round, tunable per-kind block
+    (config.BOARD_BLOCK_MINUTES) for the rest, which carry no stored duration.
+    All estimates for balancing a week, not a claim of exact time -- callers
     render them with a "≈"."""
+    override = item.get("estimate_minutes")
+    if override is not None:
+        return int(override)
     if kind == "lesson":
         payload = item.get("payload") or {}
         est = payload.get("estimated_minutes")
@@ -3005,6 +3040,8 @@ def render_board_card(
                 }.get(item["status"])
                 if status_note:
                     st.caption(status_note)
+                if interactive:
+                    _render_board_estimate_editor(db, kind, item)
                 if interactive and item["status"] in ("planned", "needs_revision"):
                     lessons_for_collision = all_lessons_for_collision or []
 
@@ -3047,6 +3084,7 @@ def render_board_card(
                 st.caption(item["category"])
                 _render_board_detail(item.get("description"), item.get("materials"))
                 if interactive:
+                    _render_board_estimate_editor(db, kind, item)
                     render_story_move_control(
                         key=f"board_ls_{item['id']}",
                         active=bool(item["active"]),
@@ -3067,6 +3105,7 @@ def render_board_card(
                 st.caption(item["category"])
                 _render_board_detail(item.get("description"), item.get("materials"))
                 if interactive:
+                    _render_board_estimate_editor(db, kind, item)
                     render_story_move_control(
                         key=f"board_coding_{item['id']}",
                         active=bool(item["active"]),
@@ -3088,6 +3127,7 @@ def render_board_card(
                     st.caption(item["category"])
                 _render_board_detail(item.get("description"))
                 if interactive:
+                    _render_board_estimate_editor(db, kind, item)
                     if item["status"] not in ("done", "declined"):
                         render_story_move_control(
                             key=f"board_choice_{item['id']}",
@@ -3114,6 +3154,7 @@ def render_board_card(
                     pace=_project_step_pace(item),
                 )
                 if interactive:
+                    _render_board_estimate_editor(db, kind, item)
                     if not done:
                         render_story_move_control(
                             key=f"board_step_{item['id']}",
@@ -3138,6 +3179,7 @@ def render_board_card(
                     st.caption(f"📍 {md(where)}")
                 _render_board_detail(note=_TRAVEL_BOARD_PROMPTS.get(item["status"]))
                 if interactive:
+                    _render_board_estimate_editor(db, kind, item)
                     if item["status"] != "completed":
                         render_story_move_control(
                             key=f"board_travel_{item['id']}",

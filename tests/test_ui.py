@@ -1674,6 +1674,25 @@ def test_other_kinds_use_their_tunable_block_estimate():
         assert ui.board_item_minutes(kind, {}) == minutes
 
 
+def test_a_parents_own_saved_estimate_overrides_every_default():
+    # A stored estimate_minutes wins over the per-kind block default...
+    assert ui.board_item_minutes("life_skill", {"estimate_minutes": 20}) == 20
+    # ...and over a lesson's own generated estimate.
+    lesson = {"estimate_minutes": 25, "payload": {"estimated_minutes": 90}}
+    assert ui.board_item_minutes("lesson", lesson) == 25
+
+
+def test_a_none_override_falls_back_to_the_default():
+    # NULL in the column (no override set) must not read as 0 -- it means
+    # "use the default," so the card still shows its rough block estimate.
+    from compass import config
+
+    assert (
+        ui.board_item_minutes("project_step", {"estimate_minutes": None})
+        == config.BOARD_BLOCK_MINUTES["project_step"]
+    )
+
+
 @pytest.mark.parametrize(
     "total, expected",
     [(0, "0m"), (-5, "0m"), (45, "45m"), (60, "1h"), (90, "1h 30m"), (120, "2h")],

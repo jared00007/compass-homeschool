@@ -362,6 +362,46 @@ def test_the_board_day_header_shows_a_per_day_time_total(monkeypatch, tmp_path):
     assert "≈2h" in captions, "Monday's header should sum its two lessons to ≈2h"
 
 
+def test_the_parent_board_offers_an_editable_time_estimate(monkeypatch, tmp_path):
+    """A parent asked to edit each block's estimate "just like point scorng in
+    sprints." The parent board must offer a number input pre-filled with the
+    card's current estimate; saving it feeds the day total."""
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    skill_id = db.add_life_skill(student["id"], "Do the laundry", description="d")
+    db.set_life_skill_active(skill_id, True)
+    db.schedule_life_skill(skill_id, TARGET_MONDAY.isoformat())
+    db.close()
+
+    at, board_tab = _open_board_tab(monkeypatch, db_path)
+    estimate_inputs = [n for n in at.number_input if n.key == f"board_est_life_skill_{skill_id}"]
+    assert estimate_inputs, "the parent board should offer an editable estimate for the card"
+    # Pre-filled with the life-skill block default (30), not blank.
+    assert estimate_inputs[0].value == 30
+
+
+def test_a_saved_estimate_override_feeds_the_day_total(monkeypatch, tmp_path):
+    """The point of editing the estimate: a parent's saved number, not the
+    default, is what the day header sums. A single life skill on Monday with a
+    90-minute override must make Monday read ≈1h 30m, not the 30m default."""
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    skill_id = db.add_life_skill(student["id"], "Do the laundry", description="d")
+    db.set_life_skill_active(skill_id, True)
+    db.schedule_life_skill(skill_id, TARGET_MONDAY.isoformat())
+    db.set_board_estimate("life_skill", skill_id, 90)  # the parent's own estimate
+    db.close()
+
+    at, _ = _open_board_tab(monkeypatch, db_path)
+    captions = " ".join(c.value for c in at.caption)
+    assert "≈1h 30m" in captions
+    # And the card's own tag shows the override, not the 30m default.
+    inputs = [n for n in at.number_input if n.key == f"board_est_life_skill_{skill_id}"]
+    assert inputs and inputs[0].value == 90
+
+
 def test_the_parent_board_full_lesson_still_shows_the_answer_key(monkeypatch, tmp_path):
     """The flip side of the student redaction: on the *parent's* This Week
     board (parent_unlocked), the "View full lesson" dialog is a planning tool,

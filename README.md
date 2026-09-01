@@ -2487,10 +2487,23 @@ visible open or collapsed, and each day's header sums the cards beneath it
 light. They're estimates for balancing a week, shown with a `≈`, never a claim
 of exact time; the block defaults live in one config dict to tune.
 
+**And the estimate is editable, sprint-points style.** Reported directly: "can
+we just make that value editable by parent... just like point scorng in
+sprints." Each of the six board story types gained a nullable `estimate_minutes`
+column (added by `_ensure_column`, so every existing row keeps its old
+behavior), and every board card on the *parent* side carries a compact "⏱️
+Estimate (min)" number input, pre-filled with the card's current effective
+estimate. Saving a number stores the parent's own override
+(`db.set_board_estimate`); setting it to 0 clears back to the default.
+`board_item_minutes` reads that override first, so the card's tag and the day's
+total both re-sum from the parent's number on the next run -- the day header is
+the balance dial. The editor is parent-only (`interactive`); Landon's board
+still just shows the estimates, never edits them.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1153 tests, ~130s, no API key needed
+python -m pytest tests/ -q      # 1165 tests, ~150s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

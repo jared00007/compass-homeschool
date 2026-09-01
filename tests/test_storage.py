@@ -2475,3 +2475,30 @@ def test_concurrent_writes_to_different_activities_do_not_lose_either_one(
 
     lesson = real_get_lesson(db, lesson_id)
     assert lesson["metadata"]["writing_responses"] == {"0": "first", "1": "second"}
+
+
+def test_set_board_estimate_stores_and_clears_a_parent_override(db, student):
+    """The sprint-points-style estimate: setting a number stores it on the
+    story's own row (across the different board kinds' tables), and None clears
+    it back to NULL so ui.board_item_minutes falls back to the default."""
+    sid = student["id"]
+    skill_id = db.add_life_skill(sid, "Do the laundry")
+    project_id = db.add_big_project(sid, "Film", "a film")
+    step_id = db.add_project_step(project_id, "Storyboard", active=True)
+
+    db.set_board_estimate("life_skill", skill_id, 25)
+    db.set_board_estimate("project_step", step_id, 90)
+    skill = next(s for s in db.list_life_skills(sid) if s["id"] == skill_id)
+    step = next(s for s in db.list_project_steps(project_id) if s["id"] == step_id)
+    assert skill["estimate_minutes"] == 25
+    assert step["estimate_minutes"] == 90
+
+    db.set_board_estimate("life_skill", skill_id, None)
+    skill = next(s for s in db.list_life_skills(sid) if s["id"] == skill_id)
+    assert skill["estimate_minutes"] is None
+
+
+def test_set_board_estimate_ignores_an_unknown_kind(db, student):
+    """An unknown kind is a no-op, never a SQL error -- the board only ever
+    passes one of the six it renders, but a stray call must not raise."""
+    db.set_board_estimate("not_a_real_kind", 1, 30)  # must not raise

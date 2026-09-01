@@ -171,6 +171,9 @@ def test_the_student_board_shows_life_skill_and_step_detail(monkeypatch, tmp_pat
     body = " ".join(m.value for m in at.markdown)
     assert "Sort lights from darks" in body, "the life-skill detail must render on his board"
     assert "Sketch the first ten shots" in body, "the project-step detail must render on his board"
+    # ...but the parent-only time-estimate editor never appears on his board.
+    est_inputs = [n for n in at.number_input if (n.key or "").startswith("board_est_")]
+    assert not est_inputs, "the estimate editor is parent-only, never on the student board"
 
 
 def test_the_student_board_full_lesson_hides_the_answer_key(monkeypatch, tmp_path):

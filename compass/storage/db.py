@@ -1524,6 +1524,16 @@ class Database:
         # own comment warns about.
         self._ensure_column("books", "ai_summary", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("quiz_attempts", "duration_seconds", "INTEGER")
+        # A parent-editable time estimate per board story (sprint-points style,
+        # reported directly: "just like point scorng in sprints"). NULL means
+        # "no override -- use the rough default" (ui.board_item_minutes), so
+        # every existing row keeps behaving exactly as it did before the column
+        # existed. One nullable column on each of the six board story types.
+        for _est_table in (
+            "lessons", "life_skills", "coding_modules",
+            "choice_topics", "project_steps", "travel_entries",
+        ):
+            self._ensure_column(_est_table, "estimate_minutes", "INTEGER")
         self._backfill_big_project_step_content()
         self._backfill_big_project_catalog()
         self._backfill_declaration_url_default()
@@ -2423,6 +2433,33 @@ class Database:
             row["payload"] = json.loads(row["payload"])
             row["metadata"] = json.loads(row["metadata"])
         return rows
+
+    # Board `kind` -> its own table, the whitelist set_board_estimate updates.
+    # A fixed dict (never a caller-supplied string) so the table name can be
+    # interpolated into the UPDATE safely.
+    _BOARD_ESTIMATE_TABLES = {
+        "lesson": "lessons",
+        "life_skill": "life_skills",
+        "coding_module": "coding_modules",
+        "choice_topic": "choice_topics",
+        "project_step": "project_steps",
+        "travel_entry": "travel_entries",
+    }
+
+    def set_board_estimate(self, kind: str, item_id: int, minutes: int | None) -> None:
+        """Set (or clear) a parent's own time estimate for one board story --
+        the sprint-points-style pulse-check estimate. `minutes=None` clears the
+        override so the card falls back to its rough default (see
+        ui.board_item_minutes); any int (including 0) is stored as-is. Unknown
+        `kind` is a no-op rather than an error -- the board only ever calls this
+        with one of the six it renders."""
+        table = self._BOARD_ESTIMATE_TABLES.get(kind)
+        if table is None:
+            return
+        self.conn.execute(
+            f"UPDATE {table} SET estimate_minutes = ? WHERE id = ?", (minutes, item_id)
+        )
+        self.conn.commit()
 
     def latest_life_skill_plan(self, student_id: int, skill_id: int) -> dict[str, Any] | None:
         """The most recent generated plan for one life skill, if there is one.
