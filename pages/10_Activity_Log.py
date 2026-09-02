@@ -22,6 +22,7 @@ from compass.ui import (
     page_setup,
     parent_only,
     render_assessment_card,
+    render_lesson,
     render_story_move_control,
 )
 
@@ -132,6 +133,24 @@ def _render_review_card(lesson: dict, today_iso: str) -> None:
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             key=f"docx_{lesson['id']}",
         )
+        # The whole lesson, rendered the same way his own screen renders it
+        # -- every activity, its instructions, videos, and questions, with
+        # the answer key still held back exactly as he sees it. Reviewing his
+        # work used to show only the overview and his responses, never the
+        # material he actually read; a parent deciding whether he got it
+        # needs to see the same lesson he did. Read-only here (db is left
+        # out, so no writing box or "mark done" buttons fire), and collapsed
+        # by default so it's there to open, not in the way of the decision.
+        if (lesson["payload"].get("activities") or []):
+            with st.expander("📖 See the lesson exactly as he sees it"):
+                render_lesson(
+                    lesson["payload"],
+                    for_parent=False,
+                    lesson_id=lesson["id"],
+                    metadata=lesson.get("metadata") or {},
+                    comic_layout=True,
+                    comic_frame_title=f"📘 {lesson['title']}",
+                )
         render_assessment_card(db, student, lesson, key_prefix=f"activitylog_{lesson['id']}")
         # For a graded subject, hours only ever get logged through the
         # combined Approve action inside render_assessment_card above --

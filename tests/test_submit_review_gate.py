@@ -519,6 +519,40 @@ def test_the_review_card_shows_the_quiz_he_took(monkeypatch, tmp_path):
     assert "1/2" in blob
 
 
+def test_the_review_card_shows_the_lesson_body_he_read(monkeypatch, tmp_path):
+    """Reviewing his work, a parent can open the actual lesson -- its
+    activities and instructions -- the same content he read, not just the
+    overview and his answers. The answer-key material a student never sees
+    (here, lesson-level parent_notes) stays hidden inside that view too, so
+    it really is his screen."""
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="science", subject="science", topic="t",
+        title="Volcanoes",
+        payload={
+            "title": "Volcanoes", "overview": "o",
+            "activities": [
+                {"title": "Read about magma", "kind": "reading", "minutes": 10,
+                 "instructions": "UNIQUEINSTRUCTIONXYZ — read chapter four closely.",
+                 "video": {"found": False, "title": "", "url": "", "channel": "", "why": ""}},
+            ],
+            "parent_notes": "PARENTONLYNOTE watch for the magma/lava mixup.",
+        },
+    )
+    db.submit_lesson(lesson_id)
+    db.close()
+
+    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    blob = "\n".join(m.value for m in at.markdown)
+    labels = "\n".join(e.label for e in at.get("expander"))
+    assert "See the lesson exactly as he sees it" in labels
+    assert "UNIQUEINSTRUCTIONXYZ" in blob
+    # Rendered as his screen -- the parent-only note is not in that view.
+    assert "PARENTONLYNOTE" not in blob
+
+
 # --- render_assessment_card: approve folds in logging the hours ------------------
 
 
