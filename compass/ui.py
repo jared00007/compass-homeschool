@@ -1630,6 +1630,55 @@ def _log_hours_for_lesson(
     )
 
 
+def _render_quiz_review(db: Database, student: dict[str, Any], lesson: dict[str, Any]) -> bool:
+    """The quiz he took, laid out for the parent the same way his own
+    graded view showed it -- each question, which answer he picked, which
+    was right, and the explanation. The review card used to surface the
+    quiz as a single score line and nothing more, so a parent could see
+    *that* he scored 4/5 but never *which* one he missed or what he chose;
+    the writing sitting right beside it was fully readable, and the quiz
+    should be too.
+
+    Reads the latest graded attempt (list_quiz_attempts is newest-first)
+    and its stored per-question `detail`. Returns True when it rendered
+    something, so the caller can count "there's a quiz to look at" among
+    the reasons this card has anything to show. Renders nothing -- and
+    returns False -- for a lesson with no quiz, or a quiz he hasn't taken
+    yet.
+    """
+    attempts = db.list_quiz_attempts(student["id"], lesson_id=lesson["id"])
+    if not attempts:
+        return False
+    latest = attempts[0]
+    detail = latest.get("detail") or []
+    if not detail:
+        return False
+
+    correct, total = latest["correct"], latest["total"]
+    pct = round(100 * correct / total) if total else 0
+    verdict = "🎯 passed" if latest.get("passed") else "below the pass threshold"
+    suffix = f" · latest of {len(attempts)} attempts" if len(attempts) > 1 else ""
+    st.markdown(f"**📝 Quiz — {correct}/{total} ({pct}%)** — {verdict}{suffix}")
+
+    for index, item in enumerate(detail):
+        pick = item.get("pick")
+        right = pick == item.get("correct_index")
+        marker = "✅" if right else "❌"
+        with st.expander(f"{marker} {index + 1}. {md(item['question'])}", expanded=False):
+            for choice_index, choice in enumerate(item.get("choices") or []):
+                tag = ""
+                if choice_index == item.get("correct_index"):
+                    tag = " — correct answer"
+                elif choice_index == pick:
+                    tag = " — his answer"
+                st.markdown(f"- {md(choice)}{tag}")
+            if pick is None:
+                st.caption("He left this one blank.")
+            if item.get("explanation"):
+                st.caption(md(item["explanation"]))
+    return True
+
+
 def render_assessment_card(
     db: Database, student: dict[str, Any], lesson: dict[str, Any], key_prefix: str
 ) -> None:
@@ -1678,7 +1727,14 @@ def render_assessment_card(
     # but whether the reading happened is exactly what a parent opens this
     # card to find out.
     reading_checks = metadata.get("reading_checks") or {}
-    if not assessment and not skill_id and not writing_activities and not reading_checks:
+    has_quiz = bool(payload.get("quiz")) and bool(metadata.get("quiz_result"))
+    if (
+        not assessment
+        and not skill_id
+        and not writing_activities
+        and not reading_checks
+        and not has_quiz
+    ):
         return
 
     st.markdown("**Assessment**")
@@ -1700,6 +1756,8 @@ def render_assessment_card(
             st.caption(f"{label} ✅")
         else:
             st.warning(f"{label} — worth asking whether he actually did the reading.")
+
+    _render_quiz_review(db, student, lesson)
 
     responses = metadata.get("writing_responses") or {}
     review_map = metadata.get("writing_review") or {}

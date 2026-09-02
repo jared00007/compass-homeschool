@@ -470,6 +470,55 @@ def test_turning_it_in_blocks_further_edits(monkeypatch, tmp_path):
     assert not any("Turn it in for review" in (b.label or "") for b in at2.button)
 
 
+def test_the_review_card_shows_the_quiz_he_took(monkeypatch, tmp_path):
+    """A parent reviewing a turned-in lesson can read the quiz the same way
+    they read his writing: each question, the answer he picked, and the
+    right one -- not just a one-line score."""
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="science", subject="science", topic="t",
+        title="Volcanoes",
+        payload={
+            "title": "Volcanoes", "activities": [],
+            "quiz": [
+                {"question": "What is lava called underground?",
+                 "choices": ["Magma", "Basalt"], "correct_index": 0},
+                {"question": "Which plate boundary builds volcanoes?",
+                 "choices": ["Transform", "Convergent"], "correct_index": 1},
+            ],
+        },
+    )
+    db.record_quiz_result(
+        lesson_id, student["id"], 1, 2, False,
+        detail=[
+            {"question": "What is lava called underground?",
+             "choices": ["Magma", "Basalt"], "correct_index": 0, "pick": 0,
+             "explanation": "Underground it's magma; above ground, lava."},
+            {"question": "Which plate boundary builds volcanoes?",
+             "choices": ["Transform", "Convergent"], "correct_index": 1, "pick": 0,
+             "explanation": "Convergent boundaries force one plate under another."},
+        ],
+    )
+    db.submit_lesson(lesson_id)
+    db.close()
+
+    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    # Each question is a per-question expander, marked ✅/❌ so a parent can
+    # scan which he missed; the question text lives in that label.
+    labels = "\n".join(e.label for e in at.get("expander"))
+    assert "What is lava called underground?" in labels
+    assert "Which plate boundary builds volcanoes?" in labels
+    blob = "\n".join(m.value for m in at.markdown)
+    # His pick and the right answer are both labelled, so a parent can see
+    # exactly what he chose on the one he missed.
+    assert "his answer" in blob.lower()
+    assert "correct answer" in blob.lower()
+    # And the headline score is right there too.
+    assert "1/2" in blob
+
+
 # --- render_assessment_card: approve folds in logging the hours ------------------
 
 
