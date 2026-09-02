@@ -546,14 +546,50 @@ def test_the_review_card_shows_the_lesson_body_he_read(monkeypatch, tmp_path):
 
     at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
     blob = "\n".join(m.value for m in at.markdown)
-    labels = "\n".join(e.label for e in at.get("expander"))
-    assert "See the lesson exactly as he sees it" in labels
+    # The lesson body renders inline in the review now, not behind an
+    # expander -- the activity he read is right there.
     assert "UNIQUEINSTRUCTIONXYZ" in blob
     # Rendered as his screen -- the parent-only note is not in that view.
     assert "PARENTONLYNOTE" not in blob
 
 
-# --- render_assessment_card: approve folds in logging the hours ------------------
+def test_the_review_is_inline_content_response_and_controls_together(monkeypatch, tmp_path):
+    """The whole point of the inline review: the activity he read, his
+    response to it, and the approve/send-back control all sit together, and
+    his response shows exactly once (not once in a lesson preview and again
+    in a separate grading panel)."""
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Essay",
+        payload={
+            "title": "Essay", "overview": "o",
+            "activities": [
+                {"title": "Essay", "kind": "writing", "minutes": 20,
+                 "instructions": "INLINEINSTRUCTION write your paragraph.",
+                 "video": {"found": False, "title": "", "url": "", "channel": "", "why": ""}},
+            ],
+        },
+    )
+    db.save_writing_response(lesson_id, 0, "HISUNIQUERESPONSE about the topic.")
+    db.set_writing_review(lesson_id, 0, config.WRITING_SUBMITTED)
+    db.submit_lesson(lesson_id)
+    db.close()
+
+    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    blob = "\n".join(m.value for m in at.markdown)
+    # Activity content and his response are both on the page...
+    assert "INLINEINSTRUCTION" in blob
+    assert "HISUNIQUERESPONSE" in blob
+    # ...his response exactly once (no duplicate preview + grading copy)...
+    assert blob.count("HISUNIQUERESPONSE") == 1
+    # ...and the per-activity approve control is right there to act on.
+    assert any(b.label == "✅ Approve" for b in at.button)
+
+
+# --- render_lesson_review: approve folds in logging the hours --------------------
 
 
 def test_approving_a_non_math_lesson_logs_hours_in_the_same_click(monkeypatch, tmp_path):

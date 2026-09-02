@@ -718,10 +718,17 @@ def _render_activity_body(
     lesson_id: int | None,
     metadata: dict[str, Any] | None,
     student: dict[str, Any] | None = None,
+    review_owns_response: bool = False,
 ) -> None:
     """The inside of one activity: video, worked example, instructions, and
     (when it applies) the typed-response box. Shared by both the plain
-    expander layout and the comic-panel layout so the two never drift apart."""
+    expander layout and the comic-panel layout so the two never drift apart.
+
+    `review_owns_response` is set only by the parent's inline grading view
+    (render_lesson_review): there, his written response and the approve/send
+    -back controls are rendered together right below the activity by
+    `_render_writing_review_controls`, so this function renders the activity
+    *content* and stops short of showing the response a second time."""
     video = activity.get("video") or {}
     if video.get("found") and video.get("url"):
         st.markdown(f"▶️ **[{md(video.get('title', 'Watch'))}]({video['url']})**")
@@ -756,7 +763,7 @@ def _render_activity_body(
             activity, index, db=db, lesson_id=lesson_id, metadata=metadata
         )
 
-    if _needs_written_response(activity):
+    if _needs_written_response(activity) and not review_owns_response:
         saved = ((metadata or {}).get("writing_responses") or {}).get(str(index), "")
         if not parent and db is not None and lesson_id is not None:
             review = ((metadata or {}).get("writing_review") or {}).get(str(index), {})
@@ -1679,191 +1686,127 @@ def _render_quiz_review(db: Database, student: dict[str, Any], lesson: dict[str,
     return True
 
 
-def render_assessment_card(
-    db: Database, student: dict[str, Any], lesson: dict[str, Any], key_prefix: str
+def _render_writing_review_controls(
+    db: Database,
+    student: dict[str, Any],
+    lesson: dict[str, Any],
+    index: int,
+    activity: dict[str, Any],
+    *,
+    key_prefix: str,
+    metadata: dict[str, Any],
+    review_map: dict[str, Any],
 ) -> None:
-    """The parent's digital check on a lesson -- right where hours get
-    logged (Activity Log's own review card), not a separate page hop and a
-    re-type. Math (a `skill_id` in metadata) gets a plain approve/not-yet
-    decision -- "Approve" writes status="mastered" (unlocking the next
-    skill) at whatever score he actually got, "Not yet" writes
-    status="in_progress"; every other agent gets a lighter three-way call
-    since there's no mastery graph to gate. This is deliberately not the
-    same not_started/in_progress/mastered dropdown Math -> Record mastery
-    offers -- that page is a general "set any skill's status anytime" tool,
-    while this card is answering one narrow question about one specific
-    attempt, and a bare status picker sitting right under a caption saying
-    "mastery needs 100%" read like the parent wasn't allowed to approve
-    anything less, when the real rule is the quiz's own auto-approval, not
-    a ceiling on what a parent can decide by hand. Either way, any writing
-    response he's saved (see render_lesson's own writing-activity handling)
-    shows first, since that's usually the actual evidence the check is
-    based on.
-
-    Renders nothing at all for a lesson with no assessment, no skill_id,
-    and no writing activity -- most Life Skills/Choice lessons, say.
-
-    The actual decision (mastery, the 5-band verdict, a writing activity's
-    approve/bounce) only opens up once `lesson["status"] == "submitted"` --
-    he has to turn the whole lesson in first. Approving folds in logging
-    the hours in the same click (see _log_hours_for_lesson), since that's
-    the same act now: approved *is* completed. Sending anything back sets
-    the lesson to "needs_revision" and reopens it to him (see
-    student_lesson_view), with no hours logged until he resubmits and it's
-    approved for real.
-    """
-    payload = lesson["payload"]
-    metadata = lesson.get("metadata") or {}
-    assessment = payload.get("assessment") or {}
-    skill_id = metadata.get("skill_id")
-    writing_activities = [
-        (index, activity)
-        for index, activity in enumerate(payload.get("activities") or [])
-        if _needs_written_response(activity)
-    ]
-
-    # Reading-check results count as something to show: a lesson that's only
-    # "read these chapters" has no assessment, no skill, and nothing typed,
-    # but whether the reading happened is exactly what a parent opens this
-    # card to find out.
-    reading_checks = metadata.get("reading_checks") or {}
-    has_quiz = bool(payload.get("quiz")) and bool(metadata.get("quiz_result"))
-    if (
-        not assessment
-        and not skill_id
-        and not writing_activities
-        and not reading_checks
-        and not has_quiz
-    ):
-        return
-
-    st.markdown("**Assessment**")
-    if assessment.get("description"):
-        st.caption(f"*{md(assessment.get('kind', ''))}* — {md(assessment['description'])}")
-    if assessment.get("mastery_criteria"):
-        st.caption(f"Counts as mastered when: {md(assessment['mastery_criteria'])}")
-
-    # Whether the reading actually happened, before any judgment about what
-    # he wrote about it -- a thin response to a chapter he skimmed is a
-    # different problem from a thin response to one he read.
-    for activity_index, activity in enumerate(payload.get("activities") or []):
-        stored = reading_checks.get(str(activity_index))
-        if not stored:
-            continue
-        correct, total = stored.get("correct", 0), stored.get("total", 0)
-        label = f"📖 Reading check — {md(activity.get('title', 'Reading'))}: {correct}/{total}"
-        if total and correct == total:
-            st.caption(f"{label} ✅")
-        else:
-            st.warning(f"{label} — worth asking whether he actually did the reading.")
-
-    _render_quiz_review(db, student, lesson)
-
+    """One writing activity's evidence and its approve/send-back call, meant
+    to sit directly under that activity in the parent's inline review: his
+    response, earlier drafts, the automated read, and -- once he's turned the
+    whole lesson in -- the buttons to approve it or bounce it back to him."""
     responses = metadata.get("writing_responses") or {}
-    review_map = metadata.get("writing_review") or {}
-    for index, activity in writing_activities:
-        text = responses.get(str(index), "")
-        review = review_map.get(str(index), {})
-        status = review.get("status", config.WRITING_DRAFT)
+    text = responses.get(str(index), "")
+    review = review_map.get(str(index), {})
+    status = review.get("status", config.WRITING_DRAFT)
 
-        st.markdown(f"*His response — {md(activity.get('title', 'Writing'))}*")
-        if text:
-            st.write(md(text))
-        else:
-            st.caption("He hasn't written a response yet.")
-        versions = db.list_writing_response_versions(lesson["id"], index)
-        if len(versions) > 1:
-            with st.expander(f"Earlier drafts ({len(versions) - 1})"):
-                for version in versions[:-1]:
-                    st.caption(version["saved_at"])
-                    st.write(md(version["text"]))
-                    st.divider()
+    st.markdown(f"*His response — {md(activity.get('title', 'Writing'))}*")
+    if text:
+        st.write(md(text))
+    else:
+        st.caption("He hasn't written a response yet.")
+    versions = db.list_writing_response_versions(lesson["id"], index)
+    if len(versions) > 1:
+        with st.expander(f"Earlier drafts ({len(versions) - 1})"):
+            for version in versions[:-1]:
+                st.caption(version["saved_at"])
+                st.write(md(version["text"]))
+                st.divider()
 
-        ai_review = _stored_ai_review(metadata, index)
-        if ai_review is not None:
-            # The same stored result he already saw before submitting -- his
-            # view showed strengths and next moves; yours adds what the
-            # assignment asked for that's still missing, and anything
-            # factually wrong. No second model call: this is read back, not
-            # regenerated.
-            with st.expander("🔍 What the automated read noticed"):
-                # Three tiers, loudest first. This card is read to decide
-                # whether to send the assignment back, so the two reasons to
-                # do that shouldn't sit quieter than the praise -- which is
-                # what a plain bullet under a ⚠️ alert was doing. `missing`
-                # carries the same 🔁 his own view uses for the same items,
-                # so the mark means one thing on both sides of the app.
-                for concern in ai_review.get("concerns") or []:
-                    st.error(f"⚠️ **Check this** — {md(concern)}")
-                for item in ai_review.get("missing") or []:
-                    st.warning(f"🔁 **Needs rework** — {md(item)}")
-                for strength in ai_review.get("strengths") or []:
-                    st.markdown(f"- ✅ **Working:** {md(strength)}")
-                if not any(
-                    ai_review.get(k) for k in ("concerns", "missing", "strengths")
-                ):
-                    st.caption("Nothing flagged.")
-                st.caption(
-                    "Advisory only, and it can be wrong -- it never approves "
-                    "anything on its own."
-                )
-
-        if status == config.WRITING_APPROVED:
-            st.success("✅ Approved.")
-        elif status == config.WRITING_NEEDS_REVISION:
-            history = _feedback_history(
-                review, history_key="feedback_history", single_key="feedback"
+    ai_review = _stored_ai_review(metadata, index)
+    if ai_review is not None:
+        # The same stored result he already saw before submitting -- his
+        # view showed strengths and next moves; yours adds what the
+        # assignment asked for that's still missing, and anything
+        # factually wrong. No second model call: this is read back, not
+        # regenerated.
+        with st.expander("🔍 What the automated read noticed"):
+            # Three tiers, loudest first. This card is read to decide
+            # whether to send the assignment back, so the two reasons to
+            # do that shouldn't sit quieter than the praise -- which is
+            # what a plain bullet under a ⚠️ alert was doing. `missing`
+            # carries the same 🔁 his own view uses for the same items,
+            # so the mark means one thing on both sides of the app.
+            for concern in ai_review.get("concerns") or []:
+                st.error(f"⚠️ **Check this** — {md(concern)}")
+            for item in ai_review.get("missing") or []:
+                st.warning(f"🔁 **Needs rework** — {md(item)}")
+            for strength in ai_review.get("strengths") or []:
+                st.markdown(f"- ✅ **Working:** {md(strength)}")
+            if not any(ai_review.get(k) for k in ("concerns", "missing", "strengths")):
+                st.caption("Nothing flagged.")
+            st.caption(
+                "Advisory only, and it can be wrong -- it never approves "
+                "anything on its own."
             )
-            if len(history) <= 1:
-                st.warning(
-                    "↩️ Sent back for revision"
-                    + (f": {md(history[0])}" if history else ".")
-                )
-            else:
-                st.warning("↩️ Sent back for revision — every note you've given so far:")
-                for note in history:
-                    st.markdown(f"- {md(note)}")
-        elif status == config.WRITING_SUBMITTED and lesson["status"] == "submitted":
-            st.info("⏳ He's submitted this — awaiting your review.")
-            review_key = f"{key_prefix}_writing_review_{lesson['id']}_{index}"
-            with st.form(review_key):
-                feedback = st.text_area(
-                    "Feedback (shown to him if you send it back)", key=f"{review_key}_feedback"
-                )
-                approve_col, bounce_col = st.columns(2)
-                approve = approve_col.form_submit_button("✅ Approve", type="primary")
-                bounce = bounce_col.form_submit_button("↩️ Send back for revision")
-            if approve:
-                db.set_writing_review(lesson["id"], index, config.WRITING_APPROVED)
-                st.rerun()
-            elif bounce:
-                db.set_writing_review(
-                    lesson["id"], index, config.WRITING_NEEDS_REVISION, feedback
-                )
-                # Bouncing any one piece sends the whole lesson back to him --
-                # he needs to see it and act, not just this activity. No
-                # lesson-level feedback text: this activity already carries
-                # its own, right where he'll read it.
-                db.send_lesson_back(lesson["id"])
-                st.rerun()
-        elif status == config.WRITING_SUBMITTED:
-            # Submitted at the activity level but the lesson as a whole
-            # hasn't been turned in yet -- possible on data from before this
-            # gate existed. Nothing to act on until he turns in the rest.
-            st.caption("⏳ Submitted — waiting on him to turn in the whole lesson.")
+
+    if status == config.WRITING_APPROVED:
+        st.success("✅ Approved.")
+    elif status == config.WRITING_NEEDS_REVISION:
+        history = _feedback_history(
+            review, history_key="feedback_history", single_key="feedback"
+        )
+        if len(history) <= 1:
+            st.warning(
+                "↩️ Sent back for revision" + (f": {md(history[0])}" if history else ".")
+            )
         else:
-            st.caption("Still drafting — he hasn't submitted this one yet.")
+            st.warning("↩️ Sent back for revision — every note you've given so far:")
+            for note in history:
+                st.markdown(f"- {md(note)}")
+    elif status == config.WRITING_SUBMITTED and lesson["status"] == "submitted":
+        st.info("⏳ He's submitted this — awaiting your review.")
+        review_key = f"{key_prefix}_writing_review_{lesson['id']}_{index}"
+        with st.form(review_key):
+            feedback = st.text_area(
+                "Feedback (shown to him if you send it back)", key=f"{review_key}_feedback"
+            )
+            approve_col, bounce_col = st.columns(2)
+            approve = approve_col.form_submit_button("✅ Approve", type="primary")
+            bounce = bounce_col.form_submit_button("↩️ Send back for revision")
+        if approve:
+            db.set_writing_review(lesson["id"], index, config.WRITING_APPROVED)
+            st.rerun()
+        elif bounce:
+            db.set_writing_review(lesson["id"], index, config.WRITING_NEEDS_REVISION, feedback)
+            # Bouncing any one piece sends the whole lesson back to him --
+            # he needs to see it and act, not just this activity. No
+            # lesson-level feedback text: this activity already carries
+            # its own, right where he'll read it.
+            db.send_lesson_back(lesson["id"])
+            st.rerun()
+    elif status == config.WRITING_SUBMITTED:
+        # Submitted at the activity level but the lesson as a whole
+        # hasn't been turned in yet -- possible on data from before this
+        # gate existed. Nothing to act on until he turns in the rest.
+        st.caption("⏳ Submitted — waiting on him to turn in the whole lesson.")
+    else:
+        st.caption("Still drafting — he hasn't submitted this one yet.")
 
-    # The lesson-wide decision (mastery, or the 5-band verdict) waits for
-    # every writing activity to be individually approved first -- grading
-    # the whole lesson while a piece of it still has its own pending
-    # approve/bounce call would put two "send it back" buttons on the
-    # screen for the same lesson at once.
-    writing_all_approved = all(
-        (review_map.get(str(index)) or {}).get("status") == config.WRITING_APPROVED
-        for index, _ in writing_activities
-    )
 
+def _render_final_grade_decision(
+    db: Database,
+    student: dict[str, Any],
+    lesson: dict[str, Any],
+    *,
+    key_prefix: str,
+    metadata: dict[str, Any],
+    assessment: dict[str, Any],
+    skill_id: Any,
+    writing_all_approved: bool,
+) -> None:
+    """The one lesson-wide call, at the very bottom of the review: mastery
+    for a Math skill (a `skill_id`), the five-band verdict for every other
+    graded subject. Only opens up once he's turned the lesson in AND every
+    writing piece in it is individually approved -- never two "send it back"
+    buttons live for the same lesson at once. Approving folds in logging the
+    hours in the same click; sending back reopens it to him."""
     if skill_id:
         current = db.mastery_map(student["id"]).get(skill_id, {})
         quiz_result = metadata.get("quiz_result") or {}
@@ -1878,11 +1821,6 @@ def render_assessment_card(
             "The quiz only auto-approves a perfect score -- you decide here, at any "
             "score, whether that's good enough to move on."
         )
-        # The decision only opens up once he's actually turned the lesson
-        # in -- a lesson still in progress or already sent back has nothing
-        # new for a parent to act on yet (see student_lesson_view for the
-        # other side of this gate) -- and once any writing activity in it
-        # has been approved on its own.
         if lesson["status"] == "submitted" and writing_all_approved:
             with st.form(f"{key_prefix}_assess_{lesson['id']}"):
                 notes = st.text_area("Notes (optional)", value=current.get("notes", ""))
@@ -1893,16 +1831,12 @@ def render_assessment_card(
                     lesson["payload"], f"{key_prefix}_hrs_{lesson['id']}"
                 )
                 approve_col, practice_col = st.columns(2)
-                approve = approve_col.form_submit_button(
-                    "✅ Approve & log hours", type="primary"
-                )
+                approve = approve_col.form_submit_button("✅ Approve & log hours", type="primary")
                 keep_practicing = practice_col.form_submit_button(
                     "🔁 Not yet — send back for more practice"
                 )
             if approve:
-                db.set_mastery(
-                    student["id"], skill_id, "mastered", score=latest_score, notes=notes
-                )
+                db.set_mastery(student["id"], skill_id, "mastered", score=latest_score, notes=notes)
                 _log_hours_for_lesson(
                     db, student, lesson, minutes=minutes, location=where, credits=credits
                 )
@@ -1952,9 +1886,7 @@ def render_assessment_card(
                     lesson["payload"], f"{key_prefix}_hrs_{lesson['id']}"
                 )
                 approve_col, bounce_col = st.columns(2)
-                approve = approve_col.form_submit_button(
-                    "✅ Approve & log hours", type="primary"
-                )
+                approve = approve_col.form_submit_button("✅ Approve & log hours", type="primary")
                 bounce = bounce_col.form_submit_button("↩️ Send back for revision")
             if approve:
                 if verdict is None:
@@ -1981,6 +1913,119 @@ def render_assessment_card(
                 f"Last recorded: {config.ASSESSMENT_VERDICT_LABELS.get(result.get('verdict'), '')} "
                 f"on {result.get('assessed_on', '')}"
             )
+
+
+def render_lesson_review(
+    db: Database, student: dict[str, Any], lesson: dict[str, Any], key_prefix: str
+) -> None:
+    """Grade in place. The whole lesson as he saw it, and under each activity
+    the very submission it produced -- his written response with its own
+    approve/send-back buttons, the reading check -- and after the activities
+    the quiz with his answers against the key. A parent reads top to bottom
+    and never scrolls back up to a separate panel of controls to act on what
+    they just read.
+
+    Replaces the old split of a read-only lesson preview plus a detached
+    assessment card. The lesson-wide decision (mastery, or the five-band
+    verdict, folding in the hours) still lands exactly once, at the very end.
+
+    The content is the parent view -- his responses shown, but the answer
+    key and parent notes still held back exactly as they are on his own
+    screen -- so it stays faithful to the lesson he actually worked from.
+    """
+    payload = lesson["payload"]
+    metadata = lesson.get("metadata") or {}
+    assessment = payload.get("assessment") or {}
+    skill_id = metadata.get("skill_id")
+    activities = payload.get("activities") or []
+    review_map = metadata.get("writing_review") or {}
+    reading_checks = metadata.get("reading_checks") or {}
+
+    if payload.get("overview"):
+        st.write(md(payload["overview"]))
+    objectives = payload.get("learning_objectives") or []
+    materials = payload.get("materials") or []
+    if objectives or materials:
+        columns = st.columns(2)
+        with columns[0]:
+            if objectives:
+                st.markdown("**Learning objectives**")
+                for objective in objectives:
+                    st.markdown(f"- {md(objective)}")
+        with columns[1]:
+            if materials:
+                st.markdown("**Materials**")
+                for item in materials:
+                    st.markdown(f"- {md(item)}")
+
+    if assessment.get("description"):
+        st.caption(f"*{md(assessment.get('kind', ''))}* — {md(assessment['description'])}")
+    if assessment.get("mastery_criteria"):
+        st.caption(f"Counts as mastered when: {md(assessment['mastery_criteria'])}")
+
+    for index, activity in enumerate(activities):
+        with st.container(border=True):
+            st.markdown(
+                f"**{index + 1}. {md(activity.get('title', 'Activity'))}**  \n"
+                f"{_comic_kind_pill_html(activity.get('kind', ''))} · "
+                f"{activity.get('minutes', 0)} min",
+                unsafe_allow_html=True,
+            )
+            # The activity exactly as he saw it (parent side: answer key and
+            # parent notes still held back), then his own work and the
+            # grading controls right underneath -- never up in a separate
+            # block he has to scroll away to.
+            _render_activity_body(
+                activity,
+                index,
+                parent=True,
+                db=db,
+                lesson_id=lesson["id"],
+                metadata=metadata,
+                student=student,
+                review_owns_response=True,
+            )
+            stored = reading_checks.get(str(index))
+            if stored:
+                correct, total = stored.get("correct", 0), stored.get("total", 0)
+                label = f"📖 Reading check: {correct}/{total}"
+                if total and correct == total:
+                    st.caption(f"{label} ✅")
+                else:
+                    st.warning(f"{label} — worth asking whether he actually did the reading.")
+            if _needs_written_response(activity):
+                _render_writing_review_controls(
+                    db, student, lesson, index, activity,
+                    key_prefix=key_prefix, metadata=metadata, review_map=review_map,
+                )
+
+    if payload.get("quiz"):
+        with st.container(border=True):
+            if not _render_quiz_review(db, student, lesson):
+                st.caption("📝 Quiz — he hasn't taken it yet.")
+
+    # The lesson-wide decision waits for every writing piece to be approved
+    # first, so grading the whole lesson never collides with a per-activity
+    # approve/bounce still pending above.
+    writing_activities = [
+        (index, activity)
+        for index, activity in enumerate(activities)
+        if _needs_written_response(activity)
+    ]
+    writing_all_approved = all(
+        (review_map.get(str(index)) or {}).get("status") == config.WRITING_APPROVED
+        for index, _ in writing_activities
+    )
+    _render_final_grade_decision(
+        db,
+        student,
+        lesson,
+        key_prefix=key_prefix,
+        metadata=metadata,
+        assessment=assessment,
+        skill_id=skill_id,
+        writing_all_approved=writing_all_approved,
+    )
 
 
 # --- the student's own lesson view: current + reopenable past lessons ----------

@@ -21,8 +21,7 @@ from compass.ui import (
     md,
     page_setup,
     parent_only,
-    render_assessment_card,
-    render_lesson,
+    render_lesson_review,
     render_story_move_control,
 )
 
@@ -103,15 +102,6 @@ def _render_review_card(lesson: dict, today_iso: str) -> None:
             st.caption(f"Why: {md(lesson['rationale'])}")
         if student_done_on and lesson["status"] == "submitted":
             st.caption(f"🎓 He turned this in on {student_done_on}.")
-        quiz_result = (lesson.get("metadata") or {}).get("quiz_result")
-        if quiz_result and quiz_result.get("total"):
-            pct = round(100 * quiz_result["correct"] / quiz_result["total"])
-            verdict = "🎯 passed" if quiz_result.get("passed") else "below the pass threshold"
-            st.caption(
-                f"📝 Quiz: {quiz_result['correct']}/{quiz_result['total']} ({pct}%) — "
-                f"{verdict}, graded {quiz_result.get('graded_on', '?')}"
-            )
-        st.write(md(lesson["payload"].get("overview", "")))
         credits = lesson["payload"].get("subject_credits") or []
         if credits:
             st.markdown(
@@ -133,27 +123,14 @@ def _render_review_card(lesson: dict, today_iso: str) -> None:
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             key=f"docx_{lesson['id']}",
         )
-        # The whole lesson, rendered the same way his own screen renders it
-        # -- every activity, its instructions, videos, and questions, with
-        # the answer key still held back exactly as he sees it. Reviewing his
-        # work used to show only the overview and his responses, never the
-        # material he actually read; a parent deciding whether he got it
-        # needs to see the same lesson he did. Read-only here (db is left
-        # out, so no writing box or "mark done" buttons fire), and collapsed
-        # by default so it's there to open, not in the way of the decision.
-        if (lesson["payload"].get("activities") or []):
-            with st.expander("📖 See the lesson exactly as he sees it"):
-                render_lesson(
-                    lesson["payload"],
-                    for_parent=False,
-                    lesson_id=lesson["id"],
-                    metadata=lesson.get("metadata") or {},
-                    comic_layout=True,
-                    comic_frame_title=f"📘 {lesson['title']}",
-                )
-        render_assessment_card(db, student, lesson, key_prefix=f"activitylog_{lesson['id']}")
+        # The whole lesson, laid out the way his own screen lays it out, with
+        # each submission and its approve/send-back controls sitting right
+        # under the activity that produced it -- so grading is one read top
+        # to bottom, not a scroll between the lesson and a detached panel of
+        # controls. The overview, quiz, and his responses all render inside.
+        render_lesson_review(db, student, lesson, key_prefix=f"activitylog_{lesson['id']}")
         # For a graded subject, hours only ever get logged through the
-        # combined Approve action inside render_assessment_card above --
+        # combined Approve action inside render_lesson_review above --
         # there's nothing to log from 'planned' (nothing turned in yet).
         # This plain form stays for Life Skills and anything else that
         # never goes through the submit/review gate.
