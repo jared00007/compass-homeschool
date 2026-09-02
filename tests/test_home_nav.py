@@ -133,6 +133,40 @@ def test_the_student_board_is_read_only_no_move_controls(monkeypatch, tmp_path):
     assert not any(k.startswith("move_board_") for k in move_keys)
 
 
+def test_today_shows_the_daily_delights(monkeypatch, tmp_path):
+    """The little fun touches on his Today view: a rotating greeting, a Brain
+    Break card (riddle + word + history), and a week progress gauge once
+    there's a plan for the week."""
+    db_path = tmp_path / "nav.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    from compass import daily, weekly
+
+    monday = weekly.week_start().isoformat()
+    db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="This Week's Math",
+        payload={"title": "This Week's Math", "activities": []},
+        metadata={"planned_for": monday, "week_start": monday},
+    )
+    db.close()
+
+    at = _open_home(monkeypatch, db_path)
+    assert not at.exception, [e.message for e in at.exception]
+    text = " ".join(m.value for m in at.markdown)
+    caption_text = " ".join(c.value for c in at.caption)
+    # Rotating greeting under his name.
+    assert daily.greeting_of_the_day() in caption_text
+    # Brain Break card content.
+    assert "Brain Break" in text
+    assert "Word of the day" in text
+    assert "History flashback" in text
+    # Week progress gauge (one planned lesson, none done yet).
+    progress_text = " ".join(p.proto.text for p in at.get("progress"))
+    assert "0 of 1 lessons done this week" in progress_text
+
+
 def test_the_student_board_dialog_has_a_writing_box_and_upload(monkeypatch, tmp_path):
     """Reported directly: a writing activity on his board "should be a text
     input box for that writing assignment and upload file." Opening a lesson's

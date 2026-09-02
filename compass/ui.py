@@ -51,6 +51,7 @@ import streamlit as st
 from compass import (
     auth,
     config,
+    daily,
     fun_facts,
     grades,
     gradebook,
@@ -4665,6 +4666,52 @@ def render_fun_fact() -> None:
     than an ad. Rotates daily; see fun_facts.fact_of_the_day for why that's
     deterministic rather than random."""
     st.info(f"🎲 **Fun fact of the day**\n\n{fun_facts.fact_of_the_day()}")
+
+
+def render_brain_break() -> None:
+    """Student view only -- a little daily bonus round: a riddle he can guess
+    before revealing, the word of the day, and a quick history flashback. Pure
+    flavor, rotates daily (see compass.daily), no lesson attached. Kept in one
+    bordered card so it reads as a fun aside, not another assignment."""
+    question, answer = daily.riddle_of_the_day()
+    word, part_of_speech, definition = daily.word_of_the_day()
+    with st.container(border=True):
+        render_card_heading("🧠 Brain Break")
+        st.markdown(f"**🧩 Riddle:** {md(question)}")
+        with st.expander("Reveal the answer"):
+            st.markdown(f"**{md(answer)}**")
+        st.markdown(
+            f"**🔤 Word of the day:** {md(word)} "
+            f"*({md(part_of_speech)})* — {md(definition)}"
+        )
+        st.caption("Bonus points if you use it in a sentence today.")
+        st.markdown(f"**📜 History flashback:** {md(daily.history_flashback())}")
+
+
+def render_week_progress(db: Database, student: dict[str, Any]) -> None:
+    """A small fuel gauge for the week: how many of this week's planned lessons
+    he's finished. Effort made visible -- reported wish: "little things ... to
+    make this fun." Reads his own `student_done_on` signal, so it fills in the
+    moment he finishes something, never waiting on a parent to log hours. Shown
+    only once there's actually a plan for the week (nothing to gauge otherwise).
+    """
+    week_start = weekly.week_start()
+    week_lessons = weekly.latest_per_day(
+        db.lessons_for_week(student["id"], week_start.isoformat())
+    )
+    total = len(week_lessons)
+    if not total:
+        return
+    done = sum(
+        1 for lesson in week_lessons
+        if (lesson.get("metadata") or {}).get("student_done_on")
+    )
+    fraction = done / total
+    if done >= total:
+        label = f"🏁 All {total} lessons done this week — you crushed it!"
+    else:
+        label = f"⚡ {done} of {total} lessons done this week — keep it rolling!"
+    st.progress(fraction, text=label)
 
 
 def render_declaration_banner(db: Database, student: dict[str, Any]) -> None:

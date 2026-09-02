@@ -6,7 +6,7 @@ from datetime import date, timedelta
 
 import streamlit as st
 
-from compass import config, weekly
+from compass import config, daily, weekly
 from compass.agents import all_agents
 from compass.compliance import build_report
 from compass.curriculum import frontier_report
@@ -19,6 +19,7 @@ from compass.ui import (
     page_setup,
     render_board_backlog,
     render_board_days,
+    render_brain_break,
     render_card_heading,
     render_declaration_banner,
     render_first_day_celebration,
@@ -27,6 +28,7 @@ from compass.ui import (
     render_report_card,
     render_streak,
     render_today_checklist,
+    render_week_progress,
 )
 
 db, student = page_setup("Home", icon="🧭")
@@ -117,7 +119,10 @@ if not is_parent():
         f'margin:0 0 4px;">📅 {date.today().strftime("%A, %B %-d, %Y")}</div>',
         unsafe_allow_html=True,
     )
-    st.caption("Here's what's set up for you. Work down the list, or jump around — up to you.")
+    # A rotating, on-theme hello under his name -- a tiny "make it fun" touch,
+    # deterministic per day (compass.daily) so it holds all day but changes
+    # morning to morning.
+    st.caption(f"{daily.greeting_of_the_day()} Work down the list, or jump around — up to you.")
 
     # Streak and fun fact are a matched pair, side by side, same width and
     # height -- not the streak tucked under the greeting with fun fact off
@@ -178,6 +183,9 @@ if not is_parent():
         # by hairlines -- the same information, laid out to use the width a
         # desktop actually has instead of one narrow scrolling column.
         today = date.today().isoformat()
+
+        # A little fuel gauge for the week right up top -- effort made visible.
+        render_week_progress(db, student)
 
         # 1. Morning routine and Check-In, side by side, right under the
         # header -- balances the header row's left/right split instead of
@@ -417,6 +425,23 @@ if not is_parent():
                 st.page_link("pages/6_Life_Skills.py", label="Open Life Skills", icon="➡️")
 
         render_today_checklist(db, student)
+
+        # 🎉 A one-time confetti burst the first time he's cleared his part of
+        # today's lessons -- a little "make it fun" payoff. Fires once per day
+        # (session-gated) and only when there's actually a roster to clear:
+        # every subject's lesson is either approved (✅) or turned in and
+        # waiting on a parent (📤), with nothing left needing his action.
+        lessons_cleared = bool(roster) and all(
+            marker in ("✅", "📤") for _, marker, _, _ in roster
+        )
+        celebrated_key = f"day_cleared_{today}"
+        if lessons_cleared and not st.session_state.get(celebrated_key):
+            st.session_state[celebrated_key] = True
+            st.balloons()
+            st.success("🎉 You cleared today's lessons — nice work!")
+
+        # A fun aside to end on: riddle, word of the day, history flashback.
+        render_brain_break()
 
     # === Board ===================================================================
     # The exact same sprint board a parent sees on This Week, rendered

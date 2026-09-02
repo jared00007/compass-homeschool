@@ -2565,10 +2565,38 @@ button, not just the ones pinned to a day. `render_board_backlog` is the same
 helper the parent's Mission Control board uses, factored out of that page so both
 boards render the backlog one way.
 
+## Little daily delights on his Home
+
+Once the compliance "shell" was solid, the ask turned to fun: "what are little
+things i could put in there for his day to make this fun." A first batch of
+quick wins, all on his Today view, all low-stakes flavor rather than another
+assignment:
+
+- **A rotating, on-theme greeting** under his name (`compass.daily`), leaning
+  into the compass/navigation theme — "New day, new territory," "Let's chart
+  the course."
+- **A week progress gauge** at the top — "⚡ 3 of 8 lessons done this week —
+  keep it rolling!" — reading his own `student_done_on` signal so it fills in
+  the moment he finishes something, not when a parent logs hours.
+- **A 🧠 Brain Break card** at the bottom: a riddle he guesses before tapping
+  "Reveal the answer," the word of the day (with a "use it in a sentence"
+  nudge), and a history flashback.
+- **Confetti** (`st.balloons()`) the first time each day he's cleared his part
+  of the day's lessons — every subject either approved or turned in — fired
+  once per day, session-gated.
+
+All the content rotates deterministically by date (same pattern as the fun
+fact): the same pick holds all day so it doesn't shuffle on a rerun, and
+changes morning to morning, with no external API. The history entries are
+deliberately a rotating set of real, well-known moments framed as a
+"flashback" rather than pinned to the exact calendar date — that would need
+365 date-accurate events and invite errors. The lists live in `compass/daily.py`
+and are one edit to extend.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1175 tests, ~150s, no API key needed
+python -m pytest tests/ -q      # 1180 tests, ~150s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the
