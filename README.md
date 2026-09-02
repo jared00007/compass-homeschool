@@ -2434,6 +2434,14 @@ and there's **no LibreOffice dependency** -- just `pip install reportlab`.
 Generation is deferred behind a callable (like the .docx button), so
 a page listing many lessons never builds every PDF on each rerun.
 
+Prose keeps its shape: `lesson_to_pdf` splits every multi-paragraph field
+(overview, an activity's instructions and worked example, the assessment, parent
+notes) on blank lines into real, separate paragraphs and turns single newlines
+into line breaks (`_pdf_split_blocks`). Reported directly: "it turns paragraphs
+into blurbs and lossing the structure of assignment" -- reportlab otherwise
+collapses every newline to one space, flattening a structured writing prompt
+into a single run-on block.
+
 `lesson_to_pdf` takes a `parent` flag that gates exactly the sections
 `render_lesson` gates. The parent cut (the default) has everything above; the
 **student cut** (`parent=False`) drops the assessment, quiz answer key, parent

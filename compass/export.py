@@ -185,6 +185,23 @@ def _pdf_text(value: Any) -> str:
     return escape(_PDF_EMOJI_RE.sub("", str(value)).strip())
 
 
+def _pdf_split_blocks(text: Any) -> list[str]:
+    """Multi-paragraph prose -> a list of paragraph strings, structure kept: a
+    blank line starts a new paragraph, a single newline becomes an XML `<br/>`
+    line break, and the whole thing is XML-escaped so it's safe to drop into a
+    reportlab Paragraph. Pulled out of `lesson_to_pdf` so the structure logic
+    is unit-testable without building a PDF -- it exists because reportlab
+    otherwise collapses every newline to a single space, flattening a
+    structured assignment into one run-on blurb (reported: "it turns paragraphs
+    into blurbs and lossing the structure of assignment")."""
+    from xml.sax.saxutils import escape
+
+    cleaned = _PDF_EMOJI_RE.sub("", str(text)).replace("\r\n", "\n").strip()
+    if not cleaned:
+        return []
+    return [escape(block).replace("\n", "<br/>") for block in re.split(r"\n\s*\n", cleaned)]
+
+
 def suggested_pdf_filename(lesson: dict[str, Any]) -> str:
     """A readable .pdf filename: the lesson title, slugged, plus today's date."""
     title = lesson.get("title") or "lesson"
@@ -238,9 +255,20 @@ def lesson_to_pdf(lesson: dict[str, Any], *, parent: bool = True) -> bytes:
             bulletType="bullet", start="•", leftIndent=14,
         )
 
+    def paras(text: Any, *, prefix_html: str = "") -> list[Any]:
+        """Multi-paragraph prose -> a list of Paragraph flowables that keep the
+        writing's structure (see _pdf_split_blocks). An optional bold
+        `prefix_html` leads the first paragraph ("Here's how:", "Mastery:")."""
+        out: list[Any] = []
+        for i, html in enumerate(_pdf_split_blocks(text)):
+            if i == 0 and prefix_html:
+                html = f"{prefix_html}{html}"
+            out.append(Paragraph(html, body))
+        return out
+
     flow: list[Any] = [Paragraph(_pdf_text(lesson.get("title") or "Lesson"), title_style)]
     if lesson.get("overview"):
-        flow.append(Paragraph(_pdf_text(lesson["overview"]), body))
+        flow += paras(lesson["overview"])
 
     if lesson.get("learning_objectives"):
         flow += [Paragraph("Learning objectives", h2), bullets(lesson["learning_objectives"])]
@@ -263,9 +291,9 @@ def lesson_to_pdf(lesson: dict[str, Any], *, parent: bool = True) -> bytes:
                 if video.get("why"):
                     flow.append(Paragraph(f"<i>{_pdf_text(video['why'])}</i>", body))
             if activity.get("example"):
-                flow.append(Paragraph(f"<b>Here's how:</b> {_pdf_text(activity['example'])}", body))
+                flow += paras(activity["example"], prefix_html="<b>Here's how:</b> ")
             if activity.get("instructions"):
-                flow.append(Paragraph(_pdf_text(activity["instructions"]), body))
+                flow += paras(activity["instructions"])
 
     assessment = lesson.get("assessment") or {}
     if assessment and parent:
@@ -273,9 +301,9 @@ def lesson_to_pdf(lesson: dict[str, Any], *, parent: bool = True) -> bytes:
         if assessment.get("kind"):
             flow.append(Paragraph(f"<b>{_pdf_text(assessment['kind'])}</b>", body))
         if assessment.get("description"):
-            flow.append(Paragraph(_pdf_text(assessment["description"]), body))
+            flow += paras(assessment["description"])
         if assessment.get("mastery_criteria"):
-            flow.append(Paragraph(f"<b>Mastery:</b> {_pdf_text(assessment['mastery_criteria'])}", body))
+            flow += paras(assessment["mastery_criteria"], prefix_html="<b>Mastery:</b> ")
 
     quiz = lesson.get("quiz") or []
     if quiz and parent:
@@ -304,7 +332,7 @@ def lesson_to_pdf(lesson: dict[str, Any], *, parent: bool = True) -> bytes:
                 flow.append(Paragraph(f"<i>{_pdf_text(item['explanation'])}</i>", body))
 
     if lesson.get("parent_notes") and parent:
-        flow += [Paragraph("Notes for the parent", h2), Paragraph(_pdf_text(lesson["parent_notes"]), body)]
+        flow += [Paragraph("Notes for the parent", h2), *paras(lesson["parent_notes"])]
 
     credits = lesson.get("subject_credits") or []
     if credits and parent:

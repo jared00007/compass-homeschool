@@ -482,6 +482,53 @@ def test_student_pdf_keeps_the_lesson_itself():
     assert len(student_pdf) == len(parent_pdf)
 
 
+def test_pdf_split_blocks_keeps_paragraph_and_line_structure():
+    """Blank lines split into separate paragraphs; single newlines become
+    <br/> line breaks -- so a structured assignment keeps its shape instead of
+    collapsing into one run-on blurb."""
+    from compass.export import _pdf_split_blocks
+
+    text = "First para line one\nline two\n\nSecond para\n\nThird para"
+    assert _pdf_split_blocks(text) == [
+        "First para line one<br/>line two",
+        "Second para",
+        "Third para",
+    ]
+
+
+def test_pdf_split_blocks_escapes_xml_and_handles_blank_input():
+    from compass.export import _pdf_split_blocks
+
+    assert _pdf_split_blocks("") == []
+    assert _pdf_split_blocks("   \n\n  ") == []
+    # A bare & or < would otherwise break reportlab's Paragraph markup.
+    assert _pdf_split_blocks("x < y & z") == ["x &lt; y &amp; z"]
+
+
+def test_a_pdf_with_multi_paragraph_instructions_stays_structured_and_valid():
+    """End to end: a lesson whose writing activity has three paragraphs renders
+    a bigger PDF than the same words flattened onto one line -- proof the
+    paragraphs became real, separate flowables, not one blurb."""
+    from compass.export import lesson_to_pdf
+
+    structured = a_lesson(
+        activities=[{
+            "title": "Write-up", "kind": "writing", "minutes": 8,
+            "instructions": "Para one.\n\nPara two.\n\nPara three.",
+        }]
+    )
+    flattened = a_lesson(
+        activities=[{
+            "title": "Write-up", "kind": "writing", "minutes": 8,
+            "instructions": "Para one. Para two. Para three.",
+        }]
+    )
+    big = lesson_to_pdf(structured)
+    small = lesson_to_pdf(flattened)
+    assert big[:5] == b"%PDF-"
+    assert len(big) > len(small)
+
+
 def test_suggested_pdf_filename_slugs_the_title_and_ends_in_pdf():
     from datetime import date
 
