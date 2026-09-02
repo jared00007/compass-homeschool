@@ -29,13 +29,12 @@ from compass.agents import all_agents
 from compass.agents.strategies import ERAS, SCIENCE_DOMAINS
 from compass.compliance import build_report
 from compass.ui import (
-    EPIC_ICONS,
     FRIDAY_PLAN_KINDS,
     SUBJECT_ICONS,
     md,
     page_setup,
     parent_only,
-    render_board_card,
+    render_board_backlog,
     render_board_days,
     render_board_move_notice,
     render_friday_plan,
@@ -209,36 +208,15 @@ with board_tab:
     # Product Backlog, full width below the board -- every story currently
     # parked, any week it originally came from, grouped by epic. The move
     # control on each card is exactly what "assign" means: opening it is
-    # how a parked story gets a day (or moves to a different one), nothing
-    # new to build for that beyond a new place to put the card.
+    # how a parked story gets a day (or moves to a different one). Shared with
+    # Landon's read-only Home board via render_board_backlog.
     st.markdown("**📋 Product Backlog**")
-    backlog_by_epic = weekly.group_backlog_by_epic(board["backlog"])
-    total_backlogged = sum(len(items) for items in backlog_by_epic.values())
-    if not total_backlogged:
-        st.caption("Nothing parked.")
-    for epic in weekly.EPIC_ORDER:
-        items = backlog_by_epic.get(epic, [])
-        if not items:
-            continue
-        icon = EPIC_ICONS.get(epic, "📘")
-        with st.expander(f"{icon} {epic} ({len(items)})", expanded=True):
-            # A row of columns, not one long vertical stack -- an epic
-            # backlog can run to a dozen items, and this is the same
-            # width problem the day board just fixed: cramming every
-            # card into one column, however wide, is worse than
-            # spreading them the way the board itself does. Same keyed
-            # min-width-plus-scroll treatment as the day board, one row
-            # per epic (the key must be unique per epic, not shared).
-            with st.container(key=f"backlog_row_{epic.replace(' ', '_')}"):
-                backlog_columns = st.columns(min(len(items), 4))
-                for position, (kind, item) in enumerate(items):
-                    with backlog_columns[position % len(backlog_columns)]:
-                        render_board_card(
-                            db, kind, item,
-                            today_iso=today_iso_for_board,
-                            board_week_start=board_week_start,
-                            all_lessons_for_collision=all_lessons_for_board,
-                        )
+    render_board_backlog(
+        db, student, board,
+        key_prefix="board", board_week_start=board_week_start,
+        all_lessons_for_collision=all_lessons_for_board,
+        today_iso=today_iso_for_board,
+    )
 
 # --- Review this week ----------------------------------------------------------
 

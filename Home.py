@@ -17,6 +17,7 @@ from compass.ui import (
     is_parent,
     md,
     page_setup,
+    render_board_backlog,
     render_board_days,
     render_card_heading,
     render_declaration_banner,
@@ -465,6 +466,21 @@ if not is_parent():
             db, student, board_week_start, student_board,
             key_prefix="student_board", interactive=False,
         )
+        # Parked stories, read-only, so he can open the full lesson for anything
+        # not pinned to a day too -- reported directly: from his board he should
+        # be able to "view full lesson for anything thats in view there. backlog
+        # or assigned a date." The backlog is week-agnostic (the same whichever
+        # week is on screen), so it's shown once, on the this-week view, rather
+        # than repeated under every future week.
+        if offset == 0 and student_board["backlog"]:
+            st.divider()
+            st.markdown("**📋 Not scheduled yet**")
+            st.caption("Set up for you, without a set day — peek anytime.")
+            render_board_backlog(
+                db, student, student_board,
+                key_prefix="student_board", board_week_start=board_week_start,
+                interactive=False,
+            )
         _render_extra_activities()
 
     elif active_view == "grades":

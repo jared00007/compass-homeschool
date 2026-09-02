@@ -2756,7 +2756,9 @@ _BOARD_DEEP_LINK: dict[str, tuple[str, str, str]] = {
 }
 
 
-def _render_board_deep_link(kind: str, item: dict[str, Any] | None = None) -> None:
+def _render_board_deep_link(
+    kind: str, item: dict[str, Any] | None = None, *, db: Database | None = None
+) -> None:
     if kind == "lesson":
         # A page_link can only ever open a page on its *first* tab, and
         # Activity Log's lesson-review tab isn't its first -- no target
@@ -2784,7 +2786,27 @@ def _render_board_deep_link(kind: str, item: dict[str, Any] | None = None) -> No
                 mime="application/pdf",
                 key=f"board_pdf_{item['id']}",
             )
-            render_lesson(item["payload"], lesson_id=item["id"])
+            # In student view, hand render_lesson the db/lesson_id/metadata (and
+            # student) so a writing activity gets its real text box + Word-doc
+            # upload right here, not just instructions to write on paper --
+            # reported directly: a writing assignment on his board "should be a
+            # text input box for that writing assignment and upload file." The
+            # parent keeps the plain preview (db left off) so their view stays
+            # the read-only answer-key copy, not an input surface.
+            student = db.ensure_default_student() if (db is not None and not parent) else None
+            render_lesson(
+                item["payload"],
+                db=None if parent else db,
+                lesson_id=item["id"],
+                metadata=item.get("metadata") or {},
+                student=student,
+                # For him, the comic layout renders each activity open (not
+                # tucked in a collapsed expander), so the writing box + upload
+                # sit right there to fill in rather than a click deep. The
+                # parent keeps the plain preview.
+                comic_layout=not parent,
+                comic_frame_title=f"📘 {item['title']}",
+            )
 
         if st.button("🔍 View full lesson", key=f"board_view_lesson_{item['id']}"):
             _show_full_lesson()
@@ -3082,7 +3104,7 @@ def render_board_card(
                         ),
                         validate_schedule=_validate_lesson_move,
                     )
-                _render_board_deep_link(kind, item)
+                _render_board_deep_link(kind, item, db=db)
 
         elif kind == "life_skill":
             earned = bool(item["completed_on"])
@@ -3324,6 +3346,72 @@ def render_board_days(
                             db, kind, item,
                             today_iso=today_iso,
                             board_week_start=week_start,
+                            all_lessons_for_collision=all_lessons_for_collision,
+                            interactive=interactive,
+                        )
+
+
+_BOARD_BACKLOG_SCROLL_CSS = """
+<style>
+div[class*="st-key-"][class*="_backlog_row_"] div[data-testid="stHorizontalBlock"] {
+  overflow-x: auto !important;
+  flex-wrap: nowrap !important;
+  padding-bottom: 6px;
+}
+div[class*="st-key-"][class*="_backlog_row_"] div[data-testid="stColumn"] {
+  min-width: 220px !important;
+  flex: 0 0 220px !important;
+}
+</style>
+"""
+
+
+def render_board_backlog(
+    db: Database,
+    student: dict[str, Any],
+    board: dict[str, list[tuple[str, dict[str, Any]]]],
+    *,
+    key_prefix: str,
+    board_week_start: date,
+    interactive: bool = True,
+    all_lessons_for_collision: list[dict[str, Any]] | None = None,
+    today_iso: str | None = None,
+) -> None:
+    """The Product Backlog panel -- every currently-parked story, any week it
+    came from, grouped by epic. Shared by the parent's Mission Control board
+    (interactive: the move control on each card is how a parked story gets a
+    day) and Landon's read-only Home board (interactive=False -> no move
+    controls, just each card's own detail and, on a lesson, the
+    View-full-lesson dialog). Reported directly: from his board he should be
+    able to "view full lesson for anything thats in view there. backlog or
+    assigned a date."
+
+    `key_prefix` namespaces each epic's own scroll container so the parent
+    board and the student board never share a container key.
+    """
+    today_iso = today_iso or date.today().isoformat()
+    if all_lessons_for_collision is None:
+        all_lessons_for_collision = db.list_lessons(student["id"], limit=200)
+
+    st.markdown(_BOARD_BACKLOG_SCROLL_CSS, unsafe_allow_html=True)
+    by_epic = weekly.group_backlog_by_epic(board["backlog"])
+    if not sum(len(items) for items in by_epic.values()):
+        st.caption("Nothing parked.")
+        return
+    for epic in weekly.EPIC_ORDER:
+        items = by_epic.get(epic, [])
+        if not items:
+            continue
+        icon = EPIC_ICONS.get(epic, "📘")
+        with st.expander(f"{icon} {epic} ({len(items)})", expanded=True):
+            with st.container(key=f"{key_prefix}_backlog_row_{epic.replace(' ', '_')}"):
+                backlog_columns = st.columns(min(len(items), 4))
+                for position, (kind, item) in enumerate(items):
+                    with backlog_columns[position % len(backlog_columns)]:
+                        render_board_card(
+                            db, kind, item,
+                            today_iso=today_iso,
+                            board_week_start=board_week_start,
                             all_lessons_for_collision=all_lessons_for_collision,
                             interactive=interactive,
                         )

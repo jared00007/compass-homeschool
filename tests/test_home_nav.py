@@ -133,6 +133,83 @@ def test_the_student_board_is_read_only_no_move_controls(monkeypatch, tmp_path):
     assert not any(k.startswith("move_board_") for k in move_keys)
 
 
+def test_the_student_board_dialog_has_a_writing_box_and_upload(monkeypatch, tmp_path):
+    """Reported directly: a writing activity on his board "should be a text
+    input box for that writing assignment and upload file." Opening a lesson's
+    View-full-lesson dialog from his board must render the real response box and
+    Word-doc uploader, not just instructions to write on paper."""
+    db_path = tmp_path / "nav.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    from compass import weekly
+
+    monday = weekly.week_start()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="Coordinate Plane",
+        payload={
+            "title": "Coordinate Plane",
+            "activities": [{
+                "title": "What Does the Point Actually Mean?",
+                "kind": "writing", "minutes": 8,
+                "instructions": "Write 60-90 words explaining a point in Quadrant III.",
+            }],
+        },
+        metadata={"planned_for": monday.isoformat(), "week_start": monday.isoformat()},
+    )
+    db.close()
+
+    at = _open_home(monkeypatch, db_path)
+    _nav_button(at, "Board").click().run()
+    at.button(key=f"board_view_lesson_{lesson_id}").click().run()
+    assert not at.exception, [e.message for e in at.exception]
+    text_keys = [t.key for t in at.text_area]
+    assert any((k or "").startswith(f"writing_draft_{lesson_id}_") for k in text_keys), (
+        "the writing response box must render for him in the board dialog"
+    )
+    upload_keys = [u.key for u in at.get("file_uploader")]
+    assert any((k or "").startswith(f"writing_upload_{lesson_id}_") for k in upload_keys), (
+        "the Word-doc uploader must render alongside the box"
+    )
+
+
+def test_the_student_board_shows_a_backlog_with_view_full_lesson(monkeypatch, tmp_path):
+    """Reported directly: from his board he should "view full lesson for
+    anything thats in view there. backlog or assigned a date." A parked lesson
+    shows in a read-only backlog section with its own View-full-lesson button
+    and no move control."""
+    db_path = tmp_path / "nav.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    from compass import weekly
+
+    monday = weekly.week_start()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="science", subject="science", topic="t",
+        title="Parked Science Lesson",
+        payload={"title": "Parked Science Lesson", "activities": []},
+        metadata={
+            "planned_for": monday.isoformat(),
+            "week_start": monday.isoformat(),
+            "held_back": True,  # parked -> lives in the backlog
+        },
+    )
+    db.close()
+
+    at = _open_home(monkeypatch, db_path)
+    _nav_button(at, "Board").click().run()
+    assert not at.exception, [e.message for e in at.exception]
+    text = " ".join(m.value for m in at.markdown)
+    assert "Not scheduled yet" in text
+    assert any(b.key == f"board_view_lesson_{lesson_id}" for b in at.button), (
+        "a backlogged lesson on his board must still offer View full lesson"
+    )
+    # ...but no parent move control on it.
+    assert not any((b.key or "").startswith("move_board_") for b in at.button)
+
+
 def test_the_student_board_shows_life_skill_and_step_detail(monkeypatch, tmp_path):
     """Reported directly against his board: "life skill and big project arent
     loading in the board correctly with the lesson or steps." On the read-only
@@ -223,12 +300,13 @@ def test_the_student_board_full_lesson_hides_the_answer_key(monkeypatch, tmp_pat
     view.click().run()
     assert not at.exception, [e.message for e in at.exception]
 
-    # The dialog opened (its title renders as a subheader)...
-    assert any("Fractions Face-Off" in s.value for s in at.subheader)
+    # The dialog opened (the student view uses the comic layout, so the title
+    # renders as markdown, not a subheader)...
+    body = " ".join(m.value for m in at.markdown)
+    assert "Fractions Face-Off" in body
     # ...but with none of the parent-only material.
     expander_labels = " ".join(e.label for e in at.expander)
     assert "Quiz answer key" not in expander_labels
-    body = " ".join(m.value for m in at.markdown)
     assert "Counts as mastered when" not in body
     assert "3/8" not in body  # the assessment answer must not leak either
     # He still gets a Print to PDF button -- but it's his redacted cut (no

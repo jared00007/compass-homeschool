@@ -2540,10 +2540,35 @@ landon to see somewhere." His greeting now carries the full weekday + date
 (`📅 Tuesday, September 1, 2026`) right under "Hi Landon 👋", so he always knows
 what day it is and which day's work he's looking at.
 
+## Landon's board is where he does the work, not just sees it
+
+Two reports, one surface. First: a writing activity on his board "should be a
+text input box for that writing assignment and upload file." Second: from his
+board he should "view full lesson for anything thats in view there. backlog or
+assigned a date... just view the full lesson but without the parent answr keys."
+
+The "View full lesson" dialog on his board is now the interactive student
+lesson, not a read-only peek. In student view it hands `render_lesson` the
+`db`/`lesson_id`/`metadata`/`student` (and the comic layout, so activities open
+rather than hide in a collapsed expander), so a writing activity shows its real
+response box + Word-doc upload + "Save draft"/"Submit for review" right there —
+the same flow the subject page has always had, now reachable from the board.
+It stays student-safe throughout: `render_lesson` still gates the assessment and
+quiz answer key on `is_parent()`, and the Print-to-PDF button hands him the
+redacted cut. The parent's own board keeps the plain preview (with the answer
+key), since `db` is passed only in student view.
+
+And the board now shows the **Product Backlog** on his side too — a read-only
+"📋 Not scheduled yet" section under the day grid (shared `render_board_backlog`,
+`interactive=False`), so a parked lesson is in view with its own View-full-lesson
+button, not just the ones pinned to a day. `render_board_backlog` is the same
+helper the parent's Mission Control board uses, factored out of that page so both
+boards render the backlog one way.
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1170 tests, ~150s, no API key needed
+python -m pytest tests/ -q      # 1175 tests, ~150s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the
