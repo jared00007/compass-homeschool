@@ -158,13 +158,41 @@ def test_today_shows_the_daily_delights(monkeypatch, tmp_path):
     caption_text = " ".join(c.value for c in at.caption)
     # Rotating greeting under his name.
     assert daily.greeting_of_the_day() in caption_text
-    # Brain Break card content.
+    # Brain Break card content -- the fun fact now lives here too.
     assert "Brain Break" in text
+    assert "Fun fact" in text
     assert "Word of the day" in text
     assert "History flashback" in text
-    # Week progress gauge (one planned lesson, none done yet).
+    # His level bar + the week progress gauge both render.
     progress_text = " ".join(p.proto.text for p in at.get("progress"))
+    assert "Level 1" in text  # the XP level card heading
     assert "0 of 1 lessons done this week" in progress_text
+
+
+def test_travel_passport_shows_stamps_for_completed_trips(monkeypatch, tmp_path):
+    """The collectible: a completed trip earns its state + park a stamp on his
+    Travel Passport; an assigned-but-unwritten trip shows as still waiting."""
+    db_path = tmp_path / "nav.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    sid = student["id"]
+    # A finished trip -> a stamp.
+    db.add_travel_entry(sid, "Maine", "2026-06-01", title="Acadia", park_key="acadia")
+    # (add_travel_entry defaults to completed for a written-up trip.)
+    # An assigned trip with nothing written yet -> still waiting.
+    db.add_travel_entry(sid, "Utah", "2026-07-01", title="", status="planned")
+    db.close()
+
+    at = _open_home(monkeypatch, db_path)
+    assert not at.exception, [e.message for e in at.exception]
+    text = " ".join(m.value for m in at.markdown)
+    caption_text = " ".join(c.value for c in at.caption)
+    assert "Travel Passport" in text
+    assert "1 of 50 states explored" in text
+    assert "Acadia" in text  # the park's stamp
+    assert "Maine" in caption_text
+    assert "waiting to be written up" in caption_text
 
 
 def test_the_student_board_dialog_has_a_writing_box_and_upload(monkeypatch, tmp_path):

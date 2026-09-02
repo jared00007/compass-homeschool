@@ -23,12 +23,13 @@ from compass.ui import (
     render_card_heading,
     render_declaration_banner,
     render_first_day_celebration,
-    render_fun_fact,
     render_morning_routine,
     render_report_card,
     render_streak,
     render_today_checklist,
+    render_travel_passport,
     render_week_progress,
+    render_xp_level,
 )
 
 db, student = page_setup("Home", icon="🧭")
@@ -124,17 +125,18 @@ if not is_parent():
     # morning to morning.
     st.caption(f"{daily.greeting_of_the_day()} Work down the list, or jump around — up to you.")
 
-    # Streak and fun fact are a matched pair, side by side, same width and
-    # height -- not the streak tucked under the greeting with fun fact off
-    # on its own. Bordered containers opt both into the same balance CSS
-    # (theme.py) that equalizes a row of `st.container(border=True)` cards.
+    # Two progress cards side by side: his level bar and his streak, both
+    # "how far have I come" at a glance. (The fun fact moved into the Brain
+    # Break card below, alongside the riddle and word of the day.) Bordered
+    # containers opt both into the same balance CSS (theme.py) that equalizes
+    # a row of `st.container(border=True)` cards.
     header_columns = st.columns(2)
     with header_columns[0]:
         with st.container(border=True):
-            render_streak(db, student)
+            render_xp_level(db, student)
     with header_columns[1]:
         with st.container(border=True):
-            render_fun_fact()
+            render_streak(db, student)
 
     st.divider()
 
@@ -440,7 +442,11 @@ if not is_parent():
             st.balloons()
             st.success("🎉 You cleared today's lessons — nice work!")
 
-        # A fun aside to end on: riddle, word of the day, history flashback.
+        # A collectible he fills in over the year -- shows only once he's got
+        # travel entries, so it never sits empty.
+        render_travel_passport(db, student)
+
+        # A fun aside to end on: fun fact, riddle, word of the day, history.
         render_brain_break()
 
     # === Board ===================================================================

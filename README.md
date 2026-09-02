@@ -2591,12 +2591,34 @@ changes morning to morning, with no external API. The history entries are
 deliberately a rotating set of real, well-known moments framed as a
 "flashback" rather than pinned to the exact calendar date — that would need
 365 date-accurate events and invite errors. The lists live in `compass/daily.py`
-and are one edit to extend.
+and are one edit to extend. The **fun fact of the day** now rides in that same
+Brain Break card (reported: "move it and just add it to the brain break
+container") rather than a standalone header card.
+
+## XP, levels, and a travel passport
+
+The next tier of fun turns what he already does into visible progress:
+
+- **XP + a level bar** (`compass.xp`) — everything he finishes earns points (a
+  finished lesson, a passed quiz, a life skill or coding module, a written-up
+  trip, a choice topic, a mastered math skill), summed **live from his own
+  completion signals** rather than a stored score, so it can never drift and
+  never waits on a parent to log hours. A rank climbs the compass/explorer theme
+  (Rookie Navigator → Scout → Pathfinder → … → Legend of the Map) and a bar
+  fills toward the next level. It sits as a top banner across every Home view,
+  paired with his streak; all point values and the level span are tunable in
+  config.
+- **A 🗺️ Travel Passport** — the Travel Journal already tracks which states and
+  national parks he's visited; `render_travel_passport` surfaces it as a
+  filling-in collection ("2 of 50 states explored · 2 parks stamped", a stamp
+  icon per park). Shown only once he has any travel entries, so it never sits
+  empty, and it nudges him to write up an assigned-but-unfinished trip to earn
+  its stamp.
 
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 1180 tests, ~150s, no API key needed
+python -m pytest tests/ -q      # 1186 tests, ~150s, no API key needed
 ```
 
 Coverage focuses where being wrong is expensive: the math graph's structure, the

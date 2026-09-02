@@ -53,6 +53,7 @@ from compass import (
     config,
     daily,
     fun_facts,
+    xp as xp_module,
     grades,
     gradebook,
     subjects,
@@ -4677,6 +4678,7 @@ def render_brain_break() -> None:
     word, part_of_speech, definition = daily.word_of_the_day()
     with st.container(border=True):
         render_card_heading("🧠 Brain Break")
+        st.markdown(f"**🎲 Fun fact:** {md(fun_facts.fact_of_the_day())}")
         st.markdown(f"**🧩 Riddle:** {md(question)}")
         with st.expander("Reveal the answer"):
             st.markdown(f"**{md(answer)}**")
@@ -4686,6 +4688,65 @@ def render_brain_break() -> None:
         )
         st.caption("Bonus points if you use it in a sentence today.")
         st.markdown(f"**📜 History flashback:** {md(daily.history_flashback())}")
+
+
+def render_travel_passport(db: Database, student: dict[str, Any]) -> None:
+    """A collectible "passport" of the states and national parks he's stamped
+    through the Travel Journal -- a stamp earned per trip he's written up and a
+    parent has approved. The travel data already tracks his visited states and
+    parks (compass.national_parks); this just surfaces it as a filling-in
+    collection, on the "make it fun" wish. Shown only once he has any travel
+    entries at all, so it never sits empty as clutter."""
+    from compass import national_parks
+
+    entries = db.list_travel_entries(student["id"])
+    if not entries:
+        return
+    completed = [e for e in entries if e.get("status") == "completed"]
+    visited_states = sorted({e["state"] for e in completed if e.get("state")})
+    parks: list[tuple[str, str]] = []
+    seen_parks: set[str] = set()
+    for entry in completed:
+        key = entry.get("park_key")
+        if key and key not in seen_parks:
+            park = national_parks.park_by_key(key)
+            if park:
+                seen_parks.add(key)
+                parks.append((key, park.name))
+    total_states = len(national_parks.STATES)
+    waiting = len(entries) - len(completed)
+
+    with st.container(border=True):
+        render_card_heading("🗺️ Travel Passport")
+        st.markdown(
+            f"**{len(visited_states)} of {total_states} states explored** · "
+            f"**{len(parks)} park{'s' if len(parks) != 1 else ''} stamped**"
+        )
+        if visited_states:
+            st.caption("📍 " + " · ".join(md(state) for state in visited_states))
+        if parks:
+            st.markdown(
+                "  ".join(f"{national_parks.icon_for(key)} {md(name)}" for key, name in parks)
+            )
+        if waiting:
+            st.caption(
+                f"✍️ {waiting} trip(s) waiting to be written up — finish one to earn its stamp."
+            )
+        elif not completed:
+            st.caption("Your passport's ready — your first stamp is one trip away.")
+
+
+def render_xp_level(db: Database, student: dict[str, Any]) -> None:
+    """His level bar -- everything he finishes turned into visible progress.
+    A rank, a level number, and a fill toward the next level, computed live
+    (see compass.xp) so it climbs the moment he finishes something. Student
+    view only; pure motivation, not a grade."""
+    state = xp_module.compute(db, student["id"])
+    render_card_heading(f"🧭 Level {state.level} — {state.title}")
+    st.progress(
+        state.fraction,
+        text=f"{state.total} XP · {state.to_next} to Level {state.level + 1}",
+    )
 
 
 def render_week_progress(db: Database, student: dict[str, Any]) -> None:

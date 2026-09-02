@@ -76,6 +76,36 @@ TRAVEL_JOURNAL_MAX_OPEN_PICKS = 5
 # enough to rule out a one-word dodge like "ok" or "k".
 TRAVEL_JOURNAL_FEEDBACK_REPLY_MIN_WORDS = 4
 
+# --- XP + levels (student-facing fun, not a compliance measure) --------------
+# Points earned for the things he actually finishes, summed live from his own
+# completion signals (see compass.xp) -- no stored score to drift out of sync,
+# and no waiting on a parent to log hours. All tunable knobs, pure motivation.
+XP_PER_LESSON = 20
+XP_QUIZ_PASS_BONUS = 10
+XP_PER_LIFE_SKILL = 15
+XP_PER_CODING_MODULE = 15
+XP_PER_TRAVEL_ENTRY = 30
+XP_PER_CHOICE_TOPIC = 15
+XP_PER_MASTERED_SKILL = 10
+# Flat XP span per level -- level = total // XP_PER_LEVEL + 1.
+XP_PER_LEVEL = 100
+# Rank names by level (level 1 = index 0). The last one holds for every level
+# beyond the list, so it never runs out -- on the compass/explorer theme.
+XP_RANKS = (
+    "Rookie Navigator",
+    "Scout",
+    "Trail Finder",
+    "Pathfinder",
+    "Trailblazer",
+    "Explorer",
+    "Voyager",
+    "Cartographer",
+    "Captain",
+    "Commander",
+    "Admiral",
+    "Legend of the Map",
+)
+
 # Rough per-block time estimates for the weekly board's "how heavy is this day"
 # gauge (see ui.board_item_minutes). A lesson carries its own real estimate
 # (its activities' minutes) and a travel entry uses the two constants above; the
