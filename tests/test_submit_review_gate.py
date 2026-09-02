@@ -241,6 +241,68 @@ def test_not_ready_while_a_bounced_writing_activity_hasnt_been_resubmitted():
     assert "written response" in why.lower()
 
 
+# --- auto-turn-in: finishing the last piece hands the lesson in ------------------
+
+
+def test_auto_submit_fires_once_the_last_writing_response_is_in(db, student):
+    """The bug a parent hit: he'd submit his English writing, believe he'd
+    handed the lesson in, and it would sit at 'planned' forever because the
+    separate lesson-level button never got clicked. Submitting the last
+    piece now turns the whole lesson in on its own."""
+    from compass.ui import _maybe_auto_submit_lesson
+
+    lesson_id = _lesson(
+        db, student["id"],
+        activities=[{"kind": "writing", "title": "Essay"}],
+    )
+    # Nothing submitted yet -> not ready -> stays planned.
+    assert _maybe_auto_submit_lesson(db, lesson_id) is False
+    assert db.get_lesson(lesson_id)["status"] == "planned"
+
+    # He submits his one writing response; that's the last piece.
+    db.set_writing_review(lesson_id, 0, config.WRITING_SUBMITTED)
+    assert _maybe_auto_submit_lesson(db, lesson_id) is True
+    lesson = db.get_lesson(lesson_id)
+    assert lesson["status"] == "submitted"
+    assert lesson["metadata"]["student_done_on"]
+
+
+def test_auto_submit_waits_for_every_piece(db, student):
+    """A lesson with two writing activities and a quiz doesn't go in until
+    all of them are done -- whichever he finishes last is what trips it."""
+    from compass.ui import _maybe_auto_submit_lesson
+
+    lesson_id = _lesson(
+        db, student["id"],
+        activities=[
+            {"kind": "writing", "title": "One"},
+            {"kind": "writing", "title": "Two"},
+        ],
+        quiz=[{"question": "?"}],
+    )
+    db.set_writing_review(lesson_id, 0, config.WRITING_SUBMITTED)
+    assert _maybe_auto_submit_lesson(db, lesson_id) is False
+    db.set_writing_review(lesson_id, 1, config.WRITING_SUBMITTED)
+    # Writing's all in, but the quiz still isn't.
+    assert _maybe_auto_submit_lesson(db, lesson_id) is False
+    db.record_quiz_result(lesson_id, student["id"], 1, 1, True)
+    assert _maybe_auto_submit_lesson(db, lesson_id) is True
+    assert db.get_lesson(lesson_id)["status"] == "submitted"
+
+
+def test_auto_submit_leaves_an_already_resolved_lesson_alone(db, student):
+    """It only ever acts on his own in-progress work. A lesson already
+    turned in, approved, or bounced back to him isn't re-submitted out from
+    under whatever state a parent put it in."""
+    from compass.ui import _maybe_auto_submit_lesson
+
+    lesson_id = _lesson(db, student["id"], activities=[])  # ready by shape
+    db.submit_lesson(lesson_id)
+    db.set_lesson_status(lesson_id, "completed")
+    assert _maybe_auto_submit_lesson(db, lesson_id) is False
+    assert db.get_lesson(lesson_id)["status"] == "completed"
+
+
 # --- student_lesson_view: the gate itself, end to end ----------------------------
 
 
@@ -347,6 +409,35 @@ def test_turn_it_in_is_disabled_until_ready(monkeypatch, tmp_path):
     assert submit_button.proto.disabled is True
     caption_text = "\n".join(c.value for c in at.caption)
     assert "written response" in caption_text.lower()
+
+
+def test_submitting_the_last_writing_response_turns_the_lesson_in(monkeypatch, tmp_path):
+    """End to end through the real English page: he types his response and
+    clicks the writing activity's own "Submit for review" -- the action he
+    thinks of as finishing -- and the whole lesson lands in the parent's
+    queue without him touching the separate lesson-level button."""
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Essay", payload=_writing_lesson_payload(),
+    )
+    auth.set_pin(db, "1234")
+    db.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    box = [t for t in at.text_area if t.label == "Your response"][0]
+    box.set_value("A response that runs comfortably past any word minimum on the page.").run()
+    submit = [b for b in at.button if b.label == "Submit for review"][0]
+    submit.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db2 = Database(db_path)
+    lesson = db2.get_lesson(lesson_id)
+    db2.close()
+    assert lesson["status"] == "submitted"
+    assert lesson["metadata"]["student_done_on"]
 
 
 def test_turning_it_in_blocks_further_edits(monkeypatch, tmp_path):

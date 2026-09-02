@@ -861,7 +861,13 @@ def _render_activity_body(
                 else:
                     db.save_writing_response(lesson_id, index, response)
                     db.set_writing_review(lesson_id, index, config.WRITING_SUBMITTED)
-                    st.success("Submitted!")
+                    if _maybe_auto_submit_lesson(db, lesson_id):
+                        st.success(
+                            "Submitted — that was the last thing, so your whole "
+                            "lesson just went to your parent to review. 📬"
+                        )
+                    else:
+                        st.success("Submitted!")
                     st.rerun()
 
             if ai_review is not None:
@@ -1461,6 +1467,13 @@ def render_quiz(
                 # over and over for the same score.
                 if correct == total:
                     st.balloons()
+                # If the quiz was the one thing left, the lesson's now
+                # complete from his side -- hand it straight to the parent
+                # instead of leaving it parked on a "Turn it in" button he
+                # already thinks he's past. Same rule the writing submit
+                # uses; whichever piece he finishes last does this.
+                if _maybe_auto_submit_lesson(db, lesson_id):
+                    st.toast("Lesson turned in for review 📬")
                 st.rerun()
                 return
 
@@ -1948,6 +1961,40 @@ def _lesson_ready_to_submit(lesson: dict[str, Any]) -> tuple[bool, str]:
         if status not in (config.WRITING_SUBMITTED, config.WRITING_APPROVED):
             return False, "Submit every written response below before you turn this in."
     return True, ""
+
+
+def _maybe_auto_submit_lesson(db: Database, lesson_id: int) -> bool:
+    """Turn the whole lesson in the instant its last piece is done, without
+    making him hunt for a separate button.
+
+    His mental model is "I finished my writing / my quiz, so I'm done" --
+    but submitting a writing response (set_writing_review) and taking the
+    quiz (record_quiz_result) each only move their own piece, never the
+    lesson. The lesson-level "Turn it in for review" button was the only
+    thing that moved status -> submitted, and it lives out of sight below
+    the fold on the subject page and not at all in the board's full-lesson
+    dialog. The result a parent actually hit: he'd submit his English
+    writing, believe he'd handed it in, and it would sit at 'planned'
+    forever, never reaching the review queue.
+
+    So whichever piece he finishes last quietly turns the lesson in for
+    him, but only once the same gate the manual button uses
+    (_lesson_ready_to_submit) reads the whole lesson as genuinely ready --
+    quiz taken if there is one, every written response submitted. Fires
+    only from 'planned'/'needs_revision'; anything already submitted or
+    resolved is left alone. The manual button stays for the one shape this
+    can't cover on its own -- a lesson with neither a quiz nor any writing,
+    which is ready the moment it's opened and so has no "last piece" to key
+    off of.
+    """
+    lesson = db.get_lesson(lesson_id)
+    if lesson is None or lesson["status"] not in ("planned", "needs_revision"):
+        return False
+    ready, _ = _lesson_ready_to_submit(lesson)
+    if not ready:
+        return False
+    db.submit_lesson(lesson_id)
+    return True
 
 
 def student_lesson_view(
