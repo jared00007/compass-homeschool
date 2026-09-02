@@ -1671,7 +1671,10 @@ def _render_quiz_review(db: Database, student: dict[str, Any], lesson: dict[str,
         pick = item.get("pick")
         right = pick == item.get("correct_index")
         marker = "✅" if right else "❌"
-        with st.expander(f"{marker} {index + 1}. {md(item['question'])}", expanded=False):
+        # The ones he missed open on their own -- those are what a parent is
+        # scanning for; the ones he got right stay a click away rather than
+        # padding out the card.
+        with st.expander(f"{marker} {index + 1}. {md(item['question'])}", expanded=not right):
             for choice_index, choice in enumerate(item.get("choices") or []):
                 tag = ""
                 if choice_index == item.get("correct_index"):
@@ -1706,9 +1709,14 @@ def _render_writing_review_controls(
     review = review_map.get(str(index), {})
     status = review.get("status", config.WRITING_DRAFT)
 
-    st.markdown(f"*His response — {md(activity.get('title', 'Writing'))}*")
+    # His actual submission, made to stand out from the assignment text
+    # above it -- a bold label and its own boxed panel, not a subtle italic
+    # line that reads as more instructions. This is the thing a parent
+    # opened the card to see.
+    st.markdown("**✍️ What he turned in:**")
     if text:
-        st.write(md(text))
+        with st.container(border=True):
+            st.write(md(text))
     else:
         st.caption("He hasn't written a response yet.")
     versions = db.list_writing_response_versions(lesson["id"], index)
