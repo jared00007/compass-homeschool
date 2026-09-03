@@ -289,12 +289,12 @@ if not is_parent():
         if later_this_week:
             st.caption(
                 f"{later_this_week} more lesson(s) planned for later this week — "
-                "see **Mission Control**."
+                "see the **Board**."
             )
         if later_week:
             st.caption(
                 f"{later_week} more lesson(s) planned for a later week — see "
-                "**Upcoming Week**."
+                "the **Board**."
             )
 
         # 2b. Travel journal entries a parent assigned to a specific day --
@@ -332,12 +332,12 @@ if not is_parent():
                 if later_trips_this_week:
                     st.caption(
                         f"{later_trips_this_week} more trip(s) assigned for later this "
-                        "week — see **Mission Control**."
+                        "week — see the **Board**."
                     )
                 if later_trips_week:
                     st.caption(
                         f"{later_trips_week} more trip(s) assigned for a later week — "
-                        "see **Upcoming Week**."
+                        "see the **Board**."
                     )
 
         # 2c. Feedback he hasn't acknowledged yet -- separate from the due

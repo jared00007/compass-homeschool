@@ -5068,7 +5068,7 @@ def render_brain_break() -> None:
     bordered card so it reads as a fun aside, not another assignment."""
     question, answer = daily.riddle_of_the_day()
     word, part_of_speech, definition = daily.word_of_the_day()
-    with st.container(border=True):
+    with st.container(border=True, key="landon_card_brainbreak"):
         render_card_heading("🧠 Brain Break")
         st.markdown(f"**🎲 Fun fact:** {md(fun_facts.fact_of_the_day())}")
         st.markdown(f"**🧩 Riddle:** {md(question)}")
@@ -5161,6 +5161,27 @@ def render_xp_level(db: Database, student: dict[str, Any]) -> None:
     if penalty:
         st.caption(
             f"↩️ −{penalty} XP from lessons sent back — nail it the first time to keep them."
+        )
+
+    # How the score actually works, spelled out for him -- reported directly:
+    # "we ned to tell landon how the xp works. assignments turned back to him
+    # hurt his score." Built from the same config knobs the scoring uses, so the
+    # numbers here can never drift from what he actually earns and loses.
+    with st.expander("ℹ️ How XP works"):
+        st.markdown(
+            "**Earn XP for finishing stuff:**\n"
+            f"- ✅ Finish a lesson: **+{config.XP_PER_LESSON}**\n"
+            f"- 🧠 Pass a quiz: **+{config.XP_QUIZ_PASS_BONUS}**\n"
+            f"- 📐 Master a math skill: **+{config.XP_PER_MASTERED_SKILL}**\n"
+            f"- 🛠️ Life skill or 💻 coding module: **+{config.XP_PER_LIFE_SKILL}** each\n"
+            f"- ⭐ A Student's Choice topic: **+{config.XP_PER_CHOICE_TOPIC}**\n"
+            f"- 🧭 Write up a trip: **+{config.XP_PER_TRAVEL_ENTRY}**\n\n"
+            "**The one thing that costs XP:**\n"
+            f"- ↩️ Every time a lesson gets **sent back** for a redo: "
+            f"**−{config.XP_SENT_BACK_PENALTY}** (each time). Read the whole "
+            "assignment and do every part the first time, and you never lose any.\n\n"
+            "Your XP fills the bar toward the next **level**, and hitting XP "
+            "milestones unlocks **rewards** — the next one's shown right above."
         )
 
 
