@@ -102,8 +102,8 @@ XP_PER_LEVEL = 100
 XP_REWARDS: tuple[tuple[int, str, str], ...] = (
     (150, "Pick a family movie night", "🎬"),
     (300, "Ice cream sundae run", "🍨"),
-    (500, "Stay-up-late game night", "🌙"),
-    (750, "Choose a special breakfast", "🥞"),
+    (500, "Friend sleepover", "🛌"),
+    (750, "Ice cream sundae party", "🎉"),
     (1000, "A day trip you choose", "🗺️"),
 )
 # Rank names by level (level 1 = index 0). The last one holds for every level
