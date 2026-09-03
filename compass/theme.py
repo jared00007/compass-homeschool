@@ -362,6 +362,26 @@ def css() -> str:
   width: 100%;
 }}
 
+/* Landon's Home cards get the same off-white *panel* fill the app's other
+   containers (alerts, expanders, metrics) already carry, so every card on his
+   home screen reads as one white surface rather than the cream page ground
+   showing through a bare `st.container(border=True)`. A bordered container by
+   itself is transparent -- Morning Routine and Check-In only *looked* white
+   because the widgets inside them (an expander, a success alert) are panels;
+   the lesson/trip/tile cards hold only links and captions, so nothing painted
+   them. Scoped by an explicit `key="landon_card_..."` prefix, which lands on
+   the same element Streamlit borders (confirmed live) and is the documented,
+   version-stable `st-key-` hook -- deliberately NOT a blanket bordered-
+   container rule, which would also repaint the deliberately-styled keyed
+   panels elsewhere (comic frames, the first-day cover). The texture matches
+   what the alert/expander panels get, so a filled card and the white widget
+   beside it are the same surface. */
+[class*="st-key-landon_card"] {{
+  background-color: var(--c-panel);
+  background-image: var(--c-panel-texture);
+  background-repeat: no-repeat;
+}}
+
 /* --- numbers ---------------------------------------------------------
    Deliberately *not* the accent. An early build painted every metric in it,
    which made the compliance page read as a wall of alarms — "0 / 1000 hours"

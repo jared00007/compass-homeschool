@@ -197,10 +197,10 @@ if not is_parent():
         # up rather than resized.
         grid_columns = st.columns(2)
         with grid_columns[0]:
-            with st.container(border=True):
+            with st.container(border=True, key="landon_card_morning"):
                 render_morning_routine(db, student)
         with grid_columns[1]:
-            with st.container(border=True):
+            with st.container(border=True, key="landon_card_checkin"):
                 checked_in = db.journal_entry_for_date(student["id"], today) is not None
                 render_card_heading("💬 Check-In")
                 if checked_in:
@@ -254,13 +254,13 @@ if not is_parent():
         }
         render_card_heading(f"📚 Lessons ({len(roster)})")
         if not roster:
-            with st.container(border=True):
+            with st.container(border=True, key="landon_card_lessons_empty"):
                 st.caption(
                     "Nothing new is set up yet. Check back after your parent plans a lesson."
                 )
         else:
             for lesson, marker, page_path, subject_label in roster:
-                with st.container(border=True):
+                with st.container(border=True, key=f"landon_card_lesson_{lesson['id']}"):
                     title = lesson["payload"].get("title", lesson["title"])
                     st.page_link(
                         page_path, label=f"{md(title)} — {subject_label}", icon=marker
@@ -294,7 +294,7 @@ if not is_parent():
         )
         later_trips_week = len(upcoming_trips) - later_trips_this_week
         if due_trips or upcoming_trips:
-            with st.container(border=True):
+            with st.container(border=True, key="landon_card_travel"):
                 render_card_heading(f"🧭 Travel Journal ({len(due_trips)})")
                 for trip in due_trips:
                     marker = TRAVEL_MARKERS.get(trip["status"], "⬜")
@@ -340,7 +340,7 @@ if not is_parent():
             (e, "✅") for e in read_today_feedback
         ]
         if feedback_roster:
-            with st.container(border=True):
+            with st.container(border=True, key="landon_card_feedback"):
                 render_card_heading(f"💬 Feedback ({len(unread_feedback)})")
                 for entry, marker in feedback_roster:
                     st.page_link(
@@ -382,7 +382,7 @@ if not is_parent():
 
         extras_columns = st.columns(3)
         with extras_columns[0]:
-            with st.container(border=True):
+            with st.container(border=True, key="landon_card_words"):
                 render_card_heading("🔤 Words to Review")
                 if due:
                     st.caption(f"{len(due)} word(s) due today.")
@@ -390,7 +390,7 @@ if not is_parent():
                 else:
                     st.success("✅ Nothing due today.")
         with extras_columns[1]:
-            with st.container(border=True):
+            with st.container(border=True, key="landon_card_reading"):
                 render_card_heading("📖 Reading")
                 if book:
                     st.markdown(f"**{md(book['title'])}**")
@@ -403,7 +403,7 @@ if not is_parent():
                 else:
                     st.caption("No book set up yet.")
         with extras_columns[2]:
-            with st.container(border=True):
+            with st.container(border=True, key="landon_card_lifeskills"):
                 render_card_heading(f"🛠️ Life Skills ({len(due_skills)})")
                 # `due_life_skills`/`upcoming_life_skills` -- see those
                 # docstrings for why "assigned" is `<=`/`>` today, not `==`:

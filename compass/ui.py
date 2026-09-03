@@ -5022,7 +5022,7 @@ def render_travel_passport(db: Database, student: dict[str, Any]) -> None:
     total_states = len(national_parks.STATES)
     waiting = len(entries) - len(completed)
 
-    with st.container(border=True):
+    with st.container(border=True, key="landon_card_passport"):
         render_card_heading("🗺️ Travel Passport")
         st.markdown(
             f"**{len(visited_states)} of {total_states} states explored** · "
