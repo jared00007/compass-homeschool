@@ -568,3 +568,33 @@ def test_backlog_tab_excludes_a_done_or_declined_choice_topic(monkeypatch, tmp_p
     at, _ = _open_review_tab(monkeypatch, db_path)
     markdowns = [m.value for m in _backlog_tab(at).markdown]
     assert not any("Choice Topics" in m for m in markdowns)
+
+
+def test_the_review_surfaces_the_assessment_answer_sheet(monkeypatch, tmp_path):
+    """The parent's grading guide (the assessment he never sees) shows in the
+    review, below his work -- reported: "wheres that answer sheet for me?\""""
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lid = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="Coordinate Plane",
+        payload={
+            "title": "Coordinate Plane",
+            "activities": [],
+            "assessment": {
+                "kind": "worksheet",
+                "description": "PART A — plot (4, 6) and (-3, -7).",
+                "mastery_criteria": "All points plotted in the correct quadrant.",
+            },
+        },
+    )
+    db.submit_lesson(lid)
+    db.close()
+
+    at, review_tab = _open_review_tab(monkeypatch, db_path)
+    markdowns = " ".join(_md(review_tab))
+    assert "For grading" in markdowns
+    assert "PART A — plot (4, 6)" in markdowns
+    assert "Counts as mastered when" in markdowns
+    assert "correct quadrant" in markdowns

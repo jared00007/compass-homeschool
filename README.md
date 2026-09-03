@@ -594,9 +594,21 @@ the parent's **Record mastery** form calls by hand. Passing (`quiz_pass_percent`
 80) and being fully mastered are tracked as two separate thresholds on purpose: a passing
 score under the mastery bar still shows real, encouraging feedback ("nice work, that's a
 pass") plus a nudge to retry for full mastery, rather than either punishing an imperfect-
-but-solid score or silently treating it as good enough to unlock the next skill. A score
-under the pass bar does nothing to the mastery record either way, so a bad day never
-un-masters something already recorded. Science, English, and History have no analogous
+but-solid score or silently treating it as good enough to unlock the next skill.
+
+**Mastery is not a one-time stamp — a weak quiz can drop it back.** Reported directly:
+"i dont understand how we have mastery but his quizzes today were so bad ... feel like
+mastery isnt setup truly." The confusion was real: mastery was granted (by a perfect
+quiz or by the parent's own **Approve** click) and then stuck forever, so a skill mastered
+at 80% weeks ago still read "mastered" while today's quiz on the same skill was 40%. Now,
+when a quiz on an **already-mastered** skill comes in *below the pass bar*,
+`render_quiz()` drops that skill back to `in_progress` with a note recording the score
+that knocked it down, and the review surfaces that with a ⚠️ ("Dropped from mastered —
+scored 40% … worth another look") instead of a stale green "mastered." A skill that was
+never mastered is untouched — a below-pass quiz there just records the attempt, so a rough
+first go at something new is never treated as a regression. Because the report-card grade's
+mastery component counts *mastered ÷ attempted*, a regressed skill also stops inflating the
+grade until he earns it back. Science, English, and History have no analogous
 mastery concept to hook into, so their quizzes grade and show a score without a side
 effect — a real check with no mechanism behind it yet, rather than force-fitting one.
 Both thresholds are family policy settings, the same category as the Tier 3 guideline

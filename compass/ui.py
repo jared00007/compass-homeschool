@@ -1606,6 +1606,25 @@ def render_quiz(
                             score=100 * correct / total,
                             notes="Auto-graded from the in-app quiz.",
                         )
+                    elif not did_pass:
+                        # Mastery isn't a one-time stamp: if a skill he'd already
+                        # mastered comes back with a below-pass quiz, drop it to
+                        # "in progress" so the record reflects that he's lost the
+                        # thread rather than sitting on a stale "mastered" from an
+                        # earlier approval. Only touches a skill that was actually
+                        # mastered -- one still in progress just stays there.
+                        current = db.mastery_map(student["id"]).get(skill_id, {})
+                        if current.get("status") == "mastered":
+                            db.set_mastery(
+                                student["id"],
+                                skill_id,
+                                "in_progress",
+                                score=100 * correct / total,
+                                notes=(
+                                    f"Dropped from mastered — scored "
+                                    f"{round(100 * correct / total)}% on a later quiz."
+                                ),
+                            )
                 # A literal perfect score, not the (configurable, sometimes
                 # lower) pass/mastery threshold -- and fired here, at the
                 # moment of grading, rather than in the results branch below,
@@ -2028,9 +2047,17 @@ def _render_final_grade_decision(
         )
         if current.get("status") == "mastered":
             st.success(f"✅ Already approved — mastered at {current.get('score') or '?'}%.")
+        elif current.get("status") == "in_progress" and str(
+            current.get("notes", "")
+        ).startswith("Dropped from mastered"):
+            # A skill that was mastered but a later quiz knocked back down, so
+            # the parent isn't misled by a stale "mastered" while he's clearly
+            # struggling now. The note carries the score that dropped it.
+            st.warning(f"⚠️ {md(current['notes'])} It's back to *in progress* — worth another look.")
         st.caption(
             "The quiz only auto-approves a perfect score -- you decide here, at any "
-            "score, whether that's good enough to move on."
+            "score, whether that's good enough to move on. A weak quiz on a skill he'd "
+            "mastered drops it back to in-progress on its own."
         )
         if lesson["status"] == "submitted" and writing_all_approved:
             with st.form(f"{key_prefix}_assess_{lesson['id']}"):
@@ -2169,11 +2196,6 @@ def render_lesson_review(
                 for item in materials:
                     st.markdown(f"- {md(item)}")
 
-    if assessment.get("description"):
-        st.caption(f"*{md(assessment.get('kind', ''))}* — {md(assessment['description'])}")
-    if assessment.get("mastery_criteria"):
-        st.caption(f"Counts as mastered when: {md(assessment['mastery_criteria'])}")
-
     for index, activity in enumerate(activities):
         with st.container(border=True):
             st.markdown(
@@ -2214,6 +2236,25 @@ def render_lesson_review(
         with st.container(border=True):
             if not _render_quiz_review(db, student, lesson):
                 st.caption("📝 Quiz — he hasn't taken it yet.")
+
+    # The parent's answer sheet / grading guide, sitting right below all his
+    # work where the grading actually happens -- not a tiny caption up top he
+    # has to scroll past. Reported: "wheres that answer sheet for me? that
+    # should be right below his response for all activities." This is whatever
+    # the lesson already carries in `assessment` (the paper he hands over, plus
+    # what counts as mastered); the student never sees `assessment`, so this is
+    # the one place these worked details surface.
+    if assessment.get("description") or assessment.get("mastery_criteria"):
+        with st.container(border=True):
+            st.markdown("**🔑 For grading — the assessment & how to score it**")
+            if assessment.get("kind"):
+                st.caption(f"*{md(assessment['kind'])}*")
+            if assessment.get("description"):
+                st.markdown(md(assessment["description"]))
+            if assessment.get("mastery_criteria"):
+                st.markdown(
+                    f"**Counts as mastered when:** {md(assessment['mastery_criteria'])}"
+                )
 
     # The lesson-wide decision waits for every writing piece to be approved
     # first, so grading the whole lesson never collides with a per-activity

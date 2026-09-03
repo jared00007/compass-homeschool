@@ -175,3 +175,41 @@ def test_a_non_math_lesson_is_unaffected_by_the_mastery_bar(monkeypatch, tmp_pat
     assert "nice work." in text
     assert "Mastery on this skill" not in text
     assert "Counted toward mastery" not in text
+
+
+def test_a_weak_quiz_drops_an_already_mastered_skill_back(monkeypatch, tmp_path):
+    """Mastery isn't a one-time stamp: if a skill he'd already mastered comes
+    back with a below-pass quiz, it drops to 'in progress' so the record
+    reflects that he's lost the thread, not a stale approval."""
+    db_path, student_id, lesson_id = _seed(tmp_path)
+    pre = Database(db_path)
+    pre.set_mastery(student_id, SKILL_ID, "mastered", score=80, notes="Earlier approval.")
+    pre.close()
+
+    at = _open(monkeypatch, db_path, as_parent=False)
+    _submit_quiz(at, lesson_id, correct_count=2)  # 40% -- well below the 80% pass bar
+
+    db2 = Database(db_path)
+    row = db2.mastery_map(student_id)[SKILL_ID]
+    db2.close()
+    assert row["status"] == "in_progress"
+    assert str(row["notes"]).startswith("Dropped from mastered")
+    assert "40%" in str(row["notes"])
+
+
+def test_a_weak_quiz_leaves_an_unmastered_skill_alone(monkeypatch, tmp_path):
+    """A skill that was never mastered isn't touched by the regression path --
+    a below-pass quiz just records the attempt, same as before."""
+    db_path, student_id, lesson_id = _seed(tmp_path)
+    pre = Database(db_path)
+    pre.set_mastery(student_id, SKILL_ID, "in_progress", score=50, notes="Working on it.")
+    pre.close()
+
+    at = _open(monkeypatch, db_path, as_parent=False)
+    _submit_quiz(at, lesson_id, correct_count=2)
+
+    db2 = Database(db_path)
+    row = db2.mastery_map(student_id)[SKILL_ID]
+    db2.close()
+    assert row["status"] == "in_progress"
+    assert row["notes"] == "Working on it."  # untouched
