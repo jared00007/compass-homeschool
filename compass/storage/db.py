@@ -2854,6 +2854,34 @@ class Database:
             )
             self.conn.commit()
 
+    def set_activity_checklist_items(
+        self, lesson_id: int, activity_index: int, items: list[str]
+    ) -> None:
+        """Backfill or edit the `checklist` parts on one activity of an
+        already-generated lesson -- the parent's way to add the self-check
+        gate to lessons made before checklists existed, without regenerating
+        them. Edits the stored *payload* (the lesson content), not metadata,
+        since that's where an activity's own fields live. Clearing the tick
+        state too, so an edited list starts fresh rather than carrying stale
+        ✓s from a since-removed item."""
+        with self._lock:
+            lesson = self.get_lesson(lesson_id)
+            if lesson is None:
+                return
+            payload = lesson["payload"]
+            activities = payload.get("activities") or []
+            if activity_index < len(activities):
+                activities[activity_index]["checklist"] = list(items)
+            metadata = lesson["metadata"]
+            state = metadata.get("checklist_checked") or {}
+            state.pop(str(activity_index), None)
+            metadata["checklist_checked"] = state
+            self.conn.execute(
+                "UPDATE lessons SET payload = ?, metadata = ? WHERE id = ?",
+                (json.dumps(payload), json.dumps(metadata), lesson_id),
+            )
+            self.conn.commit()
+
     def set_activity_checklist(
         self, lesson_id: int, activity_index: int, checked: list[bool]
     ) -> None:

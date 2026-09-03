@@ -67,7 +67,7 @@ from compass.agents import (
     LessonGenerationError,
     StudentContext,
 )
-from compass.agents import writing_review
+from compass.agents import checklist_suggest, writing_review
 from compass.agents.quiz import grade, passed as quiz_passes, select_questions
 from compass.compliance import declaration_status
 from compass.export import (
@@ -1896,6 +1896,54 @@ def _render_writing_review_controls(
         st.caption("⏳ Submitted — waiting on him to turn in the whole lesson.")
     else:
         st.caption("Still drafting — he hasn't submitted this one yet.")
+
+    # Add or edit the self-check parts on a lesson he hasn't turned in yet --
+    # the way to bring the checklist gate to lessons generated before it
+    # existed, without regenerating the day. "Suggest" reads the parts out of
+    # the assignment's own instructions; you confirm or edit before saving,
+    # so nothing goes live on his screen that you didn't approve.
+    if lesson["status"] in ("planned", "needs_revision"):
+        existing_items = activity.get("checklist") or []
+        summary = f" ({len(existing_items)})" if existing_items else " — none yet"
+        with st.expander(f"🧩 Self-check parts he must tick{summary}"):
+            edit_key = f"{key_prefix}_checklist_edit_{index}"
+            if edit_key not in st.session_state:
+                st.session_state[edit_key] = "\n".join(existing_items)
+            st.text_area(
+                "One part per line — he'll have to tick each before he can turn this in.",
+                key=edit_key,
+                height=110,
+            )
+            save_col, suggest_col = st.columns(2)
+            if save_col.button("Save parts", key=f"{key_prefix}_checklist_save_{index}"):
+                items = [
+                    line.strip()
+                    for line in st.session_state[edit_key].splitlines()
+                    if line.strip()
+                ]
+                db.set_activity_checklist_items(lesson["id"], index, items)
+                st.success("Saved.")
+                st.rerun()
+            if suggest_col.button(
+                "✨ Suggest from the instructions",
+                key=f"{key_prefix}_checklist_suggest_{index}",
+            ):
+                with st.spinner("Reading the assignment…"):
+                    try:
+                        suggested = checklist_suggest.suggest_checklist(
+                            activity.get("instructions", "")
+                        )
+                    except LessonGenerationError as exc:
+                        st.error(f"Couldn't suggest right now: {exc}")
+                        suggested = None
+                if suggested:
+                    st.session_state[edit_key] = "\n".join(suggested)
+                    st.rerun()
+                elif suggested is not None:
+                    st.caption(
+                        "This assignment reads as a single ask — no separate parts to "
+                        "check off. Add your own above if you want to."
+                    )
 
 
 def _render_final_grade_decision(

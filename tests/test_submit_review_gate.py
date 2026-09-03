@@ -547,6 +547,43 @@ def test_a_writing_checklist_gates_submission_until_every_part_is_ticked(monkeyp
     assert lesson["metadata"]["checklist_checked"]["0"] == [True, True]
 
 
+def test_the_parent_can_add_a_checklist_to_an_existing_lesson(monkeypatch, tmp_path):
+    """Backfill without regenerating: a planned lesson that has no checklist
+    gets an editable "Self-check parts" box in the parent's review. Saving
+    parts writes them onto the lesson, so his next attempt is gated on them."""
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Essay",
+        payload={
+            "title": "Essay", "overview": "o",
+            "activities": [
+                {"title": "Respond", "kind": "writing", "minutes": 20,
+                 "instructions": "Answer all three questions and give an example.",
+                 "checklist": [],
+                 "video": {"found": False, "title": "", "url": "", "channel": "", "why": ""}},
+            ],
+        },
+    )  # planned, no checklist yet
+    db.close()
+
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
+    box = [t for t in at.text_area if "One part per line" in (t.label or "")][0]
+    box.set_value("Answer all three questions\nGive an example").run()
+    [b for b in at.button if b.label == "Save parts"][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db2 = Database(db_path)
+    lesson = db2.get_lesson(lesson_id)
+    db2.close()
+    assert lesson["payload"]["activities"][0]["checklist"] == [
+        "Answer all three questions",
+        "Give an example",
+    ]
+
+
 def test_the_parent_review_shows_the_checklist_parts(monkeypatch, tmp_path):
     """A parent reviewing sees the parts he was asked to cover and which he
     ticked -- so a box he clicked past without doing is visible next to his
