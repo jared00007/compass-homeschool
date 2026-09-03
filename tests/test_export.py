@@ -45,6 +45,7 @@ def a_lesson(**overrides):
         "assessment": {
             "kind": "Worksheet check",
             "description": "Ten items, mixed procedural and applied.",
+            "answer_key": "1. x=3 (subtract 3, then divide by 2). 2. x=-4.",
             "mastery_criteria": "8 of 10 correct, including 2 of 3 applied problems.",
         },
         "subject_credits": [
@@ -94,10 +95,24 @@ def test_includes_the_parent_only_assessment_and_answer_key():
     """The whole point of this export: the answer key travels with it."""
     text = text_of(lesson_to_docx(a_lesson()))
     assert "Ten items, mixed procedural and applied." in text
+    assert "1. x=3 (subtract 3, then divide by 2). 2. x=-4." in text
     assert "8 of 10 correct, including 2 of 3 applied problems." in text
     assert "What do you do first to solve 2x + 3 = 11?" in text
     assert "Subtract 3 (correct)" in text
     assert "Undo addition before multiplication." in text
+
+
+def test_student_docx_drops_the_assessment_and_answer_key():
+    """`parent=False` must never write the assessment (its worked answer key
+    included) into a student-facing .docx -- same redaction the PDF and the
+    on-screen student view apply. Unlike the PDF, docx text is readable, so
+    this asserts the answers are literally absent, not just that it's smaller."""
+    text = text_of(lesson_to_docx(a_lesson(), parent=False))
+    assert "Two-Step Equations" in text  # the lesson itself still travels
+    assert "Solve problems 1-10." in text
+    assert "1. x=3 (subtract 3, then divide by 2). 2. x=-4." not in text
+    assert "Ten items, mixed procedural and applied." not in text
+    assert "Assessment" not in text
 
 
 def test_includes_subject_credit_table():

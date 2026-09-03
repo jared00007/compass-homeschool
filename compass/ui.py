@@ -2244,13 +2244,29 @@ def render_lesson_review(
     # the lesson already carries in `assessment` (the paper he hands over, plus
     # what counts as mastered); the student never sees `assessment`, so this is
     # the one place these worked details surface.
-    if assessment.get("description") or assessment.get("mastery_criteria"):
+    if (
+        assessment.get("description")
+        or assessment.get("answer_key")
+        or assessment.get("mastery_criteria")
+    ):
         with st.container(border=True):
             st.markdown("**🔑 For grading — the assessment & how to score it**")
             if assessment.get("kind"):
                 st.caption(f"*{md(assessment['kind'])}*")
             if assessment.get("description"):
                 st.markdown(md(assessment["description"]))
+            # The worked answer key -- newly generated lessons carry it (older
+            # ones won't, so it's shown only when present). Set apart in its own
+            # tinted block so it reads as "the answers," not more prompt.
+            if assessment.get("answer_key"):
+                st.markdown(
+                    f'<div style="background:var(--c-panel); border-left:3px solid '
+                    f'var(--c-good); border-radius:var(--c-radius); padding:10px 14px; '
+                    f'margin:8px 0;"><b>✅ Answer key</b><br>'
+                    f'{html.escape(assessment["answer_key"]).replace(chr(10), "<br>")}'
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
             if assessment.get("mastery_criteria"):
                 st.markdown(
                     f"**Counts as mastered when:** {md(assessment['mastery_criteria'])}"

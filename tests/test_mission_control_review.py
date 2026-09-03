@@ -585,6 +585,7 @@ def test_the_review_surfaces_the_assessment_answer_sheet(monkeypatch, tmp_path):
             "assessment": {
                 "kind": "worksheet",
                 "description": "PART A — plot (4, 6) and (-3, -7).",
+                "answer_key": "A: (4, 6) is Quadrant I. (-3, -7) is Quadrant III.",
                 "mastery_criteria": "All points plotted in the correct quadrant.",
             },
         },
@@ -596,5 +597,7 @@ def test_the_review_surfaces_the_assessment_answer_sheet(monkeypatch, tmp_path):
     markdowns = " ".join(_md(review_tab))
     assert "For grading" in markdowns
     assert "PART A — plot (4, 6)" in markdowns
+    assert "Answer key" in markdowns
+    assert "Quadrant III" in markdowns
     assert "Counts as mastered when" in markdowns
     assert "correct quadrant" in markdowns

@@ -91,6 +91,15 @@ def test_lesson_schema_requires_a_worked_example_on_every_activity():
     assert activity_schema["additionalProperties"] is False
 
 
+def test_lesson_schema_requires_a_worked_answer_key_on_the_assessment():
+    """The assessment must carry a worked answer key so the parent can grade the
+    paper he hands over without re-solving it -- structurally required, and the
+    student never receives the assessment at all."""
+    assessment_schema = LESSON_SCHEMA["properties"]["assessment"]
+    assert "answer_key" in assessment_schema["properties"]
+    assert "answer_key" in assessment_schema["required"]
+
+
 def test_an_unresolved_credential_typeerror_becomes_a_lessongenerationerror():
     """The Anthropic SDK raises a bare TypeError (not one of its own
     exception classes) when it can't resolve any credential at all -- caught

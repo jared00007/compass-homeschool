@@ -298,7 +298,10 @@ He never sees `assessment`, `parent_notes`, or `subject_credits`.** So put every
 answer, worked solution, scoring rule, and answer key in `assessment` — never in \
 an activity's instructions, and never in `materials`. Questions go in the \
 activity; answers go in the assessment. Getting this wrong hands him the answer \
-key to the test he is about to sit.
+key to the test he is about to sit. In particular, put the fully worked answers \
+to the `assessment.description` questions in `assessment.answer_key` — every \
+question answered with the work shown and numbered to match, so the parent can \
+grade the paper he hands them without re-solving it.
 - **He does take `quiz` directly, but Compass reveals each `correct_index` only \
 after he submits an answer.** Don't work a quiz question's answer into an \
 activity's instructions either — that undermines the check just as much.

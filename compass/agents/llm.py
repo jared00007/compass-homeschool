@@ -226,6 +226,19 @@ LESSON_SCHEMA: dict[str, Any] = _object(
             {
                 "kind": {"type": "string"},
                 "description": {"type": "string"},
+                "answer_key": {
+                    "type": "string",
+                    "description": (
+                        "The worked answer key for THIS assessment -- every question in "
+                        "`description` answered, with the work shown, so the parent can "
+                        "grade it without solving it themselves. For anything with a "
+                        "procedure (math, science calculations) give the full step-by-step "
+                        "solution and the final answer, not just the final answer; for "
+                        "short-answer or writing prompts, describe what a correct/complete "
+                        "response must contain. Number your answers to match the question "
+                        "numbers in `description`. The student NEVER sees this field."
+                    ),
+                },
                 "mastery_criteria": {
                     "type": "string",
                     "description": "What counts as mastered, concretely enough to score.",

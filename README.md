@@ -2697,6 +2697,19 @@ read, top to bottom. `render_assessment_card` split into
 new renderer composes; `_render_activity_body` grew a `review_owns_response`
 flag so content renders without repeating the response the controls now own.
 
+**The parent's answer sheet rides along.** Reported directly: "wheres that
+answer sheet for me? that should be right below his response." The lesson's
+`assessment` — the paper he hands over, plus the worked answers — is the one
+thing the student never receives, so it's the only place a real answer key can
+live. The `assessment` schema grew a required **`answer_key`** field: the agent
+writes the worked solution to every assessment question there (numbered to
+match), and the review surfaces it in a **"🔑 For grading"** panel right below
+all his work, with the answers set apart in their own tinted block. It travels
+into the parent PDF/`.docx` too; both exports gate the assessment (answer key
+included) behind `parent=True`, so a student cut can never leak it — the same
+redaction the on-screen student view applies. Older lessons generated before
+the field simply show no answer-key block.
+
 **Finishing his last piece turns the lesson in.** Submitting a writing
 response or taking the quiz each only moved its own piece; the lesson only
 reached the review queue via a separate button that was easy to miss. Now

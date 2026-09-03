@@ -53,8 +53,13 @@ def _add_bullets(document: Document, items: list[str]) -> None:
         document.add_paragraph(str(item), style="List Bullet")
 
 
-def lesson_to_docx(lesson: dict[str, Any]) -> bytes:
-    """Render a lesson payload to a .docx file, returned as bytes."""
+def lesson_to_docx(lesson: dict[str, Any], *, parent: bool = True) -> bytes:
+    """Render a lesson payload to a .docx file, returned as bytes.
+
+    `parent` (default True, matching every current caller -- generation preview
+    and the review card are both parent surfaces) mirrors `lesson_to_pdf`: the
+    assessment (its answer key included) is written only for the parent, so a
+    future student-facing export can't leak it just by reusing this function."""
     document = Document()
     style = document.styles["Normal"]
     style.font.size = Pt(11)
@@ -97,12 +102,16 @@ def lesson_to_docx(lesson: dict[str, Any]) -> bytes:
                 document.add_paragraph(activity["instructions"])
 
     assessment = lesson.get("assessment") or {}
-    if assessment:
+    if assessment and parent:
         document.add_heading("Assessment", level=2)
         if assessment.get("kind"):
             document.add_paragraph(assessment["kind"]).runs[0].bold = True
         if assessment.get("description"):
             document.add_paragraph(assessment["description"])
+        if assessment.get("answer_key"):
+            answer = document.add_paragraph()
+            answer.add_run("Answer key: ").bold = True
+            answer.add_run(assessment["answer_key"])
         if assessment.get("mastery_criteria"):
             criteria = document.add_paragraph()
             criteria.add_run("Mastery: ").bold = True
@@ -302,6 +311,8 @@ def lesson_to_pdf(lesson: dict[str, Any], *, parent: bool = True) -> bytes:
             flow.append(Paragraph(f"<b>{_pdf_text(assessment['kind'])}</b>", body))
         if assessment.get("description"):
             flow += paras(assessment["description"])
+        if assessment.get("answer_key"):
+            flow += paras(assessment["answer_key"], prefix_html="<b>Answer key:</b> ")
         if assessment.get("mastery_criteria"):
             flow += paras(assessment["mastery_criteria"], prefix_html="<b>Mastery:</b> ")
 
