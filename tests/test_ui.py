@@ -1699,3 +1699,23 @@ def test_a_none_override_falls_back_to_the_default():
 )
 def test_format_board_minutes_reads_as_hours_and_minutes(total, expected):
     assert ui.format_board_minutes(total) == expected
+
+
+def test_hand_in_activity_count_and_summary():
+    payload = {"activities": [
+        {"kind": "instruction", "instructions": "Read this"},
+        {"kind": "writing", "instructions": "Write a paragraph"},
+        {"kind": "practice", "requires_written_response": True},
+        {"kind": "practice", "requires_written_response": False},
+    ]}
+    # Two hand-ins: the writing one and the practice flagged as needing a written response.
+    assert ui.hand_in_activity_count(payload) == 2
+    assert ui.hand_in_summary(payload) == "📝 2 hand-in activities to review"
+
+    one = {"activities": [{"kind": "writing", "instructions": "x"}]}
+    assert ui.hand_in_summary(one) == "📝 1 hand-in activity to review"
+
+    # Nothing to hand in -> empty string so callers can skip the line.
+    none = {"activities": [{"kind": "instruction", "instructions": "read"}]}
+    assert ui.hand_in_activity_count(none) == 0
+    assert ui.hand_in_summary(none) == ""

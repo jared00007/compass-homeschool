@@ -40,6 +40,7 @@ from compass.subjects import SUBJECT_KEYS, label
 from compass.ui import (
     FRIDAY_PLAN_KINDS,
     SUBJECT_ICONS,
+    hand_in_summary,
     log_lesson_form,
     md,
     page_setup,
@@ -161,6 +162,12 @@ def _render_review_card_body(lesson: dict, today_iso: str) -> None:
     student_done_on = (lesson.get("metadata") or {}).get("student_done_on")
     if student_done_on and lesson["status"] == "submitted":
         st.caption(f"🎓 He turned this in on {student_done_on}.")
+    # Tell you up front how many written pieces this lesson should produce, so
+    # you know what to expect back to grade -- "1 hand in or 2 hand in
+    # activities." Skipped silently when there's nothing to hand in.
+    handins = hand_in_summary(lesson["payload"])
+    if handins:
+        st.markdown(f"**{handins}**")
     credits = lesson["payload"].get("subject_credits") or []
     if credits:
         st.markdown(

@@ -494,6 +494,29 @@ def _needs_written_response(activity: dict[str, Any]) -> bool:
     )
 
 
+def hand_in_activity_count(payload: dict[str, Any]) -> int:
+    """How many activities in this lesson end in something he has to write and
+    turn in -- i.e. how many separate pieces of work a parent should expect
+    back to grade. Same predicate the student's own hand-in gate uses
+    (`_needs_written_response`), so the count a parent is promised is exactly
+    the number of typing boxes he has to fill."""
+    return sum(
+        1 for activity in (payload.get("activities") or [])
+        if _needs_written_response(activity)
+    )
+
+
+def hand_in_summary(payload: dict[str, Any]) -> str:
+    """A one-line, parent-facing count of what to expect back from a lesson --
+    reported directly: "clearly tell parent, this should include 1 hand in or 2
+    hand in activities." Empty string when there's nothing to hand in, so a
+    caller can skip the line entirely rather than print a zero."""
+    count = hand_in_activity_count(payload)
+    if count == 0:
+        return ""
+    return f"📝 {count} hand-in activit{'y' if count == 1 else 'ies'} to review"
+
+
 # --- "Comic Panels" lesson layout ---------------------------------------------
 # Sampled three redesigns for the English page (stacked expanders felt "stale
 # and full") and this is the one picked: activities become an ink-bordered
@@ -3480,6 +3503,10 @@ def render_board_card(
                 if status_note:
                     st.caption(status_note)
                 if interactive:
+                    # Parent-only: how many written pieces to expect back from
+                    # this one, so a day's review load is legible at a glance.
+                    handins = hand_in_summary(item.get("payload") or {})
+                    st.caption(handins if handins else "📝 No written hand-ins")
                     _render_board_estimate_editor(db, kind, item)
                 if interactive and item["status"] in ("planned", "needs_revision"):
                     # No collision check on the target day: a day can hold more
