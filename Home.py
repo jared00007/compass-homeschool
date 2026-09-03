@@ -242,36 +242,42 @@ if not is_parent():
                     else:
                         later_week += 1
 
-        with st.container(border=True):
-            render_card_heading(f"📚 Lessons ({len(roster)})")
-            if not roster:
+        # Each lesson gets its own bordered card -- the same white-box
+        # treatment the Morning Routine and Check-In cards use -- with its
+        # review-gate status spelled out on the card itself, rather than one
+        # shared legend under a flat list of links.
+        LESSON_STATUS_LABELS = {
+            "✅": "approved",
+            "📤": "waiting on a parent",
+            "↩️": "sent back",
+            "⬜": "not turned in yet",
+        }
+        render_card_heading(f"📚 Lessons ({len(roster)})")
+        if not roster:
+            with st.container(border=True):
                 st.caption(
                     "Nothing new is set up yet. Check back after your parent plans a lesson."
                 )
-            else:
-                roster_columns = st.columns(2)
-                for index, (lesson, marker, page_path, subject_label) in enumerate(roster):
-                    with roster_columns[index % 2]:
-                        title = lesson["payload"].get("title", lesson["title"])
-                        st.page_link(
-                            page_path, label=f"{md(title)} — {subject_label}", icon=marker
-                        )
-                st.caption(
-                    "✅ approved  \n"
-                    "📤 waiting on a parent  \n"
-                    "↩️ sent back  \n"
-                    "⬜ not turned in yet"
-                )
-            if later_this_week:
-                st.caption(
-                    f"{later_this_week} more lesson(s) planned for later this week — "
-                    "see **Mission Control**."
-                )
-            if later_week:
-                st.caption(
-                    f"{later_week} more lesson(s) planned for a later week — see "
-                    "**Upcoming Week**."
-                )
+        else:
+            for lesson, marker, page_path, subject_label in roster:
+                with st.container(border=True):
+                    title = lesson["payload"].get("title", lesson["title"])
+                    st.page_link(
+                        page_path, label=f"{md(title)} — {subject_label}", icon=marker
+                    )
+                    status_label = LESSON_STATUS_LABELS.get(marker)
+                    if status_label:
+                        st.caption(f"{marker} {status_label}")
+        if later_this_week:
+            st.caption(
+                f"{later_this_week} more lesson(s) planned for later this week — "
+                "see **Mission Control**."
+            )
+        if later_week:
+            st.caption(
+                f"{later_week} more lesson(s) planned for a later week — see "
+                "**Upcoming Week**."
+            )
 
         # 2b. Travel journal entries a parent assigned to a specific day --
         # only when there's actually one due or upcoming, same as Life
