@@ -3319,7 +3319,6 @@ def render_board_card(
     *,
     today_iso: str,
     board_week_start: date,
-    all_lessons_for_collision: list[dict[str, Any]] | None = None,
     interactive: bool = True,
 ) -> None:
     """One compact card for the unified weekly board (the "Board" tab on
@@ -3332,10 +3331,10 @@ def render_board_card(
     `kind` is one of the six values `weekly.board_for_week` tags each
     story with -- "lesson", "life_skill", "coding_module", "choice_topic",
     "project_step", "travel_entry" -- and picks which fields/db calls this
-    reads. `all_lessons_for_collision` is only read for "lesson": the same
-    same-agent-same-day collision guard This Week's Plan-next-week tab and
-    Activity Log's own move control already both run, reused here rather
-    than reinvented.
+    reads. Moving a lesson to a day is never blocked, even when that day
+    already holds another lesson of the same subject: two can share a day on
+    purpose (a fresh lesson plus one from a prior day still awaiting his
+    revision), so there is no same-day collision guard.
 
     `board_week_start` is the Monday of whichever week is currently on
     screen -- every move control's `schedule` write is wrapped in
@@ -3395,22 +3394,12 @@ def render_board_card(
                 if interactive:
                     _render_board_estimate_editor(db, kind, item)
                 if interactive and item["status"] in ("planned", "needs_revision"):
-                    lessons_for_collision = all_lessons_for_collision or []
-
-                    def _validate_lesson_move(new_date: str, lesson=item) -> str | None:
-                        collision = any(
-                            other["agent"] == lesson["agent"]
-                            and other["id"] != lesson["id"]
-                            and (other.get("metadata") or {}).get("planned_for") == new_date
-                            for other in lessons_for_collision
-                        )
-                        if collision:
-                            return (
-                                f"⚠️ Already a {lesson['agent']} lesson planned for that "
-                                "day -- pick a different one."
-                            )
-                        return None
-
+                    # No collision check on the target day: a day can hold more
+                    # than one lesson of the same subject on purpose (a fresh
+                    # lesson plus one from a prior day still waiting on his
+                    # revision, say), so moving a subject into any day is never
+                    # blocked ("just dont block me moving subject into a day.
+                    # there could be two in one day.").
                     render_story_move_control(
                         key=f"board_lesson_{item['id']}",
                         active=not weekly.is_backlogged(item, today_iso),
@@ -3424,7 +3413,6 @@ def render_board_card(
                             ),
                             board_week_start,
                         ),
-                        validate_schedule=_validate_lesson_move,
                     )
                 _render_board_deep_link(kind, item, db=db)
 
@@ -3590,7 +3578,6 @@ def render_board_days(
     *,
     key_prefix: str,
     interactive: bool = True,
-    all_lessons_for_collision: list[dict[str, Any]] | None = None,
 ) -> None:
     """The five Mon-Fri day columns of the weekly sprint board, for one
     already-computed `board` (from weekly.board_for_week). Shared verbatim
@@ -3605,27 +3592,32 @@ def render_board_days(
     say) never share a container key. The colored day pills are the same
     "Sunday Funnies" palette Home's own Week grid and the parent Board use.
 
-    Laid out as a subject x day matrix: a header row of day pills, then one
-    row per subject/kind that has anything this week, each row the same five
-    day columns. So a subject reads as one straight line across the week (Math
-    always the top row, Science under it, ...) and lines up cell-for-cell with
-    every other, instead of cards stacking in arrival order per day. An empty
-    cell just leaves its fixed-width column blank, holding the alignment.
+    Each day is its own column and its cards pack to the top of it: a header
+    row of day pills, then the five day columns, each listing only the cards
+    actually planned for that day, top-first. Cards within a day still sort by
+    a stable subject/kind order (`_BOARD_ROW_ORDER`, so Math sits above Science
+    above English...), but a day never reserves an empty slot for a subject it
+    doesn't have -- reported directly: "no matter what subject are in the day,
+    the list should always stay populated at the top", so a lone project no
+    longer sits marooned at the bottom of its column under blank space where
+    other days' subjects would line up.
     """
     days = weekly.week_dates(week_start, include_friday=True)
     today = date.today()
     today_iso = today.isoformat()
-    if all_lessons_for_collision is None:
-        all_lessons_for_collision = db.list_lessons(student["id"], limit=200)
 
-    # identity -> {day_index -> [(kind, item), ...]}
-    by_row: dict[str, dict[int, list[tuple[str, dict[str, Any]]]]] = {}
+    # day_index -> [(kind, item), ...], each day's cards sorted by the stable
+    # subject/kind order so a column reads Math, Science, English... top-down.
+    def _row_rank(entry: tuple[str, dict[str, Any]]) -> int:
+        ident = _board_identity(entry[0], entry[1])
+        return _BOARD_ROW_ORDER.index(ident) if ident in _BOARD_ROW_ORDER else len(_BOARD_ROW_ORDER)
+
+    by_day: dict[int, list[tuple[str, dict[str, Any]]]] = {}
     for day_index, day_date in enumerate(days):
-        for kind, item in board[day_date.isoformat()]:
-            ident = _board_identity(kind, item)
-            by_row.setdefault(ident, {}).setdefault(day_index, []).append((kind, item))
-    ordered_rows = [i for i in _BOARD_ROW_ORDER if i in by_row]
-    ordered_rows += [i for i in by_row if i not in ordered_rows]
+        cards = list(board[day_date.isoformat()])
+        cards.sort(key=_row_rank)
+        by_day[day_index] = cards
+    any_cards = any(by_day.values())
 
     st.markdown(_WEEK_BOARD_SCROLL_CSS, unsafe_allow_html=True)
     with st.container(key=f"{key_prefix}_days_row"):
@@ -3654,23 +3646,22 @@ def render_board_days(
                 )
                 st.caption(day_date.strftime("%b %-d") + today_tag + total_note)
 
-        if not ordered_rows:
+        if not any_cards:
             st.caption("Nothing planned this week.")
 
-        # One row per subject/kind, each the same five day columns -- so the
-        # whole thing lines up as a grid you can read across or down.
-        for ident in ordered_rows:
-            row_columns = st.columns(5)
-            for day_index, column in enumerate(row_columns):
-                with column:
-                    for kind, item in by_row[ident].get(day_index, []):
-                        render_board_card(
-                            db, kind, item,
-                            today_iso=today_iso,
-                            board_week_start=week_start,
-                            all_lessons_for_collision=all_lessons_for_collision,
-                            interactive=interactive,
-                        )
+        # One row of five day columns; each column stacks its own day's cards
+        # from the top, so a day is never padded out with empty slots for
+        # subjects it doesn't have.
+        day_columns = st.columns(5)
+        for day_index, column in enumerate(day_columns):
+            with column:
+                for kind, item in by_day.get(day_index, []):
+                    render_board_card(
+                        db, kind, item,
+                        today_iso=today_iso,
+                        board_week_start=week_start,
+                        interactive=interactive,
+                    )
 
 
 _BOARD_BACKLOG_SCROLL_CSS = """
@@ -3696,7 +3687,6 @@ def render_board_backlog(
     key_prefix: str,
     board_week_start: date,
     interactive: bool = True,
-    all_lessons_for_collision: list[dict[str, Any]] | None = None,
     today_iso: str | None = None,
 ) -> None:
     """The Product Backlog panel -- every currently-parked story, any week it
@@ -3712,8 +3702,6 @@ def render_board_backlog(
     board and the student board never share a container key.
     """
     today_iso = today_iso or date.today().isoformat()
-    if all_lessons_for_collision is None:
-        all_lessons_for_collision = db.list_lessons(student["id"], limit=200)
 
     st.markdown(_BOARD_BACKLOG_SCROLL_CSS, unsafe_allow_html=True)
     by_epic = weekly.group_backlog_by_epic(board["backlog"])
@@ -3734,7 +3722,6 @@ def render_board_backlog(
                             db, kind, item,
                             today_iso=today_iso,
                             board_week_start=board_week_start,
-                            all_lessons_for_collision=all_lessons_for_collision,
                             interactive=interactive,
                         )
 
@@ -3808,7 +3795,6 @@ def render_subject_week_tab(db: Database, student: dict[str, Any], agent: str) -
 
     board = weekly.board_for_week(db, student, week_start)
     today_iso = date.today().isoformat()
-    all_lessons = db.list_lessons(student["id"], limit=200)
 
     st.markdown(_SUBJECT_WEEK_SCROLL_CSS, unsafe_allow_html=True)
     with st.container(key=f"subject_week_days_row_{agent}"):
@@ -3839,7 +3825,6 @@ def render_subject_week_tab(db: Database, student: dict[str, Any], agent: str) -
                         db, kind, item,
                         today_iso=today_iso,
                         board_week_start=week_start,
-                        all_lessons_for_collision=all_lessons,
                     )
 
     backlog_items = [
@@ -3856,7 +3841,6 @@ def render_subject_week_tab(db: Database, student: dict[str, Any], agent: str) -
                         db, kind, item,
                         today_iso=today_iso,
                         board_week_start=week_start,
-                        all_lessons_for_collision=all_lessons,
                     )
 
 

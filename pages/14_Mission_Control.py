@@ -229,20 +229,9 @@ def _render_review_card_body(lesson: dict, today_iso: str) -> None:
         # already turned in and waiting on a decision, not something to
         # reschedule out from under that.
         if lesson["status"] in ("planned", "needs_revision"):
-            def _validate(new_date: str, lesson=lesson) -> str | None:
-                collision = any(
-                    other["agent"] == lesson["agent"]
-                    and other["id"] != lesson["id"]
-                    and (other.get("metadata") or {}).get("planned_for") == new_date
-                    for other in all_lessons
-                )
-                if collision:
-                    return (
-                        f"⚠️ Already a {lesson['agent']} lesson planned for that "
-                        "day -- pick a different one."
-                    )
-                return None
-
+            # No collision check on the target day: two lessons of the same
+            # subject can share a day on purpose, so moving one is never
+            # blocked ("just dont block me moving subject into a day").
             render_story_move_control(
                 key=f"lesson_{lesson['id']}",
                 active=not weekly.is_backlogged(lesson, today_iso),
@@ -251,7 +240,6 @@ def _render_review_card_body(lesson: dict, today_iso: str) -> None:
                     db.unhold_lesson(lid) if a else db.send_to_backlog(lid)
                 ),
                 schedule=lambda d, lid=lesson["id"]: db.reschedule_lesson(lid, d) if d else None,
-                validate_schedule=_validate,
             )
 
 
@@ -481,7 +469,6 @@ with board_tab:
     render_board_move_notice()
 
     board = weekly.board_for_week(db, student, board_week_start)
-    all_lessons_for_board = db.list_lessons(student["id"], limit=200)
     today_iso_for_board = date.today().isoformat()
 
     # The sprint board itself, full width -- five columns is already a
@@ -498,7 +485,6 @@ with board_tab:
     render_board_days(
         db, student, board_week_start, board,
         key_prefix="board",
-        all_lessons_for_collision=all_lessons_for_board,
     )
 
     st.divider()
@@ -512,7 +498,6 @@ with board_tab:
     render_board_backlog(
         db, student, board,
         key_prefix="board", board_week_start=board_week_start,
-        all_lessons_for_collision=all_lessons_for_board,
         today_iso=today_iso_for_board,
     )
 
@@ -660,11 +645,6 @@ with plan_tab:
     existing_by_agent: dict[str, list[dict]] = {}
     for lesson in existing:
         existing_by_agent.setdefault(lesson["agent"], []).append(lesson)
-    # Broader than `existing` (this target week only) on purpose -- moving a
-    # lesson onto a day in a *different* week must still catch a same-agent
-    # collision there, same scope Activity Log's own Backlog tab checks.
-    all_lessons_for_collision = db.list_lessons(student["id"], limit=50)
-
     st.caption(
         "Each subject plans on its own click -- at most four lessons at a time, "
         "never all sixteen in one shot. A batch that large can run well past "
@@ -783,20 +763,10 @@ with plan_tab:
                     # for every agent including math (moving a day doesn't
                     # touch the shared skill_id the way regenerating one
                     # would, so math isn't excluded here the way it is below).
-                    def _validate_weekplan_move(new_date: str, lesson=lesson) -> str | None:
-                        collision = any(
-                            other["agent"] == lesson["agent"]
-                            and other["id"] != lesson["id"]
-                            and (other.get("metadata") or {}).get("planned_for") == new_date
-                            for other in all_lessons_for_collision
-                        )
-                        if collision:
-                            return (
-                                f"⚠️ Already a {lesson['agent']} lesson planned for that "
-                                "day -- pick a different one."
-                            )
-                        return None
-
+                    # No collision check on the target day: a day is allowed to
+                    # hold two lessons of the same subject (a new one plus one
+                    # from a prior day still waiting on his revision), so moving
+                    # a subject into any day is never blocked.
                     render_story_move_control(
                         key=f"weekplan_lesson_{lesson['id']}",
                         active=not weekly.is_backlogged(lesson, date.today().isoformat()),
@@ -807,7 +777,6 @@ with plan_tab:
                         schedule=lambda d, lid=lesson["id"]: (
                             db.reschedule_lesson(lid, d) if d else None
                         ),
-                        validate_schedule=_validate_weekplan_move,
                     )
 
                     # Math isn't offered a single-day regenerate: its four days

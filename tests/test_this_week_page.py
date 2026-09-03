@@ -271,12 +271,12 @@ def test_review_is_the_first_tab_and_board_is_second(monkeypatch, tmp_path):
     assert at.tabs[1].label == "📋 Board"
 
 
-def test_the_board_groups_cards_into_subject_rows_not_day_stacks(monkeypatch, tmp_path):
-    """The board is a subject x day matrix: each subject reads as one straight
-    row across the week, in a fixed order (Math, Science, ...), rather than
-    cards stacking per day in arrival order. So a Math lesson on Monday and one
-    on Wednesday render together (the Math row) *before* a Science lesson on
-    Tuesday (the Science row) -- day order would have put Science between them.
+def test_the_board_packs_each_day_from_the_top(monkeypatch, tmp_path):
+    """Each day is its own column and its cards pack to the top of it, rather
+    than every subject reserving an aligned row across the week. So the cards
+    render in day order (Monday column first, then Tuesday, then Wednesday) --
+    a lone card on a day never sits marooned at the bottom under empty slots
+    for subjects other days happen to have.
     """
     db_path = tmp_path / "week.db"
     db = Database(db_path)
@@ -300,10 +300,70 @@ def test_the_board_groups_cards_into_subject_rows_not_day_stacks(monkeypatch, tm
     def _pos(needle):
         return next(i for i, label in enumerate(order) if needle in label)
 
-    # Both Math cards come before the Science card -- proof the layout groups
-    # by subject row, not by day column.
-    assert _pos("Math Monday") < _pos("Science Tuesday")
-    assert _pos("Math Wednesday") < _pos("Science Tuesday")
+    # Rendered by day column, left to right.
+    assert _pos("Math Monday") < _pos("Science Tuesday") < _pos("Math Wednesday")
+
+
+def test_cards_on_one_day_sort_by_subject(monkeypatch, tmp_path):
+    """Within a single day's column, cards still follow the stable subject order
+    (Math above Science above English...), even when they arrived out of order,
+    so a day reads consistently top-down."""
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    monday = TARGET_MONDAY.isoformat()
+    for agent, title in [
+        ("english", "English Monday"),
+        ("math", "Math Monday"),
+        ("science", "Science Monday"),
+    ]:
+        db.save_lesson(
+            student_id=student["id"], agent=agent, subject=agent, topic="t", title=title,
+            payload={"title": title, "activities": []},
+            metadata={"planned_for": monday, "week_start": monday},
+        )
+    db.close()
+
+    _, board_tab = _open_board_tab(monkeypatch, db_path)
+    order = [e.label for e in board_tab.expander]
+
+    def _pos(needle):
+        return next(i for i, label in enumerate(order) if needle in label)
+
+    assert _pos("Math Monday") < _pos("Science Monday") < _pos("English Monday")
+
+
+def test_a_prior_day_review_lesson_never_blocks_planning_a_new_one(monkeypatch, tmp_path):
+    """A lesson from a prior day still awaiting his revision must not block
+    planning a fresh lesson of the same subject on another day -- both live on
+    their own days and both show on the board. Reported directly: "just dont
+    block me moving subject into a day ... its a lesson needed to be reviewed by
+    landon from prior day." (There is no longer any same-agent-same-day move
+    guard at all; a genuine same-day duplicate is superseded by latest_per_day,
+    the regenerate-newest-wins rule, not blocked.)"""
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    monday = TARGET_MONDAY.isoformat()
+    tuesday = (TARGET_MONDAY + timedelta(days=1)).isoformat()
+    prior = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Prior English", payload={"title": "Prior English", "activities": []},
+        metadata={"planned_for": monday, "week_start": monday},
+    )
+    db.submit_lesson(prior)
+    db.send_lesson_back(prior, "Redo paragraph two.")
+    db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="New English", payload={"title": "New English", "activities": []},
+        metadata={"planned_for": tuesday, "week_start": monday},
+    )
+    db.close()
+
+    _, board_tab = _open_board_tab(monkeypatch, db_path)
+    labels = [e.label for e in board_tab.expander]
+    assert any("Prior English" in label for label in labels)
+    assert any("New English" in label for label in labels)
 
 
 def test_a_planned_lesson_shows_on_the_board_with_a_move_control(monkeypatch, tmp_path):
