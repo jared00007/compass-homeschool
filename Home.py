@@ -25,6 +25,7 @@ from compass.ui import (
     render_first_day_celebration,
     render_morning_routine,
     render_report_card,
+    render_xp_reward_editor,
     render_streak,
     render_today_checklist,
     render_travel_passport,
@@ -711,6 +712,11 @@ st.divider()
 st.subheader("Report card")
 st.caption("Same numbers he sees. Hours logged and his streak are not part of any grade.")
 render_report_card(db, student, for_parent=True)
+
+# The XP reward ladder he's climbing toward, editable here -- the XP card
+# itself is student-only, so this is where a parent adjusts what he unlocks.
+with st.expander("🎁 XP rewards he can unlock"):
+    render_xp_reward_editor(db)
 
 st.divider()
 

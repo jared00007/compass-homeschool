@@ -139,3 +139,36 @@ def test_rewards_unlock_by_cumulative_xp():
     top = config.XP_REWARDS[-1][0] + 1
     assert all(r.unlocked for r in xp.rewards_for_total(top))
     assert xp.next_reward(top) is None
+
+
+def test_reward_ladder_defaults_to_config(db, student):
+    # No stored setting -> the config defaults, as tuples ascending by threshold.
+    ladder = xp.reward_ladder(db)
+    assert ladder == list(config.XP_REWARDS)
+
+
+def test_parent_can_edit_and_reset_the_reward_ladder(db, student):
+    xp.set_reward_ladder(db, [
+        {"threshold": 500, "name": "Concert tickets", "emoji": "🎫"},
+        {"threshold": 100, "name": "Pizza night", "emoji": "🍕"},
+        {"threshold": 0, "name": "  ", "emoji": "🎁"},  # blank name -> dropped
+    ])
+    ladder = xp.reward_ladder(db)
+    # Sorted ascending, blank dropped.
+    assert ladder == [(100, "Pizza night", "🍕"), (500, "Concert tickets", "🎫")]
+    # And the student-facing helpers honor it.
+    assert xp.next_reward(0, ladder).name == "Pizza night"
+    assert [r.name for r in xp.rewards_for_total(200, ladder) if r.unlocked] == ["Pizza night"]
+
+    # Clearing the setting falls back to config defaults.
+    db.set_setting("xp_rewards", "")
+    assert xp.reward_ladder(db) == list(config.XP_REWARDS)
+
+
+def test_reward_ladder_tolerates_a_junk_setting(db, student):
+    db.set_setting("xp_rewards", "not json at all")
+    assert xp.reward_ladder(db) == list(config.XP_REWARDS)
+    # A list with only junk rows also falls back rather than leaving no rewards.
+    import json
+    db.set_setting("xp_rewards", json.dumps([{"nope": 1}]))
+    assert xp.reward_ladder(db) == list(config.XP_REWARDS)

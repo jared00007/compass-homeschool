@@ -5169,8 +5169,10 @@ def render_xp_level(db: Database, student: dict[str, Any]) -> None:
 
     # The next real-world reward he's climbing toward, plus what he's already
     # unlocked -- the "movie night / sundae party" idea made concrete. Parent
-    # delivers it; the app just tracks the milestones.
-    upcoming = xp_module.next_reward(state.total)
+    # delivers it (and can edit the whole list -- see render_xp_reward_editor);
+    # the app just tracks the milestones.
+    ladder = xp_module.reward_ladder(db)
+    upcoming = xp_module.next_reward(state.total, ladder)
     if upcoming is not None:
         to_go = upcoming.threshold - state.total
         st.caption(
@@ -5178,7 +5180,7 @@ def render_xp_level(db: Database, student: dict[str, Any]) -> None:
         )
     else:
         st.caption("🏆 You've unlocked every reward — legend.")
-    earned = [r for r in xp_module.rewards_for_total(state.total) if r.unlocked]
+    earned = [r for r in xp_module.rewards_for_total(state.total, ladder) if r.unlocked]
     if earned:
         st.caption("Unlocked: " + " · ".join(f"{r.emoji} {md(r.name)}" for r in earned))
 
@@ -5210,6 +5212,50 @@ def render_xp_level(db: Database, student: dict[str, Any]) -> None:
             "Your XP fills the bar toward the next **level**, and hitting XP "
             "milestones unlocks **rewards** — the next one's shown right above."
         )
+
+
+def render_xp_reward_editor(db: Database) -> None:
+    """Parent-only: edit the ladder of XP rewards he unlocks -- reported
+    directly: "parent also needs ability to edit, adjust list of xp rewards."
+    A live table (add/remove rows) over `xp.reward_ladder`; Save writes the
+    `xp_rewards` setting, Reset clears back to the config defaults. The student
+    XP card reads the same ladder, so a change here is what he sees next load."""
+    ladder = xp_module.reward_ladder(db)
+    st.caption(
+        "The milestones he unlocks as his XP climbs. Edit the numbers and names, "
+        "add or delete rows, then Save. The app tracks when he's earned one — you "
+        "decide when to actually make it happen."
+    )
+    rows = [{"XP needed": t, "Emoji": e, "Reward": n} for t, n, e in ladder]
+    edited = st.data_editor(
+        rows,
+        num_rows="dynamic",
+        hide_index=True,
+        key="xp_reward_editor",
+        column_config={
+            "XP needed": st.column_config.NumberColumn(min_value=0, step=10),
+            "Emoji": st.column_config.TextColumn(width="small"),
+            "Reward": st.column_config.TextColumn(width="large"),
+        },
+    )
+    save_col, reset_col = st.columns(2)
+    if save_col.button("Save rewards", type="primary", key="save_xp_rewards"):
+        xp_module.set_reward_ladder(
+            db,
+            [
+                {
+                    "threshold": row.get("XP needed"),
+                    "name": row.get("Reward"),
+                    "emoji": row.get("Emoji"),
+                }
+                for row in edited
+            ],
+        )
+        st.success("Rewards saved.")
+        st.rerun()
+    if reset_col.button("Reset to defaults", key="reset_xp_rewards"):
+        db.set_setting("xp_rewards", "")
+        st.rerun()
 
 
 def render_week_progress(db: Database, student: dict[str, Any]) -> None:

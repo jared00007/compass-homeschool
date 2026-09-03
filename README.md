@@ -2651,8 +2651,14 @@ The next tier of fun turns what he already does into visible progress:
   milestones (movie night → sundae run → sleepover → sundae party → a day trip);
   the XP card shows the next one and how far off it is, plus what's already
   unlocked. The app only tracks the milestones — the parent decides when to
-  actually deliver the reward. `xp.rewards_for_total`/`xp.next_reward` compute it,
-  all thresholds tunable in config.
+  actually deliver the reward. `xp.rewards_for_total`/`xp.next_reward` compute it.
+  The `XP_REWARDS` config is only the *default* ladder: a parent edits the whole
+  list — thresholds, emoji, names, add/remove rows — in a live table on the
+  parent Home ("🎁 XP rewards he can unlock", `render_xp_reward_editor`), saved to
+  the `xp_rewards` setting via `xp.set_reward_ladder` and read back by
+  `xp.reward_ladder` (which falls back to the config defaults if the setting is
+  empty or malformed). The student XP card reads the same ladder, so an edit is
+  what he sees next load; **Reset to defaults** clears it back to config.
 - **A 🗺️ Travel Passport** — the Travel Journal already tracks which states and
   national parks he's visited; `render_travel_passport` surfaces it as a
   filling-in collection ("2 of 50 states explored · 2 parks stamped", a stamp

@@ -11,6 +11,7 @@ curve are all tunable knobs in config.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -65,19 +66,73 @@ def sent_back_penalty(db: Any, student_id: int) -> int:
     return config.XP_SENT_BACK_PENALTY * bounces
 
 
-def rewards_for_total(total: int) -> list[Reward]:
-    """Every configured reward, each flagged unlocked if `total` has reached
-    its threshold. Order follows config.XP_REWARDS (ascending by threshold)."""
+_REWARD_LADDER_SETTING = "xp_rewards"
+
+
+def reward_ladder(db: Any) -> list[tuple[int, str, str]]:
+    """The reward milestones in force -- a parent's own edited list if they've
+    saved one (`xp_rewards` setting, JSON), otherwise the config defaults.
+    Tolerant of a malformed stored value: a bad row is dropped and, if nothing
+    survives, it falls back to the defaults rather than leaving him with no
+    rewards to climb toward (same defensiveness `grades.parse_weights` applies
+    to its own editable setting). Always returned ascending by threshold."""
+    raw = db.get_setting(_REWARD_LADDER_SETTING)
+    if raw:
+        try:
+            parsed = json.loads(raw)
+        except (ValueError, TypeError):
+            parsed = None
+        if isinstance(parsed, list):
+            ladder: list[tuple[int, str, str]] = []
+            for row in parsed:
+                try:
+                    threshold = int(row["threshold"])
+                    name = str(row["name"]).strip()
+                    emoji = (str(row.get("emoji") or "").strip()) or "🎁"
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if name:
+                    ladder.append((threshold, name, emoji))
+            if ladder:
+                return sorted(ladder, key=lambda r: r[0])
+    return list(config.XP_REWARDS)
+
+
+def set_reward_ladder(db: Any, rows: list[dict[str, Any]]) -> None:
+    """Save a parent's edited reward list. Drops rows with no name, clamps a
+    missing/junk threshold to 0, defaults a blank emoji, and stores the result
+    sorted ascending. Saving an empty list clears back to the config defaults."""
+    cleaned: list[dict[str, Any]] = []
+    for row in rows:
+        name = str(row.get("name") or "").strip()
+        if not name:
+            continue
+        try:
+            threshold = max(0, int(row.get("threshold") or 0))
+        except (TypeError, ValueError):
+            threshold = 0
+        emoji = (str(row.get("emoji") or "").strip()) or "🎁"
+        cleaned.append({"threshold": threshold, "name": name, "emoji": emoji})
+    cleaned.sort(key=lambda r: r["threshold"])
+    db.set_setting(_REWARD_LADDER_SETTING, json.dumps(cleaned))
+
+
+def rewards_for_total(total: int, ladder: list[tuple[int, str, str]] | None = None) -> list[Reward]:
+    """Every reward, each flagged unlocked if `total` has reached its threshold.
+    `ladder` defaults to the config rewards when not given (keeps this pure and
+    db-free for tests); callers with a db pass `reward_ladder(db)` so a parent's
+    edits are honored."""
+    ladder = ladder if ladder is not None else list(config.XP_REWARDS)
     return [
         Reward(threshold=threshold, name=name, emoji=emoji, unlocked=total >= threshold)
-        for threshold, name, emoji in config.XP_REWARDS
+        for threshold, name, emoji in ladder
     ]
 
 
-def next_reward(total: int) -> Reward | None:
+def next_reward(total: int, ladder: list[tuple[int, str, str]] | None = None) -> Reward | None:
     """The lowest-threshold reward he hasn't reached yet, or None once every
     reward is unlocked."""
-    for reward in rewards_for_total(total):
+    for reward in rewards_for_total(total, ladder):
         if not reward.unlocked:
             return reward
     return None
