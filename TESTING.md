@@ -34,7 +34,7 @@ Prove the thing runs before testing what it does.
 
 - [ ] **All eleven pages open**
   Click every sidebar item: Home, Math, Science, English, History, Choice Topics, Life
-  Skills, Landon's Travels, Activity Log, Compliance, Student Profile.
+  Skills, Landon's Travels, Mission Control, Compliance, Student Profile.
   *Pass: every page renders, no red error boxes.*
 
 - [ ] **Student details are right**
@@ -49,7 +49,7 @@ Prove the thing runs before testing what it does.
   Quit, rename `.env` to `.env.off`, relaunch. The launcher will ask for a key in the
   Terminal — **press Enter to skip it**.
   *Pass: it says it's running without a key, then a red banner appears on the four agent
-  pages and on Life Skills → Plan a session. Compliance, Activity Log, Math → The graph,
+  pages and on Life Skills → Plan a session. Compliance, Mission Control, Math → The graph,
   Choice Topics and the Life Skills checklist all still work. Rename the file back after.*
 
 - [ ] **The key prompt writes the file for you**
@@ -128,11 +128,11 @@ Generate → teach → log → dashboard. The path you'll walk every day.
 
 - [ ] **Log a generated lesson**
   Use "Log this as completed" under any lesson. Set the date and save.
-  *Pass: success message; lesson shows "completed" in Activity Log → Generated lessons.*
+  *Pass: success message; lesson shows "completed" in Mission Control → Record (tick "Also show completed").*
 
 - [ ] ⚠ **CRITICAL — Edited minutes are respected**
   Log one lesson with minutes changed, say 60 down to 35.
-  *Pass: Activity Log shows 35, not 60. What you type is what's recorded.*
+  *Pass: Mission Control → Record shows 35, not 60. What you type is what's recorded.*
 
 - [ ] ⚠ **CRITICAL — Edited credits are respected**
   Before saving, zero out one secondary subject credit.
@@ -143,11 +143,11 @@ Generate → teach → log → dashboard. The path you'll walk every day.
   *Pass: total rose by the minutes you logged; credited subjects show hours.*
 
 - [ ] **Manual logging works**
-  Activity Log → Log something manually. A museum, a hike, a documentary.
+  Mission Control → Record → Log an activity by hand. A museum, a hike, a documentary.
   *Pass: appears in the record with the credits you chose.*
 
 - [ ] **Deleting corrects the record**
-  Delete a test activity from the Activity Log.
+  Delete a test activity from Mission Control → Record.
   *Pass: Compliance total drops by exactly that activity's minutes.*
 
 - [ ] ⚠ **CRITICAL — Taking the quiz never shows the answer early**
@@ -314,7 +314,7 @@ Test the restore, not just the backup. An untested restore is not a backup.
 
 - [ ] ⚠ **CRITICAL — Restore actually restores**
   Log a throwaway activity called TEST. Then restore a snapshot from before it.
-  *Pass: TEST is gone from the Activity Log; the app keeps working normally.*
+  *Pass: TEST is gone from Mission Control → Record; the app keeps working normally.*
 
 - [ ] **A mistaken restore is undoable**
   After that restore, look at the snapshot list.

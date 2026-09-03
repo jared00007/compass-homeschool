@@ -304,7 +304,7 @@ lessons generated, not hours logged — mastery.
 
 Every math lesson ends with an assessment and a specific bar, like *"8 of 10 correct,
 including at least 2 of the 3 applied problems."* Score it right where you're already
-logging the lesson's hours — **Activity Log → To review**, open the lesson, and a plain
+logging the lesson's hours — **Mission Control → Review**, open the lesson, and a plain
 **✅ Approve — move to the next skill** / **🔁 Not yet — keep practicing** choice is sitting
 right there, folded into the same pass instead of a separate page trip. Approving unlocks
 the next skill at whatever score he actually got — the quiz only auto-approves a *perfect*
@@ -351,7 +351,7 @@ never un-masters something he already knows. You can still record mastery by han
 time, and both paths write to the same place.
 
 On Science, English, and History there's no mastery gate to hook into, so the quiz just
-shows him his score. What *does* apply there is the same **Activity Log → To review**
+shows him his score. What *does* apply there is the same **Mission Control → Review**
 assessment card Math uses, just lighter: a five-band call — Nailed it (100%) / Solid (90%)
 / Getting there (80%) / Needs more work (70%) / Not yet (55%) — plus a notes field, right
 on the lesson, the moment you're checking it. The percentage on each band is what it's
@@ -371,7 +371,7 @@ multiple-choice questions on concrete specifics only a reader would know: an obj
 a decision made, where a scene happens. Not theme, not interpretation, and nothing
 answerable from a plot summary.
 
-It grades on the spot, he sees the result, and you see it at the top of the Activity Log
+It grades on the spot, he sees the result, and you see it in Mission Control → Review
 assessment card — a passed check as a quiet caption, a failed one as a warning worth
 following up on. A passage printed inside the lesson itself doesn't get one; he already
 has that in front of him.
@@ -411,7 +411,7 @@ text box on the screen instead of a prompt to write in his notebook, whatever ki
 activity it technically is. Genuinely hands-on or paper work (solving a math problem,
 drawing a timeline or diagram, building a chart) stays on paper — the model's told
 explicitly which is which. His response saves the moment he clicks Save draft, and it's
-what you see, right in that same Activity Log assessment card, when it's time to check the
+what you see, right in that same Mission Control review card, when it's time to check the
 lesson. No separate notebook page to track down.
 
 **Writing goes through a real submit-and-review loop, with automated checks first.**
@@ -431,7 +431,7 @@ Two things now stand between a first draft and a finished assignment:
    can judge — that's still yours. **Save draft** is never gated, so he can stop
    mid-sentence and come back without being nagged.
 2. **Then you approve it or send it back.** A submitted response locks — he can't
-   quietly keep editing, and you see it in the Activity Log assessment card marked
+   quietly keep editing, and you see it in the Mission Control review card marked
    *awaiting your review*, with **Approve** and **Send back for revision** underneath.
    Sending it back carries your feedback straight onto his screen, above the reopened
    text box, so the next pass is aimed at something specific instead of "do it again."
@@ -455,7 +455,7 @@ The same result is written once and shown two ways:
 - **His view** gets what's genuinely working, plus at most **two** concrete next moves.
   Not the full list of everything missing — for a kid who already avoids writing, a wall
   of corrections is the thing most likely to make him quit rather than revise.
-- **Your view**, in the Activity Log assessment card under *What the automated read
+- **Your view**, in the Mission Control review card under *What the automated read
   noticed*, adds the rest: every required part still unaddressed, and anything factually
   wrong with a plain correction. No second call — it's the same stored result read back.
 
@@ -719,7 +719,7 @@ aren't met — and shows the path to get there. The message tells you what to fi
 keeps working — dashboard, log, mastery, choice topics, life skills. Fix the key when
 convenient; you don't lose a day over it.
 
-**You logged something wrong.** Delete it in the Activity Log and re-log it. If something
+**You logged something wrong.** Delete it in Mission Control → Record and re-log it. If something
 worse happens, restore yesterday's snapshot from **Compliance → Backups** — it saves your
 current state first, so restoring is itself undoable.
 
@@ -900,7 +900,7 @@ to close before he moves on, not that he's blocked from working elsewhere;
 Math, Science, English, and History are independent, so a stuck English
 submission never touches the other three.
 
-You resolve it in Activity Log's **To review** tab, same place as always. One
+You resolve it in Mission Control's **Review** tab, same place as always. One
 combined action does both halves at once: **✅ Approve & log hours** grades
 the lesson (the 5-band verdict, or Math's mastery decision) *and* logs the
 hours in the same click — approved and completed are the same event now, so
@@ -924,7 +924,7 @@ compliance record, costs, and backups.
 **📄 Download as Word doc.** Grading an assessment off a laptop screen is
 awkward — a printed page isn't. Two places to get one, both on your side only:
 right below a lesson you just generated (gone once you leave that page — it's
-tied to your browser session), or in **Activity Log → To review** (tick "Also
+tied to your browser session), or in **Mission Control → Review** (tick "Also
 show completed and skipped lessons" to reach an older one), which survives
 closing the app.
 The file has everything your screen does: activities, materials, assessment,

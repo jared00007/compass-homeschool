@@ -316,7 +316,8 @@ would only trip around May, far too late to rebalance.
 Home.py                      Streamlit entry — dashboard
 pages/                       Math, Science, English, History, Choice Topics,
                              Life Skills, Check-In, Landon's Travels,
-                             Activity Log, Compliance, Student Profile
+                             Mission Control (Review · Board · Plan · Backlog
+                             · Record), Compliance, Student Profile
 compass/
   agents/
     framework.py             LessonAgent, AgentSpec, generation pipeline
@@ -2614,6 +2615,42 @@ The next tier of fun turns what he already does into visible progress:
   icon per park). Shown only once he has any travel entries, so it never sits
   empty, and it nudges him to write up an assigned-but-unfinished trip to earn
   its stamp.
+
+## Grading in place, and one parent hub
+
+The parent's review kept getting rebuilt toward the same goal: read his actual
+work and his response together, then approve it or push it back, without
+hunting. Three moves got it there.
+
+**The review is inline (`render_lesson_review`).** The old review card showed
+the overview and his answers but never the lesson body, and split the lesson
+from the grading controls so a parent scrolled between them. Now the whole
+lesson renders the way his own screen renders it — every activity, its
+instructions and questions, answer key still held back — and directly under
+each activity sits the submission it produced: his written response in a boxed
+"✍️ What he turned in" panel, the quiz with his answers against the key (the
+ones he missed open on their own), and the Approve / Send-back controls. One
+read, top to bottom. `render_assessment_card` split into
+`_render_writing_review_controls` + `_render_final_grade_decision`, which the
+new renderer composes; `_render_activity_body` grew a `review_owns_response`
+flag so content renders without repeating the response the controls now own.
+
+**Finishing his last piece turns the lesson in.** Submitting a writing
+response or taking the quiz each only moved its own piece; the lesson only
+reached the review queue via a separate button that was easy to miss. Now
+whichever piece he finishes last auto-submits the whole lesson, once the same
+readiness gate the manual button uses reads it as complete
+(`_maybe_auto_submit_lesson`).
+
+**Mission Control is the one parent hub.** Review, planning, backlog, and the
+hours record lived on two pages; the review, backlog, and record all fold into
+Mission Control now (`pages/10_Activity_Log.py` retired). It opens on a
+**Review** tab: a single prioritized queue — turned-in work open and ready to
+grade, then quieter overdue / sent-back / still-planned sections — with the old
+five-column schedule board dropped from review (rearranging days is the
+**Board** tab's job). **Backlog** (lessons, big projects, choice topics) and
+**Record** (the hours ledger + manual logging) are its own tabs. The page test
+is `tests/test_mission_control_review.py`.
 
 ## Tests
 
