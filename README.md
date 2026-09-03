@@ -1547,6 +1547,21 @@ the same mechanism `_hide_parent_only_nav` already used, just not gated on `is_p
 this time. Every other entry point into either feature (Home's cards, the Friday plan
 picker, the Travel Log card's own link) was repointed rather than left dangling.
 
+**Two entry links: a student one and a parent one.** Requested directly: "the current
+one remains unchanged and will be the student only link, but it loses the option to
+login as parent. that parent link will be a new entry point ... for me only." It's one
+Streamlit app with two front doors, told apart by a query string. The plain URL is
+Landon's — with a PIN set it opens in student view and shows **no** parent-unlock
+control at all (`compass.ui._mode_control` returns early before rendering it), so there's
+nothing to type a PIN into and nothing hinting the parent view exists. The parent's own
+bookmark carries `?view=parent`; `compass.ui.parent_entry_requested()` (session-sticky,
+so it survives the reruns and page-nav that drop the query string) is the one gate that
+reveals the unlock box. This is UX separation layered on top of the real gate, not the
+gate itself — every piece of parent content is still `is_parent()`/`parent_only()`-checked
+and PIN-verified, so the query string only decides whether the unlock box is *shown*, never
+whether access is *granted*. Mission Control, Compliance, Courses, Student Profile, and
+Model Costs stay in `_PARENT_ONLY_PAGES`, hidden from the student sidebar as before.
+
 **A consolidated Backlog tab on Activity Log — every item type's "what's parked or
 still left," in one place.** Requested directly: a parent needs a clean view across
 item types, not just lessons — "Landon did the first two legs of Lego film, backlog

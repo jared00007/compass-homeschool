@@ -143,6 +143,34 @@ def is_parent() -> bool:
     return bool(st.session_state.get("parent_unlocked", False))
 
 
+# Two entry points, one app. The plain URL is Landon's -- it never offers any
+# way to unlock the parent view, so he can't wander into it (nor even see that
+# it's there). The parent's own bookmark carries `?view=parent`, and that is the
+# only place the PIN unlock (and, before a PIN exists, the PIN setup) appears.
+# This is UX separation on top of the real gate, not the gate itself: parent
+# content is still PIN-checked by is_parent()/parent_only(), so the query string
+# reveals the unlock box, it does not grant access. Reported directly: "the
+# current one remains unchanged and will be the student only link, but it loses
+# the option to login as parent. that parent link will be a new entry point ...
+# for me only."
+_PARENT_ENTRY_PARAM = "view"
+_PARENT_ENTRY_VALUE = "parent"
+
+
+def parent_entry_requested() -> bool:
+    """Whether this browser tab was opened from the parent link (`?view=parent`).
+
+    Session-sticky: once opened from the parent link, later reruns and even
+    in-app page navigation (which drops the query string) keep it, so the
+    unlock box doesn't vanish mid-PIN-entry the first time Streamlit reruns."""
+    if st.session_state.get("_parent_entry"):
+        return True
+    if st.query_params.get(_PARENT_ENTRY_PARAM) == _PARENT_ENTRY_VALUE:
+        st.session_state["_parent_entry"] = True
+        return True
+    return False
+
+
 def _sidebar(db: Database, student: dict[str, Any]) -> None:
     with st.sidebar:
         st.markdown(f"### 🧭 Compass\n**{md(student['name'])}** · Grade {student['grade']}")
@@ -274,7 +302,11 @@ def _mode_control(db: Database) -> None:
         return
 
     st.caption("🎒 **Student view**")
-    with st.expander("Parent unlock"):
+    # The unlock only exists on the parent entry point (`?view=parent`). On
+    # Landon's own link there is no way in and nothing to hint one exists.
+    if not parent_entry_requested():
+        return
+    with st.expander("Parent unlock", expanded=True):
         pin = st.text_input("PIN", type="password", key="pin_unlock")
         if st.button("Unlock", width="stretch"):
             if auth.verify(db, pin):

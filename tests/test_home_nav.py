@@ -386,3 +386,22 @@ def test_switching_views_and_back_to_today_still_shows_the_roster(monkeypatch, t
     assert _nav_button(at, "Today").proto.type == "primary"
     text = " ".join(m.value for m in at.markdown)
     assert "Lessons (" in text
+
+
+def test_student_link_offers_no_parent_unlock(monkeypatch, tmp_path):
+    """The plain URL is Landon's: with a PIN set it starts in student view and
+    shows no way to unlock the parent view (nothing to type a PIN into)."""
+    at = _open_home(monkeypatch, _seed(tmp_path))
+    assert not any(t.key == "pin_unlock" for t in at.text_input)
+
+
+def test_parent_link_shows_the_unlock(monkeypatch, tmp_path):
+    """The parent entry point (`?view=parent`) is the one place the PIN unlock
+    appears, so only the parent can cross into the parent view."""
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", _seed(tmp_path))
+    at = AppTest.from_file(HOME_PATH)
+    at.query_params["view"] = "parent"
+    at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+    assert any(t.key == "pin_unlock" for t in at.text_input)
