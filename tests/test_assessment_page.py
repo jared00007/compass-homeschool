@@ -23,7 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 HOME_PATH = str(REPO_ROOT / "Home.py")
 MATH_PATH = str(REPO_ROOT / "pages" / "1_Math.py")
 ENGLISH_PATH = str(REPO_ROOT / "pages" / "3_English.py")
-ACTIVITY_LOG_PATH = str(REPO_ROOT / "pages" / "10_Activity_Log.py")
+MISSION_CONTROL_PATH = str(REPO_ROOT / "pages" / "14_Mission_Control.py")
 
 
 def _open(monkeypatch, db_path, page_path, *, as_parent):
@@ -66,7 +66,7 @@ def test_math_lesson_gets_the_approve_not_yet_choice_in_activity_log(monkeypatch
     db.submit_lesson(lesson_id)  # the decision only opens up once he's turned it in
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     labels = [b.label for b in at.button]
     assert any("Approve" in (l or "") for l in labels)
     assert any("Not yet" in (l or "") for l in labels)
@@ -83,7 +83,7 @@ def test_approving_records_mastery_at_the_actual_quiz_score(monkeypatch, tmp_pat
     db.submit_lesson(lesson_id)
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     approve = [b for b in at.button if "Approve" in (b.label or "")][0]
     approve.click().run()
     assert not at.exception, [e.message for e in at.exception]
@@ -108,7 +108,7 @@ def test_not_yet_records_in_progress_not_mastered(monkeypatch, tmp_path):
     db.submit_lesson(lesson_id)
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     keep_practicing = [b for b in at.button if "Not yet" in (b.label or "")][0]
     keep_practicing.click().run()
     assert not at.exception, [e.message for e in at.exception]
@@ -130,7 +130,7 @@ def test_an_already_approved_skill_shows_as_such(monkeypatch, tmp_path):
     db.set_mastery(student["id"], "two-step-equations", "mastered", score=100.0)
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     text = " ".join(s.value for s in at.success)
     assert "Already approved" in text
 
@@ -154,7 +154,7 @@ def test_non_math_lesson_gets_the_three_way_verdict_form(monkeypatch, tmp_path):
     db.submit_lesson(lesson_id)
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     assert any(r.label == "How'd it go?" for r in at.radio)
 
 
@@ -174,7 +174,7 @@ def test_submitting_the_verdict_form_records_the_assessment(monkeypatch, tmp_pat
     db.submit_lesson(lesson_id)
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     radio = [r for r in at.radio if r.label == "How'd it go?"][0]
     # The raw option value, not its on-screen label -- the labels now carry
     # the percentage each band is worth toward the grade, and a test that
@@ -202,7 +202,7 @@ def test_a_lesson_with_no_assessment_skill_or_writing_gets_no_card(monkeypatch, 
     )
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     text = " ".join(m.value for m in at.markdown)
     assert "Assessment" not in text
 
@@ -338,7 +338,7 @@ def test_a_flagged_instruction_activity_response_also_shows_in_parent_review(
     db.save_writing_response(lesson_id, 0, "PE is stored energy from being lifted up.")
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     text = " ".join(m.value for m in at.markdown)
     assert "PE is stored energy from being lifted up." in text
 
@@ -381,7 +381,7 @@ def test_a_saved_writing_response_appears_in_the_parent_review_card(monkeypatch,
     db.save_writing_response(lesson_id, 0, "I think the character was right because...")
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     text = " ".join(m.value for m in at.markdown)
     assert "I think the character was right because..." in text
 
@@ -397,7 +397,7 @@ def test_only_the_latest_draft_shows_when_theres_just_one_version(monkeypatch, t
     db.save_writing_response(lesson_id, 0, "Only draft.")
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     assert not any("Earlier drafts" in (e.label or "") for e in at.expander)
 
 
@@ -414,7 +414,7 @@ def test_earlier_drafts_show_up_once_hes_revised_it(monkeypatch, tmp_path):
     db.save_writing_response(lesson_id, 0, "Final version.")
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     drafts_expander = next(e for e in at.expander if "Earlier drafts" in (e.label or ""))
     assert "(2)" in drafts_expander.label
     body_text = " ".join(m.value for m in drafts_expander.markdown)
@@ -437,7 +437,7 @@ def test_no_response_yet_says_so_in_the_parent_review_card(monkeypatch, tmp_path
     )
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     text = " ".join(c.value for c in at.caption)
     assert "hasn't written a response yet" in text
 
@@ -457,7 +457,7 @@ def test_logging_hours_does_not_launch_balloons(monkeypatch, tmp_path):
 
     calls = []
     monkeypatch.setattr(streamlit, "balloons", lambda: calls.append(1))
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     log_button = [b for b in at.button if "Approve" in (b.label or "")][0]
     log_button.click().run()
     assert not at.exception, [e.message for e in at.exception]
@@ -592,7 +592,7 @@ def test_parent_sees_the_submitted_response_and_can_approve(monkeypatch, tmp_pat
     db.set_lesson_status(lesson_id, "submitted")  # the whole lesson has to be turned in too
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     approve = [b for b in at.button if b.label == "✅ Approve"][0]
     approve.click().run()
     assert not at.exception, [e.message for e in at.exception]
@@ -616,7 +616,7 @@ def test_parent_can_send_it_back_with_feedback(monkeypatch, tmp_path):
     db.set_lesson_status(lesson_id, "submitted")  # the whole lesson has to be turned in too
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     feedback_box = [
         t for t in at.text_area if "Feedback" in (t.label or "")
     ][0]

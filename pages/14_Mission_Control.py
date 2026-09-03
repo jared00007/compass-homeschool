@@ -21,16 +21,26 @@ happens.
 from __future__ import annotations
 
 from datetime import date, timedelta
+from functools import partial
 
 import streamlit as st
 
-from compass import weekly
+from compass import config, gradebook, weekly
 from compass.agents import all_agents
+from compass.agents.framework import GeneratedLesson, TopicProposal
 from compass.agents.strategies import ERAS, SCIENCE_DOMAINS
 from compass.compliance import build_report
+from compass.export import (
+    lesson_to_docx,
+    lesson_to_pdf,
+    suggested_filename,
+    suggested_pdf_filename,
+)
+from compass.subjects import SUBJECT_KEYS, label
 from compass.ui import (
     FRIDAY_PLAN_KINDS,
     SUBJECT_ICONS,
+    log_lesson_form,
     md,
     page_setup,
     parent_only,
@@ -39,6 +49,7 @@ from compass.ui import (
     render_board_move_notice,
     render_friday_plan,
     render_lesson,
+    render_lesson_review,
     render_story_move_control,
 )
 
@@ -91,6 +102,285 @@ def _idea_options(db, student_id: int, key: str) -> list[tuple[str, str]]:
     return options
 
 
+# --- the review queue: reading his work and acting on it ------------------------
+
+
+def _lesson_date(lesson: dict) -> str:
+    """The date that actually matters for review: the day a lesson is
+    *planned for*, if it was batch-planned -- not when it happened to be
+    generated. Those agree for an ordinary on-demand lesson, but not once a
+    whole week gets batch-planned in one sitting: every lesson in that batch
+    shares the same created_at, which tells you nothing about which day each
+    one is actually for."""
+    return (lesson.get("metadata") or {}).get("planned_for") or lesson["created_at"][:10]
+
+
+def _needs_attention(lesson: dict, today_iso: str) -> bool:
+    """Genuinely waiting on you: he's turned it in, or it's overdue and still
+    untouched -- but only within its own week. Once that week ends it's
+    backlogged instead: out of his own view entirely, and no longer
+    something today's date should keep flagging as urgent. A lesson sent
+    back for revision is waiting on HIM, not you."""
+    if lesson["status"] == "submitted":
+        return True
+    if lesson["status"] == "needs_revision":
+        return False
+    planned_for = (lesson.get("metadata") or {}).get("planned_for")
+    if not planned_for or planned_for >= today_iso:
+        return False
+    return not weekly.is_backlogged(lesson, today_iso)
+
+
+def _review_badge(lesson: dict, today_iso: str) -> str:
+    if lesson["status"] != "planned":
+        return {
+            "completed": "✅ completed",
+            "skipped": "⏭️ skipped",
+            "submitted": "📤 turned in — waiting on you",
+            "needs_revision": "↩️ sent back — waiting on him",
+        }[lesson["status"]]
+    if (lesson.get("metadata") or {}).get("held_back"):
+        return "🗄️ backlogged"
+    planned_for = (lesson.get("metadata") or {}).get("planned_for")
+    if planned_for and planned_for < today_iso:
+        return "⚠️ overdue"
+    return "🕓 planned"
+
+
+def _render_review_card_body(lesson: dict, today_iso: str) -> None:
+    """Everything inside a lesson's review card: the printable copies, the
+    whole lesson laid out with his work and the grading controls inline
+    (render_lesson_review), the manual hours form for the non-graded
+    subjects, and the skip/remove/move actions."""
+    st.caption(
+        f"{lesson['agent']} agent · strategy: {lesson['strategy']} · "
+        f"topic: {md(lesson['topic'])}"
+    )
+    if lesson["rationale"]:
+        st.caption(f"Why: {md(lesson['rationale'])}")
+    student_done_on = (lesson.get("metadata") or {}).get("student_done_on")
+    if student_done_on and lesson["status"] == "submitted":
+        st.caption(f"🎓 He turned this in on {student_done_on}.")
+    credits = lesson["payload"].get("subject_credits") or []
+    if credits:
+        st.markdown(
+            "Credit: "
+            + " · ".join(f"{label(c['subject'])} {c['minutes']}m" for c in credits)
+        )
+    download_columns = st.columns(2)
+    download_columns[0].download_button(
+        "🖨️ Print to PDF",
+        data=partial(lesson_to_pdf, lesson["payload"]),
+        file_name=suggested_pdf_filename(lesson["payload"]),
+        mime="application/pdf",
+        key=f"pdf_{lesson['id']}",
+    )
+    download_columns[1].download_button(
+        "📄 Word doc",
+        data=partial(lesson_to_docx, lesson["payload"]),
+        file_name=suggested_filename(lesson["payload"]),
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        key=f"docx_{lesson['id']}",
+    )
+    # The whole lesson, laid out the way his own screen lays it out, with
+    # each submission and its approve/send-back controls sitting right under
+    # the activity that produced it -- so grading is one read top to bottom.
+    render_lesson_review(db, student, lesson, key_prefix=f"review_{lesson['id']}")
+    # For a graded subject, hours only ever get logged through the combined
+    # Approve action inside render_lesson_review above. This plain form stays
+    # for Life Skills and anything else that never goes through the gate.
+    if lesson["status"] == "planned" and lesson["agent"] not in gradebook.GRADED_AGENTS:
+        st.divider()
+        generated = GeneratedLesson(
+            lesson_id=lesson["id"],
+            proposal=TopicProposal(
+                topic=lesson["topic"],
+                rationale=lesson["rationale"],
+                strategy=lesson["strategy"],
+            ),
+            payload=lesson["payload"],
+            warnings=[],
+        )
+        tier = (
+            config.TIER_LIFE_SKILLS
+            if lesson["agent"] == "life_skills"
+            else config.TIER_CORE
+        )
+        log_lesson_form(
+            db,
+            student,
+            generated,
+            source=lesson["agent"],
+            primary_subject=lesson["subject"],
+            key_prefix=f"review_{lesson['id']}",
+            tier=tier,
+        )
+    if lesson["status"] in ("planned", "submitted", "needs_revision"):
+        st.divider()
+        skip_col, remove_col = st.columns(2)
+        if skip_col.button("Mark skipped instead", key=f"skip_{lesson['id']}"):
+            db.set_lesson_status(lesson["id"], "skipped")
+            st.rerun()
+        if remove_col.button("Remove", key=f"remove_lesson_{lesson['id']}"):
+            db.delete_lesson(lesson["id"])
+            st.rerun()
+        # A lesson sent back for a redo is still an open story that might
+        # genuinely need a later day. Not offered for 'submitted': it's
+        # already turned in and waiting on a decision, not something to
+        # reschedule out from under that.
+        if lesson["status"] in ("planned", "needs_revision"):
+            def _validate(new_date: str, lesson=lesson) -> str | None:
+                collision = any(
+                    other["agent"] == lesson["agent"]
+                    and other["id"] != lesson["id"]
+                    and (other.get("metadata") or {}).get("planned_for") == new_date
+                    for other in all_lessons
+                )
+                if collision:
+                    return (
+                        f"⚠️ Already a {lesson['agent']} lesson planned for that "
+                        "day -- pick a different one."
+                    )
+                return None
+
+            render_story_move_control(
+                key=f"lesson_{lesson['id']}",
+                active=not weekly.is_backlogged(lesson, today_iso),
+                scheduled_for=(lesson.get("metadata") or {}).get("planned_for"),
+                set_active=lambda a, lid=lesson["id"]: (
+                    db.unhold_lesson(lid) if a else db.send_to_backlog(lid)
+                ),
+                schedule=lambda d, lid=lesson["id"]: db.reschedule_lesson(lid, d) if d else None,
+                validate_schedule=_validate,
+            )
+
+
+def _render_review_card(lesson: dict, today_iso: str, *, open: bool = False) -> None:
+    """One lesson's review card. `open` renders it as a bordered panel with
+    everything already visible -- for work that's genuinely waiting on you,
+    so grading it takes no extra click. Otherwise it's a collapsed expander,
+    for the quieter overdue/sent-back/backlog/history lists where the
+    header alone is usually enough."""
+    header = f"{_review_badge(lesson, today_iso)} · {_lesson_date(lesson)} · {md(lesson['title'])}"
+    if open:
+        with st.container(border=True):
+            st.markdown(f"**{header}**")
+            _render_review_card_body(lesson, today_iso)
+    else:
+        with st.expander(header):
+            _render_review_card_body(lesson, today_iso)
+
+
+_TRAVEL_REVIEW_BADGES = {
+    "submitted": "📤 turned in — waiting on you",
+    "needs_revision": "↩️ sent back — waiting on him",
+}
+
+
+def _render_travel_review_card(entry: dict, *, open: bool = False) -> None:
+    """A submitted (or sent-back) travel entry, reviewable right here -- same
+    Approve/Send back actions as pages/9_Landons_Travels.py, so a trip
+    waiting on you doesn't only show up if you happen to visit that page.
+    Approving logs the same flat Writing/Social Studies credit it always
+    has."""
+    badge = _TRAVEL_REVIEW_BADGES[entry["status"]]
+    title = entry["title"] or entry["state"] or "Untitled trip"
+    header = f"{badge} · {entry['visited_on']} · 🧭 {md(title)}"
+
+    def _body() -> None:
+        if entry["story"]:
+            st.write(md(entry["story"]))
+        if entry["status"] == "needs_revision" and entry["revision_note"].strip():
+            st.caption(f"You sent this back: {md(entry['revision_note'].strip())}")
+        if entry["status"] == "submitted":
+            feedback_note = st.text_area(
+                "Feedback (optional, shown to him)",
+                key=f"mc_approve_feedback_{entry['id']}",
+                height=140,
+                placeholder="e.g. Great detail about the hike -- loved reading this one.",
+            )
+            review_columns = st.columns([1, 1, 4])
+            if review_columns[0].button(
+                "✅ Approve", key=f"mc_approve_travel_{entry['id']}", type="primary"
+            ):
+                db.approve_travel_entry(entry["id"], feedback_note.strip())
+                st.rerun()
+            reviewing = st.session_state.get("mc_reviewing_travel") == entry["id"]
+            if review_columns[1].button(
+                "Cancel" if reviewing else "↩️ Send back",
+                key=f"mc_bounce_travel_{entry['id']}",
+            ):
+                st.session_state["mc_reviewing_travel"] = None if reviewing else entry["id"]
+                st.rerun()
+            if reviewing:
+                with st.form(f"mc_send_back_travel_{entry['id']}"):
+                    note = st.text_input(
+                        "What should he fix or add?",
+                        placeholder="e.g. more detail on what you actually did there",
+                    )
+                    if st.form_submit_button("Send back", type="primary"):
+                        db.send_travel_entry_back(entry["id"], note.strip())
+                        st.session_state["mc_reviewing_travel"] = None
+                        st.rerun()
+        st.page_link("pages/9_Landons_Travels.py", label="Open in Landon's Travels", icon="🧭")
+
+    if open:
+        with st.container(border=True):
+            st.markdown(f"**{header}**")
+            _body()
+    else:
+        with st.expander(header):
+            _body()
+
+
+# --- the parked-work and hours data every tab below reads ----------------------
+
+today = date.today()
+today_iso = today.isoformat()
+
+all_lessons = db.list_lessons(student["id"], limit=50)
+to_review = [l for l in all_lessons if l["status"] in ("planned", "submitted", "needs_revision")]
+history = [l for l in all_lessons if l["status"] in ("completed", "skipped")]
+
+all_travel_entries = db.list_travel_entries(student["id"])
+travel_to_review = [
+    t for t in all_travel_entries if t["status"] in ("submitted", "needs_revision")
+]
+
+lesson_backlog = [
+    l for l in to_review
+    if l["status"] == "planned" and weekly.is_backlogged(l, today_iso)
+]
+lesson_backlog.sort(key=lambda l: (l.get("metadata") or {}).get("planned_for") or "")
+
+all_projects = db.list_big_projects(student["id"])
+project_backlog = []
+for project in all_projects:
+    if project["shelved"] or project["kind"] == "travel_log":
+        continue
+    remaining = [s for s in db.list_project_steps(project["id"]) if not s["completed_on"]]
+    if remaining:
+        project_backlog.append((project, remaining))
+
+all_topics = db.list_choice_topics(student["id"])
+topic_backlog = [
+    t for t in all_topics if not t["active"] and t["status"] not in ("done", "declined")
+]
+
+backlog_count = (
+    len(lesson_backlog)
+    + sum(len(steps) for _, steps in project_backlog)
+    + len(topic_backlog)
+)
+
+# What's actually waiting on you: turned-in and sent-back work, plus anything
+# genuinely overdue. A lesson simply scheduled for a future day isn't a review.
+needs_review_count = (
+    sum(1 for l in to_review if _needs_attention(l, today_iso) or l["status"] == "needs_revision")
+    + len(travel_to_review)
+)
+
+
 # The day grid's colored pills and its own horizontal-scroll fix now live in
 # ui.render_board_days (shared with the student's Home board). The backlog
 # panel below keeps its own row-scroll CSS, since it's parent-only and not
@@ -123,7 +413,15 @@ div[class*="st-key-backlog_row_"] div[data-testid="stColumn"] {
 </style>
 """
 
-board_tab, review_tab, plan_tab = st.tabs(["📋 Board", "Review this week", "Plan next week"])
+review_tab, board_tab, plan_tab, backlog_tab, record_tab = st.tabs(
+    [
+        f"✅ Review ({needs_review_count})",
+        "📋 Board",
+        "📆 Plan next week",
+        f"🗄️ Backlog ({backlog_count})",
+        "🗂️ Record",
+    ]
+)
 
 # --- Board: every subject's stories, one week, one place ------------------------
 #
@@ -218,50 +516,102 @@ with board_tab:
         today_iso=today_iso_for_board,
     )
 
-# --- Review this week ----------------------------------------------------------
+# --- Review: read his work, approve it or push it back --------------------------
+#
+# The parent's daily job, and the first thing this hub opens on. One
+# prioritized queue: what he's turned in (open and ready to grade, his answer
+# under each activity), then what's overdue, then what's already been sent
+# back. No scheduling board here -- rearranging days is the Board tab's job --
+# so this stays a read-and-decide surface, not a planner.
 
 with review_tab:
     this_week_start = weekly.week_start()
     this_week_friday = this_week_start + timedelta(days=4)
-    st.subheader(
-        f"{this_week_start.strftime('%b %-d')} – {this_week_friday.strftime('%b %-d, %Y')}"
-    )
-
     report = build_report(
         db, student["id"], start=this_week_start.isoformat(), end=this_week_friday.isoformat()
     )
-    columns = st.columns(3)
-    columns[0].metric("Hours logged this week", f"{report.total_hours:g}")
-    columns[1].metric("Days of instruction", report.instructional_days)
-    columns[2].metric("Activities logged", report.activity_count)
-
-    week_lessons = weekly.latest_per_day(
-        db.lessons_for_week(student["id"], this_week_start.isoformat())
-    )
-    if not week_lessons:
-        st.info(
-            "Nothing was planned for this week -- either it predates this feature, "
-            "or a Friday planning session got skipped. Head to **Plan next week** "
-            "to set up the week ahead."
-        )
-    else:
-        st.markdown("**This week's plan**")
-        for lesson in week_lessons:
-            planned_for = lesson["metadata"].get("planned_for", "")
-            done = bool(lesson["metadata"].get("student_done_on"))
-            quiz = lesson["metadata"].get("quiz_result") or {}
-            marker = "✅" if done else "⬜"
-            extra = ""
-            if quiz.get("total"):
-                pct = round(100 * quiz["correct"] / quiz["total"])
-                extra = f" — quiz {quiz['correct']}/{quiz['total']} ({pct}%)"
-            label = f"{marker} **{_agent_label(lesson['agent'])}** — {md(lesson['title'])}{extra}"
-            st.markdown(f"- {label} · {_day_label(planned_for)}")
-
+    pulse = st.columns(3)
+    pulse[0].metric("Hours this week", f"{report.total_hours:g}")
+    pulse[1].metric("Days of instruction", report.instructional_days)
+    pulse[2].metric("Activities logged", report.activity_count)
     st.divider()
-    st.markdown(f"**Friday's plan** — {this_week_friday.strftime('%b %-d')}")
-    st.caption("Friday's light on purpose -- see **Plan next week** to change what's set here.")
-    render_friday_plan(db, student, this_week_friday.isoformat())
+
+    submitted_lessons = [l for l in to_review if l["status"] == "submitted"]
+    submitted_lessons.sort(key=lambda l: (l.get("metadata") or {}).get("planned_for") or "")
+    overdue = [
+        l for l in to_review if l["status"] == "planned" and _needs_attention(l, today_iso)
+    ]
+    overdue.sort(key=lambda l: (l.get("metadata") or {}).get("planned_for") or "")
+    # Planned but not yet due and not parked -- his week, still ahead of him.
+    # Kept reachable (a Life Skills lesson logs its hours from here, and you
+    # can preview or grade-ahead anything) but tucked below the work that's
+    # actually waiting, not spread across a five-column day board the way the
+    # old page did it.
+    planned_ahead = [
+        l for l in to_review
+        if l["status"] == "planned"
+        and not _needs_attention(l, today_iso)
+        and not weekly.is_backlogged(l, today_iso)
+    ]
+    planned_ahead.sort(key=lambda l: (l.get("metadata") or {}).get("planned_for") or "")
+    sent_back = [l for l in to_review if l["status"] == "needs_revision"]
+    travel_waiting = [t for t in travel_to_review if t["status"] == "submitted"]
+    travel_sent_back = [t for t in travel_to_review if t["status"] == "needs_revision"]
+
+    waiting_count = len(submitted_lessons) + len(travel_waiting)
+    st.markdown(f"### ✅ Turned in — waiting on you ({waiting_count})")
+    if not submitted_lessons and not travel_waiting:
+        st.success("Nothing turned in to grade right now.")
+    else:
+        st.caption(
+            "Read his work below, then approve it or send it back with a note. Each "
+            "lesson is laid out the way he saw it, his answer right under the activity."
+        )
+        for entry in travel_waiting:
+            _render_travel_review_card(entry, open=True)
+        for lesson in submitted_lessons:
+            _render_review_card(lesson, today_iso, open=True)
+
+    if overdue:
+        st.divider()
+        st.markdown(f"### ⚠️ Overdue — not turned in yet ({len(overdue)})")
+        st.caption(
+            "Past their day and still not handed in. Open one to nudge him, "
+            "reschedule it, park it in the Backlog, or skip it."
+        )
+        for lesson in overdue:
+            _render_review_card(lesson, today_iso)
+
+    if sent_back or travel_sent_back:
+        st.divider()
+        st.markdown(
+            f"### ↩️ Sent back — waiting on him ({len(sent_back) + len(travel_sent_back)})"
+        )
+        st.caption(
+            "You've returned these. Nothing to do until he revises and turns them in again."
+        )
+        for entry in travel_sent_back:
+            _render_travel_review_card(entry)
+        for lesson in sent_back:
+            _render_review_card(lesson, today_iso)
+
+    if planned_ahead:
+        st.divider()
+        st.markdown(f"### 📅 Planned — not turned in yet ({len(planned_ahead)})")
+        st.caption(
+            "Scheduled and still ahead of him. Open one to preview it, log a Life "
+            "Skills lesson's hours, or move it. Rearranging the week itself lives "
+            "on the **📋 Board** tab."
+        )
+        for lesson in planned_ahead:
+            _render_review_card(lesson, today_iso)
+
+    if lesson_backlog:
+        st.divider()
+        st.info(
+            f"🗄️ {len(lesson_backlog)} lesson(s) parked in the Backlog — see the "
+            "**🗄️ Backlog** tab."
+        )
 
 # --- Plan next week --------------------------------------------------------------
 
@@ -522,11 +872,187 @@ with plan_tab:
             format_func=lambda k: f"{FRIDAY_PLAN_KINDS[k][0]} "
             + (FRIDAY_PLAN_KINDS[k][1] or "Custom…"),
         )
-        label = form_columns[1].text_input(
+        friday_detail = form_columns[1].text_input(
             "Detail",
             placeholder="Required for Custom -- optional detail for the rest, "
             "e.g. \"catch up on 5 older trips\"",
         )
-        if st.form_submit_button("Add") and (kind != "custom" or label.strip()):
-            db.add_friday_plan_item(student["id"], friday_date.isoformat(), kind, label.strip())
+        if st.form_submit_button("Add") and (kind != "custom" or friday_detail.strip()):
+            db.add_friday_plan_item(
+                student["id"], friday_date.isoformat(), kind, friday_detail.strip()
+            )
             st.rerun()
+
+# --- Backlog: everything parked, in one place -----------------------------------
+
+with backlog_tab:
+    st.subheader("Everything parked, in one place")
+    st.caption(
+        "Every item type shares the same idea: parked out of his own view until you "
+        "pull it back. This is the one flow to see all of it and spread it back out "
+        "across the weeks ahead, rather than checking four separate pages. Life "
+        "Skills isn't one of the sections below -- its own Master List tab is already "
+        "the pace-control view for that whole catalog."
+    )
+
+    if not backlog_count:
+        st.success("Nothing parked anywhere right now.")
+
+    if lesson_backlog:
+        st.markdown(f"**📐 Lessons** ({len(lesson_backlog)})")
+        for lesson in lesson_backlog:
+            _render_review_card(lesson, today_iso)
+        st.divider()
+
+    if project_backlog:
+        total_remaining = sum(len(steps) for _, steps in project_backlog)
+        st.markdown(f"**🎬 Big Projects** ({total_remaining})")
+        st.caption(
+            "What's left in each project still underway -- steps not yet committed "
+            "to the plan (Backlog) and steps already in To Do but not finished yet, "
+            "together, since both are genuinely still ahead of him. One collapsible "
+            "row per project; open it to see and move its remaining steps."
+        )
+        for project, steps in project_backlog:
+            with st.expander(f"🎬 {md(project['title'])} — {len(steps)} left", expanded=False):
+                for step in steps:
+                    with st.container(border=True):
+                        status = "🗄️ Backlog" if not step["active"] else "▶ To Do"
+                        st.markdown(f"**{md(step['title'])}** · {status}")
+                        if step["description"]:
+                            st.caption(md(step["description"]))
+                        meta = []
+                        if step["materials"]:
+                            meta.append(f"**You'll need:** {md(step['materials'])}")
+                        meta.append(f"Credits toward {label(step['credit_subject'])}")
+                        st.caption(" · ".join(meta))
+                        render_story_move_control(
+                            key=f"backlog_step_{step['id']}",
+                            active=bool(step["active"]),
+                            scheduled_for=step["scheduled_for"],
+                            set_active=lambda a, sid=step["id"]: db.set_project_step_active(sid, a),
+                            schedule=lambda s, sid=step["id"]: db.schedule_project_step(sid, s),
+                        )
+                st.page_link("pages/7_Big_Projects.py", label="Open Big Projects", icon="➡️")
+        st.divider()
+
+    if topic_backlog:
+        st.markdown(f"**⭐ Choice Topics** ({len(topic_backlog)})")
+        for topic in topic_backlog:
+            columns = st.columns([5, 1])
+            columns[0].caption(f"🗄️ {md(topic['title'])} — {topic['status']}")
+            if columns[1].button("➡️ Un-backlog", key=f"backlog_tab_untopic_{topic['id']}"):
+                db.set_choice_topic_active(topic["id"], True)
+                st.rerun()
+
+# --- Record: the hours ledger, and logging one by hand --------------------------
+
+with record_tab:
+    st.markdown("### 🗂️ The instructional record")
+    st.caption(
+        "Every hour that counts. Activities created from agent lessons land here "
+        "automatically; anything else can be logged by hand. Total minutes count "
+        "toward the 1,000-hour floor."
+    )
+
+    with st.expander("➕ Log an activity by hand"):
+        with st.form("manual_log", clear_on_submit=True):
+            columns = st.columns([2, 1, 1])
+            title = columns[0].text_input("What was it?")
+            occurred_on = columns[1].date_input("Date", value=date.today())
+            minutes = columns[2].number_input(
+                "Total minutes", min_value=5, max_value=600, value=60, step=15
+            )
+
+            columns = st.columns([1, 1, 2])
+            tier = columns[0].selectbox(
+                "Tier", config.TIERS, format_func=lambda t: config.tier_label(t, student["name"])
+            )
+            primary = columns[1].selectbox("Primary subject", SUBJECT_KEYS, format_func=label)
+            location = columns[2].text_input("Location (optional)")
+
+            description = st.text_area("Description", height=80)
+
+            st.markdown("**Subject credit**")
+            st.caption(
+                "Leave a subject at 0 to skip it. The primary subject is filled in for you."
+            )
+            credits: dict[str, int] = {}
+            credit_columns = st.columns(3)
+            for index, subject_key in enumerate(SUBJECT_KEYS):
+                with credit_columns[index % 3]:
+                    credits[subject_key] = st.number_input(
+                        label(subject_key),
+                        min_value=0,
+                        max_value=600,
+                        value=0,
+                        step=15,
+                        key=f"manual_credit_{subject_key}",
+                    )
+
+            if st.form_submit_button("Log it", type="primary") and title.strip():
+                selected = {k: v for k, v in credits.items() if v > 0}
+                if primary not in selected:
+                    selected[primary] = int(minutes)
+                db.log_activity(
+                    student_id=student["id"],
+                    title=title.strip(),
+                    tier=tier,
+                    primary_subject=primary,
+                    minutes=int(minutes),
+                    subject_credits=selected,
+                    occurred_on=occurred_on.isoformat(),
+                    description=description.strip(),
+                    source="manual",
+                    location=location.strip(),
+                )
+                st.success("Logged.")
+                st.rerun()
+
+    columns = st.columns([1, 1, 2])
+    start = columns[0].date_input("From", value=date.today() - timedelta(days=30))
+    end = columns[1].date_input("To", value=date.today())
+
+    activities = db.list_activities(student["id"], start=start.isoformat(), end=end.isoformat())
+
+    if not activities:
+        st.info("Nothing logged in this range.")
+    else:
+        total = sum(a["minutes"] for a in activities)
+        metrics = st.columns(3)
+        metrics[0].metric("Activities", len(activities))
+        metrics[1].metric("Hours", round(total / 60, 1))
+        metrics[2].metric("Days", len({a["occurred_on"] for a in activities}))
+
+        for activity in activities:
+            with st.container(border=True):
+                columns = st.columns([5, 1])
+                where = f" · {activity['location']}" if activity["location"] else ""
+                columns[0].markdown(
+                    f"**{activity['occurred_on']} — {md(activity['title'])}** "
+                    f"({activity['minutes']} min){where}"
+                )
+                columns[0].caption(
+                    f"{config.tier_label(activity['tier'], student['name'])} · "
+                    f"source: {activity['source']}"
+                )
+                if activity["description"]:
+                    columns[0].caption(md(activity["description"]))
+                credit_summary = " · ".join(
+                    f"{label(s)} {m}m" for s, m in activity["credits"].items()
+                )
+                columns[0].markdown(
+                    f"<small>Credit: {credit_summary}</small>", unsafe_allow_html=True
+                )
+                if columns[1].button("Delete", key=f"del_act_{activity['id']}"):
+                    db.delete_activity(activity["id"])
+                    st.rerun()
+
+    st.divider()
+    show_history = st.checkbox("Also show completed and skipped lessons")
+    if show_history:
+        st.markdown(f"**Completed & skipped** ({len(history)})")
+        if not history:
+            st.caption("Nothing logged yet.")
+        for lesson in history:
+            _render_review_card(lesson, today_iso)

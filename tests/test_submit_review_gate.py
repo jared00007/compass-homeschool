@@ -25,7 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 HOME_PATH = str(REPO_ROOT / "Home.py")
 MATH_PATH = str(REPO_ROOT / "pages" / "1_Math.py")
 ENGLISH_PATH = str(REPO_ROOT / "pages" / "3_English.py")
-ACTIVITY_LOG_PATH = str(REPO_ROOT / "pages" / "10_Activity_Log.py")
+MISSION_CONTROL_PATH = str(REPO_ROOT / "pages" / "14_Mission_Control.py")
 
 
 @pytest.fixture()
@@ -504,7 +504,7 @@ def test_the_review_card_shows_the_quiz_he_took(monkeypatch, tmp_path):
     db.submit_lesson(lesson_id)
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     # Each question is a per-question expander, marked ✅/❌ so a parent can
     # scan which he missed; the question text lives in that label.
     labels = "\n".join(e.label for e in at.get("expander"))
@@ -544,7 +544,7 @@ def test_the_review_card_shows_the_lesson_body_he_read(monkeypatch, tmp_path):
     db.submit_lesson(lesson_id)
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     blob = "\n".join(m.value for m in at.markdown)
     # The lesson body renders inline in the review now, not behind an
     # expander -- the activity he read is right there.
@@ -578,7 +578,7 @@ def test_the_review_is_inline_content_response_and_controls_together(monkeypatch
     db.submit_lesson(lesson_id)
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     blob = "\n".join(m.value for m in at.markdown)
     # Activity content and his response are both on the page...
     assert "INLINEINSTRUCTION" in blob
@@ -608,7 +608,7 @@ def test_approving_a_non_math_lesson_logs_hours_in_the_same_click(monkeypatch, t
     db.submit_lesson(lesson_id)
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     radio = [r for r in at.radio if r.label == "How'd it go?"][0]
     radio.set_value(config.ASSESSMENT_SOLID).run()
     minutes = [n for n in at.number_input if n.label == "Total minutes"][0]
@@ -642,7 +642,7 @@ def test_sending_back_does_not_log_any_hours(monkeypatch, tmp_path):
     db.submit_lesson(lesson_id)
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     bounce = [b for b in at.button if "Send back" in (b.label or "")][0]
     bounce.click().run()
     assert not at.exception, [e.message for e in at.exception]
@@ -673,7 +673,7 @@ def test_the_lesson_wide_decision_waits_for_writing_to_be_approved_first(monkeyp
     db.submit_lesson(lesson_id)
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     assert not any(r.label == "How'd it go?" for r in at.radio)
     text = "\n".join(c.value for c in at.caption)
     assert "approve his response above" in text.lower()
@@ -693,10 +693,10 @@ def test_a_submitted_lesson_counts_as_needing_attention(monkeypatch, tmp_path):
     db.submit_lesson(lesson_id)
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
-    review_tab = [t for t in at.tabs if t.label.startswith("To review")][0]
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
+    review_tab = [t for t in at.tabs if t.label.startswith("✅ Review")][0]
     markdowns = [m.value for m in review_tab.markdown]
-    assert any("Needs your attention now" in m and "(1)" in m for m in markdowns)
+    assert any("Turned in — waiting on you" in m and "(1)" in m for m in markdowns)
 
 
 def test_a_sent_back_lesson_gets_its_own_quiet_section(monkeypatch, tmp_path):
@@ -711,11 +711,12 @@ def test_a_sent_back_lesson_gets_its_own_quiet_section(monkeypatch, tmp_path):
     db.send_lesson_back(lesson_id, "Try again.")
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
-    review_tab = [t for t in at.tabs if t.label.startswith("To review")][0]
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
+    review_tab = [t for t in at.tabs if t.label.startswith("✅ Review")][0]
     markdowns = [m.value for m in review_tab.markdown]
     assert any("Sent back" in m and "waiting on him" in m for m in markdowns)
-    assert not any("Needs your attention now" in m and "(1)" in m for m in markdowns)
+    # A sent-back lesson is waiting on him, not counted as waiting on you.
+    assert any("Turned in — waiting on you (0)" in m for m in markdowns)
 
 
 def test_a_graded_subject_lesson_never_shows_the_plain_log_hours_form(monkeypatch, tmp_path):
@@ -731,7 +732,7 @@ def test_a_graded_subject_lesson_never_shows_the_plain_log_hours_form(monkeypatc
     )
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     assert not any(b.label == "Log hours" for b in at.button)
 
 
@@ -747,5 +748,5 @@ def test_a_life_skill_lesson_still_gets_the_plain_log_hours_form(monkeypatch, tm
     )
     db.close()
 
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     assert any(b.label == "Log hours" for b in at.button)

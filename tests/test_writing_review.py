@@ -22,7 +22,7 @@ from compass.storage.db import Database
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HOME_PATH = str(REPO_ROOT / "Home.py")
 ENGLISH_PATH = str(REPO_ROOT / "pages" / "3_English.py")
-ACTIVITY_LOG_PATH = str(REPO_ROOT / "pages" / "10_Activity_Log.py")
+MISSION_CONTROL_PATH = str(REPO_ROOT / "pages" / "14_Mission_Control.py")
 
 A_REVIEW = {
     "strengths": ["You quoted the Compact directly, which the prompt asked for."],
@@ -246,7 +246,7 @@ def test_his_next_moves_read_as_rework_not_as_a_neutral_note(monkeypatch, tmp_pa
 
 def test_the_parent_card_shows_the_full_diagnostic(monkeypatch, tmp_path):
     db_path, lesson_id = _seed_page_db(tmp_path, with_review=True)
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
 
     shown = " ".join(
         [m.value for m in at.markdown]
@@ -266,7 +266,7 @@ def test_the_parent_cards_reasons_to_send_it_back_outrank_the_praise(
     loudest thing on screen. `missing` carries the same 🔁 his own view
     uses for the same items."""
     db_path, lesson_id = _seed_page_db(tmp_path, with_review=True)
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
 
     concerns = [e for e in at.error if A_REVIEW["concerns"][0] in e.value]
     assert concerns, "a factual concern should be an error, not a warning"

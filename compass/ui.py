@@ -161,7 +161,6 @@ def _sidebar(db: Database, student: dict[str, Any]) -> None:
 # thing standing between him and it: typing the URL directly still hits the
 # same PIN gate the tab would have.
 _PARENT_ONLY_PAGES = (
-    "Activity_Log",
     "Compliance",
     "Student_Profile",
     "Courses",
@@ -353,7 +352,7 @@ def generate_and_log(
         st.warning(
             f"⚠️ **{pending[0]['title']}** is already generated and still open for this "
             "subject. Generating another leaves both waiting on his Home page -- review "
-            "or remove the old one from Activity Log → To review."
+            "or remove the old one from Mission Control → Review."
         )
 
     if st.button("Generate lesson", type="primary", disabled=not api_ok or proposal.blocked):

@@ -86,7 +86,7 @@ if report.hours_remaining and pace["remaining_days"] > 0:
             f"{report.hours_remaining:g} hours remaining with only "
             f"{pace['remaining_days']} days left — that would take "
             f"{pace['hours_per_week_needed']:g} hours/week, which isn't a realistic plan. "
-            "If hours were taught but not logged, backfill them in the Activity Log; "
+            "If hours were taught but not logged, backfill them in Mission Control → Record; "
             "otherwise adjust the year's dates or target below."
         )
 

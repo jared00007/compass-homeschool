@@ -700,4 +700,6 @@ else:
             f"**{activity['occurred_on']}** — {md(activity['title'])} "
             f"({activity['minutes']} min) — {credit_summary}"
         )
-st.page_link("pages/10_Activity_Log.py", label="Full activity log", icon="🗂️")
+st.page_link(
+    "pages/14_Mission_Control.py", label="Review & full record — Mission Control", icon="🚀"
+)

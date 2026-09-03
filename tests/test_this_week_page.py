@@ -43,7 +43,7 @@ def _open_plan_tab(monkeypatch, db_path):
 
 
 def _plan_tab(at):
-    return [t for t in at.tabs if t.label == "Plan next week"][0]
+    return [t for t in at.tabs if t.label == "📆 Plan next week"][0]
 
 
 def test_all_four_days_are_checked_by_default(monkeypatch, tmp_path):
@@ -261,11 +261,14 @@ def _board_tab(at):
     return [t for t in at.tabs if t.label == "📋 Board"][0]
 
 
-def test_board_is_the_first_tab(monkeypatch, tmp_path):
+def test_review_is_the_first_tab_and_board_is_second(monkeypatch, tmp_path):
+    """Mission Control opens on Review -- the parent's daily job -- with the
+    planning Board right behind it."""
     db_path = tmp_path / "week.db"
     Database(db_path).close()
     at, _ = _open_board_tab(monkeypatch, db_path)
-    assert at.tabs[0].label == "📋 Board"
+    assert at.tabs[0].label.startswith("✅ Review")
+    assert at.tabs[1].label == "📋 Board"
 
 
 def test_the_board_groups_cards_into_subject_rows_not_day_stacks(monkeypatch, tmp_path):

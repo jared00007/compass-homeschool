@@ -24,7 +24,7 @@ from compass.storage.db import Database
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HOME_PATH = str(REPO_ROOT / "Home.py")
 ENGLISH_PATH = str(REPO_ROOT / "pages" / "3_English.py")
-ACTIVITY_LOG_PATH = str(REPO_ROOT / "pages" / "10_Activity_Log.py")
+MISSION_CONTROL_PATH = str(REPO_ROOT / "pages" / "14_Mission_Control.py")
 
 
 @pytest.fixture()
@@ -205,14 +205,14 @@ def test_it_never_blocks_the_rest_of_the_lesson(monkeypatch, tmp_path):
 
 def test_the_parent_sees_a_passed_check(monkeypatch, tmp_path):
     db_path, lesson_id = _seed(tmp_path, score=(2, 2))
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     text = " ".join(c.value for c in at.caption)
     assert "Reading check" in text and "2/2" in text
 
 
 def test_the_parent_is_warned_about_a_failed_check(monkeypatch, tmp_path):
     db_path, lesson_id = _seed(tmp_path, score=(0, 2))
-    at = _open(monkeypatch, db_path, ACTIVITY_LOG_PATH, as_parent=True)
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     warnings = " ".join(w.value for w in at.warning)
     assert "Reading check" in warnings
     assert "actually did the reading" in warnings
