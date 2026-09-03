@@ -1298,6 +1298,39 @@ def test_scheduling_a_life_skill_makes_it_due_on_and_after_that_day(db, student)
     assert [s["id"] for s in db.due_life_skills(student["id"], "2026-08-30")] == [skill_id]
 
 
+def test_due_and_upcoming_project_steps(db, student):
+    pid = db.add_big_project(student_id=student["id"], title="Lego Movie", vision="film it")
+    due_step = db.add_project_step(pid, "Storyboard", active=True)
+    later_step = db.add_project_step(pid, "Build set", active=True)
+    db.schedule_project_step(due_step, "2026-08-24")
+    db.schedule_project_step(later_step, "2026-08-26")
+
+    # Due = scheduled for that day or earlier, not done; carries the project title.
+    assert db.due_project_steps(student["id"], "2026-08-23") == []
+    due = db.due_project_steps(student["id"], "2026-08-24")
+    assert [s["id"] for s in due] == [due_step]
+    assert due[0]["project_title"] == "Lego Movie"
+    # Upcoming = still ahead of the given day.
+    assert [s["id"] for s in db.upcoming_project_steps(student["id"], "2026-08-24")] == [later_step]
+
+    # Once done, it drops off due.
+    db.set_project_step_done(due_step, True)
+    assert db.due_project_steps(student["id"], "2026-08-24") == []
+
+
+def test_travel_log_steps_are_not_project_steps_on_home(db, student):
+    # The auto Travel Log project's own steps must not leak into due_project_steps
+    # -- trips reach Home through the Travel Journal card, not the project list.
+    db.ensure_travel_log_project(student["id"])
+    travel = db.conn.execute(
+        "SELECT id FROM big_projects WHERE student_id = ? AND kind = 'travel_log'",
+        (student["id"],),
+    ).fetchone()["id"]
+    step = db.add_project_step(travel, "A trip step", active=True)
+    db.schedule_project_step(step, "2026-08-24")
+    assert db.due_project_steps(student["id"], "2026-08-24") == []
+
+
 def test_scheduling_a_locked_skill_unlocks_it(db, student):
     """Otherwise a skill could show as due on Home while linking to a
     checklist page that hides it for being locked -- see

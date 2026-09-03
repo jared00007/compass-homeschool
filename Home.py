@@ -252,8 +252,21 @@ if not is_parent():
             "↩️": "sent back",
             "⬜": "not turned in yet",
         }
-        render_card_heading(f"📚 Lessons ({len(roster)})")
-        if not roster:
+        # Big Project steps a parent assigned to a day (on the Board) belong on
+        # his main list too, not just buried on the Board tab -- reported: "the
+        # projects assigned on the board need to show on his main page under
+        # lessons." Same due/upcoming shape as lessons and life skills, rendered
+        # as the same white cards right under the lessons so it reads as one
+        # to-do list.
+        due_steps = db.due_project_steps(student["id"], today)
+        upcoming_steps = db.upcoming_project_steps(student["id"], today)
+        later_steps_this_week = sum(
+            1 for s in upcoming_steps if s["scheduled_for"] <= this_week_end
+        )
+        later_steps_week = len(upcoming_steps) - later_steps_this_week
+
+        render_card_heading(f"📚 Lessons ({len(roster) + len(due_steps)})")
+        if not roster and not due_steps:
             with st.container(border=True, key="landon_card_lessons_empty"):
                 st.caption(
                     "Nothing new is set up yet. Check back after your parent plans a lesson."
@@ -286,6 +299,15 @@ if not is_parent():
                         status_label = LESSON_STATUS_LABELS.get(marker)
                         if status_label:
                             st.caption(f"{marker} {status_label}")
+            for step in due_steps:
+                with st.container(border=True, key=f"landon_card_project_{step['id']}"):
+                    project_title = step.get("project_title") or "Big Project"
+                    st.page_link(
+                        "pages/7_Big_Projects.py",
+                        label=f"{md(step['title'])} — {md(project_title)}",
+                        icon="🏗️",
+                    )
+                    st.caption("🏗️ project step")
         if later_this_week:
             st.caption(
                 f"{later_this_week} more lesson(s) planned for later this week — "
@@ -295,6 +317,16 @@ if not is_parent():
             st.caption(
                 f"{later_week} more lesson(s) planned for a later week — see "
                 "the **Board**."
+            )
+        if later_steps_this_week:
+            st.caption(
+                f"{later_steps_this_week} more project step(s) assigned for later "
+                "this week — see the **Board**."
+            )
+        if later_steps_week:
+            st.caption(
+                f"{later_steps_week} more project step(s) assigned for a later week "
+                "— see the **Board**."
             )
 
         # 2b. Travel journal entries a parent assigned to a specific day --

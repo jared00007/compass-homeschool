@@ -405,3 +405,27 @@ def test_parent_link_shows_the_unlock(monkeypatch, tmp_path):
     at.run(timeout=30)
     assert not at.exception, [e.message for e in at.exception]
     assert any(t.key == "pin_unlock" for t in at.text_input)
+
+
+def test_a_board_assigned_project_step_shows_under_lessons(monkeypatch, tmp_path):
+    """A Big Project step a parent assigned to today shows on his main page in
+    the Lessons list, as a card linking out to Big Projects -- reported: "the
+    projects assigned on the board need to show on his main page under
+    lessons.\""""
+    import datetime
+    db_path = tmp_path / "proj.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    today = datetime.date.today().isoformat()
+    pid = db.add_big_project(student_id=student["id"], title="Lego Movie", vision="film it")
+    step = db.add_project_step(pid, "Storyboard the opening", active=True)
+    db.schedule_project_step(step, today)
+    auth.set_pin(db, "1234")
+    db.close()
+
+    at = _open_home(monkeypatch, db_path)
+    # The step is counted in the Lessons header and marked as a project step.
+    markdown = " ".join(m.value for m in at.markdown)
+    captions = " ".join(c.value for c in at.caption)
+    assert "Lessons (1)" in markdown
+    assert "project step" in captions

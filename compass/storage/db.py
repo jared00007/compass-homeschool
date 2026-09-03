@@ -3742,6 +3742,45 @@ class Database:
             )
         )
 
+    def due_project_steps(self, student_id: int, today: str) -> list[dict[str, Any]]:
+        """Big Project steps assigned to a day that still need doing: scheduled
+        for today or earlier, not yet done, still active. Mirrors
+        `due_life_skills` (same "a missed assignment never silently vanishes"
+        rule) but needs the big_projects join, since a step has no student_id of
+        its own. Carries the parent project's title along for the label. The
+        Travel Log project is excluded -- its "steps" are trips, surfaced on
+        Home through the Travel Journal card, not as project steps."""
+        return _rows(
+            self.conn.execute(
+                "SELECT project_steps.*, big_projects.title AS project_title "
+                "FROM project_steps "
+                "JOIN big_projects ON big_projects.id = project_steps.project_id "
+                "WHERE big_projects.student_id = ? AND big_projects.kind != 'travel_log' "
+                "AND project_steps.scheduled_for IS NOT NULL "
+                "AND project_steps.scheduled_for <= ? "
+                "AND project_steps.completed_on IS NULL AND project_steps.active = 1 "
+                "ORDER BY project_steps.scheduled_for, project_steps.sort_order, project_steps.id",
+                (student_id, today),
+            )
+        )
+
+    def upcoming_project_steps(self, student_id: int, after: str) -> list[dict[str, Any]]:
+        """Assigned Big Project steps still ahead of `after` -- the "later this
+        week / later" counts on Home, same shape as `upcoming_life_skills`."""
+        return _rows(
+            self.conn.execute(
+                "SELECT project_steps.*, big_projects.title AS project_title "
+                "FROM project_steps "
+                "JOIN big_projects ON big_projects.id = project_steps.project_id "
+                "WHERE big_projects.student_id = ? AND big_projects.kind != 'travel_log' "
+                "AND project_steps.scheduled_for IS NOT NULL "
+                "AND project_steps.scheduled_for > ? "
+                "AND project_steps.completed_on IS NULL AND project_steps.active = 1 "
+                "ORDER BY project_steps.scheduled_for, project_steps.sort_order, project_steps.id",
+                (student_id, after),
+            )
+        )
+
     def add_project_step(
         self,
         project_id: int,
