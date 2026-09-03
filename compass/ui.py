@@ -860,7 +860,18 @@ def _render_activity_body(
             if submit_col.button(
                 "Submit for review", key=f"submit_writing_{lesson_id}_{index}", type="primary"
             ):
-                problems = check_writing(response, activity.get("writing_requirements"))
+                requirements = activity.get("writing_requirements")
+                # A math answer is a number or an expression, not prose --
+                # "42" is a complete answer, not a zero-sentence failure. The
+                # generator sometimes tags a numeric-answer step as a written
+                # response and even sets min_sentences on it, which then
+                # rejected the answer until he typed a stray period to make it
+                # count as a "sentence." Prose word/sentence/quote rules never
+                # apply to a math response; only the not-blank check does.
+                lesson_row = db.get_lesson(lesson_id)
+                if lesson_row and lesson_row.get("agent") == "math":
+                    requirements = None
+                problems = check_writing(response, requirements)
                 if problems:
                     for problem in problems:
                         st.error(problem)

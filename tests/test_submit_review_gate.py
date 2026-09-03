@@ -470,6 +470,50 @@ def test_turning_it_in_blocks_further_edits(monkeypatch, tmp_path):
     assert not any("Turn it in for review" in (b.label or "") for b in at2.button)
 
 
+def test_a_math_numeric_answer_submits_without_demanding_a_period(monkeypatch, tmp_path):
+    """The reported bug: a math step whose answer is a number got tagged as a
+    written response with a min_sentences requirement, so "42" (zero
+    sentences) was rejected until he typed a stray "42." to make it count.
+    A math answer is never prose -- only the not-blank check applies."""
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="Two-Step Equations",
+        payload={
+            "title": "Two-Step Equations", "overview": "",
+            "activities": [
+                {"title": "Solve for x", "kind": "practice", "minutes": 15,
+                 "requires_written_response": True,
+                 "instructions": "Solve 2x + 6 = 90. Enter your answer.",
+                 # Prose requirements a bare number can't meet -- without the
+                 # math guard, "42" is blocked ("needs at least 2 sentences").
+                 "writing_requirements": {"min_sentences": 2, "min_words": 8},
+                 "video": {"found": False, "title": "", "url": "", "channel": "", "why": ""}},
+            ],
+            "materials": [], "subject_credits": [], "branches": [],
+        },
+    )
+    auth.set_pin(db, "1234")
+    db.close()
+
+    at = _open(monkeypatch, db_path, MATH_PATH, as_parent=False)
+    box = [t for t in at.text_area if t.label == "Your response"][0]
+    box.set_value("42").run()  # a bare number, no period
+    submit = [b for b in at.button if b.label == "Submit for review"][0]
+    submit.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+    # It went through -- no "needs at least 1 sentence" block.
+    assert not any("sentence" in e.value.lower() for e in at.error)
+
+    db2 = Database(db_path)
+    lesson = db2.get_lesson(lesson_id)
+    db2.close()
+    assert lesson["metadata"]["writing_review"]["0"]["status"] == config.WRITING_SUBMITTED
+    assert lesson["metadata"]["writing_responses"]["0"] == "42"
+
+
 def test_the_review_card_shows_the_quiz_he_took(monkeypatch, tmp_path):
     """A parent reviewing a turned-in lesson can read the quiz the same way
     they read his writing: each question, the answer he picked, and the
