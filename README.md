@@ -2652,6 +2652,36 @@ five-column schedule board dropped from review (rearranging days is the
 **Record** (the hours ledger + manual logging) are its own tabs. The page test
 is `tests/test_mission_control_review.py`.
 
+## Making the basics harder to skip
+
+Three changes aimed at a student who skims the prompt, skips half the asks,
+and hands in rushed mechanics.
+
+**A math answer isn't prose.** The lesson schema lets an activity be tagged as
+a written response with word/sentence requirements; the generator sometimes
+put those on a numeric-answer math step, so `check_writing`'s sentence rule
+rejected `42` until he typed a stray `42.` to make it count as a sentence. On
+submit for a math lesson, only the not-blank check runs now
+(`compass/ui.py`), fixing existing and future lessons.
+
+**A self-check gate on the asks.** A writing activity can carry a `checklist`
+-- the prompt's discrete parts broken out ("Answer all three questions", "Give
+an example"). His screen renders each as a checkbox and "Submit for review"
+stays locked until every one is ticked, so each requirement is something he
+had to see and acknowledge, not read past. Ticks persist
+(`checklist_checked` in metadata; `Database.set_activity_checklist`). The
+generator emits the list when a prompt asks for more than one thing; the
+parent's review shows the parts and which he ticked. This is the deterministic
+half of a "did he do all of it" check -- an AI coverage verifier (confirming a
+ticked box was actually done) is the natural next layer, alongside the grader.
+
+**Coach-only grammar/structure help.** `writing_checks.writing_hints` flags the
+mechanical basics he skips -- capital letters, run-on sentences, a missing end
+period, lowercase "I" -- as gentle hints under the box, instantly and with no
+AI call; a paragraph activity also offers a "how to structure it" shape. None
+of it blocks a submission -- deeper feedback stays "Check my work" and the
+parent's review.
+
 ## Tests
 
 ```bash

@@ -34,6 +34,50 @@ def has_quote(text: str) -> bool:
     return bool(_QUOTE_RE.search(text))
 
 
+_RUNON_WORDS = 35
+
+
+def writing_hints(text: str) -> list[str]:
+    """Gentle, mechanical self-check hints shown to him *before* he turns a
+    response in -- the obvious basics he keeps skipping (capital letters,
+    run-on sentences, missing end punctuation, lowercase "i"). Caught
+    deterministically so there's always instant feedback, no AI call and no
+    waiting; deeper feedback on argument and structure is the reviewer's and
+    the parent's job. Advice only -- these never block a submission, they
+    just give him a chance to fix the easy things himself first.
+
+    Capped at the top few so it reads as a short, doable list, not a wall of
+    red that he'll tune out.
+    """
+    text = (text or "").strip()
+    if not text:
+        return []
+
+    hints: list[str] = []
+    fragments = [f.strip() for f in _SENTENCE_SPLIT_RE.split(text) if f.strip()]
+
+    lowercase_starts = 0
+    for fragment in fragments:
+        first_letter = next((c for c in fragment if c.isalpha()), "")
+        if first_letter and first_letter.islower():
+            lowercase_starts += 1
+    if lowercase_starts:
+        hints.append("Start each sentence with a capital letter — a few here don't.")
+
+    if any(len(fragment.split()) > _RUNON_WORDS for fragment in fragments):
+        hints.append(
+            "One sentence runs very long — find the longest and split it into two."
+        )
+
+    if text[-1] not in ".!?":
+        hints.append("End your last sentence with a period.")
+
+    if re.search(r"\bi\b", text):
+        hints.append('Write "I" (the word for yourself) with a capital letter.')
+
+    return hints[:3]
+
+
 def check_writing(text: str, requirements: dict | None) -> list[str]:
     """Every problem with `text` against `requirements`, plain-English,
     shown to him directly. Empty list means it passes.

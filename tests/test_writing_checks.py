@@ -6,7 +6,13 @@ a 200-word assignment came back as two sentences.
 
 from __future__ import annotations
 
-from compass.writing_checks import check_writing, count_sentences, count_words, has_quote
+from compass.writing_checks import (
+    check_writing,
+    count_sentences,
+    count_words,
+    has_quote,
+    writing_hints,
+)
 
 
 def test_count_words():
@@ -71,3 +77,39 @@ def test_requires_quote_enforced():
 def test_multiple_failures_are_all_reported_together():
     problems = check_writing("short", {"min_words": 50, "requires_quote": True})
     assert len(problems) == 2
+
+
+# --- writing_hints: coach-only mechanical self-check -----------------------------
+
+
+def test_no_hints_for_clean_writing():
+    assert writing_hints("Recess should be longer. It helps kids focus.") == []
+
+
+def test_no_hints_for_empty_text():
+    assert writing_hints("") == []
+    assert writing_hints("   ") == []
+
+
+def test_flags_a_lowercase_sentence_start():
+    hints = writing_hints("recess should be longer. It helps.")
+    assert any("capital letter" in h for h in hints)
+
+
+def test_flags_a_run_on_sentence():
+    long = " ".join(["word"] * 40) + "."
+    assert any("split" in h.lower() for h in writing_hints(long))
+
+
+def test_flags_a_missing_end_period():
+    assert any("period" in h.lower() for h in writing_hints("This has no ending"))
+
+
+def test_flags_a_lowercase_i():
+    assert any('"I"' in h for h in writing_hints("Then i went home."))
+
+
+def test_hints_are_capped_so_it_stays_a_short_list():
+    # A response that trips several rules at once still shows at most three.
+    bad = " ".join(["word"] * 40) + " and then i kept going with no end"
+    assert len(writing_hints(bad)) <= 3

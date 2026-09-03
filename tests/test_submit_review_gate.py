@@ -470,6 +470,38 @@ def test_turning_it_in_blocks_further_edits(monkeypatch, tmp_path):
     assert not any("Turn it in for review" in (b.label or "") for b in at2.button)
 
 
+def test_the_writing_box_coaches_grammar_and_structure(monkeypatch, tmp_path):
+    """Coach-only self-help on his side: the mechanical basics he skips are
+    flagged as gentle hints (never a block), and a paragraph activity offers
+    a structure to lean on."""
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Essay",
+        payload={
+            "title": "Essay", "overview": "",
+            "activities": [
+                {"title": "Respond", "kind": "writing", "minutes": 20,
+                 "instructions": "Write a persuasive paragraph.",
+                 "video": {"found": False, "title": "", "url": "", "channel": "", "why": ""}},
+            ],
+            "materials": [], "subject_credits": [], "branches": [],
+        },
+    )
+    # A response that trips the mechanical checks: lowercase start, no period.
+    db.save_writing_response(lesson_id, 0, "recess should be longer because kids focus better")
+    auth.set_pin(db, "1234")
+    db.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    captions = "\n".join(c.value for c in at.caption)
+    assert "Quick check before you turn it in" in captions
+    assert any("capital letter" in c.value or "period" in c.value.lower() for c in at.caption)
+    assert any("Not sure how to structure it" in (e.label or "") for e in at.expander)
+
+
 def test_a_writing_checklist_gates_submission_until_every_part_is_ticked(monkeypatch, tmp_path):
     """The fix for skimming a multi-part prompt: each part is a checkbox, and
     'Submit for review' stays locked until he's ticked all of them. The ticks

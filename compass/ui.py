@@ -80,7 +80,7 @@ from compass.export import (
 )
 from compass.morning_routines import MORNING_ROUTINES, routine_for_date
 from compass.storage.db import Database
-from compass.writing_checks import check_writing
+from compass.writing_checks import check_writing, writing_hints
 
 
 def md(text: str | None) -> str:
@@ -875,6 +875,31 @@ def _render_activity_body(
                 height=160,
                 key=draft_key,
             )
+
+            # Coach-only self-help, never a block. The mechanical basics he
+            # keeps skipping (capitals, run-ons, end punctuation) caught
+            # instantly so he can fix them himself, and -- for anything
+            # paragraph-shaped -- a structure to lean on when a blank box is
+            # the thing that stalls him. Deeper feedback is "Check my work"
+            # and the parent's review.
+            for hint_index, hint in enumerate(writing_hints(response)):
+                if hint_index == 0:
+                    st.caption("✍️ Quick check before you turn it in:")
+                st.caption(f"• {hint}")
+            _writing_reqs = activity.get("writing_requirements") or {}
+            wants_paragraph = (
+                activity.get("kind") == "writing"
+                or (_writing_reqs.get("min_words") or 0) >= 40
+                or (_writing_reqs.get("min_sentences") or 0) >= 3
+            )
+            if wants_paragraph:
+                with st.expander("🧱 Not sure how to structure it?"):
+                    st.markdown(
+                        "- **Start** with your main point in one clear sentence.\n"
+                        "- **Then** give two reasons or examples that back it up.\n"
+                        "- **End** by restating your point in a new way."
+                    )
+
             ai_review = _stored_ai_review(metadata, index)
             save_col, check_col, submit_col = st.columns(3)
             if save_col.button("Save draft", key=f"save_writing_{lesson_id}_{index}"):
