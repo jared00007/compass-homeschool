@@ -2673,6 +2673,42 @@ def render_friday_plan(db: Database, student: dict[str, Any], plan_date: str) ->
             st.page_link(page, label="Open", icon="➡️")
 
 
+def _render_grade_override_form(db: Database, grade: Any) -> None:
+    """Parent-only: set (or clear) a subject's grade by hand, right where the
+    grade is shown. Reported directly: "where can i find/edit a grading record
+    as parent?" -- the grade is normally computed from what he turned in, but a
+    parent needs the last word (a project the app never saw, a bad-day quiz to
+    forgive). Stored as the `grade_override_<subject>` setting via
+    gradebook.set_override; clearing hands the number back to the computed
+    grade."""
+    subject = grade.subject
+    default = float(grade.percent) if grade.percent is not None else 85.0
+    with st.form(f"grade_override_{subject}"):
+        st.caption("Set this grade by hand")
+        new_percent = st.number_input(
+            "Grade %",
+            min_value=0.0,
+            max_value=100.0,
+            value=round(default, 1),
+            step=1.0,
+            key=f"grade_override_input_{subject}",
+        )
+        note = st.text_input(
+            "Note (optional — shows with the grade)",
+            value=grade.override_note if grade.overridden else "",
+            key=f"grade_override_note_input_{subject}",
+        )
+        save_col, clear_col = st.columns(2)
+        if save_col.form_submit_button("Save grade", type="primary"):
+            gradebook.set_override(db, subject, new_percent, note)
+            st.rerun()
+        if clear_col.form_submit_button(
+            "Clear (use computed)", disabled=not grade.overridden
+        ):
+            gradebook.set_override(db, subject, None)
+            st.rerun()
+
+
 def render_report_card(db: Database, student: dict[str, Any], *, for_parent: bool) -> None:
     """Subject grades, with the arithmetic showing.
 
@@ -2686,17 +2722,24 @@ def render_report_card(db: Database, student: dict[str, Any], *, for_parent: boo
     """
     subject_grades = gradebook.all_subject_grades(db, student["id"])
     if not any(grade.graded for grade in subject_grades):
+        if not for_parent:
+            st.caption(
+                "No grades yet — they'll show up here once there are quizzes and "
+                "assignments to average."
+            )
+            return
         st.caption(
-            "No grades yet — they'll show up here once there are quizzes and "
-            "assignments to average."
+            "No grades computed yet — they'll fill in from quizzes and assignments. "
+            "You can also set any subject's grade by hand below."
         )
-        return
 
     columns = st.columns(len(subject_grades))
     for column, grade in zip(columns, subject_grades):
         label = gradebook.AGENT_LABELS.get(grade.subject, grade.subject.title())
         icon = SUBJECT_ICONS.get(grade.subject, "📘")
         with column:
+            if grade.overridden:
+                st.caption("✏️ adjusted by parent")
             # The percent rides on the label rather than st.metric's `delta`.
             # A delta always draws a direction arrow, and "↑ 40%" under an F
             # reads as a gain of 40 points rather than a score of 40 (and "↑
@@ -2712,9 +2755,12 @@ def render_report_card(db: Database, student: dict[str, Any], *, for_parent: boo
                 # only on the ungraded card, leaving the row visibly ragged.
                 st.metric(f"{icon} {label} — ungraded", "—")
 
-    for grade in subject_grades:
-        if not grade.graded:
-            continue
+    # For the parent, every subject gets a row -- even an ungraded one, so a
+    # grade can be set by hand where the auto-signals haven't produced one yet.
+    # For the student, only the subjects that actually have a grade show their
+    # breakdown.
+    shown = subject_grades if for_parent else [g for g in subject_grades if g.graded]
+    for grade in shown:
         label = gradebook.AGENT_LABELS.get(grade.subject, grade.subject.title())
         heading = (
             f"What makes up the {label} grade"
@@ -2722,6 +2768,13 @@ def render_report_card(db: Database, student: dict[str, Any], *, for_parent: boo
             else f"What makes up your {label} grade"
         )
         with st.expander(heading):
+            if grade.overridden:
+                note = f" — {md(grade.override_note)}" if grade.override_note else ""
+                st.info(
+                    f"✏️ This grade is set by hand to **{grade.percent:.0f}% "
+                    f"({grade.letter})**{note}. The breakdown below is what the "
+                    "computed grade would be."
+                )
             for component in grade.components:
                 st.markdown(
                     f"- **{component.label}** — {component.percent:.0f}% "
@@ -2730,11 +2783,14 @@ def render_report_card(db: Database, student: dict[str, Any], *, for_parent: boo
                     f"{html.escape(component.detail)}</span>",
                     unsafe_allow_html=True,
                 )
+            if not grade.components:
+                st.caption("No graded work yet to average from.")
             if for_parent:
                 st.caption(
                     "Weights are settings — `grade_weights_"
                     f"{grade.subject}` on the Student Profile page."
                 )
+                _render_grade_override_form(db, grade)
 
 
 _STREAK_MILESTONES = (3, 5, 10, 20, 30, 50)

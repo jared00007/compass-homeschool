@@ -107,7 +107,7 @@ def subject_grade(db: Any, student_id: int, agent: str) -> grades.SubjectGrade:
         if verdict in config.ASSESSMENT_VERDICT_SCORES:
             assessment_percents.append(float(config.ASSESSMENT_VERDICT_SCORES[verdict]))
 
-    return grades.subject_grade(
+    grade = grades.subject_grade(
         agent,
         _weights(db, agent),
         quiz_percents=quiz_percents,
@@ -116,6 +116,41 @@ def subject_grade(db: Any, student_id: int, agent: str) -> grades.SubjectGrade:
         mastery_percent=_mastery_percent(db, student_id) if agent == "math" else None,
         assessment_percents=assessment_percents,
     )
+    return _apply_override(db, agent, grade)
+
+
+def _apply_override(db: Any, agent: str, grade: grades.SubjectGrade) -> grades.SubjectGrade:
+    """Let a parent's hand-set grade win over the computed one.
+
+    Read from the `grade_override_<agent>` setting (a plain percent) plus an
+    optional `grade_override_note_<agent>`. The computed components stay on the
+    grade untouched, so the report card can still show what the math *would*
+    have produced next to the number the parent chose. An empty or unparseable
+    setting is simply no override -- the computed grade passes straight
+    through, same tolerance `grades.parse_weights` already applies to settings."""
+    raw = db.get_setting(f"grade_override_{agent}")
+    if not raw:
+        return grade
+    try:
+        percent = float(raw)
+    except (TypeError, ValueError):
+        return grade
+    grade.percent = max(0.0, min(100.0, percent))
+    grade.overridden = True
+    grade.override_note = db.get_setting(f"grade_override_note_{agent}") or ""
+    return grade
+
+
+def set_override(db: Any, agent: str, percent: float | None, note: str = "") -> None:
+    """Store (or clear, with percent=None) a parent's hand-set grade for one
+    subject. Clearing removes both the percent and its note so the computed
+    grade takes back over cleanly."""
+    if percent is None:
+        db.set_setting(f"grade_override_{agent}", "")
+        db.set_setting(f"grade_override_note_{agent}", "")
+        return
+    db.set_setting(f"grade_override_{agent}", str(round(float(percent), 1)))
+    db.set_setting(f"grade_override_note_{agent}", note.strip())
 
 
 def all_subject_grades(db: Any, student_id: int) -> list[grades.SubjectGrade]:

@@ -59,6 +59,14 @@ class SubjectGrade:
     subject: str
     percent: float | None
     components: list[Component] = field(default_factory=list)
+    # A parent can override the computed number by hand (gradebook reads the
+    # `grade_override_<subject>` setting and stamps these). When set, `percent`
+    # already holds the override value, so `letter`/`graded` follow it for
+    # free; `overridden`/`override_note` are only for showing that it was a
+    # hand-set grade and why. The `components` list still carries what the
+    # computed grade *would* have been, so the parent can see both.
+    overridden: bool = False
+    override_note: str = ""
 
     @property
     def letter(self) -> str | None:

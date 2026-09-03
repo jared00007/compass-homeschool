@@ -992,8 +992,23 @@ it. Blocking practice to protect a number would invert the whole incentive.
 
 **One renderer, both audiences.** `ui.render_report_card(..., for_parent=)` is the only
 thing that draws a grade, on his Grades tab and on the parent Home alike, so the two can't
-drift. The flag changes wording and adds a pointer to the weight settings; it never
-changes a number.
+drift. The flag changes wording and, on the parent side, adds the weight-settings pointer
+and the by-hand override control below.
+
+**Where a parent finds and edits a grade.** Reported directly: "where can i find/edit a
+grading record as parent?" Grades live on the **Report card** section of the parent Home
+(the same numbers as his Grades tab), and each is *computed* from what he turned in — quiz
+scores, writing/reading checks, math mastery, and the assessment verdict a parent sets
+while grading in **Mission Control → Review**. That covers per-assignment grading, but a
+parent still needs the last word for things the app never saw (a hand-graded project) or a
+bad-day score to forgive. So each subject's breakdown expander now carries a **"Set this
+grade by hand"** form: `gradebook.set_override` stores a `grade_override_<subject>` setting
+(plus an optional note), `gradebook._apply_override` stamps it onto the computed
+`SubjectGrade` so the hand-set number wins while the computed breakdown stays visible
+beneath it, and **Clear (use computed)** removes it. An override can even grade a subject
+with no computed signal at all — a subject taught entirely off-app. Since there's still
+only one renderer, the adjusted number and its "✏️ adjusted by parent" mark show on his
+screen too.
 
 ## The submit-and-review gate
 

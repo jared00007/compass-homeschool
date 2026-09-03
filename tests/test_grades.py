@@ -403,3 +403,43 @@ def test_an_ungraded_subject_gets_no_grade_talk(monkeypatch, tmp_path):
     at = AppTest.from_file(HOME_PATH)
     at.run(timeout=30)
     assert "toward your grade" not in _text(at).lower()
+
+
+def test_a_parent_override_replaces_the_computed_grade(db):
+    """A parent's hand-set grade wins over whatever the components computed,
+    and carries its note; the computed breakdown stays on the grade so both
+    can be shown. Reported: "where can i find/edit a grading record as parent?"
+    """
+    student = db.ensure_default_student()
+    # Give math a real computed grade first, from a quiz attempt.
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="Q", payload={"title": "Q", "activities": []},
+        metadata={"skill_id": "add_within_20"},
+    )
+    db.record_quiz_result(
+        lesson_id=lesson_id, student_id=student["id"], correct=3, total=5, passed=False
+    )
+    computed = gradebook.subject_grade(db, student["id"], "math")
+    assert computed.graded and not computed.overridden
+
+    gradebook.set_override(db, "math", 95, "Nailed the project I gave him")
+    overridden = gradebook.subject_grade(db, student["id"], "math")
+    assert overridden.overridden
+    assert overridden.percent == 95
+    assert overridden.override_note == "Nailed the project I gave him"
+    # The computed components are still there for the breakdown.
+    assert overridden.components
+
+    gradebook.set_override(db, "math", None)
+    assert not gradebook.subject_grade(db, student["id"], "math").overridden
+
+
+def test_override_can_grade_a_subject_with_no_computed_grade(db):
+    """A subject with no auto-signals is ungraded -- but a parent can still put
+    a grade on it by hand (a subject taught entirely off-app)."""
+    student = db.ensure_default_student()
+    assert not gradebook.subject_grade(db, student["id"], "history").graded
+    gradebook.set_override(db, "history", 88)
+    graded = gradebook.subject_grade(db, student["id"], "history")
+    assert graded.graded and graded.overridden and graded.percent == 88
