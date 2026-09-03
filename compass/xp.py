@@ -34,6 +34,55 @@ class XPState:
         return self.into_level / self.level_span
 
 
+@dataclass(frozen=True)
+class Reward:
+    """One real-world reward and whether it's been unlocked yet."""
+
+    threshold: int
+    name: str
+    emoji: str
+    unlocked: bool
+
+
+def _sent_back_count(metadata: dict[str, Any]) -> int:
+    """How many times one lesson has been sent back for a redo -- the length of
+    its feedback trail, falling back to the single legacy field for data saved
+    before the history list existed (same fallback rule ui._feedback_history
+    uses; inlined here to keep xp free of a UI import)."""
+    history = metadata.get("lesson_feedback_history")
+    if history:
+        return len(history)
+    return 1 if metadata.get("lesson_feedback") else 0
+
+
+def sent_back_penalty(db: Any, student_id: int) -> int:
+    """Total XP docked so far for sent-back lessons -- for showing the cost,
+    since `total_xp` only exposes the netted-and-floored figure."""
+    bounces = sum(
+        _sent_back_count(lesson.get("metadata") or {})
+        for lesson in db.list_lessons(student_id, limit=500)
+    )
+    return config.XP_SENT_BACK_PENALTY * bounces
+
+
+def rewards_for_total(total: int) -> list[Reward]:
+    """Every configured reward, each flagged unlocked if `total` has reached
+    its threshold. Order follows config.XP_REWARDS (ascending by threshold)."""
+    return [
+        Reward(threshold=threshold, name=name, emoji=emoji, unlocked=total >= threshold)
+        for threshold, name, emoji in config.XP_REWARDS
+    ]
+
+
+def next_reward(total: int) -> Reward | None:
+    """The lowest-threshold reward he hasn't reached yet, or None once every
+    reward is unlocked."""
+    for reward in rewards_for_total(total):
+        if not reward.unlocked:
+            return reward
+    return None
+
+
 def _rank_for_level(level: int) -> str:
     """The rank name for a level. The last name in the list holds for every
     level beyond it, so a long streak of progress never runs out of titles."""
@@ -60,6 +109,10 @@ def total_xp(db: Any, student_id: int) -> int:
         quiz_result = metadata.get("quiz_result") or {}
         if quiz_result.get("passed"):
             total += config.XP_QUIZ_PASS_BONUS
+        # ...and the one thing that costs XP: each time this lesson was sent
+        # back for a redo. Counted off the feedback history (one entry per
+        # bounce), so a lesson bounced twice costs twice.
+        total -= config.XP_SENT_BACK_PENALTY * _sent_back_count(metadata)
 
     total += config.XP_PER_LIFE_SKILL * sum(
         1 for s in db.list_life_skills(student_id) if s.get("completed_on")
@@ -75,7 +128,10 @@ def total_xp(db: Any, student_id: int) -> int:
     )
     total += config.XP_PER_MASTERED_SKILL * len(db.mastered_skills(student_id))
 
-    return total
+    # Floored at the very end: send-back penalties can eat into everything he's
+    # earned, but the total never goes negative -- a zero bar reads as "start
+    # climbing," a negative one reads as broken.
+    return max(0, total)
 
 
 def state_for_total(total: int) -> XPState:

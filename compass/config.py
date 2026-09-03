@@ -87,8 +87,25 @@ XP_PER_CODING_MODULE = 15
 XP_PER_TRAVEL_ENTRY = 30
 XP_PER_CHOICE_TOPIC = 15
 XP_PER_MASTERED_SKILL = 10
+# The one thing that *costs* XP: every time a lesson is sent back for a redo.
+# Deliberately modest (a bit over a lesson's own worth split in half, well under
+# a full lesson) and floored so the total never drops below zero -- a real "read
+# the whole assignment the first time" consequence, not a punishment that erases
+# a good week. Counted per bounce, so a lesson sent back twice costs twice.
+XP_SENT_BACK_PENALTY = 10
 # Flat XP span per level -- level = total // XP_PER_LEVEL + 1.
 XP_PER_LEVEL = 100
+# Real-world rewards he unlocks at cumulative-XP milestones -- the "reward
+# system of movie night, ice cream sundae party" idea, made concrete. The app
+# only surfaces what he's earned and what's next; the parent decides when to
+# actually deliver it. (threshold_xp, name, emoji), ascending by threshold.
+XP_REWARDS: tuple[tuple[int, str, str], ...] = (
+    (150, "Pick a family movie night", "🎬"),
+    (300, "Ice cream sundae run", "🍨"),
+    (500, "Friend sleepover", "🛌"),
+    (750, "Ice cream sundae party", "🎉"),
+    (1000, "A day trip you choose", "🗺️"),
+)
 # Rank names by level (level 1 = index 0). The last one holds for every level
 # beyond the list, so it never runs out -- on the compass/explorer theme.
 XP_RANKS = (

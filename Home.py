@@ -132,10 +132,10 @@ if not is_parent():
     # a row of `st.container(border=True)` cards.
     header_columns = st.columns(2)
     with header_columns[0]:
-        with st.container(border=True):
+        with st.container(border=True, key="landon_card_xp"):
             render_xp_level(db, student)
     with header_columns[1]:
-        with st.container(border=True):
+        with st.container(border=True, key="landon_card_streak"):
             render_streak(db, student)
 
     st.divider()

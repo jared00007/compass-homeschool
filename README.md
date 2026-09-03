@@ -2639,6 +2639,20 @@ The next tier of fun turns what he already does into visible progress:
   fills toward the next level. It sits as a top banner across every Home view,
   paired with his streak; all point values and the level span are tunable in
   config.
+- **XP has a cost, and unlocks real rewards.** Asked directly whether he should
+  *lose* XP for returned work and earn rewards ("movie night, ice cream sundae
+  party") for a high cumulative total — both, made concrete. Every time a lesson
+  is sent back for a redo docks `XP_SENT_BACK_PENALTY` (per bounce, counted off
+  the feedback trail), the one thing that costs XP; the total is floored at zero
+  so a rough patch reads as "start climbing," never as a negative. The penalty is
+  deliberately modest (about half a lesson's worth) and shown factually on the
+  card ("−10 XP from lessons sent back — nail it the first time"), a real
+  consequence rather than a scolding. `XP_REWARDS` is a ladder of cumulative-XP
+  milestones (movie night → sundae run → sleepover → sundae party → a day trip);
+  the XP card shows the next one and how far off it is, plus what's already
+  unlocked. The app only tracks the milestones — the parent decides when to
+  actually deliver the reward. `xp.rewards_for_total`/`xp.next_reward` compute it,
+  all thresholds tunable in config.
 - **A 🗺️ Travel Passport** — the Travel Journal already tracks which states and
   national parks he's visited; `render_travel_passport` surfaces it as a
   filling-in collection ("2 of 50 states explored · 2 parks stamped", a stamp

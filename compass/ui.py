@@ -5140,6 +5140,29 @@ def render_xp_level(db: Database, student: dict[str, Any]) -> None:
         text=f"{state.total} XP · {state.to_next} to Level {state.level + 1}",
     )
 
+    # The next real-world reward he's climbing toward, plus what he's already
+    # unlocked -- the "movie night / sundae party" idea made concrete. Parent
+    # delivers it; the app just tracks the milestones.
+    upcoming = xp_module.next_reward(state.total)
+    if upcoming is not None:
+        to_go = upcoming.threshold - state.total
+        st.caption(
+            f"🎁 Next reward: {upcoming.emoji} **{md(upcoming.name)}** — {to_go} XP to go"
+        )
+    else:
+        st.caption("🏆 You've unlocked every reward — legend.")
+    earned = [r for r in xp_module.rewards_for_total(state.total) if r.unlocked]
+    if earned:
+        st.caption("Unlocked: " + " · ".join(f"{r.emoji} {md(r.name)}" for r in earned))
+
+    # The one thing that costs XP -- shown only when it's actually happened, and
+    # kept factual rather than scolding.
+    penalty = xp_module.sent_back_penalty(db, student["id"])
+    if penalty:
+        st.caption(
+            f"↩️ −{penalty} XP from lessons sent back — nail it the first time to keep them."
+        )
+
 
 def render_week_progress(db: Database, student: dict[str, Any]) -> None:
     """A small fuel gauge for the week: how many of this week's planned lessons

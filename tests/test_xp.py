@@ -82,3 +82,60 @@ def test_a_brand_new_student_is_level_one_with_zero_xp(db, student):
     assert state.total == 0
     assert state.level == 1
     assert state.title == config.XP_RANKS[0]
+
+
+def test_sent_back_lessons_dock_xp(db, student):
+    sid = student["id"]
+    # A finished lesson that was sent back twice: earns the lesson XP but loses
+    # two penalties (one per bounce).
+    db.save_lesson(
+        student_id=sid, agent="english", subject="english", topic="t", title="Redo",
+        payload={"activities": []},
+        metadata={
+            "student_done_on": "2026-09-01",
+            "lesson_feedback_history": ["Fix intro", "Still needs work"],
+        },
+    )
+    expected = config.XP_PER_LESSON - 2 * config.XP_SENT_BACK_PENALTY
+    assert xp.total_xp(db, sid) == expected
+    assert xp.sent_back_penalty(db, sid) == 2 * config.XP_SENT_BACK_PENALTY
+
+
+def test_total_xp_never_goes_negative(db, student):
+    sid = student["id"]
+    # A lesson never finished (no lesson XP) but bounced twice -> would be
+    # negative, floored to zero.
+    db.save_lesson(
+        student_id=sid, agent="english", subject="english", topic="t", title="Rough",
+        payload={"activities": []},
+        metadata={"lesson_feedback_history": ["a", "b", "c", "d", "e"]},
+    )
+    assert xp.total_xp(db, sid) == 0
+
+
+def test_legacy_single_feedback_field_counts_as_one_bounce(db, student):
+    sid = student["id"]
+    db.save_lesson(
+        student_id=sid, agent="english", subject="english", topic="t", title="Old",
+        payload={"activities": []},
+        metadata={"student_done_on": "2026-09-01", "lesson_feedback": "One old note"},
+    )
+    assert xp.total_xp(db, sid) == config.XP_PER_LESSON - config.XP_SENT_BACK_PENALTY
+
+
+def test_rewards_unlock_by_cumulative_xp():
+    first_threshold = config.XP_REWARDS[0][0]
+    # Just under the first threshold: nothing unlocked, and it's the next target.
+    below = xp.rewards_for_total(first_threshold - 1)
+    assert not any(r.unlocked for r in below)
+    assert xp.next_reward(first_threshold - 1).threshold == first_threshold
+
+    # Exactly at the first threshold: it unlocks.
+    at = xp.rewards_for_total(first_threshold)
+    assert at[0].unlocked
+    assert xp.next_reward(first_threshold).threshold == config.XP_REWARDS[1][0]
+
+    # Past every threshold: all unlocked, no next reward.
+    top = config.XP_REWARDS[-1][0] + 1
+    assert all(r.unlocked for r in xp.rewards_for_total(top))
+    assert xp.next_reward(top) is None
