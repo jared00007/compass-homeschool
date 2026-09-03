@@ -470,6 +470,83 @@ def test_turning_it_in_blocks_further_edits(monkeypatch, tmp_path):
     assert not any("Turn it in for review" in (b.label or "") for b in at2.button)
 
 
+def test_a_writing_checklist_gates_submission_until_every_part_is_ticked(monkeypatch, tmp_path):
+    """The fix for skimming a multi-part prompt: each part is a checkbox, and
+    'Submit for review' stays locked until he's ticked all of them. The ticks
+    persist so a reload doesn't wipe them."""
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Essay",
+        payload={
+            "title": "Essay", "overview": "",
+            "activities": [
+                {"title": "Respond", "kind": "writing", "minutes": 20,
+                 "instructions": "Answer all three questions and give an example.",
+                 "checklist": ["Answer all three questions", "Give an example from the reading"],
+                 "video": {"found": False, "title": "", "url": "", "channel": "", "why": ""}},
+            ],
+            "materials": [], "subject_credits": [], "branches": [],
+        },
+    )
+    auth.set_pin(db, "1234")
+    db.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    submit = [b for b in at.button if b.label == "Submit for review"][0]
+    assert submit.proto.disabled is True, "locked until every part is ticked"
+
+    for i in range(2):
+        [c for c in at.checkbox if c.key == f"checkitem_{lesson_id}_0_{i}"][0].set_value(True).run()
+    submit = [b for b in at.button if b.label == "Submit for review"][0]
+    assert submit.proto.disabled is False, "unlocked once all parts are ticked"
+
+    box = [t for t in at.text_area if t.label == "Your response"][0]
+    box.set_value("Here is my full response, and here is an example from the reading.").run()
+    [b for b in at.button if b.label == "Submit for review"][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db2 = Database(db_path)
+    lesson = db2.get_lesson(lesson_id)
+    db2.close()
+    assert lesson["metadata"]["writing_review"]["0"]["status"] == config.WRITING_SUBMITTED
+    assert lesson["metadata"]["checklist_checked"]["0"] == [True, True]
+
+
+def test_the_parent_review_shows_the_checklist_parts(monkeypatch, tmp_path):
+    """A parent reviewing sees the parts he was asked to cover and which he
+    ticked -- so a box he clicked past without doing is visible next to his
+    answer."""
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Essay",
+        payload={
+            "title": "Essay", "overview": "o",
+            "activities": [
+                {"title": "Respond", "kind": "writing", "minutes": 20, "instructions": "x",
+                 "checklist": ["PARTALPHA answer", "PARTBETA example"],
+                 "video": {"found": False, "title": "", "url": "", "channel": "", "why": ""}},
+            ],
+        },
+    )
+    db.save_writing_response(lesson_id, 0, "his answer")
+    db.set_writing_review(lesson_id, 0, config.WRITING_SUBMITTED)
+    db.set_activity_checklist(lesson_id, 0, [True, False])
+    db.submit_lesson(lesson_id)
+    db.close()
+
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
+    blob = "\n".join(m.value for m in at.markdown)
+    assert "Parts he had to cover" in "\n".join(c.value for c in at.caption)
+    assert "✅ PARTALPHA answer" in blob
+    assert "⬜ PARTBETA example" in blob
+
+
 def test_a_math_numeric_answer_submits_without_demanding_a_period(monkeypatch, tmp_path):
     """The reported bug: a math step whose answer is a number got tagged as a
     written response with a min_sentences requirement, so "42" (zero

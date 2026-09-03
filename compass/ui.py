@@ -827,6 +827,48 @@ def _render_activity_body(
                     if extracted != st.session_state.get(draft_key, saved):
                         st.session_state[draft_key] = extracted
                         st.rerun()
+            # The parts he has to cover, one checkbox each -- the fix for
+            # skimming a multi-part prompt and answering only the first half.
+            # He has to tick every one before "Submit for review" unlocks, so
+            # each requirement is something he had to see and acknowledge, not
+            # something buried in a paragraph he read past. Ticks persist
+            # (checklist_checked in metadata) so a reload doesn't re-lock it.
+            checklist_items = activity.get("checklist") or []
+            checklist_ready = True
+            if checklist_items:
+                stored_checks = (
+                    ((metadata or {}).get("checklist_checked") or {}).get(str(index)) or []
+                )
+                for item_index in range(len(checklist_items)):
+                    state_key = f"checkitem_{lesson_id}_{index}_{item_index}"
+                    if state_key not in st.session_state:
+                        st.session_state[state_key] = (
+                            stored_checks[item_index]
+                            if item_index < len(stored_checks)
+                            else False
+                        )
+
+                def _persist_checklist(lid=lesson_id, idx=index, count=len(checklist_items)):
+                    db.set_activity_checklist(
+                        lid,
+                        idx,
+                        [
+                            bool(st.session_state.get(f"checkitem_{lid}_{idx}_{i}"))
+                            for i in range(count)
+                        ],
+                    )
+
+                st.markdown("**✅ Before you turn it in, check off each part:**")
+                checked = [
+                    st.checkbox(
+                        md(item),
+                        key=f"checkitem_{lesson_id}_{index}_{item_index}",
+                        on_change=_persist_checklist,
+                    )
+                    for item_index, item in enumerate(checklist_items)
+                ]
+                checklist_ready = all(checked)
+
             response = st.text_area(
                 "Your response",
                 value=st.session_state.get(draft_key, saved),
@@ -857,9 +899,18 @@ def _render_activity_body(
                             st.error(str(exc))
                         else:
                             st.rerun()
-            if submit_col.button(
-                "Submit for review", key=f"submit_writing_{lesson_id}_{index}", type="primary"
-            ):
+            submit_clicked = submit_col.button(
+                "Submit for review",
+                key=f"submit_writing_{lesson_id}_{index}",
+                type="primary",
+                disabled=not checklist_ready,
+            )
+            if not checklist_ready:
+                st.caption(
+                    "Tick every part above once you've actually done it — that's how "
+                    "you turn this in."
+                )
+            if submit_clicked:
                 requirements = activity.get("writing_requirements")
                 # A math answer is a number or an expression, not prose --
                 # "42" is a complete answer, not a zero-sentence failure. The
@@ -1729,6 +1780,20 @@ def _render_writing_review_controls(
             st.write(md(text))
     else:
         st.caption("He hasn't written a response yet.")
+
+    # The parts he was asked to cover, and which he checked off -- so you can
+    # confirm a ticked box was actually done, not just clicked past. He can't
+    # turn a writing activity in until every box is ticked, so all showing ✅
+    # is his self-report, the ❌ (if any, on an already-submitted lesson from
+    # before this existed) a genuine gap.
+    checklist_items = activity.get("checklist") or []
+    if checklist_items:
+        stored_checks = (metadata.get("checklist_checked") or {}).get(str(index)) or []
+        st.caption("Parts he had to cover:")
+        for item_index, item in enumerate(checklist_items):
+            ticked = item_index < len(stored_checks) and stored_checks[item_index]
+            st.markdown(f"{'✅' if ticked else '⬜'} {md(item)}")
+
     versions = db.list_writing_response_versions(lesson["id"], index)
     if len(versions) > 1:
         with st.expander(f"Earlier drafts ({len(versions) - 1})"):

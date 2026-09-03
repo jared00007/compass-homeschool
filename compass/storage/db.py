@@ -2854,6 +2854,25 @@ class Database:
             )
             self.conn.commit()
 
+    def set_activity_checklist(
+        self, lesson_id: int, activity_index: int, checked: list[bool]
+    ) -> None:
+        """Which of one activity's `checklist` parts he's ticked off, current
+        state only -- the whole list is rewritten each time, same
+        read-modify-write on a string-keyed nested object as
+        save_writing_response. The submit gate reads this back: he can't turn
+        the activity in until every part is ticked."""
+        with self._lock:
+            lesson = self.get_lesson(lesson_id)
+            metadata = lesson["metadata"] if lesson else {}
+            state = metadata.get("checklist_checked") or {}
+            state[str(activity_index)] = list(checked)
+            metadata["checklist_checked"] = state
+            self.conn.execute(
+                "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
+            )
+            self.conn.commit()
+
     def list_writing_response_versions(
         self, lesson_id: int, activity_index: int
     ) -> list[dict[str, Any]]:

@@ -190,6 +190,21 @@ LESSON_SCHEMA: dict[str, Any] = _object(
                             },
                         }
                     ),
+                    "checklist": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "When `instructions` asks for more than one distinct thing -- "
+                            "a multi-part question, or 'do X, then Y, then explain Z' -- "
+                            "list each distinct part here as one short, checkable line, in "
+                            "second person: 'Answer all three questions', 'Give an example "
+                            "from the reading', 'Show your steps'. He must tick every item "
+                            "before he can turn the activity in, so each one must be a real, "
+                            "separate requirement he could actually forget -- not a "
+                            "restatement of the whole task, not padding. EMPTY for a "
+                            "single-ask activity, or one with no written response."
+                        ),
+                    },
                     "example": {
                         "type": "string",
                         "description": (

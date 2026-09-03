@@ -326,6 +326,15 @@ they must actually match what `instructions` asked for — never stricter, never
 looser than your own prompt. Leave every field null/false when \
 `requires_written_response` is false, or when you genuinely didn't ask for a \
 specific count.
+- **When one activity's `instructions` ask for more than one distinct thing — \
+a multi-part question, or "do X, then Y, then explain Z" — break those parts \
+out into that activity's `checklist`, one short second-person line each \
+("Answer all three questions", "Give an example from the reading", "Show your \
+steps").** He must tick every item before he can turn the activity in, so this \
+is the fix for a student who skims a prompt and answers only the first half. \
+Each item must be a real, separate requirement he could forget — not a \
+restatement of the whole task, not padding. Leave `checklist` EMPTY for a \
+single-ask activity, or one with no written response.
 - Target roughly {minutes} minutes total. Match `estimated_minutes` to the sum \
 of your activity minutes.
 """
@@ -459,6 +468,7 @@ class LessonAgent:
                 "video", {"found": False, "title": "", "url": "", "channel": "", "why": ""}
             )
             activity.setdefault("requires_written_response", False)
+            activity.setdefault("checklist", [])
             activity.setdefault("reading_check", [])
             activity.setdefault(
                 "writing_requirements",
