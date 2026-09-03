@@ -360,8 +360,11 @@ def test_a_sent_back_lesson_reopens_with_feedback(monkeypatch, tmp_path):
     db.close()
 
     at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
-    text = "\n".join(w.value for w in at.warning)
+    # The whole-lesson "sent back" note is a loud red error callout at the top,
+    # not a quiet amber warning -- it's the one thing on the page waiting on him.
+    text = "\n".join(e.value for e in at.error)
     assert "Add more detail to your second paragraph." in text
+    assert "sent this back" in text.lower()
     assert "Essay" in "\n".join(m.value for m in at.markdown)
 
 

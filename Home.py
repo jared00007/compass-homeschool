@@ -260,14 +260,32 @@ if not is_parent():
                 )
         else:
             for lesson, marker, page_path, subject_label in roster:
-                with st.container(border=True, key=f"landon_card_lesson_{lesson['id']}"):
+                # A sent-back lesson gets its own key prefix so its card can be
+                # tinted red and stand out from the rest of the roster -- it's
+                # the one thing on the page that's actually waiting on *him* to
+                # fix and turn back in, so it should never blend in with the
+                # others ("if item is sent back, i want it to stand out for
+                # sure"). Both keys still start with `landon_card` so both keep
+                # the shared white fill; the sent-back rule paints over it.
+                sent_back = marker == "↩️"
+                card_key = (
+                    f"landon_card_lesson_sentback_{lesson['id']}"
+                    if sent_back
+                    else f"landon_card_lesson_{lesson['id']}"
+                )
+                with st.container(border=True, key=card_key):
                     title = lesson["payload"].get("title", lesson["title"])
                     st.page_link(
                         page_path, label=f"{md(title)} — {subject_label}", icon=marker
                     )
-                    status_label = LESSON_STATUS_LABELS.get(marker)
-                    if status_label:
-                        st.caption(f"{marker} {status_label}")
+                    if sent_back:
+                        st.markdown(
+                            ":red[**↩️ Sent back — open it to see what to fix**]"
+                        )
+                    else:
+                        status_label = LESSON_STATUS_LABELS.get(marker)
+                        if status_label:
+                            st.caption(f"{marker} {status_label}")
         if later_this_week:
             st.caption(
                 f"{later_this_week} more lesson(s) planned for later this week — "

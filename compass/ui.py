@@ -2307,15 +2307,29 @@ def student_lesson_view(
         )
         if pending["status"] == "submitted":
             st.info("📤 Submitted — waiting on your parent to check this.")
-        elif len(history) == 1:
-            st.warning(f"↩️ Sent back: {md(history[0])}")
-        elif history:
-            st.warning(
-                "↩️ Sent back — everything your parent has flagged so far:\n\n"
-                + "\n".join(f"- {md(note)}" for note in history)
-            )
         else:
-            st.warning("↩️ Sent back — check below for what to fix.")
+            # Sent back to him. This is the single most important thing on the
+            # page -- it's waiting on *him* -- and the whole reason he's here is
+            # to read why and fix it, so it gets a loud red callout at the very
+            # top of the lesson, framed as a note from his parent rather than a
+            # quiet amber aside ("it doesnt appear to clearly tell him why i
+            # sent it back"). The most recent note (history is oldest-first) is
+            # the one that matters, so it's shown big; any earlier notes sit
+            # under it for context.
+            if history:
+                st.error(
+                    f"↩️ **Your parent sent this back.** Here's what to fix:\n\n"
+                    f"> {md(history[-1])}"
+                )
+                if len(history) > 1:
+                    with st.expander("Earlier notes on this lesson"):
+                        for note in history[:-1]:
+                            st.markdown(f"- {md(note)}")
+            else:
+                st.error(
+                    "↩️ **Your parent sent this back.** Check your work below "
+                    "and turn it in again."
+                )
         render_lesson(
             pending["payload"],
             for_parent=False,

@@ -382,6 +382,19 @@ def css() -> str:
   background-repeat: no-repeat;
 }}
 
+/* A sent-back lesson is the one card on Home that's waiting on *him* to redo
+   and turn back in, so it must not blend into the white roster ("if item is
+   sent back, i want it to stand out for sure"). A warm red wash plus a bold
+   red left bar pulls the eye straight to it. Defined after the shared fill
+   above (equal specificity, later wins) so it paints over the white for the
+   sent-back key prefix only. */
+[class*="st-key-landon_card_lesson_sentback"] {{
+  background-color: #FBE4E1;
+  background-image: none;
+  border-color: var(--c-bad) !important;
+  border-left: 5px solid var(--c-bad) !important;
+}}
+
 /* --- numbers ---------------------------------------------------------
    Deliberately *not* the accent. An early build painted every metric in it,
    which made the compliance page read as a wall of alarms — "0 / 1000 hours"
