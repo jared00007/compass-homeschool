@@ -2,10 +2,30 @@
 
 from __future__ import annotations
 
-import pytest
+from pathlib import Path
 
-from compass import config, xp
+import pytest
+import streamlit as st
+from streamlit.testing.v1 import AppTest
+
+from compass import auth, config, xp
 from compass.storage.db import Database
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+HOME_PATH = str(REPO_ROOT / "Home.py")
+MISSION_CONTROL_PATH = str(REPO_ROOT / "pages" / "14_Mission_Control.py")
+
+
+def _open_mission_control(monkeypatch, db_path):
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+    at = AppTest.from_file(HOME_PATH)
+    at.session_state["parent_unlocked"] = True
+    at.run(timeout=30)
+    at.switch_page(MISSION_CONTROL_PATH)
+    at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+    return at
 
 
 def test_level_math_from_a_raw_total():
@@ -141,6 +161,31 @@ def test_rewards_unlock_by_cumulative_xp():
     assert xp.next_reward(top) is None
 
 
+def test_a_reward_is_earned_unclaimed_until_the_parent_marks_it_given(db, student):
+    """The state the parent needs to see: he's crossed the threshold but hasn't
+    been handed the reward yet."""
+    first = config.XP_REWARDS[0][0]
+    # Earned by XP, but no 'given' recorded -> earned_unclaimed.
+    rewards = xp.rewards_for_total(first, list(config.XP_REWARDS), xp.given_thresholds(db))
+    assert rewards[0].earned_unclaimed
+    assert not rewards[0].given
+
+    # Parent marks it given -> no longer needs attention, flagged given.
+    xp.set_reward_given(db, first, True)
+    rewards = xp.rewards_for_total(first, list(config.XP_REWARDS), xp.given_thresholds(db))
+    assert rewards[0].given
+    assert not rewards[0].earned_unclaimed
+
+    # Un-give restores it.
+    xp.set_reward_given(db, first, False)
+    assert first not in xp.given_thresholds(db)
+
+
+def test_given_thresholds_survive_a_malformed_setting(db, student):
+    db.set_setting("xp_rewards_given", "not json at all")
+    assert xp.given_thresholds(db) == set()
+
+
 def test_reward_ladder_defaults_to_config(db, student):
     # No stored setting -> the config defaults, as tuples ascending by threshold.
     ladder = xp.reward_ladder(db)
@@ -172,3 +217,27 @@ def test_reward_ladder_tolerates_a_junk_setting(db, student):
     import json
     db.set_setting("xp_rewards", json.dumps([{"nope": 1}]))
     assert xp.reward_ladder(db) == list(config.XP_REWARDS)
+
+
+def test_mission_control_shows_and_clears_an_earned_reward(monkeypatch, tmp_path):
+    """The parent needs to know when he's earned one. A zero-threshold reward is
+    'earned' at 0 XP, so Mission Control's review queue shows it with a 'Mark as
+    given' button; clicking it records the reward as given."""
+    db_path = tmp_path / "reward.db"
+    database = Database(db_path)
+    database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    xp.set_reward_ladder(database, [{"threshold": 0, "name": "Movie night", "emoji": "🎬"}])
+    database.close()
+
+    at = _open_mission_control(monkeypatch, db_path)
+    body = " ".join(m.value for m in at.markdown)
+    assert "earned 1 reward" in body
+    assert "Movie night" in body
+    give = [b for b in at.button if (b.key or "") == "reward_given_0"][0]
+    give.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    assert 0 in xp.given_thresholds(database)
+    database.close()

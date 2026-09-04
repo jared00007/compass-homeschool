@@ -37,12 +37,20 @@ class XPState:
 
 @dataclass(frozen=True)
 class Reward:
-    """One real-world reward and whether it's been unlocked yet."""
+    """One real-world reward: whether his XP has reached it (`unlocked`), and
+    whether the parent has actually handed it over yet (`given`)."""
 
     threshold: int
     name: str
     emoji: str
     unlocked: bool
+    given: bool = False
+
+    @property
+    def earned_unclaimed(self) -> bool:
+        """He's hit the threshold but the parent hasn't marked it given -- the
+        one state that needs the parent's attention."""
+        return self.unlocked and not self.given
 
 
 def _sent_back_count(metadata: dict[str, Any]) -> int:
@@ -117,14 +125,62 @@ def set_reward_ladder(db: Any, rows: list[dict[str, Any]]) -> None:
     db.set_setting(_REWARD_LADDER_SETTING, json.dumps(cleaned))
 
 
-def rewards_for_total(total: int, ladder: list[tuple[int, str, str]] | None = None) -> list[Reward]:
-    """Every reward, each flagged unlocked if `total` has reached its threshold.
+_REWARD_GIVEN_SETTING = "xp_rewards_given"
+
+
+def given_thresholds(db: Any) -> set[int]:
+    """The reward thresholds the parent has already marked as handed over.
+    Stored as a JSON list of ints under `xp_rewards_given`; a malformed value
+    reads as 'nothing given' rather than raising."""
+    raw = db.get_setting(_REWARD_GIVEN_SETTING)
+    if not raw:
+        return set()
+    try:
+        parsed = json.loads(raw)
+    except (ValueError, TypeError):
+        return set()
+    if not isinstance(parsed, list):
+        return set()
+    out: set[int] = set()
+    for value in parsed:
+        try:
+            out.add(int(value))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def set_reward_given(db: Any, threshold: int, given: bool = True) -> None:
+    """Mark (or un-mark) one reward threshold as handed over by the parent."""
+    current = given_thresholds(db)
+    if given:
+        current.add(int(threshold))
+    else:
+        current.discard(int(threshold))
+    db.set_setting(_REWARD_GIVEN_SETTING, json.dumps(sorted(current)))
+
+
+def rewards_for_total(
+    total: int,
+    ladder: list[tuple[int, str, str]] | None = None,
+    given: set[int] | None = None,
+) -> list[Reward]:
+    """Every reward, each flagged `unlocked` if `total` has reached its
+    threshold and `given` if the parent has marked it handed over.
     `ladder` defaults to the config rewards when not given (keeps this pure and
     db-free for tests); callers with a db pass `reward_ladder(db)` so a parent's
-    edits are honored."""
+    edits are honored, plus `given_thresholds(db)` so the handed-over flag is
+    accurate."""
     ladder = ladder if ladder is not None else list(config.XP_REWARDS)
+    given = given or set()
     return [
-        Reward(threshold=threshold, name=name, emoji=emoji, unlocked=total >= threshold)
+        Reward(
+            threshold=threshold,
+            name=name,
+            emoji=emoji,
+            unlocked=total >= threshold,
+            given=threshold in given,
+        )
         for threshold, name, emoji in ladder
     ]
 

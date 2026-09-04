@@ -5339,6 +5339,8 @@ def render_xp_level(db: Database, student: dict[str, Any]) -> None:
     # delivers it (and can edit the whole list -- see render_xp_reward_editor);
     # the app just tracks the milestones.
     ladder = xp_module.reward_ladder(db)
+    given = xp_module.given_thresholds(db)
+    rewards = xp_module.rewards_for_total(state.total, ladder, given)
     upcoming = xp_module.next_reward(state.total, ladder)
     if upcoming is not None:
         to_go = upcoming.threshold - state.total
@@ -5346,10 +5348,17 @@ def render_xp_level(db: Database, student: dict[str, Any]) -> None:
             f"🎁 Next reward: {upcoming.emoji} **{md(upcoming.name)}** — {to_go} XP to go"
         )
     else:
-        st.caption("🏆 You've unlocked every reward — legend.")
-    earned = [r for r in xp_module.rewards_for_total(state.total, ladder) if r.unlocked]
-    if earned:
-        st.caption("Unlocked: " + " · ".join(f"{r.emoji} {md(r.name)}" for r in earned))
+        st.caption("🏆 You've earned every reward — legend.")
+    # Earned-but-not-given reads as a win he can act on ("go ask!"), not a dim,
+    # disabled-looking line -- reported: "it says unlocked, but its greyed out."
+    # Given ones are the quiet, already-happened list.
+    to_claim = [r for r in rewards if r.earned_unclaimed]
+    claimed = [r for r in rewards if r.given]
+    if to_claim:
+        line = " · ".join(f"{r.emoji} {md(r.name)}" for r in to_claim)
+        st.success(f"🎉 Earned — go ask a parent to claim: {line}")
+    if claimed:
+        st.caption("✅ Already got: " + " · ".join(f"{r.emoji} {md(r.name)}" for r in claimed))
 
     # The one thing that costs XP -- shown only when it's actually happened, and
     # kept factual rather than scolding.
@@ -5379,6 +5388,70 @@ def render_xp_level(db: Database, student: dict[str, Any]) -> None:
             "Your XP fills the bar toward the next **level**, and hitting XP "
             "milestones unlocks **rewards** — the next one's shown right above."
         )
+
+
+def render_earned_rewards(db: Database, student: dict[str, Any]) -> None:
+    """Parent-only: the reward alert the parent actually needs. Reported: "i
+    need to know as the parent when he hits one." His XP crossing a reward
+    threshold is computed live, but nothing told the parent -- so this surfaces
+    every reward he's **earned but not yet been given**, each with a button to
+    mark it handed over. Absent entirely when there's nothing to deliver, so it
+    reads as a notification, not another always-on panel."""
+    state = xp_module.compute(db, student["id"])
+    ladder = xp_module.reward_ladder(db)
+    given = xp_module.given_thresholds(db)
+    rewards = xp_module.rewards_for_total(state.total, ladder, given)
+    to_deliver = [r for r in rewards if r.earned_unclaimed]
+    already_given = [r for r in rewards if r.given]
+
+    name = student.get("name") or "He"
+    if to_deliver:
+        with st.container(border=True, key="parent_earned_rewards"):
+            count = len(to_deliver)
+            st.markdown(
+                f"### 🎁 {md(name)} earned {count} reward{'s' if count != 1 else ''} — time to deliver"
+            )
+            st.caption(
+                "He hit the XP milestone for these. Hand it over in real life, "
+                "then mark it given so it clears from here and shows as claimed "
+                "on his screen."
+            )
+            for reward in to_deliver:
+                cols = st.columns([4, 2])
+                cols[0].markdown(
+                    f"{reward.emoji} **{md(reward.name)}**  \n"
+                    f"<span style='color:var(--c-dim); font-size:12px;'>"
+                    f"earned at {reward.threshold} XP</span>",
+                    unsafe_allow_html=True,
+                )
+                if cols[1].button(
+                    "✅ Mark as given", key=f"reward_given_{reward.threshold}", width="stretch"
+                ):
+                    xp_module.set_reward_given(db, reward.threshold, True)
+                    st.rerun()
+
+    if already_given:
+        line = " · ".join(f"{r.emoji} {md(r.name)}" for r in already_given)
+        st.caption(f"✅ Already given: {line}")
+        # An undo, tucked away, in case one was marked by mistake.
+        with st.expander("Undo a 'given'"):
+            for reward in already_given:
+                if st.button(
+                    f"↩️ Un-give {reward.emoji} {md(reward.name)}",
+                    key=f"reward_ungive_{reward.threshold}",
+                ):
+                    xp_module.set_reward_given(db, reward.threshold, False)
+                    st.rerun()
+
+    if not to_deliver:
+        upcoming = xp_module.next_reward(state.total, ladder)
+        if upcoming is not None:
+            to_go = upcoming.threshold - state.total
+            st.caption(
+                f"🎯 Nothing to hand over right now — next up is "
+                f"{upcoming.emoji} **{md(upcoming.name)}** at {upcoming.threshold} XP "
+                f"({to_go} to go)."
+            )
 
 
 def render_xp_reward_editor(db: Database) -> None:

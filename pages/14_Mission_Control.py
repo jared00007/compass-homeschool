@@ -48,6 +48,7 @@ from compass.ui import (
     render_board_backlog,
     render_board_days,
     render_board_move_notice,
+    render_earned_rewards,
     render_friday_plan,
     render_lesson,
     render_lesson_review,
@@ -531,6 +532,11 @@ with review_tab:
     pulse[1].metric("Days of instruction", report.instructional_days)
     pulse[2].metric("Activities logged", report.activity_count)
     st.divider()
+
+    # Reward alert: which rewards he's earned but not yet been handed --
+    # reported: "i need to know as the parent when he hits one." Lives here in
+    # Mission Control's review queue with the rest of what's waiting on a parent.
+    render_earned_rewards(db, student)
 
     submitted_lessons = [l for l in to_review if l["status"] == "submitted"]
     submitted_lessons.sort(key=lambda l: (l.get("metadata") or {}).get("planned_for") or "")
