@@ -19,6 +19,7 @@ from pathlib import Path
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
+import compass.ui as ui
 from compass import config, weekly
 from compass.storage.db import Database
 
@@ -57,6 +58,19 @@ def _md(tab):
 
 
 # --- the queue: turned in, overdue, sent back, still planned --------------------
+
+
+def test_mission_control_has_a_courses_button(monkeypatch, tmp_path):
+    """Courses folded off the sidebar into a button on Mission Control -- the
+    first of the parent-admin pages to move into this hub."""
+    db_path = tmp_path / "hub.db"
+    db = Database(db_path)
+    db.ensure_default_student()
+    db.close()
+
+    at, _ = _open_review_tab(monkeypatch, db_path)
+    assert any((b.key or "") == "hub_courses" for b in at.button), "no Courses button on Mission Control"
+    assert "Courses" in ui._FOLDED_IN_PAGES, "Courses must be hidden from the sidebar"
 
 
 def test_a_submitted_lesson_surfaces_open_in_waiting_on_you(monkeypatch, tmp_path):

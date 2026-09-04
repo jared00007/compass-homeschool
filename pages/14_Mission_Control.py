@@ -67,6 +67,14 @@ st.caption(
 if not parent_only("Weekly planning is for your parent."):
     st.stop()
 
+# Parent-admin pages fold in here instead of cluttering the sidebar, reached by
+# a button (not another tab). Courses is the first to move; Compliance, Profile
+# and Spend can join this row the same way.
+_hub_links = st.columns(4)
+if _hub_links[0].button("📚 Courses", width="stretch", key="hub_courses"):
+    st.switch_page("pages/13_Courses.py")
+st.divider()
+
 AGENTS = all_agents()
 AGENT_ORDER = ("math", "science", "english", "history")
 

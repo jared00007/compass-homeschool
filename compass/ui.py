@@ -191,7 +191,6 @@ def _sidebar(db: Database, student: dict[str, Any]) -> None:
 _PARENT_ONLY_PAGES = (
     "Compliance",
     "Student_Profile",
-    "Courses",
     "Mission_Control",
     "Model_Costs",
 )
@@ -210,6 +209,10 @@ _FOLDED_IN_PAGES = (
     "Choice_Topics",
     "Landons_Travels",
     "Coding",
+    # Courses is a full parent page still, but reached by a button on Mission
+    # Control now (see pages/14_Mission_Control.py) rather than its own sidebar
+    # entry -- the first of the parent-admin pages to fold into that hub.
+    "Courses",
 )
 
 
