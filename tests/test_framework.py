@@ -535,6 +535,17 @@ def test_prompt_describes_the_self_graded_quiz(db, student):
     assert "graded automatically" in prompt
 
 
+def test_prompt_asks_for_a_rubric_mixed_quiz_and_grade_level_rigor(db, student):
+    """The four prompt upgrades: a hand-in rubric, a self-check on objective
+    practice, a quiz spread across recall/apply/misconception, and rigor pinned
+    to a real grade-level standard."""
+    prompt = get_agent("math").build_system_prompt(ctx_for(db, student))
+    assert "assessment.rubric" in prompt
+    assert "self_check" in prompt and "Check your work" in prompt
+    assert "misconception" in prompt and "apply" in prompt
+    assert "grade-8 standard" in prompt
+
+
 def test_prompt_lays_out_the_learn_practice_prove_spine(db, student):
     """The reframe: every lesson reads as Learn -> Practice -> Prove, practice is
     reviewed, and the grade is only the two Prove surfaces."""

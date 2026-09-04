@@ -1001,6 +1001,30 @@ The 8-value activity `kind` is gone (`ACTIVITY_PHASES = ("learn", "practice")` i
 this spine. Old lessons that still carry `kind` are mapped to a phase on read (only a bare
 `instruction` was teaching), so nothing regenerates.
 
+**Four prompt/schema upgrades make the graded surfaces actually teach:**
+
+- **The hand-in carries a real rubric.** `assessment.rubric` names 2-3 concrete criteria
+  and what strong / getting-there / not-yet looks like on each. It's the one part of
+  `assessment` the student *does* see — his bar before he starts (`render_lesson` shows it
+  as "🎯 What a strong hand-in looks like") — and the parent grades against the same words
+  in the review panel, so a verdict is consistent instead of a gut call. Written as
+  *qualities*, never answers (those stay in `answer_key`), so it's leak-safe.
+- **Objective practice gets a self-check.** Each activity can carry `self_check` — the
+  worked answers to *that activity's own* problems, revealed behind a collapsed
+  "✅ Check your work" toggle so he tries first, then sees where he went wrong. This is the
+  "practice is reviewed" half of the spine for anything the parent doesn't hand-grade;
+  writing still runs through the coaching loop instead.
+- **The quiz pool is spread, not flat.** The prompt asks for roughly a third recall, a
+  third application, and a third harder/misconception-targeting questions (the wrong answer
+  a half-learner would pick becomes a distractor), so the auto-graded half of the grade
+  measures understanding, not trivia.
+- **Rigor is pinned to a real grade-level standard**, not "8th grade" as a vibe — the
+  prompt tells each agent to teach and assess to the depth a documented standard (Common
+  Core, NGSS, a state social-studies framework) expects for that exact topic.
+
+All four are covered by tests (schema-required fields, prompt content, and the
+student-vs-parent visibility of the rubric and self-check).
+
 ## Grades: two surfaces plus math mastery
 
 Added last, and only because the student asked to be graded. The grade is now exactly the

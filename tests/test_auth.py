@@ -91,6 +91,7 @@ def _lesson():
             {"title": "Sort the relations", "kind": "practice", "minutes": 14,
              "instructions": "Decide whether each relation is a function.",
              "example": "A model example: relation {(1,2),(1,3)} is not a function.",
+             "self_check": "Problem 1 is a function; problem 2 repeats an input, so it is not.",
              "video": {
                  "found": True,
                  "title": "Functions Explained With Real Examples",
@@ -104,6 +105,10 @@ def _lesson():
             "kind": "10-item mastery check",
             "description": "Ten items, mixed representations.",
             "mastery_criteria": "Answer key: 1 F, 2 NF, 3 F, 4 NF, 5 NF.",
+            "rubric": (
+                "Reasoning shown: strong explains why each is or isn't a function; "
+                "not-yet just circles an answer with no work."
+            ),
         },
         "subject_credits": [{"subject": "math", "minutes": 60, "justification": "Whole lesson."}],
         "parent_notes": "Watch for him reversing the definition.",
@@ -185,6 +190,29 @@ def test_parent_view_still_shows_the_assessment_description(monkeypatch):
     # graded surfaces (the other being the auto quiz).
     assert "Hand-in" in page
     assert "Ten items, mixed representations." in page
+
+
+def test_the_rubric_reaches_the_student_but_the_answer_key_does_not(monkeypatch):
+    """The rubric is his bar before he starts -- safe because it describes
+    qualities, not answers. The answer key stays parent-only."""
+    page = _rendered(monkeypatch, for_parent=False)
+    assert "What a strong hand-in looks like" in page
+    assert "not-yet just circles an answer with no work" in page
+    # ...and nothing that leaks the answer.
+    assert "1 F, 2 NF" not in page
+
+
+def test_the_parent_also_gets_the_rubric_next_to_the_grading(monkeypatch):
+    page = _rendered(monkeypatch, for_parent=True)
+    assert "not-yet just circles an answer with no work" in page
+
+
+def test_the_practice_self_check_reveals_to_the_student(monkeypatch):
+    """Objective practice carries a 'Check your work' answer so he sees where
+    he went wrong -- shown behind a toggle, his to open after he tries."""
+    page = _rendered(monkeypatch, for_parent=False)
+    assert "Check your work" in page
+    assert "problem 2 repeats an input" in page
 
 
 def test_student_view_also_sees_the_suggested_video(monkeypatch):

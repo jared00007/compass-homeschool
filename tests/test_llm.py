@@ -92,6 +92,14 @@ def test_lesson_schema_tags_each_activity_with_a_learn_or_practice_phase():
     assert activity_schema["properties"]["phase"]["enum"] == ["learn", "practice"]
 
 
+def test_lesson_schema_carries_a_self_check_on_every_activity():
+    """Objective practice gets a 'Check your work' answer so he sees where he
+    went wrong -- the feedback that makes practice count."""
+    activity_schema = LESSON_SCHEMA["properties"]["activities"]["items"]
+    assert "self_check" in activity_schema["properties"]
+    assert "self_check" in activity_schema["required"]
+
+
 def test_lesson_schema_requires_a_worked_example_on_every_activity():
     """Every activity must model the skill before he's asked to do it himself
     -- structurally required, not left to a hopefully-remembered prompt line."""
@@ -108,6 +116,14 @@ def test_lesson_schema_requires_a_worked_answer_key_on_the_assessment():
     assessment_schema = LESSON_SCHEMA["properties"]["assessment"]
     assert "answer_key" in assessment_schema["properties"]
     assert "answer_key" in assessment_schema["required"]
+
+
+def test_lesson_schema_requires_a_leveled_hand_in_rubric():
+    """The hand-in is the biggest slice of the grade, so it must carry a rubric
+    -- the one part of the assessment that's safe to show the student."""
+    assessment_schema = LESSON_SCHEMA["properties"]["assessment"]
+    assert "rubric" in assessment_schema["properties"]
+    assert "rubric" in assessment_schema["required"]
 
 
 def test_an_unresolved_credential_typeerror_becomes_a_lessongenerationerror():

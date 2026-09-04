@@ -191,10 +191,13 @@ genuinely helps. He is not graded here. Set him up to succeed.
 2. **Practice** — activities with `"phase": "practice"`. Where he *does the work \
 himself*: works problems, writes a draft, reads the assigned pages. This is the \
 heart of the lesson and where he actually improves, so **every practice activity \
-must be something he can get feedback on** — an objective task he can check \
-against your worked `example`, or a written response the parent reads and coaches. \
-Practice is not a separate grade to chase; its job is to catch what he's getting \
-wrong *before* it counts.
+must be something he can get feedback on**. For an objective practice activity \
+(math problems, a labeling task — anything with a right answer), fill its \
+`self_check` with the worked answers to that activity's own problems: Compass \
+reveals them behind a "Check your work" toggle *after* he tries, so he sees where \
+he went wrong. An open-ended written response is coached by the parent instead \
+(leave `self_check` empty). Practice is not a separate grade to chase; its job is \
+to catch what he's getting wrong *before* it counts.
 3. **Prove** — the two things that make up his grade, and the only two: the \
 `quiz` (he takes it on screen, graded automatically) and the `assessment` (the \
 one finished piece of work he hands the parent to grade). Because he reaches these \
@@ -278,6 +281,12 @@ submits.
 
 - Each question needs exactly four choices: one clearly correct, three \
 plausible distractors that aren't obviously wrong.
+- **Spread the pool across three kinds of question, not one.** Roughly: a \
+third that check he *recalls* the facts/definitions, a third that make him \
+*apply* the idea to a new case, and a third that are harder — multi-step, or \
+that hinge on the exact misconception you named in `parent_notes` (the wrong \
+answer he'd pick if he half-learned it becomes a distractor). A pool that is \
+twenty recall questions isn't measuring whether he can actually use this.
 - Vary which position the correct answer sits in from question to question — \
 do not default to always putting it first or last.
 - `explanation` is one sentence, shown to him after he answers, on why the \
@@ -292,6 +301,16 @@ This changes how you teach it, never what he's on the hook for: `assessment` \
 and `mastery_criteria` stay the same regardless of this setting. A parent \
 dialing this down for a rough week must not mean he's later marked as having \
 mastered less than the standard actually requires.
+
+**Anchor the rigor to a real grade-{grade} standard, not a vibe.** "8th grade" \
+has a concrete meaning — pitch the content and the `assessment` to the depth a \
+documented standard for this exact topic expects (Common Core for math and \
+language arts, Next Generation Science Standards for science, a state \
+social-studies framework for history/social studies). Teach to that depth: the \
+same concepts, the same kind of reasoning and problem types a standards-aligned \
+8th-grade lesson on this topic would demand. Don't water a topic down to \
+definitions when its standard expects him to apply and analyze, and don't drift \
+above grade level into content that belongs to a later year.
 
 ## Writing for a 13-year-old
 {student_name} reads `title`, `overview`, `learning_objectives`, `activities`, \
@@ -335,6 +354,13 @@ key to the test he is about to sit. In particular, put the fully worked answers 
 to the `assessment.description` questions in `assessment.answer_key` — every \
 question answered with the work shown and numbered to match, so the parent can \
 grade the paper he hands them without re-solving it.
+- **The hand-in is the biggest single piece of his grade, so give it a real \
+`assessment.rubric`.** Name the 2-3 things that actually matter for this task \
+and, for each, say what strong / getting-there / not-yet looks like. This is the \
+one part of `assessment` he DOES see — it's his bar before he starts, and the \
+parent grades against the same words — so write it as *qualities* of a strong \
+response, never the answers (those stay in `answer_key`). A rubric that leaks \
+the answer is as bad as leaking the answer key.
 - **He does take `quiz` directly, but Compass reveals each `correct_index` only \
 after he submits an answer.** Don't work a quiz question's answer into an \
 activity's instructions either — that undermines the check just as much.
@@ -511,6 +537,7 @@ class LessonAgent:
                 "video", {"found": False, "title": "", "url": "", "channel": "", "why": ""}
             )
             activity.setdefault("requires_written_response", False)
+            activity.setdefault("self_check", "")
             activity.setdefault("checklist", [])
             activity.setdefault("reading_check", [])
             activity.setdefault(

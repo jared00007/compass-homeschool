@@ -225,6 +225,23 @@ LESSON_SCHEMA: dict[str, Any] = _object(
                             "every activity, not just the ones that feel like they need one."
                         ),
                     },
+                    "self_check": {
+                        "type": "string",
+                        "description": (
+                            "For a PRACTICE activity with objective answers he can check "
+                            "himself -- math problems, a labeling task, anything with a "
+                            "right answer -- the worked answers to THIS activity's own "
+                            "problems, so after he tries them he can see exactly where he "
+                            "went wrong. Compass reveals it behind a 'Check your work' "
+                            "toggle, AFTER he attempts, so it's fine for him to see. This "
+                            "is the feedback that makes practice count. Leave EMPTY for a "
+                            "learn activity, an open-ended writing/discussion task (the "
+                            "parent coaches those), or anything with no single right "
+                            "answer. NEVER put the quiz's or the hand-in's answers here -- "
+                            "only the answers to this activity's own practice problems, "
+                            "which must be different problems from those."
+                        ),
+                    },
                     "video": _object(_VIDEO_PROPERTIES),
                 }
             ),
@@ -259,6 +276,23 @@ LESSON_SCHEMA: dict[str, Any] = _object(
                 "mastery_criteria": {
                     "type": "string",
                     "description": "What counts as mastered, concretely enough to score.",
+                },
+                "rubric": {
+                    "type": "string",
+                    "description": (
+                        "A short, leveled grading rubric for the hand-in -- the "
+                        "single biggest piece of his grade, so it needs a real bar. "
+                        "Name 2-3 concrete criteria that matter for THIS task (e.g. "
+                        "'Claim is clear', 'Evidence from the text', 'Explains the "
+                        "reasoning') and, for each, say briefly what STRONG vs "
+                        "GETTING-THERE vs NOT-YET looks like. Describe QUALITIES of "
+                        "a good response, never the answers themselves -- the actual "
+                        "answers live in `answer_key`. This is safe to show the "
+                        "student: he sees it as the bar before he starts, and the "
+                        "parent grades against the same words, so a grade is "
+                        "consistent instead of a gut call. Keep it tight -- a few "
+                        "lines, not a page."
+                    ),
                 },
             }
         ),

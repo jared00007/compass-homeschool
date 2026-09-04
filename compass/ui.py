@@ -833,6 +833,16 @@ def _render_activity_body(
             activity, index, db=db, lesson_id=lesson_id, metadata=metadata
         )
 
+    # Practice feedback: for an objective activity, the worked answers to its own
+    # problems, tucked behind a toggle so he tries first and then sees where he
+    # went wrong. This is the "practice is reviewed" half of Learn -> Practice ->
+    # Prove for anything the parent doesn't hand-grade.
+    self_check = activity.get("self_check")
+    if self_check:
+        with st.expander("✅ Check your work", expanded=False):
+            st.caption("Give it a real try first — then open this to see how you did.")
+            st.markdown(md(self_check))
+
     if _needs_written_response(activity) and not review_owns_response:
         saved = ((metadata or {}).get("writing_responses") or {}).get(str(index), "")
         if not parent and db is not None and lesson_id is not None:
@@ -1207,6 +1217,13 @@ def render_lesson(
     # to do with this text, so student view shows nothing at all rather than
     # a "your parent has it" stub that no longer matches how it's checked.
     assessment = lesson.get("assessment") or {}
+    # The rubric is the ONE part of the hand-in that's safe for him to see -- it
+    # describes qualities of a strong response, not the answers. Shown to him as
+    # his bar before he starts; the parent also gets it in the grading panel.
+    if assessment.get("rubric") and not parent:
+        with st.container(border=True, key=f"landon_card_rubric_{lesson_id or 'x'}"):
+            st.markdown("**🎯 What a strong hand-in looks like**")
+            st.markdown(md(assessment["rubric"]))
     if assessment and parent:
         st.markdown("**Hand-in** (the work he turns in for you to grade)")
         st.caption(
@@ -1216,6 +1233,8 @@ def render_lesson(
             "himself. Everything above is practice that gets him ready for these."
         )
         st.markdown(f"*{md(assessment.get('kind', ''))}* — {md(assessment.get('description', ''))}")
+        if assessment.get("rubric"):
+            st.markdown(f"**How it's graded (he sees this too):**\n\n{md(assessment['rubric'])}")
         if assessment.get("mastery_criteria"):
             st.markdown(f"**Counts as mastered when:** {md(assessment['mastery_criteria'])}")
 
@@ -2301,6 +2320,7 @@ def render_lesson_review(
         assessment.get("description")
         or assessment.get("answer_key")
         or assessment.get("mastery_criteria")
+        or assessment.get("rubric")
     ):
         with st.container(border=True):
             st.markdown("**🔑 For grading — the hand-in & how to score it**")
@@ -2308,6 +2328,18 @@ def render_lesson_review(
                 st.caption(f"*{md(assessment['kind'])}*")
             if assessment.get("description"):
                 st.markdown(md(assessment["description"]))
+            # The leveled rubric -- what strong/getting-there/not-yet looks like.
+            # Safe to have shown him too (it's his bar), so it reads next to the
+            # verdict picker as the consistent words to grade against.
+            if assessment.get("rubric"):
+                st.markdown(
+                    f'<div style="background:var(--c-panel); border-left:3px solid '
+                    f'var(--c-warn); border-radius:var(--c-radius); padding:10px 14px; '
+                    f'margin:8px 0;"><b>🎯 Grading rubric</b><br>'
+                    f'{html.escape(assessment["rubric"]).replace(chr(10), "<br>")}'
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
             # The worked answer key -- newly generated lessons carry it (older
             # ones won't, so it's shown only when present). Set apart in its own
             # tinted block so it reads as "the answers," not more prompt.

@@ -117,6 +117,10 @@ def lesson_to_docx(lesson: dict[str, Any], *, parent: bool = True) -> bytes:
             document.add_paragraph(assessment["kind"]).runs[0].bold = True
         if assessment.get("description"):
             document.add_paragraph(assessment["description"])
+        if assessment.get("rubric"):
+            rubric = document.add_paragraph()
+            rubric.add_run("Grading rubric: ").bold = True
+            rubric.add_run(assessment["rubric"])
         if assessment.get("answer_key"):
             answer = document.add_paragraph()
             answer.add_run("Answer key: ").bold = True
@@ -320,6 +324,8 @@ def lesson_to_pdf(lesson: dict[str, Any], *, parent: bool = True) -> bytes:
             flow.append(Paragraph(f"<b>{_pdf_text(assessment['kind'])}</b>", body))
         if assessment.get("description"):
             flow += paras(assessment["description"])
+        if assessment.get("rubric"):
+            flow += paras(assessment["rubric"], prefix_html="<b>Grading rubric:</b> ")
         if assessment.get("answer_key"):
             flow += paras(assessment["answer_key"], prefix_html="<b>Answer key:</b> ")
         if assessment.get("mastery_criteria"):
