@@ -235,6 +235,56 @@ def test_writing_up_an_assigned_stub_submits_it_for_review(monkeypatch, tmp_path
     assert "sunset" in entry["story"]
 
 
+def test_requirements_are_stored_and_editable_on_a_travel_entry(tmp_path):
+    """A parent-set checklist rides with the entry and can be edited later."""
+    database = Database(tmp_path / "req.db")
+    s = database.ensure_default_student()
+    eid = database.add_travel_entry(
+        s["id"], "Utah", "2025-06-10", title="Arches", status="planned",
+        requirements="The Trip Snapshot: where and when.\nThe standout memory.",
+    )
+    row = database.list_travel_entries(s["id"])[0]
+    assert row["requirements"].splitlines()[0].startswith("The Trip Snapshot")
+
+    database.update_travel_entry(eid, requirements="Just one thing now.")
+    row = database.list_travel_entries(s["id"])[0]
+    assert row["requirements"] == "Just one thing now."
+    database.close()
+
+
+def test_open_pick_assignments_carry_the_default_checklist(tmp_path):
+    database = Database(tmp_path / "openpick.db")
+    s = database.ensure_default_student()
+    ids = database.assign_open_travel_entries(
+        s["id"], 2, "2025-06-10",
+        requirements=config.TRAVEL_JOURNAL_DEFAULT_REQUIREMENTS,
+    )
+    assert len(ids) == 2
+    for row in database.list_travel_entries(s["id"]):
+        assert "Trip Snapshot" in row["requirements"]
+    database.close()
+
+
+def test_the_requirements_checklist_shows_to_the_student_writing_it_up(monkeypatch, tmp_path):
+    """He sees exactly what to include as a bulleted list on an assigned entry."""
+    db_path = tmp_path / "reqshow.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    database.add_travel_entry(
+        s["id"], "Arizona", "2025-06-10", title="Grand Canyon", status="planned",
+        requirements="The Trip Snapshot: where and when.\nThe sensory flashback.",
+    )
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=False)
+    tab = _journal_tab(at)
+    markdowns = " ".join(m.value for m in tab.markdown)
+    assert "What to include in this entry" in markdowns
+    assert "The Trip Snapshot: where and when." in markdowns
+    assert "The sensory flashback." in markdowns
+
+
 def test_a_parent_approving_a_submitted_entry_completes_it_and_logs_credit(monkeypatch, tmp_path):
     db_path = tmp_path / "home.db"
     database = Database(db_path)

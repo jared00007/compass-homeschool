@@ -1517,6 +1517,9 @@ class Database:
         self._ensure_column("travel_entries", "status", "TEXT NOT NULL DEFAULT 'completed'")
         self._ensure_column("travel_entries", "scheduled_for", "TEXT")
         self._ensure_column("travel_entries", "revision_note", "TEXT NOT NULL DEFAULT ''")
+        # A parent-set checklist (one requirement per line) shown to the student
+        # while he writes the entry up -- see TRAVEL_JOURNAL_DEFAULT_REQUIREMENTS.
+        self._ensure_column("travel_entries", "requirements", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("travel_entries", "parent_feedback", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("travel_entries", "feedback_read_at", "TEXT")
         self._ensure_column("travel_entries", "feedback_reply", "TEXT NOT NULL DEFAULT ''")
@@ -3431,6 +3434,7 @@ class Database:
         favorite_moment: str = "",
         would_return: str = "",
         status: str = "completed",
+        requirements: str = "",
     ) -> int:
         """`status` defaults to 'completed' -- the old, zero-friction
         behavior for anything that doesn't say otherwise (every existing
@@ -3441,11 +3445,11 @@ class Database:
         cur = self.conn.execute(
             "INSERT INTO travel_entries "
             "(student_id, state, park_key, title, story, favorite_moment, would_return, "
-            " visited_on, status) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " visited_on, status, requirements) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 student_id, state, park_key, title, story, favorite_moment, would_return,
-                visited_on, status,
+                visited_on, status, requirements,
             ),
         )
         self.conn.commit()
@@ -3463,7 +3467,7 @@ class Database:
     def update_travel_entry(self, entry_id: int, **fields: Any) -> None:
         allowed = {
             "state", "park_key", "title", "story", "visited_on",
-            "favorite_moment", "would_return",
+            "favorite_moment", "would_return", "requirements",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
@@ -3476,7 +3480,7 @@ class Database:
         self.conn.commit()
 
     def assign_open_travel_entries(
-        self, student_id: int, count: int, due_date: str
+        self, student_id: int, count: int, due_date: str, requirements: str = ""
     ) -> list[int]:
         """Parent assigns him to pick and write about `count` trips of his
         own choosing, due by `due_date` -- unlike `schedule_travel_entry`,
@@ -3487,7 +3491,9 @@ class Database:
         writes each one up."""
         ids = []
         for _ in range(count):
-            entry_id = self.add_travel_entry(student_id, "", due_date, status="planned")
+            entry_id = self.add_travel_entry(
+                student_id, "", due_date, status="planned", requirements=requirements
+            )
             self.schedule_travel_entry(entry_id, due_date)
             ids.append(entry_id)
         return ids

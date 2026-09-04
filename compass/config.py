@@ -76,6 +76,30 @@ TRAVEL_JOURNAL_MAX_OPEN_PICKS = 5
 # enough to rule out a one-word dodge like "ok" or "k".
 TRAVEL_JOURNAL_FEEDBACK_REPLY_MIN_WORDS = 4
 
+# The default checklist a parent-assigned travel entry hands the student --
+# one requirement per line, editable per assignment in the assign form. He
+# sees these as a checklist while writing so a "past trip memory" entry has a
+# real structure to hit instead of a blank box. A parent can clear or rewrite
+# it for any single assignment.
+TRAVEL_JOURNAL_DEFAULT_REQUIREMENTS = "\n".join(
+    [
+        "The Trip Snapshot: name the exact destination (park or state), the "
+        "season/year you went, and who was with you.",
+        "The 5-Memory Brainstorm: list 5 distinct things that pop into your "
+        "head about this trip -- sights, sounds, food, or moments.",
+        "Arrival & first impressions: one paragraph on how you got there, what "
+        "you expected, and your very first thought when you arrived.",
+        "The standout memory: 1-2 paragraphs on one specific event, trail, or "
+        "landmark -- what happened and why it stuck with you.",
+        "The sensory flashback: one paragraph all on sensory detail -- weather, "
+        "a physical feeling, a sound, or a taste you still remember.",
+        "The hindsight reflection: a few sentences on how you feel about the "
+        "trip now -- did you appreciate it then, or has that changed?",
+        "The final pitch: one honest sentence -- a review or a warning -- for "
+        "someone thinking about going there today.",
+    ]
+)
+
 # --- XP + levels (student-facing fun, not a compliance measure) --------------
 # Points earned for the things he actually finishes, summed live from his own
 # completion signals (see compass.xp) -- no stored score to drift out of sync,

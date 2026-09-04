@@ -212,6 +212,19 @@ def _render_entry(entry: dict) -> None:
     # is_parent(), the same way the original "Add a travel entry" form
     # always was.
     if entry["status"] in ("planned", "needs_revision"):
+        # The parent's checklist for this entry, if they set one -- shown as a
+        # plain bulleted list so he knows exactly what to hit before he starts,
+        # and it stays visible while he writes (the whole block re-renders).
+        requirement_lines = [
+            line.strip() for line in (entry.get("requirements") or "").splitlines()
+            if line.strip()
+        ]
+        if requirement_lines:
+            with st.container(border=True):
+                st.markdown("**📝 What to include in this entry**")
+                for line in requirement_lines:
+                    st.markdown(f"- {html.escape(line)}")
+
         composing = st.session_state.get("composing_travel_entry") == entry["id"]
         verb = "Write it up" if entry["status"] == "planned" else "Revise & resubmit"
         if st.button(f"✍️ {verb}" if not composing else "Cancel", key=f"compose_entry_{entry['id']}"):
@@ -447,6 +460,20 @@ def _render_entry(entry: dict) -> None:
                 edit_would_return = edit_extra_columns[1].text_input(
                     "Would you go back? (optional)", value=entry["would_return"]
                 )
+                # The checklist he sees while writing -- editable only while the
+                # entry is still his to write (planned / sent back). On a
+                # completed entry it's done its job, so it's left out here.
+                edit_requirements = (
+                    st.text_area(
+                        "What he has to include (one requirement per line)",
+                        value=entry.get("requirements") or "",
+                        height=200,
+                        help="He sees these as a checklist while writing. Leave "
+                        "blank for a free-form entry.",
+                    )
+                    if entry["status"] in ("planned", "needs_revision")
+                    else None
+                )
                 # Only a completed entry has feedback to fix -- approving is
                 # the only other place it's set, and that box is already
                 # this same size for exactly this reason (a single-line
@@ -472,6 +499,11 @@ def _render_entry(entry: dict) -> None:
                         park_key=edit_park.key if edit_park else None,
                         favorite_moment=edit_favorite_moment.strip(),
                         would_return=edit_would_return.strip(),
+                        **(
+                            {"requirements": edit_requirements.strip()}
+                            if edit_requirements is not None
+                            else {}
+                        ),
                     )
                     # Its own call, not folded into the dict above -- this
                     # is the one field that also decides whether to mark
@@ -614,7 +646,8 @@ with journal_tab:
             st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
             if st.button("🧭 Assign him to pick & write up", key="assign_open_travel_picks"):
                 db.assign_open_travel_entries(
-                    student["id"], int(open_pick_count), open_pick_due.isoformat()
+                    student["id"], int(open_pick_count), open_pick_due.isoformat(),
+                    requirements=config.TRAVEL_JOURNAL_DEFAULT_REQUIREMENTS,
                 )
                 st.rerun()
 
@@ -634,6 +667,7 @@ with journal_tab:
                 title=title,
                 park_key=park.key if park else None,
                 status="planned",
+                requirements=config.TRAVEL_JOURNAL_DEFAULT_REQUIREMENTS,
             )
             db.schedule_travel_entry(new_id, due.isoformat())
             st.success(f"Assigned: {title} -- due {due.isoformat()}.")
@@ -665,6 +699,20 @@ with journal_tab:
             "Would you go back? (optional)", placeholder="e.g. Yes, in the fall next time"
         )
 
+        # Parent-only checklist he'll see while writing this trip up -- one
+        # requirement per line, pre-filled with the standard "past trip memory"
+        # structure. Clear it for a free-form entry, or rewrite it for this
+        # trip. Only stored (and shown to him) when a parent assigns the trip.
+        requirements = ""
+        if is_parent():
+            requirements = st.text_area(
+                "What he has to include (one requirement per line)",
+                value=config.TRAVEL_JOURNAL_DEFAULT_REQUIREMENTS,
+                height=200,
+                help="He sees these as a checklist while writing it up. Edit or "
+                "clear them for this trip. Leave blank for a free-form entry.",
+            )
+
         # Based on `assign_day` (known accurately outside the form, see
         # above), not on `story` -- a text_area inside a form only reports
         # its live value at submit time like every other form widget, so a
@@ -692,6 +740,7 @@ with journal_tab:
                 favorite_moment=favorite_moment.strip(),
                 would_return=would_return.strip(),
                 status=entry_status,
+                requirements=requirements.strip(),
             )
             if assign_day is not None:
                 db.schedule_travel_entry(new_id, assign_day.isoformat())
