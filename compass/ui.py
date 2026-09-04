@@ -3316,11 +3316,11 @@ def render_story_move_control(
 # work." A lesson's own deep link is handled separately below instead of
 # through this table, as a same-page dialog that needs no tab at all.
 _BOARD_DEEP_LINK: dict[str, tuple[str, str, str]] = {
-    "life_skill": ("pages/6_Life_Skills.py", "View full details", "Checklist"),
-    "coding_module": ("pages/6_Life_Skills.py", "View full details", "Checklist"),
-    "choice_topic": ("pages/6_Life_Skills.py", "View full details", "Checklist"),
-    "project_step": ("pages/7_Big_Projects.py", "View full details", "Checklist"),
-    "travel_entry": ("pages/7_Big_Projects.py", "View full details", "Checklist"),
+    "life_skill": ("pages/6_Life_Skills.py", "Open it", "Checklist"),
+    "coding_module": ("pages/6_Life_Skills.py", "Open it", "Coding Camp"),
+    "choice_topic": ("pages/6_Life_Skills.py", "Open it", "Life Skills"),
+    "project_step": ("pages/7_Big_Projects.py", "Open it", "Checklist"),
+    "travel_entry": ("pages/9_Landons_Travels.py", "Open it", "Travel journal"),
 }
 
 
@@ -3685,7 +3685,7 @@ def render_board_card(
                             board_week_start,
                         ),
                     )
-                    _render_board_deep_link(kind)
+                _render_board_deep_link(kind)
 
         elif kind == "coding_module":
             earned = bool(item["completed_on"])
@@ -3706,7 +3706,7 @@ def render_board_card(
                             board_week_start,
                         ),
                     )
-                    _render_board_deep_link(kind)
+                _render_board_deep_link(kind)
 
         elif kind == "choice_topic":
             label = (
@@ -3731,7 +3731,7 @@ def render_board_card(
                         )
                     else:
                         st.caption("Closed out — nothing left to move.")
-                    _render_board_deep_link(kind)
+                _render_board_deep_link(kind)
 
         elif kind == "project_step":
             done = bool(item["completed_on"])
@@ -3758,7 +3758,7 @@ def render_board_card(
                         )
                     else:
                         st.caption("Done — nothing left to move.")
-                    _render_board_deep_link(kind)
+                _render_board_deep_link(kind)
 
         elif kind == "travel_entry":
             title = md(item["title"]) if item["title"] else "Untitled trip"
@@ -3783,7 +3783,7 @@ def render_board_card(
                         )
                     else:
                         st.caption("Completed — nothing left to move.")
-                    _render_board_deep_link(kind)
+                _render_board_deep_link(kind)
 
 
 # --- shared weekly board day grid: parent This Week tab + student Home board ---

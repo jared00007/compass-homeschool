@@ -275,10 +275,11 @@ def test_the_student_board_shows_a_backlog_with_view_full_lesson(monkeypatch, tm
 def test_the_student_board_shows_life_skill_and_step_detail(monkeypatch, tmp_path):
     """Reported directly against his board: "life skill and big project arent
     loading in the board correctly with the lesson or steps." On the read-only
-    student board (interactive=False) the move control and deep link are
-    stripped -- which left a life-skill card showing only its category and a
-    project-step card showing an empty body. The card must still carry what the
-    skill/step actually *is* (its description), independent of interactive."""
+    student board (interactive=False) the parent-only move control and estimate
+    editor are stripped, but the card must still carry what the skill/step
+    actually *is* (its description) AND an "Open it" link so he can go do it --
+    reported: "the card on the board doesnt have link/view assignment. should
+    see something." """
     db_path = tmp_path / "nav.db"
     db = Database(db_path)
     student = db.ensure_default_student()
@@ -310,6 +311,13 @@ def test_the_student_board_shows_life_skill_and_step_detail(monkeypatch, tmp_pat
     body = " ".join(m.value for m in at.markdown)
     assert "Sort lights from darks" in body, "the life-skill detail must render on his board"
     assert "Sketch the first ten shots" in body, "the project-step detail must render on his board"
+    # He now gets an "Open it" deep link on non-lesson cards too, not just lessons,
+    # so there's always a way off the board into the actual assignment.
+    open_links = [pl for pl in at.get("page_link") if pl.label == "Open it"]
+    assert len(open_links) >= 2, "each non-lesson board card needs an 'Open it' link"
+    targets = {pl.page for pl in open_links}
+    assert any("Life_Skills" in t for t in targets)
+    assert any("Big_Projects" in t for t in targets)
     # ...but the parent-only time-estimate editor never appears on his board.
     est_inputs = [n for n in at.number_input if (n.key or "").startswith("board_est_")]
     assert not est_inputs, "the estimate editor is parent-only, never on the student board"
