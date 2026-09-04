@@ -41,6 +41,15 @@ from docx.shared import Pt
 from compass import config, subjects
 
 
+def _activity_phase_label(activity: dict[str, Any]) -> str:
+    """Learn/Practice for the printout. New lessons carry `phase`; older ones
+    are read off the retired `kind` (only a bare "instruction" was teaching)."""
+    phase = activity.get("phase")
+    if phase not in ("learn", "practice"):
+        phase = "learn" if activity.get("kind") == "instruction" else "practice"
+    return phase.capitalize()
+
+
 def suggested_filename(lesson: dict[str, Any]) -> str:
     """A readable .docx filename: the lesson title, slugged, plus today's date."""
     title = lesson.get("title") or "lesson"
@@ -84,7 +93,7 @@ def lesson_to_docx(lesson: dict[str, Any], *, parent: bool = True) -> bytes:
         for index, activity in enumerate(activities, start=1):
             heading = (
                 f"{index}. {activity.get('title', 'Activity')} "
-                f"({activity.get('kind', '')}, {activity.get('minutes', 0)} min)"
+                f"({_activity_phase_label(activity)}, {activity.get('minutes', 0)} min)"
             )
             document.add_heading(heading, level=3)
             video = activity.get("video") or {}
@@ -290,7 +299,7 @@ def lesson_to_pdf(lesson: dict[str, Any], *, parent: bool = True) -> bytes:
         for index, activity in enumerate(activities, start=1):
             heading = (
                 f"{index}. {activity.get('title', 'Activity')} "
-                f"({activity.get('kind', '')}, {activity.get('minutes', 0)} min)"
+                f"({_activity_phase_label(activity)}, {activity.get('minutes', 0)} min)"
             )
             flow.append(Paragraph(_pdf_text(heading), h3))
             video = activity.get("video") or {}

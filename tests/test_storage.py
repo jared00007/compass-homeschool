@@ -9,7 +9,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from compass import config
+from compass import config, grades
 from compass.storage.db import BIG_PROJECT_CATALOG, LIFE_SKILL_CATALOG, Database
 
 
@@ -2645,6 +2645,35 @@ def test_startup_reconciles_a_stale_mastered_skill_once(tmp_path):
     reopened.close()
     assert row["status"] == "in_progress"
     assert "latest quiz 40%" in str(row["notes"])
+
+
+def test_grade_weights_migrate_from_four_lanes_to_two_surfaces(tmp_path):
+    """A DB created before the reframe carries the old four-lane weights. On the
+    first open under the new code, reading folds into the quiz and writing folds
+    into the hand-in (assessment), preserving each subject's emphasis."""
+    path = tmp_path / "weights.db"
+    db = Database(path)
+    # Stand in for a pre-reframe DB: restore the old English weights and clear
+    # the migration flag so reopening runs it as it would on real old data.
+    db.set_setting("grade_weights_english", "writing:40,quizzes:25,reading:15,assessment:20")
+    db.conn.execute("DELETE FROM settings WHERE key = '_grade_weights_two_surface_v1'")
+    db.conn.commit()
+    db.close()
+
+    reopened = Database(path)
+    remapped = reopened.get_setting("grade_weights_english")
+    reopened.close()
+    # reading(15) -> quizzes(25) = 40; writing(40) -> assessment(20) = 60.
+    parsed = grades.parse_weights(remapped)
+    assert parsed == {"quizzes": 40, "assessment": 60}
+
+
+def test_fresh_db_seeds_the_two_surface_weights_directly(db):
+    """No migration needed on a new DB -- it seeds the new defaults, so no stale
+    writing/reading lane is ever present."""
+    for agent in ("math", "english", "science", "history"):
+        weights = grades.parse_weights(db.get_setting(f"grade_weights_{agent}"))
+        assert "writing" not in weights and "reading" not in weights
 
 
 # --- the project-step submit -> review -> approve gate --------------------------

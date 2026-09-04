@@ -18,16 +18,13 @@ from compass.subjects import SUBJECT_KEYS
 # handing the parent an error. Routed by refusal category.
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
-ACTIVITY_KINDS = (
-    "instruction",
-    "practice",
-    "reading",
-    "writing",
-    "discussion",
-    "field",
-    "project",
-    "assessment",
-)
+# Every lesson reads as Learn -> Practice -> Prove. An activity is one of the
+# first two phases; the third (Prove) is the top-level `quiz` and `assessment`,
+# not an activity. `learn` is teaching -- explanation, worked example, a video.
+# `practice` is him doing the work himself and getting it reviewed, which is
+# where he actually improves. Neither phase is a separate grade to chase; the
+# grade is only the Prove surfaces.
+ACTIVITY_PHASES = ("learn", "practice")
 
 
 class LessonGenerationError(RuntimeError):
@@ -98,7 +95,18 @@ LESSON_SCHEMA: dict[str, Any] = _object(
             "items": _object(
                 {
                     "title": {"type": "string"},
-                    "kind": {"type": "string", "enum": list(ACTIVITY_KINDS)},
+                    "phase": {
+                        "type": "string",
+                        "enum": list(ACTIVITY_PHASES),
+                        "description": (
+                            "'learn' for teaching -- an explanation, a worked example, "
+                            "a demonstration he reads or watches. 'practice' for work he "
+                            "does himself and gets feedback on: solving problems, writing "
+                            "a draft, reading the assigned pages. Every lesson has at "
+                            "least one of each, learn before practice. Neither is graded "
+                            "-- the grade is the quiz and the hand-in assessment."
+                        ),
+                    },
                     "minutes": {"type": "integer"},
                     "instructions": {
                         "type": "string",
@@ -224,7 +232,16 @@ LESSON_SCHEMA: dict[str, Any] = _object(
         "materials": {"type": "array", "items": {"type": "string"}},
         "assessment": _object(
             {
-                "kind": {"type": "string"},
+                "kind": {
+                    "type": "string",
+                    "description": (
+                        "A short label for what he hands in -- 'Problem set', "
+                        "'Short essay', 'Lab writeup'. This is the Prove hand-in: the "
+                        "one finished piece of work he turns in for the parent to grade, "
+                        "the culmination of the Practice activities. In a writing-heavy "
+                        "subject this hand-in IS his writing piece."
+                    ),
+                },
                 "description": {"type": "string"},
                 "answer_key": {
                     "type": "string",

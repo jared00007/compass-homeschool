@@ -181,6 +181,36 @@ is worth more than one that pads four.
 - Minutes per subject may exceed the lesson's total minutes when one activity \
 really does teach several subjects at once. That is the intent.
 
+## How a lesson is shaped: Learn → Practice → Prove
+Every lesson is one sitting with three parts, and {student_name} moves through \
+them in order. Keep them distinct — don't blur teaching into testing.
+
+1. **Learn** — activities with `"phase": "learn"`. Where you *teach*: explain the \
+idea in plain language, show a worked example, point to a real video if one \
+genuinely helps. He is not graded here. Set him up to succeed.
+2. **Practice** — activities with `"phase": "practice"`. Where he *does the work \
+himself*: works problems, writes a draft, reads the assigned pages. This is the \
+heart of the lesson and where he actually improves, so **every practice activity \
+must be something he can get feedback on** — an objective task he can check \
+against your worked `example`, or a written response the parent reads and coaches. \
+Practice is not a separate grade to chase; its job is to catch what he's getting \
+wrong *before* it counts.
+3. **Prove** — the two things that make up his grade, and the only two: the \
+`quiz` (he takes it on screen, graded automatically) and the `assessment` (the \
+one finished piece of work he hands the parent to grade). Because he reaches these \
+already having practiced with feedback, they confirm what he learned rather than \
+testing him cold.
+
+That is the whole grade: the auto quiz and the paper he hands in. Everything in \
+Learn and Practice is scaffolding that gets him there.
+
+**Give him real practice in every lesson — and keep writing central.** A lesson \
+that only explains and then quizzes has no Practice phase; that's incomplete. At \
+least one practice activity per lesson, more when the length allows. Whenever the \
+subject can carry it — and in English it always can — make one of them a real \
+piece of writing he drafts and turns in, because writing only improves by writing \
+often and being coached on it.
+
 ## Model it before he does it
 Every activity needs its own `example` — a worked demonstration of exactly the \
 move he's about to make, shown once before he makes it himself. Set him up to \
@@ -188,10 +218,10 @@ succeed; don't make the first time he sees the technique be the graded attempt.
 
 - **Math, or anything with a procedure or a formula: a full step-by-step worked \
 solution**, every step shown, reasoning included, not just a final answer.
-- Writing: a model sentence or short paragraph demonstrating the technique this \
-activity is actually teaching.
-- Reading, discussion, field, project: a concrete example of what a strong \
-response or observation looks like.
+- Writing practice: a model sentence or short paragraph demonstrating the \
+technique this activity is actually teaching.
+- Reading, discussion, or observation practice: a concrete example of what a \
+strong response or observation looks like.
 - **`example` must use different specifics than `instructions`** — different \
 numbers, a different sentence, a different scenario. It demonstrates the method; \
 it is never the answer to the problem he's actually being handed. An example \
@@ -236,12 +266,15 @@ that activity's own instructions and example don't already show him. Not \
 - The lesson must stand on its own without any of them. Nothing in \
 `activities` or `assessment` may depend on him having watched one.
 
-## A quiz he takes himself
-Write `quiz`: three to five multiple-choice questions checking whether he \
-actually learned today's content — straightforward recall and application of \
-exactly what this lesson taught, nothing outside it. This is separate from \
-`assessment`: he takes this one himself, right on the screen, and it is graded \
-automatically the moment he submits it.
+## Prove, part 1: a quiz he takes himself
+Write `quiz`: a pool of **at least 20** multiple-choice questions checking \
+whether he actually learned today's content — straightforward recall and \
+application of exactly what this lesson taught, nothing outside it. He is served \
+five at a time from this pool, reshuffled on each retry, so the pool needs real \
+breadth: cover every part of the lesson at a mix of difficulties, and don't \
+reword one idea twenty times. This is one of the two graded Prove surfaces — he \
+takes it himself, right on the screen, graded automatically the moment he \
+submits.
 
 - Each question needs exactly four choices: one clearly correct, three \
 plausible distractors that aren't obviously wrong.
@@ -467,6 +500,13 @@ class LessonAgent:
         # `video` is required by the schema, but every other optional-in-
         # practice field gets this same belt-and-suspenders treatment.
         for activity in payload.get("activities") or []:
+            # `phase` (learn/practice) replaced the old 8-value `kind`. A lesson
+            # generated before the switch still carries `kind`; map it so the
+            # grouped Learn/Practice view keeps working on old lessons -- only a
+            # bare "instruction" is teaching, everything else was him doing work.
+            if not activity.get("phase"):
+                legacy = activity.get("kind")
+                activity["phase"] = "learn" if legacy == "instruction" else "practice"
             activity.setdefault(
                 "video", {"found": False, "title": "", "url": "", "channel": "", "why": ""}
             )

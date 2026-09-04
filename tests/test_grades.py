@@ -7,7 +7,7 @@ more than any particular number here, and each has its own test below:
   * a retry can never lower a grade (so there is never a reason to avoid
     trying again),
   * a component with nothing in it is dropped, never counted as a zero (so
-    "hasn't written anything yet" can't read as "failed the writing"),
+    "hasn't handed anything in yet" can't read as "failed the hand-in"),
   * a subject he hasn't started shows as ungraded, never as an F.
 """
 
@@ -128,31 +128,27 @@ def test_the_attempt_limit_ends_it_regardless_of_score():
 # --- combining components into a subject grade ------------------------------------
 
 
-WEIGHTS = {"quizzes": 40, "writing": 40, "reading": 20}
+WEIGHTS = {"quizzes": 40, "assessment": 60}
 
 
 def _grade(**kwargs) -> grades.SubjectGrade:
-    base = dict(
-        quiz_percents=[], writing_percents=[], reading_percents=[],
-        mastery_percent=None, assessment_percents=[],
-    )
+    base = dict(quiz_percents=[], mastery_percent=None, assessment_percents=[])
     base.update(kwargs)
     return grades.subject_grade("english", WEIGHTS, **base)
 
 
 def test_components_combine_by_their_weights():
-    result = _grade(
-        quiz_percents=[100.0], writing_percents=[50.0], reading_percents=[100.0]
-    )
-    assert round(result.percent) == 80  # .4*100 + .4*50 + .2*100
+    result = _grade(quiz_percents=[100.0], assessment_percents=[50.0])
+    assert round(result.percent) == 70  # .4*100 + .6*50
 
 
 def test_a_missing_component_redistributes_rather_than_scoring_zero():
     """The bug that would matter most: a kid two weeks into the year with
-    no writing yet must not be sitting at 60% for not having written."""
-    result = _grade(quiz_percents=[100.0], reading_percents=[100.0])
+    nothing handed in yet must not be sitting low for not having a hand-in --
+    the quiz he does have carries the grade until there's more to weigh."""
+    result = _grade(quiz_percents=[100.0])
     assert round(result.percent) == 100
-    assert {c.key for c in result.components} == {"quizzes", "reading"}
+    assert {c.key for c in result.components} == {"quizzes"}
 
 
 def test_a_subject_with_nothing_recorded_is_ungraded_not_failing():
@@ -163,9 +159,9 @@ def test_a_subject_with_nothing_recorded_is_ungraded_not_failing():
 
 
 def test_the_components_are_carried_so_the_page_can_show_the_arithmetic():
-    result = _grade(quiz_percents=[92.0], writing_percents=[78.0])
+    result = _grade(quiz_percents=[92.0], assessment_percents=[78.0])
     detail = {c.key: (round(c.percent), c.weight) for c in result.components}
-    assert detail == {"quizzes": (92, 40), "writing": (78, 40)}
+    assert detail == {"quizzes": (92, 40), "assessment": (78, 60)}
 
 
 def test_letters_land_on_the_standard_scale():
@@ -205,34 +201,31 @@ def test_a_quiz_retry_is_deducted_in_the_order_it_was_taken(db, student):
     assert round(quizzes.percent) == 90
 
 
-def test_approved_writing_counts_full_and_a_bounce_counts_partial(db, student):
+def test_writing_review_is_coaching_not_its_own_grade_lane(db, student):
+    """Writing folds into the hand-in now -- the write -> review -> revise loop
+    still runs to coach him, but it no longer forms a separate grade component.
+    Its quality is judged when the parent grades the hand-in (`assessment`)."""
     _lesson(db, student, writing_review={
         "0": {"status": config.WRITING_APPROVED},
         "1": {"status": config.WRITING_NEEDS_REVISION},
     })
     result = gradebook.subject_grade(db, student["id"], "english")
-    writing = [c for c in result.components if c.key == "writing"][0]
-    assert round(writing.percent) == 85
-
-
-def test_a_draft_he_has_not_submitted_is_not_yet_judged(db, student):
-    """Not scored, not zeroed -- an unfinished draft is an absent grade."""
-    _lesson(db, student, writing_review={"0": {"status": config.WRITING_DRAFT}})
-    result = gradebook.subject_grade(db, student["id"], "english")
     assert [c for c in result.components if c.key == "writing"] == []
 
 
-def test_extra_drafts_carry_no_penalty(db, student):
-    """Deliberate: revision is the process working, and docking a second
-    draft would teach exactly the submit-once habit this exists to fix."""
-    lesson_id = _lesson(db, student)
-    db.save_writing_response(lesson_id, 0, "first go")
-    db.save_writing_response(lesson_id, 0, "much better second go")
-    db.set_writing_review(lesson_id, 0, config.WRITING_APPROVED)
-
+def test_reading_checks_fold_into_the_quiz_component(db, student):
+    """Reading checks are auto-graded objective checks, same as the quiz, so
+    they share one component the parent sees as "Quiz" -- not a separate lane."""
+    lesson_id = _lesson(db, student, reading_checks={
+        "0": {"correct": 4, "total": 4},
+    })
+    db.record_quiz_result(lesson_id, student["id"], 5, 5, True)
     result = gradebook.subject_grade(db, student["id"], "english")
-    writing = [c for c in result.components if c.key == "writing"][0]
-    assert writing.percent == 100
+    keys = {c.key for c in result.components}
+    assert "reading" not in keys
+    quiz = [c for c in result.components if c.key == "quizzes"][0]
+    # 100 (quiz) and 100 (reading check) both land in the quiz component.
+    assert round(quiz.percent) == 100
 
 
 def test_the_parents_assessment_band_feeds_the_grade(db, student):

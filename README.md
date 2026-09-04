@@ -977,16 +977,57 @@ outermost one. Added as one CSS block in `theme.py`, not a per-page fix, so it a
 every row of bordered cards anywhere in the app, including ones built after this — Home's
 four-tile row is just the case that surfaced it.
 
-## Grades
+## Every lesson: Learn → Practice → Prove
 
-Added last, and only because the student asked to be graded. Two modules, split on the
-line that makes the rules testable:
+Reported directly: *"I don't understand the scoring and the difference in the lessons
+with all the types of activities."* The old shape had eight vague activity `kind`s and a
+four-lane grade (quizzes / writing / reading / assessment) whose lanes didn't line up with
+the activity a student actually did. The reframe gives every lesson one legible spine:
+
+- **Learn** — activities tagged `"phase": "learn"`. Teaching: an explanation, a worked
+  example, a video. Not graded.
+- **Practice** — activities tagged `"phase": "practice"`. Work he does himself and *gets
+  feedback on* — writing he drafts and the parent coaches, problems he checks against the
+  worked `example`, reading with an auto check. Not a separate grade to chase; its whole
+  job is catching mistakes before they count. Writing lives here and stays central.
+- **Prove** — the two things that make the grade, and the only two: the **quiz** (he takes
+  it on screen, auto-graded) and the **hand-in** (`assessment` — the one finished piece he
+  turns in for the parent to grade). Because he reaches these having already practiced with
+  feedback, they confirm what he learned rather than testing him cold, and it's per-lesson,
+  not a back-loaded "prove day."
+
+The 8-value activity `kind` is gone (`ACTIVITY_PHASES = ("learn", "practice")` in
+`compass/agents/llm.py`); the system prompt (`compass/agents/framework.py`) is built around
+this spine. Old lessons that still carry `kind` are mapped to a phase on read (only a bare
+`instruction` was teaching), so nothing regenerates.
+
+## Grades: two surfaces plus math mastery
+
+Added last, and only because the student asked to be graded. The grade is now exactly the
+two Prove surfaces — **Quiz** and **Hand-in** — plus **Mastery** for math. Reading checks
+fold into the Quiz (both are auto-graded objective checks); writing folds into the Hand-in
+(its quality is judged when the parent grades what he turns in). The write → review →
+revise coaching loop still runs untouched — it just informs the hand-in instead of scoring
+a separate "Writing" lane. One sentence for the student: *"You're graded on your quiz and
+on the paper you hand me. Everything else is practice."*
+
+The default weights collapse the old four lanes along exactly those seams, preserving each
+subject's emphasis — Math `quizzes:45,mastery:35,assessment:20` (unchanged); English
+`quizzes:40,assessment:60` (was writing 40 + reading 15 folded in); Science/History
+`quizzes:55,assessment:45`. A DB created before the reframe is migrated once on open
+(`_migrate_grade_weights_two_surface`, flag `_grade_weights_two_surface_v1`): `reading`
+weight adds to `quizzes`, `writing` adds to `assessment`. The `grade_weights_<subject>`
+settings stay parent-editable.
+
+Two modules, split on the line that makes the rules testable:
 
 * **`compass/grades.py`** — pure arithmetic. No database, no Streamlit. The retry
   weighting, the component weighting, and the letter scale live here so each rule can be
-  asserted directly rather than through a simulated page render.
-* **`compass/gradebook.py`** — the querying. Reads lessons, quiz attempts, writing review
-  statuses, reading checks, and the mastery map, and hands the numbers to `grades.py`.
+  asserted directly rather than through a simulated page render. `COMPONENT_BLURBS` carries
+  the one-line plain-language explainer the grade-breakdown expander shows per component.
+* **`compass/gradebook.py`** — the querying. Reads lessons, quiz attempts, reading checks
+  (folded into the quiz component), and the mastery map, and hands the numbers to
+  `grades.py`.
 
 **Best-weighted, not latest.** `quiz_score()` takes the maximum of
 `raw_percent * attempt_multiplier(position)` across a lesson's attempts, where the
@@ -1021,7 +1062,7 @@ and the by-hand override control below.
 **Where a parent finds and edits a grade.** Reported directly: "where can i find/edit a
 grading record as parent?" Grades live on the **Report card** section of the parent Home
 (the same numbers as his Grades tab), and each is *computed* from what he turned in — quiz
-scores, writing/reading checks, math mastery, and the assessment verdict a parent sets
+scores (with reading checks folded in), math mastery, and the hand-in verdict a parent sets
 while grading in **Mission Control → Review**. That covers per-assignment grading, but a
 parent still needs the last word for things the app never saw (a hand-graded project) or a
 bad-day score to forgive. So each subject's breakdown expander now carries a **"Set this

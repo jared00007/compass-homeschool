@@ -31,26 +31,6 @@ def _weights(db: Any, agent: str) -> dict[str, int]:
     return grades.parse_weights(db.get_setting(f"grade_weights_{agent}") or "")
 
 
-def _writing_percent(metadata: dict[str, Any]) -> list[float]:
-    """Approved writing counts full; still-in-revision counts partial.
-
-    Deliberately gentler than the quiz rule, and deliberately no penalty for
-    the number of drafts: revision is the process working as designed here,
-    not a retry at the same measurement. Docking a second draft would teach
-    exactly the submit-once-and-never-revise habit this all exists to fix.
-    """
-    reviews = (metadata.get("writing_review") or {}).values()
-    scores = []
-    for review in reviews:
-        status = review.get("status")
-        if status == config.WRITING_APPROVED:
-            scores.append(100.0)
-        elif status == config.WRITING_NEEDS_REVISION:
-            scores.append(70.0)
-        # draft / submitted: not judged yet, so not scored yet
-    return scores
-
-
 def _reading_percents(metadata: dict[str, Any]) -> list[float]:
     return [
         100 * check["correct"] / check["total"]
@@ -86,9 +66,14 @@ def subject_grade(db: Any, student_id: int, agent: str) -> grades.SubjectGrade:
         if lesson["status"] != "skipped"
     ]
 
+    # Two graded surfaces. `quiz_percents` carries both the auto quiz and the
+    # auto reading checks -- they're the same kind of objective, self-graded
+    # check, so they share one component the parent sees as "Quiz". Writing is
+    # deliberately NOT its own component any more: its quality is judged when the
+    # parent grades the hand-in (`assessment`). The write -> review -> revise
+    # coaching loop still runs untouched; it just informs the hand-in rather
+    # than scoring a separate lane.
     quiz_percents: list[float] = []
-    writing_percents: list[float] = []
-    reading_percents: list[float] = []
     assessment_percents: list[float] = []
 
     for lesson in lessons:
@@ -100,8 +85,8 @@ def subject_grade(db: Any, student_id: int, agent: str) -> grades.SubjectGrade:
         if percent is not None:
             quiz_percents.append(percent)
 
-        writing_percents.extend(_writing_percent(metadata))
-        reading_percents.extend(_reading_percents(metadata))
+        # Reading checks fold in with the quiz -- both auto-graded objective checks.
+        quiz_percents.extend(_reading_percents(metadata))
 
         verdict = (metadata.get("assessment_result") or {}).get("verdict")
         if verdict in config.ASSESSMENT_VERDICT_SCORES:
@@ -111,8 +96,6 @@ def subject_grade(db: Any, student_id: int, agent: str) -> grades.SubjectGrade:
         agent,
         _weights(db, agent),
         quiz_percents=quiz_percents,
-        writing_percents=writing_percents,
-        reading_percents=reading_percents,
         mastery_percent=_mastery_percent(db, student_id) if agent == "math" else None,
         assessment_percents=assessment_percents,
     )

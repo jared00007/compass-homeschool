@@ -611,11 +611,27 @@ _COMIC_KIND_ICONS = {
     "assessment": "📝",
 }
 
+# Activities now carry a phase (learn/practice) instead of the old 8-value kind.
+_PHASE_LABELS = {"learn": "Learn", "practice": "Practice"}
+_PHASE_ICONS = {"learn": "📖", "practice": "🛠️"}
+_PHASE_PILL_VARIANT = {"learn": "instruction", "practice": "writing"}
 
-def _comic_kind_pill_html(kind: str) -> str:
-    variant = _COMIC_KIND_PILL_VARIANT.get(kind, "neutral")
-    icon = _COMIC_KIND_ICONS.get(kind, "📌")
-    label = html.escape(kind or "activity")
+
+def activity_phase(activity: dict[str, Any]) -> str:
+    """learn or practice. New lessons carry `phase` directly; a lesson written
+    before the switch is read off its old `kind` -- only a bare "instruction"
+    was teaching, everything else was work he did."""
+    phase = activity.get("phase")
+    if phase in _PHASE_LABELS:
+        return phase
+    return "learn" if activity.get("kind") == "instruction" else "practice"
+
+
+def _comic_phase_pill_html(activity: dict[str, Any]) -> str:
+    phase = activity_phase(activity)
+    variant = _PHASE_PILL_VARIANT.get(phase, "neutral")
+    icon = _PHASE_ICONS.get(phase, "📌")
+    label = html.escape(_PHASE_LABELS.get(phase, "activity"))
     return (
         f'<span class="comic-kind-icon">{icon}</span>'
         f'<span class="comic-pill comic-pill--{variant}">{label}</span>'
@@ -1055,7 +1071,7 @@ def _render_activity_comic_panel(
         st.markdown(f'<div class="comic-issue-tag">No. {index + 1}</div>', unsafe_allow_html=True)
         st.markdown(
             f"##### {md(activity.get('title', 'Activity'))}  \n"
-            f"{_comic_kind_pill_html(activity.get('kind', ''))}",
+            f"{_comic_phase_pill_html(activity)}",
             unsafe_allow_html=True,
         )
         if collapsed:
@@ -1173,7 +1189,7 @@ def render_lesson(
             for index, activity in enumerate(activities, start=1):
                 header = (
                     f"{index}. {md(activity.get('title', 'Activity'))} · "
-                    f"{activity.get('kind', '')} · {activity.get('minutes', 0)} min"
+                    f"{_PHASE_LABELS.get(activity_phase(activity), '')} · {activity.get('minutes', 0)} min"
                 )
                 with st.expander(header, expanded=False):
                     _render_activity_body(
@@ -1192,12 +1208,12 @@ def render_lesson(
     # a "your parent has it" stub that no longer matches how it's checked.
     assessment = lesson.get("assessment") or {}
     if assessment and parent:
-        st.markdown("**Assessment**")
+        st.markdown("**Hand-in** (the work he turns in for you to grade)")
         st.caption(
-            "A check you run with him after the lesson -- separate from the "
-            "on-screen quiz below, which he takes and grades himself. Use "
-            "this to actually confirm he's got it, not just that he sat "
-            "through the lesson."
+            "One of the two things his grade comes from -- the finished piece "
+            "he hands you, graded with the 5-band verdict in the review tab. "
+            "The other is the on-screen quiz below, which he takes and grades "
+            "himself. Everything above is practice that gets him ready for these."
         )
         st.markdown(f"*{md(assessment.get('kind', ''))}* — {md(assessment.get('description', ''))}")
         if assessment.get("mastery_criteria"):
@@ -2237,7 +2253,7 @@ def render_lesson_review(
         with st.container(border=True):
             st.markdown(
                 f"**{index + 1}. {md(activity.get('title', 'Activity'))}**  \n"
-                f"{_comic_kind_pill_html(activity.get('kind', ''))} · "
+                f"{_comic_phase_pill_html(activity)} · "
                 f"{activity.get('minutes', 0)} min",
                 unsafe_allow_html=True,
             )
@@ -2287,7 +2303,7 @@ def render_lesson_review(
         or assessment.get("mastery_criteria")
     ):
         with st.container(border=True):
-            st.markdown("**🔑 For grading — the assessment & how to score it**")
+            st.markdown("**🔑 For grading — the hand-in & how to score it**")
             if assessment.get("kind"):
                 st.caption(f"*{md(assessment['kind'])}*")
             if assessment.get("description"):
@@ -2892,10 +2908,35 @@ def render_report_card(db: Database, student: dict[str, Any], *, for_parent: boo
                     f"({grade.letter})**{note}. The breakdown below is what the "
                     "computed grade would be."
                 )
+            # One plain sentence up top so the breakdown reads without a decoder
+            # ring: the grade comes from two things -- the quiz and the hand-in --
+            # plus math mastery. Everything else in a lesson is practice.
+            if for_parent:
+                st.caption(
+                    "Two things make the grade: the **quizzes** he takes "
+                    "(auto-marked) and the **hand-in** — the finished piece he "
+                    "hands you to grade. Everything else in a lesson is practice, "
+                    "not a separate score."
+                )
+            else:
+                st.caption(
+                    "Two things make your grade: the **quizzes** you take "
+                    "(marked for you) and the **hand-in** — the finished piece you "
+                    "turn in. Everything else in a lesson is practice, not a "
+                    "separate score."
+                )
             for component in grade.components:
+                blurb = grades.COMPONENT_BLURBS.get(component.key, "")
+                blurb_line = (
+                    f"  <span style='color:var(--c-dim); font-size:12px;'>"
+                    f"{html.escape(blurb)}</span>  \n"
+                    if blurb
+                    else ""
+                )
                 st.markdown(
                     f"- **{component.label}** — {component.percent:.0f}% "
                     f"·  {component.weight}% of the grade  \n"
+                    f"{blurb_line}"
                     f"  <span style='color:var(--c-dim); font-size:12px;'>"
                     f"{html.escape(component.detail)}</span>",
                     unsafe_allow_html=True,

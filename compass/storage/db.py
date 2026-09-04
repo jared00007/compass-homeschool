@@ -1556,6 +1556,42 @@ class Database:
             )
         self.conn.commit()
         self._reconcile_stale_math_mastery()
+        self._migrate_grade_weights_two_surface()
+
+    def _migrate_grade_weights_two_surface(self) -> None:
+        """One-time, flag-guarded: collapse any stored four-lane grade weights
+        into the two-surface model. Reading folds into the quiz, writing folds
+        into the hand-in (assessment) -- so `reading:15` is added to `quizzes`
+        and `writing:40` is added to `assessment`, preserving each subject's
+        emphasis. Only touches settings that still carry a `writing` or
+        `reading` weight; a parent who has already customized to the new keys is
+        left alone. Fresh databases seed the new defaults directly and this is a
+        no-op for them."""
+        if self.get_setting("_grade_weights_two_surface_v1"):
+            return
+        for agent in ("math", "english", "science", "history"):
+            raw = self.get_setting(f"grade_weights_{agent}")
+            if not raw or ("writing" not in raw and "reading" not in raw):
+                continue
+            merged: dict[str, int] = {}
+            for chunk in raw.split(","):
+                key, _, value = chunk.partition(":")
+                key = key.strip()
+                try:
+                    n = int(value.strip())
+                except ValueError:
+                    continue
+                # reading -> quizzes, writing -> assessment; others keep their key.
+                target = {"reading": "quizzes", "writing": "assessment"}.get(key, key)
+                merged[target] = merged.get(target, 0) + n
+            if merged:
+                remapped = ",".join(f"{k}:{v}" for k, v in merged.items())
+                self.set_setting(f"grade_weights_{agent}", remapped)
+        self.conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) "
+            "VALUES ('_grade_weights_two_surface_v1', '1')"
+        )
+        self.conn.commit()
 
     def _reconcile_stale_math_mastery(self) -> None:
         """One-time cleanup, guarded by a flag: now that recording a quiz keeps

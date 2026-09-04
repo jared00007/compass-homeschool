@@ -190,10 +190,16 @@ DEFAULT_SETTINGS: dict[str, str] = {
     # of is a teaching judgment, and it differs by subject -- Math leans on
     # its mastery graph, English on what he actually wrote. Components:
     # quizzes, writing, reading (reading checks), mastery, assessment.
+    # Two graded surfaces -- the auto quiz and the hand-in the parent grades --
+    # plus math mastery. Reading checks fold into `quizzes` (both auto-graded);
+    # writing folds into `assessment` (its quality is judged when the parent
+    # grades what he hands in). The English/Science/History numbers are the old
+    # four-lane weights collapsed along exactly those lines -- reading added to
+    # quizzes, writing added to assessment -- so each subject keeps its emphasis.
     "grade_weights_math": "quizzes:45,mastery:35,assessment:20",
-    "grade_weights_english": "writing:40,quizzes:25,reading:15,assessment:20",
-    "grade_weights_science": "quizzes:40,writing:25,reading:15,assessment:20",
-    "grade_weights_history": "quizzes:40,writing:25,reading:15,assessment:20",
+    "grade_weights_english": "quizzes:40,assessment:60",
+    "grade_weights_science": "quizzes:55,assessment:45",
+    "grade_weights_history": "quizzes:55,assessment:45",
     # School year start (MM-DD). Used to bucket activities into a school year.
     "school_year_start": "09-01",
     # Washington's annual Declaration of Intent filing deadline (MM-DD). Default

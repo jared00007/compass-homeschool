@@ -82,6 +82,16 @@ def test_lesson_schema_requires_the_video_object_closed():
     assert video_schema["properties"]["found"]["type"] == "boolean"
 
 
+def test_lesson_schema_tags_each_activity_with_a_learn_or_practice_phase():
+    """The 8-value `kind` is gone; an activity is Learn (teaching) or Practice
+    (work he does and gets feedback on). Prove -- the quiz and the hand-in -- is
+    the top-level fields, not an activity phase."""
+    activity_schema = LESSON_SCHEMA["properties"]["activities"]["items"]
+    assert "kind" not in activity_schema["properties"]
+    assert "phase" in activity_schema["required"]
+    assert activity_schema["properties"]["phase"]["enum"] == ["learn", "practice"]
+
+
 def test_lesson_schema_requires_a_worked_example_on_every_activity():
     """Every activity must model the skill before he's asked to do it himself
     -- structurally required, not left to a hopefully-remembered prompt line."""

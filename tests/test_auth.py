@@ -181,7 +181,9 @@ def test_student_view_shows_no_assessment_section_at_all(monkeypatch):
 
 def test_parent_view_still_shows_the_assessment_description(monkeypatch):
     page = _rendered(monkeypatch, for_parent=True)
-    assert "Assessment" in page
+    # The parent-graded assessment now reads as the "Hand-in" -- one of the two
+    # graded surfaces (the other being the auto quiz).
+    assert "Hand-in" in page
     assert "Ten items, mixed representations." in page
 
 

@@ -529,8 +529,22 @@ def test_difficulty_never_touches_the_mastery_bar_language(db, student):
 def test_prompt_describes_the_self_graded_quiz(db, student):
     agent = get_agent("math")
     prompt = agent.build_system_prompt(ctx_for(db, student))
-    assert "three to five multiple-choice questions" in prompt
+    # The quiz is a pool of 20+ (he's served five at a time) and it's one of the
+    # two Prove surfaces, graded automatically.
+    assert "at least 20" in prompt
     assert "graded automatically" in prompt
+
+
+def test_prompt_lays_out_the_learn_practice_prove_spine(db, student):
+    """The reframe: every lesson reads as Learn -> Practice -> Prove, practice is
+    reviewed, and the grade is only the two Prove surfaces."""
+    agent = get_agent("english")
+    prompt = agent.build_system_prompt(ctx_for(db, student))
+    assert "Learn → Practice → Prove" in prompt
+    assert '"phase": "learn"' in prompt and '"phase": "practice"' in prompt
+    # Practice must be feedback-able, and writing must keep coming.
+    assert "get feedback on" in prompt
+    assert "keep writing central" in prompt
 
 
 def test_single_subject_lesson_is_untouched(db, student):

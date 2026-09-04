@@ -30,13 +30,22 @@ from typing import Any
 
 from compass import config
 
-# What each component is called on screen.
+# What each component is called on screen. Two graded surfaces plus math
+# mastery -- see the module docstring. `reading` and `writing` are gone as
+# standalone components: reading checks are averaged into `quizzes` (both are
+# auto-graded), and writing is judged as part of the `assessment` hand-in.
 COMPONENT_LABELS = {
-    "quizzes": "Quizzes",
-    "writing": "Writing",
-    "reading": "Reading checks",
+    "quizzes": "Quiz",
     "mastery": "Mastery",
-    "assessment": "Assessment",
+    "assessment": "Hand-in",
+}
+
+# One plain-language line per component, for the "what makes up this grade"
+# explainer. Keyed the same as COMPONENT_LABELS.
+COMPONENT_BLURBS = {
+    "quizzes": "The on-screen quizzes he takes and gets graded on automatically (reading checks count here too).",
+    "mastery": "How many math skills he's reached mastery on, out of the ones he's worked so far.",
+    "assessment": "The finished work he hands you to grade -- his writing, worked problems, or lab writeups.",
 }
 
 
@@ -158,28 +167,24 @@ def subject_grade(
     weights: dict[str, int],
     *,
     quiz_percents: list[float],
-    writing_percents: list[float],
-    reading_percents: list[float],
     mastery_percent: float | None,
     assessment_percents: list[float],
 ) -> SubjectGrade:
     """One subject's grade from its already-computed component averages.
 
-    A component with no data is dropped and its weight redistributed across
-    the rest, rather than counted as a zero -- "hasn't written anything yet"
-    must never read as "failed the writing."
+    Two graded surfaces -- the auto quiz (with reading checks already folded
+    in by the caller) and the parent-graded hand-in -- plus math mastery. A
+    component with no data is dropped and its weight redistributed across the
+    rest, rather than counted as a zero -- "hasn't handed anything in yet" must
+    never read as "failed the hand-in."
     """
     raw = {
         "quizzes": _mean(quiz_percents),
-        "writing": _mean(writing_percents),
-        "reading": _mean(reading_percents),
         "mastery": mastery_percent,
         "assessment": _mean(assessment_percents),
     }
     counts = {
         "quizzes": len(quiz_percents),
-        "writing": len(writing_percents),
-        "reading": len(reading_percents),
         "mastery": 1 if mastery_percent is not None else 0,
         "assessment": len(assessment_percents),
     }
