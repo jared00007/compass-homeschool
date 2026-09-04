@@ -259,6 +259,32 @@ def test_travel_log_card_shows_a_trip_summary_and_link_instead_of_steps(monkeypa
     assert not any(e.label.startswith(("1.", "2.")) for e in at.expander)
 
 
+def test_travel_log_card_shows_states_and_parks_progress(monkeypatch, tmp_path):
+    """The Travel Log folder tracks two collectible quests -- the 50-state map
+    and the 63 National Parks -- counted off written-up trips only."""
+    db_path = tmp_path / "projects.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    project_id = db.ensure_travel_log_project(student["id"])
+    # Two written-up trips: one plain (Colorado), one at a National Park (Acadia,
+    # Maine). An assigned-but-unwritten stub must NOT colour in a state.
+    db.add_travel_entry(student["id"], "Colorado", "2026-06-01", "Rocky Mountain hike")
+    db.add_travel_entry(
+        student["id"], "Maine", "2026-07-01", "Acadia sunrise", park_key="acadia"
+    )
+    db.add_travel_entry(student["id"], "Utah", "2026-08-01", "", status="planned")
+    db.close()
+
+    at = _open_checklist_tab(monkeypatch, db_path)
+    at = _expand_project(at, project_id)
+
+    # `.value` is the rounded percent. Two written states -> 2/50 = 4%; one
+    # park -> 1/63 ~= 2%. The unwritten Utah stub is not counted.
+    progress_values = [p.value for p in at.get("progress")]
+    assert round(2 / 50 * 100) in progress_values  # states bar
+    assert len(progress_values) >= 2  # a states bar and a parks bar
+
+
 def test_travel_log_project_is_never_offered_for_the_year_pick(monkeypatch, tmp_path):
     """big_project_status_text assumes an active project has steps with a
     next one due -- never true for a travel log, so it must not be

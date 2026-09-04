@@ -559,6 +559,8 @@ with map_tab:
 with journal_tab:
     if msg := st.session_state.pop("travel_entry_needs_more_detail", None):
         st.warning(msg)
+    if err := st.session_state.pop("travel_entry_error", None):
+        st.error(err)
 
     if open_pick_entries:
         count_label = "trip" if len(open_pick_entries) == 1 else "trips"
@@ -675,8 +677,21 @@ with journal_tab:
 
     with st.form("add_travel_entry", clear_on_submit=True):
         top_columns = st.columns([2, 1])
+        # Blank by default -- a picked park fills the state in, otherwise no
+        # state is preselected so a parent doesn't accidentally assign
+        # "Alabama" just by not touching it. Leaving it blank while assigning
+        # makes it an open pick (he chooses the destination himself).
+        state_options = ["", *parks.STATES]
+        state_default_index = (
+            state_options.index(default_state)
+            if park_choice is not None and default_state in parks.STATES
+            else 0
+        )
         state_choice = top_columns[0].selectbox(
-            "State", parks.STATES, index=parks.STATES.index(default_state)
+            "State",
+            state_options,
+            index=state_default_index,
+            format_func=lambda s: "— he'll pick / choose one —" if s == "" else s,
         )
         visited_on = top_columns[1].date_input("Date", value=date.today())
 
@@ -719,40 +734,69 @@ with journal_tab:
         # label reacting to what's currently typed would just show
         # whatever was there on the *previous* run, not this keystroke.
         submit_label = "Assign this trip" if assign_day is not None else "Save this entry"
-        if st.form_submit_button(submit_label, type="primary") and title.strip():
-            # A real story submits straight for review, same as a lesson --
-            # a blank one (only reachable in parent view; the story field
-            # is the whole point for anyone else) is a stub assignment with
-            # nothing to review yet. A story that's too short to be a real
-            # account doesn't submit either -- it saves as a stub instead,
-            # so nothing typed is lost, and he can pick "Write it up" below
-            # to finish it once it clears the bar.
-            word_count = len(story.split())
-            meets_requirement = word_count >= config.TRAVEL_JOURNAL_MIN_STORY_WORDS
-            entry_status = "submitted" if (story.strip() and meets_requirement) else "planned"
-            new_id = db.add_travel_entry(
-                student["id"],
-                state_choice,
-                visited_on.isoformat(),
-                title=title.strip(),
-                story=story.strip(),
-                park_key=park_choice.key if park_choice else None,
-                favorite_moment=favorite_moment.strip(),
-                would_return=would_return.strip(),
-                status=entry_status,
-                requirements=requirements.strip(),
+        if st.form_submit_button(submit_label, type="primary"):
+            # Leaving the state blank while assigning is a deliberate "he picks
+            # the destination" -- an open pick with a due day, no state or title
+            # decided. He fills those in when he writes it up. Any other case
+            # still needs both a state and a title.
+            is_open_pick_assign = (
+                assign_day is not None and not state_choice and not title.strip()
             )
-            if assign_day is not None:
-                db.schedule_travel_entry(new_id, assign_day.isoformat())
-            st.session_state["travel_entry_just_saved"] = True
-            if story.strip() and not meets_requirement:
-                st.session_state["travel_entry_needs_more_detail"] = (
-                    f'Saved "{title.strip()}" but it needs at least '
-                    f"{config.TRAVEL_JOURNAL_MIN_STORY_WORDS} words of real detail before "
-                    f"it's ready to submit -- {word_count} so far. Find it below and pick "
-                    '"Write it up" to keep going.'
+            if is_open_pick_assign:
+                new_id = db.add_travel_entry(
+                    student["id"],
+                    "",
+                    assign_day.isoformat(),
+                    status="planned",
+                    requirements=requirements.strip(),
                 )
-            st.rerun()
+                db.schedule_travel_entry(new_id, assign_day.isoformat())
+                st.session_state["travel_entry_just_saved"] = True
+                st.rerun()
+            elif not state_choice:
+                st.session_state["travel_entry_error"] = (
+                    "Pick a state (or, to let him choose the trip, check "
+                    '"Assign this trip to be written up on a specific day" above '
+                    "and leave the state blank)."
+                )
+                st.rerun()
+            elif not title.strip():
+                st.session_state["travel_entry_error"] = "Give the trip a title."
+                st.rerun()
+            else:
+                # A real story submits straight for review, same as a lesson --
+                # a blank one (only reachable in parent view; the story field
+                # is the whole point for anyone else) is a stub assignment with
+                # nothing to review yet. A story that's too short to be a real
+                # account doesn't submit either -- it saves as a stub instead,
+                # so nothing typed is lost, and he can pick "Write it up" below
+                # to finish it once it clears the bar.
+                word_count = len(story.split())
+                meets_requirement = word_count >= config.TRAVEL_JOURNAL_MIN_STORY_WORDS
+                entry_status = "submitted" if (story.strip() and meets_requirement) else "planned"
+                new_id = db.add_travel_entry(
+                    student["id"],
+                    state_choice,
+                    visited_on.isoformat(),
+                    title=title.strip(),
+                    story=story.strip(),
+                    park_key=park_choice.key if park_choice else None,
+                    favorite_moment=favorite_moment.strip(),
+                    would_return=would_return.strip(),
+                    status=entry_status,
+                    requirements=requirements.strip(),
+                )
+                if assign_day is not None:
+                    db.schedule_travel_entry(new_id, assign_day.isoformat())
+                st.session_state["travel_entry_just_saved"] = True
+                if story.strip() and not meets_requirement:
+                    st.session_state["travel_entry_needs_more_detail"] = (
+                        f'Saved "{title.strip()}" but it needs at least '
+                        f"{config.TRAVEL_JOURNAL_MIN_STORY_WORDS} words of real detail before "
+                        f"it's ready to submit -- {word_count} so far. Find it below and pick "
+                        '"Write it up" to keep going.'
+                    )
+                st.rerun()
 
     st.divider()
 

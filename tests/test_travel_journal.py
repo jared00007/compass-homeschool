@@ -154,6 +154,9 @@ def test_writing_a_real_entry_submits_it_not_completes_it(monkeypatch, tmp_path)
 
     at = _open_travels(monkeypatch, db_path, as_parent=False)
     tab = _journal_tab(at)
+    # The State defaults to blank now (no accidental "Alabama"); a real entry
+    # has to pick one.
+    [w for w in tab.selectbox if w.label == "State"][0].set_value("Wyoming")
     title_input = [w for w in tab.text_input if w.label == "Title"][0]
     title_input.set_value("Yellowstone trip")
     story_input = [w for w in tab.text_area if w.label == "The story"][0]
@@ -169,6 +172,69 @@ def test_writing_a_real_entry_submits_it_not_completes_it(monkeypatch, tmp_path)
     assert entry["title"] == "Yellowstone trip"
 
 
+def test_the_add_form_state_defaults_to_blank(monkeypatch, tmp_path):
+    """No accidental 'Alabama' -- a parent has to actually pick a state, or
+    leave it blank so he chooses the trip himself."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=True)
+    tab = _journal_tab(at)
+    state_box = [w for w in tab.selectbox if w.label == "State"][0]
+    assert state_box.value == ""
+
+
+def test_assigning_with_a_blank_state_creates_an_open_pick(monkeypatch, tmp_path):
+    """Leaving the state blank while assigning means 'he picks the trip' -- an
+    open-pick stub with a due day, no state or title decided yet."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=True)
+    tab = _journal_tab(at)
+    # Turn on "assign to a specific day" (outside the form, so it reruns).
+    [c for c in tab.checkbox if "Assign this trip" in c.label][0].set_value(True).run()
+    tab = _journal_tab(at)
+    submit = [b for b in tab.button if b.label == "Assign this trip"][0]
+    submit.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    entries = database.list_travel_entries(s["id"])
+    database.close()
+    assert len(entries) == 1
+    assert entries[0]["state"] == "" and entries[0]["title"] == ""
+    assert entries[0]["status"] == "planned"
+    assert entries[0]["scheduled_for"]  # it has a due day
+
+
+def test_saving_without_a_state_and_without_assigning_errors(monkeypatch, tmp_path):
+    """A real (non-assignment) entry still needs a state -- a blank one warns
+    instead of silently saving a stateless trip."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=True)
+    tab = _journal_tab(at)
+    [w for w in tab.text_input if w.label == "Title"][0].set_value("No state trip")
+    [b for b in tab.button if b.label == "Save this entry"][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    assert database.list_travel_entries(s["id"]) == []
+    database.close()
+    assert any("Pick a state" in e.value for e in at.error)
+
+
 def test_a_parent_assigning_a_trip_with_a_blank_story_creates_a_stub(monkeypatch, tmp_path):
     db_path = tmp_path / "home.db"
     database = Database(db_path)
@@ -178,6 +244,7 @@ def test_a_parent_assigning_a_trip_with_a_blank_story_creates_a_stub(monkeypatch
 
     at = _open_travels(monkeypatch, db_path, as_parent=True)
     tab = _journal_tab(at)
+    [w for w in tab.selectbox if w.label == "State"][0].set_value("Arizona")
     title_input = [w for w in tab.text_input if w.label == "Title"][0]
     title_input.set_value("Grand Canyon trip")
     assign = [c for c in tab.checkbox if c.label.startswith("Assign this trip")][0]
@@ -193,6 +260,7 @@ def test_a_parent_assigning_a_trip_with_a_blank_story_creates_a_stub(monkeypatch
     entry = database.list_travel_entries(s["id"])[0]
     database.close()
     assert entry["status"] == "planned"
+    assert entry["title"] == "Grand Canyon trip"
     assert entry["scheduled_for"] == date.today().isoformat()
 
 
@@ -728,6 +796,7 @@ def test_a_too_short_story_on_the_add_form_saves_as_a_stub_not_submitted(monkeyp
 
     at = _open_travels(monkeypatch, db_path, as_parent=False)
     tab = _journal_tab(at)
+    [w for w in tab.selectbox if w.label == "State"][0].set_value("Wyoming")
     title_input = [w for w in tab.text_input if w.label == "Title"][0]
     title_input.set_value("Quick trip")
     story_input = [w for w in tab.text_area if w.label == "The story"][0]

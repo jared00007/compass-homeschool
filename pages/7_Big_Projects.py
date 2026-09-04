@@ -27,6 +27,7 @@ from datetime import date
 import streamlit as st
 
 from compass import config
+from compass import national_parks as parks
 from compass.agents import LessonGenerationError, project_chunker
 from compass.subjects import SUBJECT_KEYS, label
 from compass.ui import api_status_banner, is_parent, md, page_setup, render_story_move_control
@@ -211,12 +212,33 @@ def _render_travel_log_summary() -> None:
     page's own review gate, map, or export -- this is a summary, not a
     second copy of the feature."""
     entries = db.list_travel_entries(student["id"])
-    completed = sum(1 for e in entries if e["status"] == "completed")
+    completed_entries = [e for e in entries if e["status"] == "completed"]
+    completed = len(completed_entries)
     open_entries = [e for e in entries if e["status"] != "completed"]
+
+    # Two quests, not just a trip tally: fill in the 50-state map, and collect
+    # the 63 National Parks. Counted off *written-up* trips only -- an assigned
+    # stub he hasn't done yet doesn't colour in a state. A state or park shows
+    # up once no matter how many times he's been.
+    states_logged = len({e["state"] for e in completed_entries if e["state"]})
+    parks_logged = len({e["park_key"] for e in completed_entries if e["park_key"]})
+    total_states = len(parks.STATES)
+    total_parks = len(parks.PARKS)
+
     st.caption(
         f"🧭 {completed} trip{'s' if completed != 1 else ''} written up"
         + (f" · {len(open_entries)} still open" if open_entries else "")
     )
+    st.progress(
+        states_logged / total_states,
+        text=f"🗺️ States logged — {states_logged} / {total_states}",
+    )
+    st.progress(
+        parks_logged / total_parks,
+        text=f"🏞️ National Parks visited — {parks_logged} / {total_parks}",
+    )
+    if states_logged == total_states:
+        st.success("🎉 All 50 states logged — the whole map is filled in!")
     st.page_link("pages/9_Landons_Travels.py", label="Open Landon's Travels", icon="🧭")
 
 
