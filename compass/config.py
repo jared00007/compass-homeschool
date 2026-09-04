@@ -161,6 +161,19 @@ DEFAULT_SETTINGS: dict[str, str] = {
     # on. Math-only: Science/English/History have no mastery gate to hook
     # into (see GUIDE.md), so this setting has no effect there.
     "math_mastery_percent": "100",
+    # Anti-rushing: the fewest seconds he must spend before the quiz will accept
+    # a submission, counted per question (so 5 questions x 15s = a 75-second
+    # floor). Blitzing a five-question quiz in 40 seconds isn't reading it --
+    # reported directly ("hes completing them in under 60 seconds"). Below the
+    # floor, Submit is refused with a "slow down" nudge and his answers are kept,
+    # so he waits rather than starts over. Set to 0 to turn the gate off.
+    "quiz_min_seconds_per_question": "15",
+    # Anti-rushing, part two: after a failed attempt he must wait this many
+    # seconds before "Try again" unlocks -- a forced pause to actually look at
+    # what he missed (shown right there) instead of rapid-firing the same guess.
+    # The screenshot that prompted this had three retries in under 90s each,
+    # scores going 3/5 -> 2/5 -> 2/5. Set to 0 to turn the cooldown off.
+    "quiz_retry_cooldown_seconds": "30",
     # --- grading ---------------------------------------------------------
     # How much each quiz retry is worth, relative to a first attempt: the
     # 2nd counts for 90%, the 3rd 80%, and so on, down to the floor. The

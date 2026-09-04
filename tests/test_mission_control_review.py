@@ -601,3 +601,62 @@ def test_the_review_surfaces_the_assessment_answer_sheet(monkeypatch, tmp_path):
     assert "Quadrant III" in markdowns
     assert "Counts as mastered when" in markdowns
     assert "correct quadrant" in markdowns
+
+
+def test_approving_a_below_bar_math_quiz_does_not_record_mastery(monkeypatch, tmp_path):
+    """A parent Approve on a Math skill whose latest quiz is under the mastery
+    bar logs the hours and accepts the work, but must NOT silently record the
+    skill as mastered -- that's how a stale "mastered at 80%" used to appear.
+    Reported directly: "math should no longer be mastered if he bombs a quiz.\""""
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lid = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="Coordinate Plane",
+        payload={"title": "Coordinate Plane", "activities": []},
+        metadata={"skill_id": "coord-plane"},
+    )
+    # 80% quiz -- passes, but under the default 100% mastery bar. Reconcile
+    # leaves it unmastered (it was never mastered).
+    db.record_quiz_result(lid, student["id"], correct=4, total=5, passed=True)
+    db.submit_lesson(lid)
+    db.close()
+
+    at, review_tab = _open_review_tab(monkeypatch, db_path)
+    approve_key = f"FormSubmitter:review_{lid}_assess_{lid}-✅ Approve & log hours"
+    [b for b in at.button if b.key == approve_key][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db2 = Database(db_path)
+    row = db2.mastery_map(student["id"]).get("coord-plane", {})
+    db2.close()
+    assert row.get("status") == "in_progress"  # accepted, but not mastered
+
+
+def test_the_override_checkbox_lets_a_parent_master_below_the_bar(monkeypatch, tmp_path):
+    """The escape hatch: a parent confident despite a low quiz can tick the
+    override and Approve records mastery deliberately."""
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lid = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="Coordinate Plane",
+        payload={"title": "Coordinate Plane", "activities": []},
+        metadata={"skill_id": "coord-plane"},
+    )
+    db.record_quiz_result(lid, student["id"], correct=4, total=5, passed=True)
+    db.submit_lesson(lid)
+    db.close()
+
+    at, review_tab = _open_review_tab(monkeypatch, db_path)
+    at.checkbox(key=f"review_{lid}_master_override_{lid}").set_value(True).run()
+    approve_key = f"FormSubmitter:review_{lid}_assess_{lid}-✅ Approve & log hours"
+    [b for b in at.button if b.key == approve_key][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db2 = Database(db_path)
+    row = db2.mastery_map(student["id"]).get("coord-plane", {})
+    db2.close()
+    assert row.get("status") == "mastered"

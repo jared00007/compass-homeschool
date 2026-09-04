@@ -53,6 +53,11 @@ def _seed(tmp_path):
     db = Database(db_path)
     student = db.ensure_default_student()
     auth.set_pin(db, "1234")
+    # These tests exercise duration/retry mechanics, not the anti-rush gates, so
+    # turn the min-time floor and the retry cooldown off here (their own tests
+    # live in test_quiz_pacing.py).
+    db.set_setting("quiz_min_seconds_per_question", "0")
+    db.set_setting("quiz_retry_cooldown_seconds", "0")
     lesson_id = db.save_lesson(
         student_id=student["id"], agent="math", subject="math", topic="t",
         title="Two-Step Equations", payload=_quiz_payload(),

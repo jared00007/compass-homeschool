@@ -2566,3 +2566,82 @@ def test_schedule_lesson_today_leaves_an_already_scheduled_lesson_alone(db, stud
     db.schedule_lesson_today_if_unscheduled(dated)
     lesson = db.get_lesson(dated)
     assert lesson["metadata"]["planned_for"] == "2026-11-25"  # untouched
+
+
+# --- mastery reconciliation off a recorded quiz --------------------------------
+
+
+def _math_lesson_with_skill(db, student, skill_id="two-step"):
+    return db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="Q", payload={"title": "Q", "activities": []},
+        metadata={"skill_id": skill_id},
+    )
+
+
+def test_recording_a_perfect_quiz_masters_the_skill(db, student):
+    lid = _math_lesson_with_skill(db, student)
+    db.record_quiz_result(lid, student["id"], correct=5, total=5, passed=True)
+    assert db.mastery_map(student["id"])["two-step"]["status"] == "mastered"
+
+
+def test_recording_a_bomb_unmasters_a_mastered_skill(db, student):
+    lid = _math_lesson_with_skill(db, student)
+    db.set_mastery(student["id"], "two-step", "mastered", score=100)
+    db.record_quiz_result(lid, student["id"], correct=2, total=5, passed=False)  # 40%
+    row = db.mastery_map(student["id"])["two-step"]
+    assert row["status"] == "in_progress"
+    assert "Dropped from mastered" in str(row["notes"])
+
+
+def test_recording_a_bomb_leaves_an_unmastered_skill_alone(db, student):
+    lid = _math_lesson_with_skill(db, student)
+    db.record_quiz_result(lid, student["id"], correct=2, total=5, passed=False)
+    # Never mastered -> the quiz records an attempt but no mastery row is minted.
+    assert "two-step" not in db.mastery_map(student["id"])
+
+
+def test_a_passing_but_imperfect_quiz_neither_masters_nor_unmasters(db, student):
+    lid = _math_lesson_with_skill(db, student)
+    db.set_mastery(student["id"], "two-step", "mastered", score=100)
+    db.record_quiz_result(lid, student["id"], correct=4, total=5, passed=True)  # 80%, >= pass
+    assert db.mastery_map(student["id"])["two-step"]["status"] == "mastered"  # unchanged
+
+
+def test_a_non_math_quiz_touches_no_mastery(db, student):
+    lid = db.save_lesson(
+        student_id=student["id"], agent="science", subject="science", topic="t",
+        title="Q", payload={"title": "Q", "activities": []}, metadata={},
+    )
+    db.record_quiz_result(lid, student["id"], correct=5, total=5, passed=True)
+    assert db.mastery_map(student["id"]) == {}
+
+
+def test_startup_reconciles_a_stale_mastered_skill_once(tmp_path):
+    """The one-time backfill: a skill marked mastered whose latest quiz is below
+    the pass bar is dropped to in_progress when the DB is next opened."""
+    path = tmp_path / "stale.db"
+    db = Database(path)
+    student = db.ensure_default_student()
+    lid = _math_lesson_with_skill(db, student, "coord-plane")
+    # A stale 'mastered', and a later bomb recorded straight into quiz_attempts
+    # (bypassing record_quiz_result so the stored status stays mastered, as it
+    # would for a quiz taken before the rule existed).
+    db.set_mastery(student["id"], "coord-plane", "mastered", score=80)
+    db.conn.execute(
+        "INSERT INTO quiz_attempts (lesson_id, student_id, correct, total, passed, "
+        "detail, duration_seconds, attempted_on) VALUES (?, ?, 2, 5, 0, '[]', 90, '2026-09-03')",
+        (lid, student["id"]),
+    )
+    # Clear the flag so this stands in for a DB created before the backfill
+    # existed -- the real case, where the stale data is already present the
+    # first time the new code opens it.
+    db.conn.execute("DELETE FROM settings WHERE key = '_mastery_reconciled_v1'")
+    db.conn.commit()
+    db.close()
+
+    reopened = Database(path)
+    row = reopened.mastery_map(student["id"])["coord-plane"]
+    reopened.close()
+    assert row["status"] == "in_progress"
+    assert "latest quiz 40%" in str(row["notes"])

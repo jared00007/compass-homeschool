@@ -73,7 +73,12 @@ def test_math_lesson_gets_the_approve_not_yet_choice_in_activity_log(monkeypatch
     assert not any((s.label or "") == "Status" for s in at.selectbox)
 
 
-def test_approving_records_mastery_at_the_actual_quiz_score(monkeypatch, tmp_path):
+def test_approving_a_below_bar_quiz_accepts_the_work_without_mastering(monkeypatch, tmp_path):
+    """Approving a Math lesson whose latest quiz is under the mastery bar logs
+    the hours and completes the lesson, but records the skill as in_progress,
+    NOT mastered -- mastery has to be earned by the quiz (or an explicit
+    override). This replaces the old behavior of minting "mastered at 80%" on
+    any Approve click, the thing that made mastery untrustworthy."""
     db_path = tmp_path / "a.db"
     db = Database(db_path)
     student = db.ensure_default_student()
@@ -92,9 +97,8 @@ def test_approving_records_mastery_at_the_actual_quiz_score(monkeypatch, tmp_pat
     mastery = db2.mastery_map(student["id"])
     lesson = db2.get_lesson(lesson_id)
     db2.close()
-    assert mastery["two-step-equations"]["status"] == "mastered"
-    assert mastery["two-step-equations"]["score"] == 80
-    # Approving and logging hours are the same act now.
+    assert mastery["two-step-equations"]["status"] == "in_progress"  # not mastered at 80%
+    # Approving and logging hours are still the same act -- the lesson completes.
     assert lesson["status"] == "completed"
 
 

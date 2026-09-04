@@ -1542,6 +1542,42 @@ class Database:
                 "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value)
             )
         self.conn.commit()
+        self._reconcile_stale_math_mastery()
+
+    def _reconcile_stale_math_mastery(self) -> None:
+        """One-time cleanup, guarded by a flag: now that recording a quiz keeps
+        mastery honest going forward (`_reconcile_math_mastery`), bring the
+        already-stored masteries into line once. A skill marked 'mastered' whose
+        most recent quiz -- on any lesson carrying its skill_id -- is below the
+        pass bar is dropped to in_progress. This is what clears a stale
+        'mastered at 80%' minted before the rule existed. It runs exactly once;
+        afterward only a NEW below-pass quiz can un-master a skill, so a parent's
+        later deliberate override (or a genuine re-mastery) is never clobbered."""
+        if self.get_setting("_mastery_reconciled_v1"):
+            return
+        pass_bar = self.get_int_setting("quiz_pass_percent")
+        mastered = self.conn.execute(
+            "SELECT student_id, skill_id FROM skill_mastery WHERE status = 'mastered'"
+        ).fetchall()
+        for row in mastered:
+            att = self.conn.execute(
+                "SELECT qa.correct AS c, qa.total AS t FROM quiz_attempts qa "
+                "JOIN lessons l ON l.id = qa.lesson_id "
+                "WHERE qa.student_id = ? "
+                "AND json_extract(l.metadata, '$.skill_id') = ? AND qa.total > 0 "
+                "ORDER BY qa.attempted_on DESC, qa.id DESC LIMIT 1",
+                (row["student_id"], row["skill_id"]),
+            ).fetchone()
+            if att and 100 * att["c"] / att["t"] < pass_bar:
+                pct = round(100 * att["c"] / att["t"])
+                self.set_mastery(
+                    row["student_id"], row["skill_id"], "in_progress", score=pct,
+                    notes=f"Dropped from mastered — latest quiz {pct}%.",
+                )
+        self.conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('_mastery_reconciled_v1', '1')"
+        )
+        self.conn.commit()
 
     def _ensure_column(self, table: str, column: str, ddl: str) -> None:
         existing = {row["name"] for row in self.conn.execute(f"PRAGMA table_info({table})")}
@@ -2794,7 +2830,56 @@ class Database:
                 json.dumps(detail or []), duration_seconds, today,
             ),
         )
+        # Recording a quiz is the moment we learn something new about the skill,
+        # so mastery is reconciled right here -- one place, so the up- and
+        # down-grade rules can never drift between call sites (they used to live
+        # in the quiz UI). Only Math lessons carry a skill_id; the other subjects
+        # have no mastery gate and are left untouched.
+        row = self.conn.execute(
+            "SELECT metadata FROM lessons WHERE id = ?", (lesson_id,)
+        ).fetchone()
+        skill_id = None
+        if row and row["metadata"]:
+            try:
+                skill_id = (json.loads(row["metadata"]) or {}).get("skill_id")
+            except (ValueError, TypeError):
+                skill_id = None
+        if skill_id:
+            self._reconcile_math_mastery(student_id, skill_id, correct, total)
         self.conn.commit()
+
+    def _reconcile_math_mastery(
+        self, student_id: int, skill_id: str, correct: int, total: int
+    ) -> None:
+        """Bring one Math skill's mastery into line with a just-recorded quiz --
+        the single source of truth for the automatic up- and down-grades:
+
+          * score >= `math_mastery_percent`            -> mastered
+          * score <  `quiz_pass_percent` AND currently
+            mastered                                   -> back to in_progress
+          * anything in between                        -> left exactly as it was
+
+        The middle rule is the point of the rework, reported directly: a bomb
+        on a skill he'd mastered undoes the mastery ("should no longer be
+        mastered if he bombs a quiz"), while a solid-but-imperfect pass neither
+        newly masters nor un-masters. It never invents a 'mastered' from a
+        failing score, which is how a stale 80% used to linger."""
+        if not total:
+            return
+        percent = 100 * correct / total
+        mastery_bar = self.get_int_setting("math_mastery_percent")
+        pass_bar = self.get_int_setting("quiz_pass_percent")
+        current = self.mastery_map(student_id).get(skill_id, {})
+        if percent >= mastery_bar:
+            self.set_mastery(
+                student_id, skill_id, "mastered", score=percent,
+                notes="Auto-graded from the in-app quiz.",
+            )
+        elif percent < pass_bar and current.get("status") == "mastered":
+            self.set_mastery(
+                student_id, skill_id, "in_progress", score=percent,
+                notes=f"Dropped from mastered — scored {round(percent)}% on a later quiz.",
+            )
 
     def list_quiz_attempts(
         self, student_id: int, *, lesson_id: int | None = None, limit: int = 500

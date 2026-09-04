@@ -586,33 +586,43 @@ much weaker layer against copying a question out to search for it — real frict
 the same honestly-caveated kind as the PIN, not something that stops a determined
 kid with dev tools open.
 
-**A fully-mastered pass on Math auto-records mastery.** `render_quiz()` reads
-`metadata["skill_id"]` — the same key `graph_walk`'s proposal already writes for every
-Math lesson — and on a score meeting `math_mastery_percent` (default 100, deliberately
-stricter than the general pass bar) calls the same `db.set_mastery(..., "mastered", ...)`
-the parent's **Record mastery** form calls by hand. Passing (`quiz_pass_percent`, default
-80) and being fully mastered are tracked as two separate thresholds on purpose: a passing
-score under the mastery bar still shows real, encouraging feedback ("nice work, that's a
-pass") plus a nudge to retry for full mastery, rather than either punishing an imperfect-
-but-solid score or silently treating it as good enough to unlock the next skill.
+**Mastery is evidence-based, decided in one place.** Every recorded quiz reconciles the
+Math skill it belongs to, inside `db.record_quiz_result` → `_reconcile_math_mastery` (the
+UI no longer touches mastery, so the rules can't drift between call sites). Three cases,
+off the lesson's `skill_id` — the key `graph_walk` already writes for every Math lesson:
+a score meeting `math_mastery_percent` (default 100, stricter than the pass bar) records
+**mastered**; a score *below* `quiz_pass_percent` (default 80) on a skill that was already
+mastered drops it back to **in_progress**, with a note carrying the score that did it; and
+anything in between neither masters nor un-masters. Passing and mastering stay two separate
+thresholds on purpose: a solid-but-imperfect score gets encouraging feedback and a nudge to
+retry, without unlocking the next skill.
 
-**Mastery is not a one-time stamp — a weak quiz can drop it back.** Reported directly:
-"i dont understand how we have mastery but his quizzes today were so bad ... feel like
-mastery isnt setup truly." The confusion was real: mastery was granted (by a perfect
-quiz or by the parent's own **Approve** click) and then stuck forever, so a skill mastered
-at 80% weeks ago still read "mastered" while today's quiz on the same skill was 40%. Now,
-when a quiz on an **already-mastered** skill comes in *below the pass bar*,
-`render_quiz()` drops that skill back to `in_progress` with a note recording the score
-that knocked it down, and the review surfaces that with a ⚠️ ("Dropped from mastered —
-scored 40% … worth another look") instead of a stale green "mastered." A skill that was
-never mastered is untouched — a below-pass quiz there just records the attempt, so a rough
-first go at something new is never treated as a regression. Because the report-card grade's
-mastery component counts *mastered ÷ attempted*, a regressed skill also stops inflating the
-grade until he earns it back. Science, English, and History have no analogous
-mastery concept to hook into, so their quizzes grade and show a score without a side
-effect — a real check with no mechanism behind it yet, rather than force-fitting one.
-Both thresholds are family policy settings, the same category as the Tier 3 guideline
-percent.
+This is the fix for a real complaint — "math should no longer be mastered if he bombs a
+quiz ... feel like mastery isnt setup truly." Mastery used to be a one-time stamp: granted
+by a perfect quiz *or by the parent's Approve click at any score*, then stuck forever, so a
+skill mastered at 80% weeks ago still read "mastered" while today's quiz was 40%. Two things
+close that gap. The parent's **Approve** no longer silently mints mastery: on a Math skill
+it logs the hours and accepts the work, but records the skill as *mastered* only when his
+latest quiz clears the mastery bar — otherwise it stays in_progress unless the parent ticks
+an explicit "mark mastered anyway" override. And a one-time backfill
+(`_reconcile_stale_math_mastery`, flag-guarded) reconciles already-stored masteries against
+the latest quiz the first time the new code opens an existing database, clearing exactly the
+stale "mastered at 80%" that prompted this. The review surfaces a regressed skill with a ⚠️
+instead of a stale green "mastered"; because the grade's mastery component counts
+*mastered ÷ attempted*, a dropped skill also stops inflating the grade until he earns it
+back. Science, English, and History have no mastery gate to hook into, so their quizzes
+grade and show a score with no side effect. All thresholds are family-policy settings.
+
+**Anti-rushing the quiz.** Reported directly: "hes def rushing these quizzes ... completing
+them in under 60 seconds," with retries getting *worse* (3/5 → 2/5 → 2/5) in under 90s each
+— a blitz that isn't reading, feeding a mastery signal that then can't be trusted. Two
+gates, both on by default and both family-policy settings. `quiz_min_seconds_per_question`
+(default 15) sets a floor: submitting under it is refused with a "slow down" nudge, his
+answers kept and the clock left running so he waits rather than starts over. And after a
+miss, `quiz_retry_cooldown_seconds` (default 30) locks **Try again** for a short cooldown —
+and since reviewing the missed questions (each expander click reruns the page) is what
+counts it down, the pause is spent looking at what he got wrong rather than idling. Passing
+attempts and no-longer-counting practice retries are never gated.
 
 ## Weekly batch planning, and skipping a day for a holiday
 

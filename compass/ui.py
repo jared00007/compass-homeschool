@@ -1575,10 +1575,27 @@ def render_quiz(
                 did_pass = quiz_passes(correct, total, threshold)
                 started_at = st.session_state.pop(start_key, None)
                 duration_seconds = int(time.time() - started_at) if started_at else None
+
+                # Anti-rushing: a real read of five questions and their choices
+                # takes more than a handful of seconds. Below the per-question
+                # floor, refuse the submission, keep his answers, and put the
+                # clock back so the wait counts down rather than restarting --
+                # reported directly, "hes completing them in under 60 seconds."
+                min_seconds = db.get_int_setting("quiz_min_seconds_per_question") * len(quiz)
+                if duration_seconds is not None and min_seconds and duration_seconds < min_seconds:
+                    st.session_state[start_key] = started_at
+                    st.warning(
+                        f"⏳ Slow down — that was only {duration_seconds}s. Read each "
+                        f"question and every choice carefully, then submit "
+                        f"(about {max(0, min_seconds - duration_seconds)}s to go)."
+                    )
+                    return
+
                 st.session_state[state_key] = {
                     "picks": picks,
                     "correct": correct,
                     "duration_seconds": duration_seconds,
+                    "graded_wall": time.time(),
                 }
                 detail = [
                     {
@@ -1590,41 +1607,15 @@ def render_quiz(
                     }
                     for item, pick in zip(quiz, picks)
                 ]
+                # Records the attempt AND reconciles Math mastery in one place
+                # (db._reconcile_math_mastery): a perfect quiz masters the skill,
+                # a below-pass quiz un-masters one he'd mastered. The UI no longer
+                # touches mastery itself, so the two rules can't drift apart.
                 db.record_quiz_result(
                     lesson_id, student["id"], correct, total, did_pass,
                     detail=detail, duration_seconds=duration_seconds,
                 )
 
-                skill_id = metadata.get("skill_id")
-                if skill_id:
-                    mastery_threshold = db.get_int_setting("math_mastery_percent")
-                    if quiz_passes(correct, total, mastery_threshold):
-                        db.set_mastery(
-                            student["id"],
-                            skill_id,
-                            "mastered",
-                            score=100 * correct / total,
-                            notes="Auto-graded from the in-app quiz.",
-                        )
-                    elif not did_pass:
-                        # Mastery isn't a one-time stamp: if a skill he'd already
-                        # mastered comes back with a below-pass quiz, drop it to
-                        # "in progress" so the record reflects that he's lost the
-                        # thread rather than sitting on a stale "mastered" from an
-                        # earlier approval. Only touches a skill that was actually
-                        # mastered -- one still in progress just stays there.
-                        current = db.mastery_map(student["id"]).get(skill_id, {})
-                        if current.get("status") == "mastered":
-                            db.set_mastery(
-                                student["id"],
-                                skill_id,
-                                "in_progress",
-                                score=100 * correct / total,
-                                notes=(
-                                    f"Dropped from mastered — scored "
-                                    f"{round(100 * correct / total)}% on a later quiz."
-                                ),
-                            )
                 # A literal perfect score, not the (configurable, sometimes
                 # lower) pass/mastery threshold -- and fired here, at the
                 # moment of grading, rather than in the results branch below,
@@ -1718,7 +1709,26 @@ def render_quiz(
                 if not counts:
                     retry_label = "Practice again — won't change your grade"
                 st.caption(note)
-            if st.button(retry_label, key=f"quiz_retry_{lesson_id}"):
+
+            # Anti-rushing, part two: after a miss, make him sit with what he
+            # got wrong before firing off another guess -- the report that
+            # prompted this had three retries in under 90s each, scores going
+            # 3/5 -> 2/5 -> 2/5. "Try again" is locked for a short cooldown;
+            # reviewing the missed questions above (each click reruns the page)
+            # is exactly what counts it down, so the pause is spent looking, not
+            # waiting. Passing attempts and practice retries are never gated.
+            retry_disabled = False
+            cooldown = db.get_int_setting("quiz_retry_cooldown_seconds")
+            if not did_pass and cooldown:
+                elapsed = time.time() - result.get("graded_wall", 0)
+                remaining = int(cooldown - elapsed)
+                if remaining > 0:
+                    retry_disabled = True
+                    st.caption(
+                        f"⏳ Look back at what you missed above — **Try again** unlocks "
+                        f"in about {remaining}s."
+                    )
+            if st.button(retry_label, key=f"quiz_retry_{lesson_id}", disabled=retry_disabled):
                 del st.session_state[state_key]
                 st.session_state.pop(start_key, None)
                 # Dropping the pinned set is what advances the rotation --
@@ -2045,6 +2055,13 @@ def _render_final_grade_decision(
             if quiz_result.get("total")
             else current.get("score")
         )
+        mastery_bar = db.get_int_setting("math_mastery_percent")
+        # "Mastered" now has to be earned by the quiz, not just approved: the
+        # skill only records as mastered when his latest quiz clears the mastery
+        # bar, or when you deliberately override. This is what stops a stale
+        # "mastered at 80%" from being minted by an Approve click on a lesson he
+        # didn't actually ace -- reported directly.
+        earned_mastery = latest_score is not None and latest_score >= mastery_bar
         if current.get("status") == "mastered":
             st.success(f"✅ Already approved — mastered at {current.get('score') or '?'}%.")
         elif current.get("status") == "in_progress" and str(
@@ -2055,9 +2072,11 @@ def _render_final_grade_decision(
             # struggling now. The note carries the score that dropped it.
             st.warning(f"⚠️ {md(current['notes'])} It's back to *in progress* — worth another look.")
         st.caption(
-            "The quiz only auto-approves a perfect score -- you decide here, at any "
-            "score, whether that's good enough to move on. A weak quiz on a skill he'd "
-            "mastered drops it back to in-progress on its own."
+            f"Mastery needs a quiz at {mastery_bar}%+ — his latest was "
+            f"{latest_score if latest_score is not None else '—'}%. Approving logs the "
+            "hours and accepts his work; it records the skill as **mastered** only when "
+            "the quiz clears that bar (or you tick the override below). A weak quiz on a "
+            "skill he'd mastered drops it back on its own."
         )
         if lesson["status"] == "submitted" and writing_all_approved:
             with st.form(f"{key_prefix}_assess_{lesson['id']}"):
@@ -2065,6 +2084,14 @@ def _render_final_grade_decision(
                 feedback = st.text_area(
                     "Feedback (shown to him if you send it back for more practice)"
                 )
+                override_master = False
+                if not earned_mastery:
+                    override_master = st.checkbox(
+                        f"Mark this skill mastered anyway (his latest quiz was "
+                        f"{latest_score if latest_score is not None else '—'}%, under the "
+                        f"{mastery_bar}% bar)",
+                        key=f"{key_prefix}_master_override_{lesson['id']}",
+                    )
                 minutes, where, credits = _hours_inputs(
                     lesson["payload"], f"{key_prefix}_hrs_{lesson['id']}"
                 )
@@ -2074,11 +2101,21 @@ def _render_final_grade_decision(
                     "🔁 Not yet — send back for more practice"
                 )
             if approve:
-                db.set_mastery(student["id"], skill_id, "mastered", score=latest_score, notes=notes)
+                mastered = earned_mastery or override_master
+                db.set_mastery(
+                    student["id"], skill_id,
+                    "mastered" if mastered else "in_progress",
+                    score=latest_score, notes=notes,
+                )
                 _log_hours_for_lesson(
                     db, student, lesson, minutes=minutes, location=where, credits=credits
                 )
-                st.success("Approved and logged — the next skill is unlocked.")
+                st.success(
+                    "Approved and logged — the next skill is unlocked."
+                    if mastered
+                    else "Approved and logged. The skill stays *in progress* until a "
+                    "stronger quiz — the next skill won't unlock yet."
+                )
                 st.rerun()
             elif keep_practicing:
                 db.set_mastery(

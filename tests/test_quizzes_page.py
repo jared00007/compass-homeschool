@@ -112,6 +112,7 @@ def test_retaking_the_quiz_adds_a_second_attempt_not_a_replacement(monkeypatch, 
     db = Database(db_path)
     student = db.ensure_default_student()
     auth.set_pin(db, "1234")
+    db.set_setting("quiz_retry_cooldown_seconds", "0")  # retry-mechanics test, not the cooldown
     lesson_id = db.save_lesson(
         student_id=student["id"], agent="math", subject="math", topic="t",
         title="Two-Step Equations", payload=_quiz_payload(),
@@ -253,6 +254,7 @@ def test_retaking_deals_a_different_set_of_questions(monkeypatch, tmp_path):
     db = Database(db_path)
     student = db.ensure_default_student()
     auth.set_pin(db, "1234")
+    db.set_setting("quiz_retry_cooldown_seconds", "0")  # rotation test, not the cooldown
     lesson_id = db.save_lesson(
         student_id=student["id"], agent="math", subject="math", topic="t",
         title="Two-Step Equations", payload=_twenty_question_payload(),
