@@ -1076,9 +1076,12 @@ feedback text — that activity already carries its own).
 `_lesson_ready_to_submit()` requires the quiz taken (if the lesson has one) and every
 writing activity at least submitted, and disables the button with an explanation
 (`st.button(..., disabled=not ready)`) rather than letting him turn in unfinished
-work. Life Skills, Choice Topics, and Big Projects never go through any of this —
+work. Life Skills and Choice Topics never go through any of this —
 `student_lesson_view` is only ever called from the four graded subject pages, so
 their lessons stay exactly as self-reported and parent-logged as they always were.
+(Big Project steps *do* have a submit → review → approve gate now, but a separate,
+purpose-built one — see "Big Project steps go through the same gate" below — not this
+`student_lesson_view` path.)
 
 A skipped lesson (`status: "skipped"`) is excluded from "current" outright — there's
 no reason to hand him a lesson the parent already called off.
@@ -1112,6 +1115,49 @@ but now carries a "📅 This week's plan" heading over the day-by-day board maki
 clear it's a schedule view, not a second review queue, and the "Nothing waiting on
 you right now" success banner checks the same narrower set as the header so the two
 never disagree.
+
+## Big Project steps go through the same submit → review → approve gate
+
+A Big Project step used to be a bare checkbox: he'd tick "Done" and the step was
+finished, no parent in the loop. Requested directly: *"when any project is brought
+into this home view because it's assigned, I need the student to submit complete,
+and then I get a prompt of needs-review — the same digital or manual review loop we
+already established — and then when I approve, the student sees the green check,
+done."* So a step now carries the same four-state life a lesson does, on its own
+columns in `project_steps` (added by a migration alongside the existing table):
+`status` (`planned` → `submitted` → `needs_revision`/`completed`), `submission`
+(the note he turns in), and `feedback` (what a parent types when sending it back).
+The migration also backfills `status='completed'` for any step already stamped
+`completed_on` under the old checkbox, so nothing that was done reads as un-turned-in.
+
+**The DB methods mirror the lesson gate one-for-one** (`compass/storage/db.py`):
+`submit_project_step(step_id, submission)` → `submitted`; `send_project_step_back(
+step_id, feedback)` → `needs_revision`; `approve_project_step(step_id)` →
+`completed` + `completed_on = today`. `set_project_step_done()` still exists and now
+keeps `status` in sync (a parent checking a step done straight-through sets
+`completed`, unchecking returns it to `planned`), so the older direct-mark path and
+the new gate never disagree. `submitted_project_steps(student_id)` is the parent's
+review queue — every step waiting on them, with its parent project's title joined on,
+excluding the Travel Log (its "steps" are trips, reviewed through the Travel Journal).
+
+**The gate renders inside each step's expander** (`_render_step_gate` in
+`pages/7_Big_Projects.py`), branching on `is_parent()` exactly the way the lesson
+gate does. The student sees a note box and **📬 Submit for review** on a `planned` or
+sent-back step, and a read-only "📤 Turned in — waiting" once submitted; the parent
+sees his submission with **✅ Approve** / **↩️ Send back** (feedback popover) on a
+submitted step, and a plain **✅ Mark done** on one he's completing himself. The
+left-column status icon (`_step_status_icon`) shows ⬜/📤/↩️/✅ at a glance, and the
+expander auto-opens whenever the step needs *someone's* action (his to submit or
+redo, yours to review) so the gate is never hidden behind a tap.
+
+**Assigned steps ride the same surfaces a lesson does.** A step scheduled onto a day
+shows on his Home under 📚 Lessons as the same white card, carrying the four-state
+marker (⬜ not turned in → 📤 waiting on a parent → ↩️ sent back), and a submitted step
+counts into Mission Control's **✅ Review (N)** badge and lists in its "turned in —
+waiting on you" section with a link out to Big Projects — so "needs review" isn't
+buried on another tab. (`student_lesson_view`, the graded-subject lesson gate
+described above, is still only called from the four subject pages; Big Project steps
+run through this parallel, purpose-built gate instead of that function.)
 
 **Backlog: a missed lesson's whole week ending doesn't leave it "overdue" forever
 — it drops out of his view entirely, into a parent-only holding area.** Requested

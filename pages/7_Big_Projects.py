@@ -81,20 +81,83 @@ def _step_choices(steps: list[dict], tip_id: int | None) -> list[dict]:
     ]
 
 
+def _render_step_gate(step: dict) -> None:
+    """The submit -> review -> approve loop for one not-yet-completed step,
+    the same gate lessons and travel entries use, viewer-aware.
+
+    Student: a "📬 Submit for review" button (with an optional note for a
+    digital review; a step he did off-screen just submits with no note and gets
+    the same manual review), the sent-back feedback when it's been bounced, and
+    a plain "waiting on a parent" line once it's in. Parent: on a submitted step,
+    his note (if any) plus Approve / Send-back; on a still-open step, the direct
+    "mark done" and the shared move control, exactly as before."""
+    sid = step["id"]
+    status = step.get("status") or "planned"
+    if is_parent():
+        if status == "submitted":
+            if step.get("submission"):
+                st.markdown("**📤 He turned this in:**")
+                st.write(md(step["submission"]))
+            else:
+                st.caption("📤 He marked this done (nothing typed) — check it with him.")
+            approve_col, back_col = st.columns(2)
+            if approve_col.button("✅ Approve", key=f"approve_step_{sid}", type="primary"):
+                db.approve_project_step(sid)
+                st.rerun()
+            with back_col.popover("↩️ Send back"):
+                note = st.text_area("What should he fix?", key=f"stepfb_{sid}")
+                if st.button("Send it back", key=f"sendback_step_{sid}"):
+                    db.send_project_step_back(sid, note.strip())
+                    st.rerun()
+        else:
+            if status == "needs_revision":
+                st.caption("↩️ Sent back — waiting on him to redo and turn it in again.")
+            if st.button("✅ Mark done", key=f"parent_done_step_{sid}"):
+                db.set_project_step_done(sid, True)
+                st.rerun()
+            render_story_move_control(
+                key=f"step_{sid}",
+                active=bool(step["active"]),
+                scheduled_for=step["scheduled_for"],
+                set_active=lambda a, s=sid: db.set_project_step_active(s, a),
+                schedule=lambda d, s=sid: db.schedule_project_step(s, d),
+                show_backlog_toggle=False,
+            )
+    else:
+        if status == "submitted":
+            st.caption("📤 Turned in — waiting on a parent to review.")
+            return
+        if status == "needs_revision" and step.get("feedback"):
+            st.warning(f"↩️ Sent back: {md(step['feedback'])}")
+        note = st.text_area(
+            "Anything to tell your parent about it? (optional)",
+            key=f"step_submission_{sid}",
+        )
+        if st.button("📬 Submit for review", key=f"submit_step_{sid}", type="primary"):
+            db.submit_project_step(sid, note.strip())
+            st.rerun()
+
+
+def _step_status_icon(step: dict) -> str:
+    """The at-a-glance marker in the step row's left column, replacing the old
+    done/not-done checkbox now that a step moves through four states."""
+    return {
+        "planned": "⬜",
+        "submitted": "📤",
+        "needs_revision": "↩️",
+        "completed": "✅",
+    }.get(step.get("status") or ("completed" if step["completed_on"] else "planned"), "⬜")
+
+
 def _render_choice_step(step: dict, index: int) -> None:
     """One offered-next step, same card shape the linear rendering below
-    uses for its own rows -- a checkbox that's the only thing touching
-    `completed_on`, and the shared move control for backlog/scheduling."""
+    uses for its own rows -- the status icon and the shared submit -> review ->
+    approve gate (_render_step_gate), same as a linear step."""
     row_key = f"step_row_next_{step['id']}"
     with st.container(key=row_key):
         columns = st.columns([1, 20])
         with columns[0]:
-            checked = st.checkbox(
-                "Done", value=False, key=f"step_done_{step['id']}", label_visibility="collapsed",
-            )
-            if checked:
-                db.set_project_step_done(step["id"], True)
-                st.rerun()
+            st.markdown(f"### {_step_status_icon(step)}")
         with columns[1]:
             pace = f" · ⏳ {_day_range(step['min_days'], step['max_days'])}"
             with st.expander(f"{index}. {md(step['title'])}{pace} · ▶ choose this", expanded=False):
@@ -105,15 +168,9 @@ def _render_choice_step(step: dict, index: int) -> None:
                     meta.append(f"**You'll need:** {md(step['materials'])}")
                 meta.append(f"Credits toward {label(step['credit_subject'])}")
                 st.caption(" · ".join(meta))
-                if is_parent():
-                    render_story_move_control(
-                        key=f"step_{step['id']}",
-                        active=bool(step["active"]),
-                        scheduled_for=step["scheduled_for"],
-                        set_active=lambda a, sid=step["id"]: db.set_project_step_active(sid, a),
-                        schedule=lambda s, sid=step["id"]: db.schedule_project_step(sid, s),
-                        show_backlog_toggle=False,
-                    )
+                if not step["completed_on"]:
+                    st.divider()
+                    _render_step_gate(step)
 
 
 def _render_choice_steps(steps: list[dict]) -> None:
@@ -394,27 +451,34 @@ with checklist_tab:
                 for index, step in enumerate(visible_steps, start=1):
                     is_next = step["id"] == next_step_id
                     row_key = f"step_row_next_{step['id']}" if is_next else f"step_row_{step['id']}"
+                    done = bool(step["completed_on"])
                     with st.container(key=row_key):
                         columns = st.columns([1, 20])
                         with columns[0]:
-                            checked = st.checkbox(
-                                "Done",
-                                value=bool(step["completed_on"]),
-                                key=f"step_done_{step['id']}",
-                                label_visibility="collapsed",
-                            )
-                            if checked != bool(step["completed_on"]):
-                                db.set_project_step_done(step["id"], checked)
-                                st.rerun()
+                            # The left column now shows the step's gate state at
+                            # a glance instead of a bare checkbox -- submitting,
+                            # reviewing, and approving all happen inside the
+                            # expander via _render_step_gate.
+                            st.markdown(f"### {_step_status_icon(step)}")
                         with columns[1]:
-                            badge = " · ▶ up next" if is_next and not checked else ""
+                            status = step.get("status") or "planned"
+                            badge = " · ▶ up next" if is_next and not done else ""
+                            if status == "submitted":
+                                badge = " · 📤 waiting on you" if is_parent() else " · 📤 turned in"
+                            elif status == "needs_revision":
+                                badge = " · ↩️ sent back"
                             pace = f" · ⏳ {_day_range(step['min_days'], step['max_days'])}"
-                            # Always collapsed on a fresh launch -- the "up next"
-                            # badge and the pace both show right in the label, so
-                            # nothing important is hidden by keeping it closed
-                            # until he actually taps it open.
+                            # Auto-open a step that needs someone's action (his to
+                            # submit/redo, or yours to review) so the gate isn't
+                            # hidden behind a tap; a done or backlog-quiet step
+                            # stays collapsed.
+                            needs_action = (
+                                (status == "submitted" and is_parent())
+                                or (status in ("planned", "needs_revision") and not is_parent() and is_next)
+                            )
                             with st.expander(
-                                f"{index}. {md(step['title'])}{pace}{badge}", expanded=False
+                                f"{index}. {md(step['title'])}{pace}{badge}",
+                                expanded=needs_action,
                             ):
                                 if step["description"]:
                                     st.write(md(step["description"]))
@@ -423,19 +487,9 @@ with checklist_tab:
                                     meta.append(f"**You'll need:** {md(step['materials'])}")
                                 meta.append(f"Credits toward {label(step['credit_subject'])}")
                                 st.caption(" · ".join(meta))
-                                # The freedom to move a step to a specific day or
-                                # back to Backlog, same shared control every
-                                # other story type uses -- never offered on a
-                                # step he's already finished.
-                                if is_parent() and not checked:
-                                    render_story_move_control(
-                                        key=f"step_{step['id']}",
-                                        active=bool(step["active"]),
-                                        scheduled_for=step["scheduled_for"],
-                                        set_active=lambda a, sid=step["id"]: db.set_project_step_active(sid, a),
-                                        schedule=lambda s, sid=step["id"]: db.schedule_project_step(sid, s),
-                                        show_backlog_toggle=False,
-                                    )
+                                if not done:
+                                    st.divider()
+                                    _render_step_gate(step)
 
                 if is_parent() and backlog_steps:
                     st.markdown("**🗄️ Backlog**")

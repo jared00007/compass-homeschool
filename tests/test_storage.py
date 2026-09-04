@@ -2645,3 +2645,56 @@ def test_startup_reconciles_a_stale_mastered_skill_once(tmp_path):
     reopened.close()
     assert row["status"] == "in_progress"
     assert "latest quiz 40%" in str(row["notes"])
+
+
+# --- the project-step submit -> review -> approve gate --------------------------
+
+
+def test_project_step_submit_review_approve_cycle(db, student):
+    pid = db.add_big_project(student_id=student["id"], title="Toy Photography", vision="v")
+    step = db.add_project_step(pid, "Pick your toy and your theme", active=True)
+    db.schedule_project_step(step, "2026-09-04")
+
+    # He submits it -> waiting on a parent, with his optional note kept.
+    db.submit_project_step(step, "I chose the red car, noir theme.")
+    row = db.list_project_steps(pid)[0]
+    assert row["status"] == "submitted"
+    assert row["submission"] == "I chose the red car, noir theme."
+    assert row["completed_on"] is None
+    assert [s["id"] for s in db.submitted_project_steps(student["id"])] == [step]
+
+    # Sent back -> needs_revision with feedback; no longer in the review queue.
+    db.send_project_step_back(step, "Add one more theme option.")
+    row = db.list_project_steps(pid)[0]
+    assert row["status"] == "needs_revision"
+    assert row["feedback"] == "Add one more theme option."
+    assert db.submitted_project_steps(student["id"]) == []
+
+    # Resubmit, then approve -> completed + completed_on set.
+    db.submit_project_step(step, "Added a western theme too.")
+    db.approve_project_step(step)
+    row = db.list_project_steps(pid)[0]
+    assert row["status"] == "completed"
+    assert row["completed_on"] is not None
+    assert db.submitted_project_steps(student["id"]) == []
+
+
+def test_set_project_step_done_keeps_status_in_sync(db, student):
+    pid = db.add_big_project(student_id=student["id"], title="P", vision="v")
+    step = db.add_project_step(pid, "A step", active=True)
+    db.set_project_step_done(step, True)
+    assert db.list_project_steps(pid)[0]["status"] == "completed"
+    db.set_project_step_done(step, False)
+    assert db.list_project_steps(pid)[0]["status"] == "planned"
+
+
+def test_a_submitted_step_still_shows_as_due_on_home(db, student):
+    # A submitted (not yet approved) step is still "in play" -- it stays on his
+    # due list so Home can mark it 📤 waiting, rather than vanishing.
+    pid = db.add_big_project(student_id=student["id"], title="P", vision="v")
+    step = db.add_project_step(pid, "A step", active=True)
+    db.schedule_project_step(step, "2026-09-04")
+    db.submit_project_step(step)
+    due = db.due_project_steps(student["id"], "2026-09-04")
+    assert [s["id"] for s in due] == [step]
+    assert due[0]["status"] == "submitted"

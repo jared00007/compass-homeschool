@@ -300,15 +300,39 @@ if not is_parent():
                         status_label = LESSON_STATUS_LABELS.get(marker)
                         if status_label:
                             st.caption(f"{marker} {status_label}")
+            # Project steps go through the same submit -> review -> approve gate
+            # a lesson does, so they carry the same four-state markers: his to do
+            # (⬜), turned in and waiting on a parent (📤), sent back for a redo
+            # (↩️, tinted red to stand out like a bounced lesson).
+            PROJECT_STATUS_MARKERS = {
+                "planned": ("⬜", "project step — not turned in yet"),
+                "submitted": ("📤", "project step — waiting on a parent"),
+                "needs_revision": ("↩️", "project step — sent back"),
+            }
             for step in due_steps:
-                with st.container(border=True, key=f"landon_card_project_{step['id']}"):
+                status = step.get("status") or "planned"
+                marker, step_label = PROJECT_STATUS_MARKERS.get(
+                    status, ("⬜", "project step")
+                )
+                step_sent_back = status == "needs_revision"
+                step_key = (
+                    f"landon_card_lesson_sentback_project_{step['id']}"
+                    if step_sent_back
+                    else f"landon_card_project_{step['id']}"
+                )
+                with st.container(border=True, key=step_key):
                     project_title = step.get("project_title") or "Big Project"
                     st.page_link(
                         "pages/7_Big_Projects.py",
                         label=f"{md(step['title'])} — {md(project_title)}",
-                        icon="🏗️",
+                        icon=marker,
                     )
-                    st.caption("🏗️ project step")
+                    if step_sent_back:
+                        st.markdown(
+                            ":red[**↩️ Sent back — open Big Projects to see what to fix**]"
+                        )
+                    else:
+                        st.caption(f"{marker} {step_label}")
         if later_this_week:
             st.caption(
                 f"{later_this_week} more lesson(s) planned for later this week — "

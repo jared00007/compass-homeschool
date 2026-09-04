@@ -1471,6 +1471,19 @@ class Database:
         # add_project_step's own default (see there for why that one's 0).
         self._ensure_column("project_steps", "active", "INTEGER NOT NULL DEFAULT 1")
         self._ensure_column("project_steps", "scheduled_for", "TEXT")
+        # A submit -> review -> approve gate on project steps, the same one
+        # lessons and travel entries carry: 'planned' (his to do), 'submitted'
+        # (waiting on a parent), 'needs_revision' (sent back), 'completed'
+        # (approved). Default 'planned'; a step that already had a completed_on
+        # from before this column is normalized to 'completed' just below so an
+        # old finished step doesn't reappear as unstarted.
+        self._ensure_column("project_steps", "status", "TEXT NOT NULL DEFAULT 'planned'")
+        self._ensure_column("project_steps", "submission", "TEXT")
+        self._ensure_column("project_steps", "feedback", "TEXT")
+        self.conn.execute(
+            "UPDATE project_steps SET status = 'completed' "
+            "WHERE completed_on IS NOT NULL AND status = 'planned'"
+        )
         self._ensure_column("activities", "course_id", "INTEGER REFERENCES courses(id) ON DELETE SET NULL")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_activities_course ON activities (course_id)")
         # Default 1 for the same reason project_steps' own migration is: a
@@ -3866,6 +3879,23 @@ class Database:
             )
         )
 
+    def submitted_project_steps(self, student_id: int) -> list[dict[str, Any]]:
+        """Project steps he's turned in and that are waiting on a parent to
+        review -- the source of the "needs review" prompt in Mission Control,
+        the same way a submitted lesson shows there. Carries the project title
+        for the label."""
+        return _rows(
+            self.conn.execute(
+                "SELECT project_steps.*, big_projects.title AS project_title "
+                "FROM project_steps "
+                "JOIN big_projects ON big_projects.id = project_steps.project_id "
+                "WHERE big_projects.student_id = ? AND big_projects.kind != 'travel_log' "
+                "AND project_steps.status = 'submitted' "
+                "ORDER BY project_steps.scheduled_for, project_steps.sort_order, project_steps.id",
+                (student_id,),
+            )
+        )
+
     def add_project_step(
         self,
         project_id: int,
@@ -3944,9 +3974,47 @@ class Database:
         self.conn.commit()
 
     def set_project_step_done(self, step_id: int, completed: bool) -> None:
+        """A parent's direct done/undone toggle -- keeps `status` in step with
+        `completed_on` so it agrees with the review gate (done -> completed,
+        undone -> back to planned)."""
         self.conn.execute(
-            "UPDATE project_steps SET completed_on = ? WHERE id = ?",
-            (date.today().isoformat() if completed else None, step_id),
+            "UPDATE project_steps SET completed_on = ?, status = ? WHERE id = ?",
+            (
+                date.today().isoformat() if completed else None,
+                "completed" if completed else "planned",
+                step_id,
+            ),
+        )
+        self.conn.commit()
+
+    def submit_project_step(self, step_id: int, submission: str = "") -> None:
+        """He's finished this step (a first pass, or a resubmit after it was
+        sent back) -- now it's waiting on a parent to review it. `submission`
+        is his optional note on what he did, for a digital review; a step he
+        did off-screen (built something, went somewhere) just submits with an
+        empty note and gets the same manual review."""
+        self.conn.execute(
+            "UPDATE project_steps SET status = 'submitted', submission = ? WHERE id = ?",
+            (submission, step_id),
+        )
+        self.conn.commit()
+
+    def send_project_step_back(self, step_id: int, feedback: str = "") -> None:
+        """Not there yet -- back to him to redo, with an optional note on what
+        to fix (mirrors send_lesson_back / send_travel_entry_back)."""
+        self.conn.execute(
+            "UPDATE project_steps SET status = 'needs_revision', feedback = ? WHERE id = ?",
+            (feedback, step_id),
+        )
+        self.conn.commit()
+
+    def approve_project_step(self, step_id: int) -> None:
+        """Approved -- the step is done. Sets `completed_on` (what the whole
+        checklist, progress count, and choice-mode chain already read) and the
+        matching status in one action, same as approving a lesson or a trip."""
+        self.conn.execute(
+            "UPDATE project_steps SET status = 'completed', completed_on = ? WHERE id = ?",
+            (date.today().isoformat(), step_id),
         )
         self.conn.commit()
 

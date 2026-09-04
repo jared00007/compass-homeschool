@@ -358,3 +358,53 @@ def test_reorder_steps_boundary_buttons_are_disabled(monkeypatch, tmp_path):
     last_down = [b for b in manage_tab.button if b.key == f"step_down_{step_b}"][0]
     assert first_up.disabled
     assert last_down.disabled
+
+
+def _steps_project(db, student_id, *, active=True):
+    pid = db.add_big_project(student_id=student_id, title="Toy Photography", vision="v")
+    step = db.add_project_step(pid, "Pick your toy and your theme", active=active)
+    db.schedule_project_step(step, date.today().isoformat())
+    return pid, step
+
+
+def test_student_submits_a_step_for_review(monkeypatch, tmp_path):
+    """The student side of the gate: a due step offers "Submit for review",
+    which turns it in (status submitted) rather than silently marking it done."""
+    db_path = tmp_path / "projects.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    project_id, step = _steps_project(db, student["id"])
+    db.close()
+
+    at = _open_checklist_tab(monkeypatch, db_path, as_parent=False)
+    at = _expand_project(at, project_id)
+    at.button(key=f"submit_step_{step}").click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db2 = Database(db_path)
+    row = db2.list_project_steps(project_id)[0]
+    db2.close()
+    assert row["status"] == "submitted"
+
+
+def test_parent_approves_a_submitted_step(monkeypatch, tmp_path):
+    """The parent side: a submitted step offers Approve, which completes it."""
+    db_path = tmp_path / "projects.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    project_id, step = _steps_project(db, student["id"])
+    db.submit_project_step(step, "Chose the red car.")
+    db.close()
+
+    at = _open_checklist_tab(monkeypatch, db_path, as_parent=True)
+    at = _expand_project(at, project_id)
+    at.button(key=f"approve_step_{step}").click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db2 = Database(db_path)
+    row = db2.list_project_steps(project_id)[0]
+    db2.close()
+    assert row["status"] == "completed"
+    assert row["completed_on"] is not None

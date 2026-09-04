@@ -370,9 +370,13 @@ backlog_count = (
 
 # What's actually waiting on you: turned-in and sent-back work, plus anything
 # genuinely overdue. A lesson simply scheduled for a future day isn't a review.
+# Project steps a student has submitted count here too, so the badge reflects
+# everything the review tab actually surfaces below.
+submitted_step_count = len(db.submitted_project_steps(student["id"]))
 needs_review_count = (
     sum(1 for l in to_review if _needs_attention(l, today_iso) or l["status"] == "needs_revision")
     + len(travel_to_review)
+    + submitted_step_count
 )
 
 
@@ -550,9 +554,10 @@ with review_tab:
     travel_waiting = [t for t in travel_to_review if t["status"] == "submitted"]
     travel_sent_back = [t for t in travel_to_review if t["status"] == "needs_revision"]
 
-    waiting_count = len(submitted_lessons) + len(travel_waiting)
+    submitted_steps = db.submitted_project_steps(student["id"])
+    waiting_count = len(submitted_lessons) + len(travel_waiting) + len(submitted_steps)
     st.markdown(f"### ✅ Turned in — waiting on you ({waiting_count})")
-    if not submitted_lessons and not travel_waiting:
+    if not submitted_lessons and not travel_waiting and not submitted_steps:
         st.success("Nothing turned in to grade right now.")
     else:
         st.caption(
@@ -563,6 +568,21 @@ with review_tab:
             _render_travel_review_card(entry, open=True)
         for lesson in submitted_lessons:
             _render_review_card(lesson, today_iso, open=True)
+        # Big Project steps he's submitted are reviewed on the Big Projects page
+        # (where the project and its whole checklist live); surface the prompt
+        # here so "needs review" isn't buried on another tab, then link out to
+        # the actual Approve / Send-back controls.
+        if submitted_steps:
+            with st.container(border=True):
+                st.markdown(f"**🏗️ {len(submitted_steps)} project step(s) turned in**")
+                for step in submitted_steps:
+                    project_title = step.get("project_title") or "Big Project"
+                    st.markdown(f"- {md(step['title'])} — *{md(project_title)}*")
+                st.page_link(
+                    "pages/7_Big_Projects.py",
+                    label="Review them in Big Projects",
+                    icon="🏗️",
+                )
 
     if overdue:
         st.divider()

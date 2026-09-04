@@ -660,3 +660,22 @@ def test_the_override_checkbox_lets_a_parent_master_below_the_bar(monkeypatch, t
     row = db2.mastery_map(student["id"]).get("coord-plane", {})
     db2.close()
     assert row.get("status") == "mastered"
+
+
+def test_submitted_project_steps_show_as_needs_review(monkeypatch, tmp_path):
+    """A submitted Big Project step surfaces in the review tab's "waiting on
+    you" section with a link out to Big Projects, so "needs review" isn't
+    buried on another tab."""
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    pid = db.add_big_project(student_id=student["id"], title="Toy Photography", vision="v")
+    step = db.add_project_step(pid, "Pick your toy and your theme", active=True)
+    db.submit_project_step(step, "Red car, noir theme.")
+    db.close()
+
+    at, review_tab = _open_review_tab(monkeypatch, db_path)
+    assert review_tab.label == "✅ Review (1)"
+    markdowns = " ".join(_md(review_tab))
+    assert "project step(s) turned in" in markdowns
+    assert "Pick your toy and your theme" in markdowns

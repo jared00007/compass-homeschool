@@ -429,3 +429,23 @@ def test_a_board_assigned_project_step_shows_under_lessons(monkeypatch, tmp_path
     captions = " ".join(c.value for c in at.caption)
     assert "Lessons (1)" in markdown
     assert "project step" in captions
+
+
+def test_a_submitted_project_step_shows_waiting_on_home(monkeypatch, tmp_path):
+    """A project step he's turned in shows on Home marked 📤 (waiting on a
+    parent), the same four-state gate a lesson uses."""
+    import datetime
+    db_path = tmp_path / "proj.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    today = datetime.date.today().isoformat()
+    pid = db.add_big_project(student_id=student["id"], title="Toy Photography", vision="v")
+    step = db.add_project_step(pid, "Pick your toy and your theme", active=True)
+    db.schedule_project_step(step, today)
+    db.submit_project_step(step)
+    auth.set_pin(db, "1234")
+    db.close()
+
+    at = _open_home(monkeypatch, db_path)
+    captions = " ".join(c.value for c in at.caption)
+    assert "waiting on a parent" in captions

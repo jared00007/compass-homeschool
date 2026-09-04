@@ -113,7 +113,7 @@ def test_choosing_a_branch_completes_it_and_reveals_its_children(monkeypatch, tm
     assert any("Path B start" in l for l in labels)
     assert not any("A, leg two" in l for l in labels), "an unreached branch must not show yet"
 
-    at.checkbox(key=f"step_done_{root_a}").check().run()
+    at.button(key=f"parent_done_step_{root_a}").click().run()
 
     captions = [c.value for c in at.caption]
     assert any("Path A start" in c and "✅" in c for c in captions)
@@ -133,7 +133,7 @@ def test_a_true_leaf_reached_shows_the_end_of_path_message(monkeypatch, tmp_path
 
     at = _open_checklist_tab(monkeypatch, db_path)
     at = _expand_project(at, project_id)
-    at.checkbox(key=f"step_done_{only_step}").check().run()
+    at.button(key=f"parent_done_step_{only_step}").click().run()
 
     successes = [s.value for s in at.success]
     assert any("End of this path" in s for s in successes)
