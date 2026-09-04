@@ -617,8 +617,9 @@ grade and show a score with no side effect. All thresholds are family-policy set
 them in under 60 seconds," with retries getting *worse* (3/5 → 2/5 → 2/5) in under 90s each
 — a blitz that isn't reading, feeding a mastery signal that then can't be trusted. Two
 gates, both on by default and both family-policy settings. `quiz_min_seconds_per_question`
-(default 15) sets a floor: submitting under it is refused with a "slow down" nudge, his
-answers kept and the clock left running so he waits rather than starts over. And after a
+(default 48 — a 4-minute floor across the standard five questions) sets a minimum:
+submitting under it is refused with a "slow down" nudge, his answers kept and the clock
+left running so he waits rather than starts over. And after a
 miss, `quiz_retry_cooldown_seconds` (default 30) locks **Try again** for a short cooldown —
 and since reviewing the missed questions (each expander click reruns the page) is what
 counts it down, the pause is spent looking at what he got wrong rather than idling. Passing

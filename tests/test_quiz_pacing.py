@@ -75,7 +75,7 @@ def test_a_too_fast_submit_is_refused_and_records_nothing(monkeypatch, tmp_path)
     at.session_state[f"quiz_expander_{lesson_id}"] = True
     at.run(timeout=30)  # opening the expander starts the clock (now)
     at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(1)
-    _submit(at, lesson_id)  # ~0 seconds elapsed, under the 15s/question floor
+    _submit(at, lesson_id)  # ~0 seconds elapsed, under the 48s/question floor
 
     db2 = Database(db_path)
     attempts = db2.list_quiz_attempts(student_id)
@@ -89,8 +89,8 @@ def test_submitting_after_the_time_floor_grades_normally(monkeypatch, tmp_path):
     at = _open_math(monkeypatch, db_path)
     at.session_state[f"quiz_expander_{lesson_id}"] = True
     at.run(timeout=30)
-    # Stand in for having spent 30s on the one-question quiz (floor is 15s).
-    at.session_state[f"quiz_started_at_{lesson_id}"] = time.time() - 30
+    # Stand in for having spent well over the per-question floor (48s).
+    at.session_state[f"quiz_started_at_{lesson_id}"] = time.time() - 300
     at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(
         correct_pick(_payload()["quiz"], lesson_id, 0)
     )
@@ -108,7 +108,7 @@ def test_try_again_is_locked_during_the_cooldown_then_unlocks(monkeypatch, tmp_p
     at = _open_math(monkeypatch, db_path)
     at.session_state[f"quiz_expander_{lesson_id}"] = True
     at.run(timeout=30)
-    at.session_state[f"quiz_started_at_{lesson_id}"] = time.time() - 30
+    at.session_state[f"quiz_started_at_{lesson_id}"] = time.time() - 300
     at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(
         wrong_pick(_payload()["quiz"], lesson_id, 0)  # a miss -> a fail
     )

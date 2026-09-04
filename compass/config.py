@@ -162,12 +162,14 @@ DEFAULT_SETTINGS: dict[str, str] = {
     # into (see GUIDE.md), so this setting has no effect there.
     "math_mastery_percent": "100",
     # Anti-rushing: the fewest seconds he must spend before the quiz will accept
-    # a submission, counted per question (so 5 questions x 15s = a 75-second
-    # floor). Blitzing a five-question quiz in 40 seconds isn't reading it --
-    # reported directly ("hes completing them in under 60 seconds"). Below the
-    # floor, Submit is refused with a "slow down" nudge and his answers are kept,
-    # so he waits rather than starts over. Set to 0 to turn the gate off.
-    "quiz_min_seconds_per_question": "15",
+    # a submission, counted per question. Quizzes are always five questions, so
+    # 48s each sets a 4-minute floor on the whole quiz -- reported directly, he
+    # was blitzing them in under a minute, so "at least 4 min" is the deterrent.
+    # Below the floor, Submit is refused with a "slow down" nudge and his answers
+    # are kept, so he waits rather than starts over. Set to 0 to turn the gate
+    # off. (Per-question rather than a flat total so it scales if a quiz ever
+    # asks a different number.)
+    "quiz_min_seconds_per_question": "48",
     # Anti-rushing, part two: after a failed attempt he must wait this many
     # seconds before "Try again" unlocks -- a forced pause to actually look at
     # what he missed (shown right there) instead of rapid-firing the same guess.
