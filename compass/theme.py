@@ -576,6 +576,33 @@ def css() -> str:
 }}
 [data-testid="stSidebarNavLink"][aria-current="page"] * {{ color: var(--c-button-text); }}
 
+/* The nav is a custom grouped one now (compass.ui._render_nav), built from
+   st.page_link because the default file-based nav can't group or reorder.
+   st.page_link renders as plain text links, so it gets the exact same
+   pressable cream-panel-on-a-border look the default nav links have above,
+   plus the solid-accent fill on the current page. Scoped to the sidebar so
+   page-links inside page content stay plain links. */
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"] {{
+  border: 1px solid var(--c-border);
+  border-radius: var(--c-radius);
+  background: var(--c-panel);
+  margin-bottom: 8px;
+  padding: 8px 12px;
+}}
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"],
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"] * {{
+  font-size: 16px;
+  font-weight: 700;
+}}
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"][aria-current="page"] {{
+  background: var(--c-primary);
+  border-color: var(--c-primary);
+  color: var(--c-button-text);
+}}
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"][aria-current="page"] * {{
+  color: var(--c-button-text);
+}}
+
 hr, [data-testid="stSidebarNavSeparator"] {{ border-color: var(--c-border); }}
 </style>
 """
