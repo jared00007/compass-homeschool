@@ -245,6 +245,62 @@ def total_xp(db: Any, student_id: int) -> int:
     return max(0, total)
 
 
+@dataclass(frozen=True)
+class LearnerStats:
+    """A quick tally of everything he's actually finished -- the header KPIs
+    next to his Level card. Counts, not scores: 'how much have I done,' which
+    is the one thing the Level bar (an abstract number) doesn't say plainly."""
+
+    lessons_done: int
+    quizzes_passed: int
+    skills_done: int
+    trips_written: int
+    heaviest_subject: str | None       # the subject he's put the most lessons into
+    heaviest_subject_count: int
+
+
+def learner_stats(db: Any, student_id: int) -> LearnerStats:
+    """Tally his finished work for the Home KPI strip. Built from the same
+    `student_done_on` completion signal the XP total uses, so the numbers here
+    never disagree with the bar right next to them. 'Heaviest subject' is the
+    one with the most completed lessons -- his by-volume workhorse."""
+    lessons_done = 0
+    quizzes_passed = 0
+    subject_counts: dict[str, int] = {}
+    for lesson in db.list_lessons(student_id, limit=500):
+        metadata = lesson.get("metadata") or {}
+        if metadata.get("student_done_on"):
+            lessons_done += 1
+            subject = (lesson.get("subject") or lesson.get("agent") or "").strip()
+            if subject:
+                subject_counts[subject] = subject_counts.get(subject, 0) + 1
+        if (metadata.get("quiz_result") or {}).get("passed"):
+            quizzes_passed += 1
+
+    skills_done = sum(
+        1 for s in db.list_life_skills(student_id) if s.get("completed_on")
+    )
+    trips_written = sum(
+        1 for t in db.list_travel_entries(student_id) if t.get("status") == "completed"
+    )
+
+    heaviest_subject: str | None = None
+    heaviest_subject_count = 0
+    if subject_counts:
+        heaviest_subject, heaviest_subject_count = max(
+            subject_counts.items(), key=lambda kv: kv[1]
+        )
+
+    return LearnerStats(
+        lessons_done=lessons_done,
+        quizzes_passed=quizzes_passed,
+        skills_done=skills_done,
+        trips_written=trips_written,
+        heaviest_subject=heaviest_subject,
+        heaviest_subject_count=heaviest_subject_count,
+    )
+
+
 def state_for_total(total: int) -> XPState:
     """Turn a raw XP total into a level, rank, and progress -- split out so it's
     unit-testable without a database."""

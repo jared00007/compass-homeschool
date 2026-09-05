@@ -3065,22 +3065,25 @@ _STREAK_BURST_CSS = f"""
 div[class*="st-key-streak_milestone_burst"] {{
   background: {_STREAK_BURST_PAPER};
   border: 3px solid {_STREAK_BURST_INK};
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 10px 16px 8px;
   position: relative;
-  box-shadow: 5px 5px 0 0 {_STREAK_BURST_INK};
-  transform: rotate(-1deg);
-  margin-bottom: 4px;
+  overflow: hidden;
+  box-shadow: 3px 3px 0 0 {_STREAK_BURST_INK};
+  margin: 2px 4px 8px 2px;
 }}
 div[class*="st-key-streak_milestone_burst"]::before {{
   content: "";
   position: absolute;
   inset: 0;
-  border-radius: 4px;
+  border-radius: 6px;
   pointer-events: none;
   opacity: .14;
   background-image: radial-gradient(circle, {_STREAK_BURST_INK} 1.6px, transparent 1.8px);
   background-size: 9px 9px;
+}}
+div[class*="st-key-streak_milestone_burst"] > div {{
+  position: relative;  /* keep text above the dot texture */
 }}
 </style>
 """
@@ -3146,34 +3149,81 @@ def render_streak(db: Database, student: dict[str, Any]) -> None:
     streak = weekly.current_streak(
         active, planned_days=planned_days, planned_weeks=planned_weeks
     )
+
     if not streak:
         if active:
             st.caption("🔥 Finish something today to start a new streak.")
-        return
-
-    best = weekly.best_streak(active, planned_days=planned_days, planned_weeks=planned_weeks)
-    today_done = date.today().isoformat() in active
-
-    if today_done and streak in _STREAK_MILESTONES:
-        st.markdown(_STREAK_BURST_CSS, unsafe_allow_html=True)
-        with st.container(key="streak_milestone_burst"):
-            st.markdown(
-                f'<div style="font-weight:900; font-size:11px; letter-spacing:.06em; '
-                f'color:{_STREAK_BURST_POP};">MILESTONE!</div>'
-                f'<div style="font-weight:900; font-size:22px; line-height:1.05; '
-                f'color:{_STREAK_BURST_INK};">🎉 {streak} DAYS IN A ROW</div>',
-                unsafe_allow_html=True,
-            )
-            if streak >= best:
-                st.caption("A new personal best.")
     else:
-        plural = "s" if streak != 1 else ""
-        line = f"🔥 **{streak} school day{plural} in a row**"
-        if best > streak:
-            line += f" · best: {best}"
-        if not today_done:
-            line += "  \nFinish something today to keep it alive."
-        st.success(line)
+        best = weekly.best_streak(
+            active, planned_days=planned_days, planned_weeks=planned_weeks
+        )
+        today_done = date.today().isoformat() in active
+
+        if today_done and streak in _STREAK_MILESTONES:
+            st.markdown(_STREAK_BURST_CSS, unsafe_allow_html=True)
+            with st.container(key="streak_milestone_burst"):
+                st.markdown(
+                    f'<div style="font-weight:900; font-size:11px; letter-spacing:.06em; '
+                    f'color:{_STREAK_BURST_POP};">MILESTONE!</div>'
+                    f'<div style="font-weight:900; font-size:22px; line-height:1.1; '
+                    f'color:{_STREAK_BURST_INK};">🎉 {streak} DAYS IN A ROW</div>'
+                    + (
+                        f'<div style="font-size:12px; font-weight:700; '
+                        f'color:{_STREAK_BURST_INK};">A new personal best.</div>'
+                        if streak >= best
+                        else ""
+                    ),
+                    unsafe_allow_html=True,
+                )
+        else:
+            plural = "s" if streak != 1 else ""
+            line = f"🔥 **{streak} school day{plural} in a row**"
+            if best > streak:
+                line += f" · best: {best}"
+            if not today_done:
+                line += "  \nFinish something today to keep it alive."
+            st.success(line)
+
+    # The numbers behind the Level bar next to this card -- "how much have I
+    # actually done." Reported directly: show "lessons completed, quizzes
+    # passed etc, heaviest by volume subject" right here. Always rendered (even
+    # at zero) so the card keeps a stable shape, and built from xp.learner_stats
+    # off the same completion signal the Level bar uses, so the two never
+    # disagree.
+    _render_learner_kpis(db, student)
+
+
+def _render_learner_kpis(db: Database, student: dict[str, Any]) -> None:
+    """The compact KPI strip under his streak -- finished lessons, passed
+    quizzes, and the subject he's put the most work into. Custom HTML rather
+    than st.metric so three-plus tiles stay short instead of stacking into a
+    tall block that unbalances the header row."""
+    stats = xp_module.learner_stats(db, student["id"])
+
+    tiles = [
+        ("📚", stats.lessons_done, "lessons done"),
+        ("🎯", stats.quizzes_passed, "quizzes passed"),
+        ("🛠️", stats.skills_done, "life skills"),
+        ("🧭", stats.trips_written, "trips written"),
+    ]
+    cells = "".join(
+        f'<div style="flex:1 1 64px; min-width:64px; text-align:center; '
+        f'padding:6px 4px; background:var(--c-panel); border-radius:8px;">'
+        f'<div style="font-size:20px; font-weight:800; line-height:1.1;">{icon} {value}</div>'
+        f'<div style="font-size:11px; color:var(--c-dim);">{label}</div>'
+        f"</div>"
+        for icon, value, label in tiles
+    )
+    st.markdown(
+        f'<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">{cells}</div>',
+        unsafe_allow_html=True,
+    )
+    if stats.heaviest_subject:
+        st.caption(
+            f"💪 Most work so far: **{md(stats.heaviest_subject.title())}** "
+            f"({stats.heaviest_subject_count} lesson"
+            f"{'s' if stats.heaviest_subject_count != 1 else ''})"
+        )
 
 
 def render_today_checklist(db: Database, student: dict[str, Any]) -> bool:

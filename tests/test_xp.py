@@ -241,3 +241,47 @@ def test_mission_control_shows_and_clears_an_earned_reward(monkeypatch, tmp_path
     database = Database(db_path)
     assert 0 in xp.given_thresholds(database)
     database.close()
+
+
+# --- learner_stats: the Home KPI strip -------------------------------------------
+
+
+def test_learner_stats_tally_of_finished_work(db, student):
+    sid = student["id"]
+    # Two finished math lessons (one with a passed quiz), one finished english.
+    db.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t", title="Math A",
+        payload={"activities": []},
+        metadata={"student_done_on": "2026-09-01", "quiz_result": {"passed": True}},
+    )
+    db.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t", title="Math B",
+        payload={"activities": []}, metadata={"student_done_on": "2026-09-02"},
+    )
+    db.save_lesson(
+        student_id=sid, agent="english", subject="english", topic="t", title="Eng A",
+        payload={"activities": []}, metadata={"student_done_on": "2026-09-03"},
+    )
+    # A generated-but-unfinished lesson counts for nothing.
+    db.save_lesson(
+        student_id=sid, agent="science", subject="science", topic="t", title="Sci",
+        payload={"activities": []}, metadata={},
+    )
+    skill_id = db.add_life_skill(sid, "Laundry")
+    db.set_life_skill_done(skill_id, True)
+
+    stats = xp.learner_stats(db, sid)
+    assert stats.lessons_done == 3
+    assert stats.quizzes_passed == 1
+    assert stats.skills_done == 1
+    # Math is his by-volume workhorse.
+    assert stats.heaviest_subject == "math"
+    assert stats.heaviest_subject_count == 2
+
+
+def test_learner_stats_are_all_zero_for_a_fresh_student(db, student):
+    stats = xp.learner_stats(db, student["id"])
+    assert stats.lessons_done == 0
+    assert stats.quizzes_passed == 0
+    assert stats.heaviest_subject is None
+    assert stats.heaviest_subject_count == 0
