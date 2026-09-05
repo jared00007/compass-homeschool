@@ -9,7 +9,7 @@ from compass.ui import (
     api_status_banner,
     context_for,
     difficulty_override_control,
-    generate_and_log,
+    generate_series_and_log,
     is_parent,
     md,
     page_setup,
@@ -94,16 +94,15 @@ with plan_tab:
     proposal = agent.propose_topic(ctx)
     render_proposal(agent, proposal)
 
-    generate_and_log(
+    generate_series_and_log(
         db,
         student,
         agent,
         ctx,
         proposal,
         primary_subject="science",
-        spinner="The Science Agent is researching and writing…",
+        spinner="Planning the days and researching each lesson — this can take a few minutes.",
         api_ok=api_ok,
-        location=location,
     )
 
 with web_tab:

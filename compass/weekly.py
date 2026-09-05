@@ -390,7 +390,19 @@ def due_lessons(lessons: list[dict[str, Any]], today: str) -> list[dict[str, Any
         if not ((lesson.get("metadata") or {}).get("planned_for") or "") > today
         and not is_backlogged(lesson, today)
     ]
-    due.sort(key=lambda lesson: (lesson.get("metadata") or {}).get("planned_for") or "9999-99-99")
+
+    def _order(lesson: dict[str, Any]) -> tuple[str, int]:
+        metadata = lesson.get("metadata") or {}
+        # A multi-day series carries no `planned_for` -- it walks in
+        # `series_index` order instead, so day 1 shows before day 2 regardless
+        # of which was generated (or listed) first. The sort is stable, so
+        # non-series lessons (all index 0) keep the caller's input order.
+        return (
+            metadata.get("planned_for") or "9999-99-99",
+            int(metadata.get("series_index") or 0),
+        )
+
+    due.sort(key=_order)
     return due
 
 

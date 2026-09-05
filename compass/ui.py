@@ -529,6 +529,96 @@ def generate_and_log(
     )
 
 
+def generate_series_and_log(
+    db: Database,
+    student: dict[str, Any],
+    agent: LessonAgent,
+    ctx: StudentContext,
+    proposal: Any,
+    *,
+    primary_subject: str,
+    spinner: str,
+    api_ok: bool,
+) -> None:
+    """Generate a whole topic as a multi-day series in one click.
+
+    The parent picks the topic (the `proposal`); the generator decides how many
+    days it needs and writes each as a full fixed-shape lesson. The days carry
+    no calendar date -- they queue for him in order and he works through them one
+    at a time -- so there's nothing here to schedule and no per-lesson hours form
+    (hours log when each day is approved in review). Reported: for math "no
+    reason to have days associated with it ... just pick a topic and chunk it out
+    by however many days it takes."
+    """
+    state_key = f"{agent.key}_series"
+
+    pending = [
+        lesson
+        for lesson in db.list_lessons(student["id"], agent=agent.key, limit=20)
+        if lesson["status"] in ("planned", "submitted", "needs_revision")
+    ]
+    if pending:
+        st.warning(
+            f"⚠️ **{len(pending)}** {agent.name.replace(' Agent', '')} lesson(s) are already "
+            "open for him. Generating a new series adds to that queue — clear or review the "
+            "open ones from Mission Control → Review first if you don't want them stacking up."
+        )
+
+    st.caption(
+        "One click generates the whole topic as a series of day-sized lessons — the "
+        "generator decides how many days it needs. They queue for him in order, no days "
+        "to assign."
+    )
+    if st.button(
+        "✍️ Generate the full series",
+        type="primary",
+        disabled=not api_ok or proposal.blocked,
+        key=f"{agent.key}_gen_series",
+    ):
+        with st.spinner(spinner):
+            try:
+                results = agent.generate_series(ctx, proposal)
+            except LessonGenerationError as exc:
+                st.error(str(exc))
+                return
+        st.session_state[state_key] = {
+            "topic": proposal.topic,
+            "days": [
+                {
+                    "title": r.payload.get("title") or "Lesson",
+                    "focus": (r.proposal.metadata or {}).get("series_focus", "")
+                    if hasattr(r.proposal, "metadata")
+                    else "",
+                    "warnings": r.warnings,
+                }
+                for r in results
+            ],
+        }
+        st.rerun()
+
+    summary = st.session_state.get(state_key)
+    if not summary:
+        return
+
+    st.divider()
+    days = summary["days"]
+    st.success(
+        f"✅ Generated **{len(days)}** {'day' if len(days) == 1 else 'days'} for "
+        f"“{summary['topic']}.” They're queued for him in order on his {primary_subject.title()} "
+        "page — he'll get day 1 first, and the next opens as he finishes each."
+    )
+    for index, day in enumerate(days, start=1):
+        st.markdown(f"**Day {index}.** {md(day['title'])}")
+        if day.get("focus"):
+            st.caption(md(day["focus"]))
+        for warning in day.get("warnings") or []:
+            st.caption(f"⚠️ {warning}")
+    st.caption("Grade each day from Mission Control → Review as he turns it in.")
+    if st.button("Clear this summary", key=f"{agent.key}_series_clear"):
+        del st.session_state[state_key]
+        st.rerun()
+
+
 def difficulty_override_control(db: Database, key: str) -> str:
     """A per-generation difficulty override for one subject's Plan tab.
 

@@ -447,6 +447,128 @@ class LessonAgent:
             lesson_id=lesson_id, proposal=proposal, payload=payload, warnings=warnings
         )
 
+    # -- step 2b: write a whole topic as a multi-day series ------------------
+
+    def _day_proposal(
+        self,
+        base: TopicProposal,
+        day: dict[str, str],
+        index: int,
+        total: int,
+        prior_titles: list[str],
+    ) -> TopicProposal:
+        """A per-day view of the base proposal: same topic and context, but
+        pointed at just this day's focus and told what the earlier days already
+        covered, so the model teaches one chunk without re-teaching or racing
+        ahead. A one-day series is just the base topic, untouched."""
+        if total <= 1:
+            return base
+        context = list(base.context_lines or [])
+        context.append(f"This is day {index + 1} of {total} in a multi-day series on: {base.topic}.")
+        if prior_titles:
+            context.append(
+                "Earlier days already covered these — do NOT reteach them: "
+                + "; ".join(prior_titles) + "."
+            )
+        context.append(f"TODAY's focus — teach and check only this: {day['focus']}")
+        guidance = (base.guidance + "\n" if base.guidance else "") + (
+            "This lesson is one day of a series. Teach ONLY today's focus above; don't "
+            "re-teach earlier days or jump ahead to later ones. Keep the fixed lesson "
+            "shape: Learn, one worked example, exactly two graded activities, a short quiz."
+        )
+        from dataclasses import replace
+
+        return replace(
+            base,
+            topic=f"{base.topic} — Day {index + 1}: {day['title']}",
+            context_lines=context,
+            guidance=guidance,
+        )
+
+    def generate_series(
+        self,
+        ctx: StudentContext,
+        proposal: TopicProposal | None = None,
+        *,
+        plan: list[dict[str, str]] | None = None,
+    ) -> list[GeneratedLesson]:
+        """Write a whole topic as an ordered series of fixed-shape lessons.
+
+        The generator decides how many days the topic needs (see
+        `series.plan_lesson_series`) and every day is written by this agent's
+        normal path, so each is a complete Learn -> worked example -> two graded
+        activities -> quiz lesson. The days carry no `planned_for` date: they
+        queue for him in `series_index` order and he works through them one at a
+        time, which is what drops the day-by-day scheduling the parent didn't
+        want. `plan` can be passed in to skip the planning call (tests, or a
+        parent who edited the day breakdown first)."""
+        from uuid import uuid4
+
+        from compass.agents.series import plan_lesson_series
+        from compass import subjects
+
+        proposal = proposal or self.propose_topic(ctx)
+        if proposal.blocked:
+            raise LessonGenerationError(proposal.blocked_reason or "This agent is blocked.")
+
+        if plan is None:
+            plan = plan_lesson_series(
+                topic=proposal.topic,
+                subject_label=subjects.label(self.spec.primary_subject),
+                grade=ctx.grade,
+                minutes_per_day=ctx.minutes,
+                context="\n".join(proposal.context_lines or []),
+            )
+        # A blank or unusable plan still produces one real lesson rather than
+        # nothing -- a single-day series on the whole topic.
+        if not plan:
+            plan = [{"title": proposal.topic, "focus": proposal.topic}]
+
+        series_id = f"{self.spec.key}-{uuid4().hex[:8]}"
+        total = len(plan)
+        results: list[GeneratedLesson] = []
+        prior_titles: list[str] = []
+        for index, day in enumerate(plan):
+            day_proposal = self._day_proposal(proposal, day, index, total, prior_titles)
+            payload = generate_lesson(
+                system=self.build_system_prompt(ctx),
+                user_prompt=self.spec.build_user_prompt(ctx, day_proposal),
+                use_web_search=self.spec.use_web_search,
+                max_web_searches=self.spec.max_web_searches,
+                effort=ctx.effort,
+            )
+            warnings = self._normalize(payload, day_proposal, ctx)
+            metadata = dict(proposal.metadata or {})
+            metadata.update(
+                {
+                    "series_id": series_id,
+                    "series_index": index,
+                    "series_total": total,
+                    "series_title": proposal.topic,
+                    "series_focus": day["focus"],
+                }
+            )
+            lesson_id = ctx.db.save_lesson(
+                student_id=ctx.student_id,
+                agent=self.spec.key,
+                subject=self.spec.primary_subject,
+                topic=payload.get("topic") or day["title"] or proposal.topic,
+                title=payload.get("title") or day["title"] or proposal.topic,
+                payload=payload,
+                strategy=proposal.strategy,
+                rationale=proposal.rationale,
+                metadata=metadata,
+            )
+            if self.spec.post_process:
+                self.spec.post_process(ctx, day_proposal, payload)
+            results.append(
+                GeneratedLesson(
+                    lesson_id=lesson_id, proposal=day_proposal, payload=payload, warnings=warnings
+                )
+            )
+            prior_titles.append(day["title"] or day["focus"])
+        return results
+
     # -- step 3: keep the model honest ---------------------------------------
 
     def _normalize(

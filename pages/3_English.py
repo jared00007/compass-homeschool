@@ -16,7 +16,7 @@ from compass.ui import (
     api_status_banner,
     context_for,
     difficulty_override_control,
-    generate_and_log,
+    generate_series_and_log,
     is_parent,
     md,
     page_setup,
@@ -118,7 +118,7 @@ with plan_tab:
     proposal = agent.propose_topic(ctx)
     render_proposal(agent, proposal)
 
-    generate_and_log(
+    generate_series_and_log(
         db,
         student,
         agent,
@@ -129,12 +129,11 @@ with plan_tab:
         # model's own subject_credits ever comes back empty, but it should
         # still describe the lesson accurately when it is used.
         primary_subject="reading" if book else "writing",
-        spinner="The English Agent is writing the lesson…",
+        spinner="Planning the days and writing each lesson — this can take a few minutes.",
         api_ok=api_ok,
-        after_render=(
-            "Any `VOCAB:` lines in the materials were added to his "
-            "spaced-repetition deck."
-        ),
+    )
+    st.caption(
+        "Any `VOCAB:` lines in a day's materials are added to his spaced-repetition deck."
     )
 
 # --- books -------------------------------------------------------------------
