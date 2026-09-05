@@ -125,16 +125,42 @@ def page_setup(title: str, icon: str = "🧭") -> tuple[Database, dict[str, Any]
     # Before anything renders, so the page never flashes unstyled.
     st.markdown(theming.css(), unsafe_allow_html=True)
     _sidebar(db, student)
+    # Any page reached from a hub (not its own sidebar entry) gets its way back
+    # automatically -- a page that isn't in the sidebar must never be a dead
+    # end, and that's a property of the page's place in the app, not something
+    # each page should have to remember to add by hand.
+    _render_hub_back(title)
     return db, student
 
 
-def render_back_to_courses() -> None:
-    """The trip back from a subject page to the Courses hub. The four core
-    subjects are reached from that hub now (pages/17_Courses.py), not their own
-    sidebar entries, so each one offers the way back rather than being a dead
-    end -- the same pattern the folded parent pages use for Mission Control."""
-    if st.button("← Back to Courses", key="back_to_courses"):
-        st.switch_page("pages/17_Courses.py")
+# Pages that live behind a hub rather than their own sidebar entry, mapped to
+# the hub they belong to -- keyed by the `title` each passes to page_setup. Add
+# a page here (or fold one behind a hub) and it gets a "← Back to <hub>" button
+# for free; nothing renders for a top-level page that isn't listed.
+_HUB_BACK: dict[str, tuple[str, str]] = {
+    # The four core subjects live behind the Courses hub.
+    "Math": ("Courses", "pages/17_Courses.py"),
+    "Science": ("Courses", "pages/17_Courses.py"),
+    "English": ("Courses", "pages/17_Courses.py"),
+    "History": ("Courses", "pages/17_Courses.py"),
+    # The parent-admin pages live behind Mission Control.
+    "Course records": ("Mission Control", "pages/14_Mission_Control.py"),
+    "Student Profile": ("Mission Control", "pages/14_Mission_Control.py"),
+    "Compliance": ("Mission Control", "pages/14_Mission_Control.py"),
+    "Model Costs": ("Mission Control", "pages/14_Mission_Control.py"),
+}
+
+
+def _render_hub_back(title: str) -> None:
+    """The automatic "back" affordance for a hub-reached page (see `_HUB_BACK`).
+    No-op for a top-level page. One shared key so a page never accidentally
+    stacks two."""
+    target = _HUB_BACK.get(title)
+    if target is None:
+        return
+    hub_label, hub_path = target
+    if st.button(f"← Back to {hub_label}", key="hub_back"):
+        st.switch_page(hub_path)
 
 
 # --- parent / student mode ---------------------------------------------------

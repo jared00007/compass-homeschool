@@ -70,10 +70,16 @@ def test_the_courses_page_has_a_button_per_core_subject(monkeypatch, tmp_path):
         assert any(subject in label for label in button_labels), f"no {subject} button"
 
 
-def test_a_subject_page_offers_a_way_back_to_courses(monkeypatch, tmp_path):
-    """The subjects are reached from the Courses hub now, not the sidebar, so
-    each subject page offers a "Back to Courses" button rather than being a
-    dead end."""
+def test_a_hub_reached_page_gets_a_back_button_automatically(monkeypatch, tmp_path):
+    """A page reached from a hub (not its own sidebar entry) is never a dead
+    end: page_setup renders its "← Back to <hub>" button automatically from the
+    _HUB_BACK registry -- so a subject page goes back to Courses, and it's a
+    property of the page's place in the app, not per-page boilerplate."""
+    from compass import ui
+
+    assert ui._HUB_BACK["Math"][0] == "Courses"
+    assert ui._HUB_BACK["Student Profile"][0] == "Mission Control"
+
     st.cache_resource.clear()
     monkeypatch.setattr(config, "DEFAULT_DB_PATH", _seed(tmp_path))
     at = AppTest.from_file(HOME_PATH)  # entrypoint, so nav page-links resolve
@@ -81,7 +87,9 @@ def test_a_subject_page_offers_a_way_back_to_courses(monkeypatch, tmp_path):
     at.switch_page(str(REPO_ROOT / "pages" / "1_Math.py"))
     at.run(timeout=30)
     assert not at.exception, [e.message for e in at.exception]
-    assert any((b.key or "") == "back_to_courses" for b in at.button), "no back button"
+    back = [b for b in at.button if (b.key or "") == "hub_back"]
+    assert back, "no automatic back button"
+    assert "Courses" in (back[0].label or "")
 
 
 def test_mission_control_is_a_parent_only_nav_entry(monkeypatch, tmp_path):

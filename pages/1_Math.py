@@ -20,7 +20,6 @@ from compass.ui import (
     generate_and_log,
     is_parent,
     page_setup,
-    render_back_to_courses,
     render_past_lessons,
     render_proposal,
     render_subject_week_tab,
@@ -30,7 +29,6 @@ from compass.ui import (
 db, student = page_setup("Math", icon="📐")
 agent = get_agent("math")
 
-render_back_to_courses()
 st.title("📐 Math Agent")
 st.caption(
     "Walks a hand-authored 8th-grade prerequisite graph. A skill unlocks only when "

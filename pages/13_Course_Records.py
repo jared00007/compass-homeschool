@@ -42,11 +42,6 @@ st.caption(
 if not parent_only("Course records are for your parent."):
     st.stop()
 
-# Reached by a button on Mission Control now (not its own sidebar entry), so
-# offer the trip back rather than leaving a folded page as a dead end.
-if st.button("← Back to Mission Control", key="courses_back_to_mc"):
-    st.switch_page("pages/14_Mission_Control.py")
-
 api_ok = api_status_banner()
 
 courses = db.list_courses(student["id"])

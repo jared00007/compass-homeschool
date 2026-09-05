@@ -18,11 +18,6 @@ db, student = page_setup("Student Profile", icon="🧑‍🎓")
 if not parent_only("This page is for your parent."):
     st.stop()
 
-# Reached by a button on Mission Control now (not its own sidebar entry), so
-# offer the trip back rather than leaving a folded page as a dead end.
-if st.button("← Back to Mission Control", key="profile_back_to_mc"):
-    st.switch_page("pages/14_Mission_Control.py")
-
 st.title("🧑‍🎓 Student Profile")
 st.caption("Everything the agents read before writing a lesson.")
 
