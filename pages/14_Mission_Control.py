@@ -68,11 +68,17 @@ if not parent_only("Weekly planning is for your parent."):
     st.stop()
 
 # Parent-admin pages fold in here instead of cluttering the sidebar, reached by
-# a button (not another tab). Courses is the first to move; Compliance, Profile
-# and Spend can join this row the same way.
+# a button (not another tab). Everything a parent (and only a parent) manages
+# now hangs off this one hub, so the sidebar is just the student's own subjects.
 _hub_links = st.columns(4)
 if _hub_links[0].button("📚 Courses", width="stretch", key="hub_courses"):
     st.switch_page("pages/13_Courses.py")
+if _hub_links[1].button("🧑‍🎓 Profile", width="stretch", key="hub_profile"):
+    st.switch_page("pages/12_Student_Profile.py")
+if _hub_links[2].button("📋 Compliance", width="stretch", key="hub_compliance"):
+    st.switch_page("pages/11_Compliance.py")
+if _hub_links[3].button("💵 Spend", width="stretch", key="hub_costs"):
+    st.switch_page("pages/15_Model_Costs.py")
 st.divider()
 
 AGENTS = all_agents()

@@ -60,17 +60,24 @@ def _md(tab):
 # --- the queue: turned in, overdue, sent back, still planned --------------------
 
 
-def test_mission_control_has_a_courses_button(monkeypatch, tmp_path):
-    """Courses folded off the sidebar into a button on Mission Control -- the
-    first of the parent-admin pages to move into this hub."""
+def test_mission_control_hub_gathers_the_parent_admin_pages(monkeypatch, tmp_path):
+    """Every parent-admin page folds off the sidebar into a button on Mission
+    Control, and each is hidden from the sidebar for both of you -- the sidebar
+    is just the student's own subjects now, and the parent reaches the rest
+    through this one hub."""
     db_path = tmp_path / "hub.db"
     db = Database(db_path)
     db.ensure_default_student()
     db.close()
 
     at, _ = _open_review_tab(monkeypatch, db_path)
-    assert any((b.key or "") == "hub_courses" for b in at.button), "no Courses button on Mission Control"
-    assert "Courses" in ui._FOLDED_IN_PAGES, "Courses must be hidden from the sidebar"
+    button_keys = {b.key or "" for b in at.button}
+    for key in ("hub_courses", "hub_profile", "hub_compliance", "hub_costs"):
+        assert key in button_keys, f"no {key} button on Mission Control"
+    for slug in ("Courses", "Student_Profile", "Compliance", "Model_Costs"):
+        assert slug in ui._FOLDED_IN_PAGES, f"{slug} must be hidden from the sidebar"
+    # Mission Control itself stays reachable in the sidebar (parent-only).
+    assert ui._PARENT_ONLY_PAGES == ("Mission_Control",)
 
 
 def test_a_submitted_lesson_surfaces_open_in_waiting_on_you(monkeypatch, tmp_path):

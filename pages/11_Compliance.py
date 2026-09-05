@@ -28,6 +28,11 @@ db, student = page_setup("Compliance", icon="📋")
 if not parent_only("The hours record and settings are for your parent."):
     st.stop()
 
+# Reached by a button on Mission Control now (not its own sidebar entry), so
+# offer the trip back rather than leaving a folded page as a dead end.
+if st.button("← Back to Mission Control", key="compliance_back_to_mc"):
+    st.switch_page("pages/14_Mission_Control.py")
+
 st.title("📋 WA Compliance")
 st.caption(
     "Washington requires instruction across eleven subjects and 1,000 instructional "

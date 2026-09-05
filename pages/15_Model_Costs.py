@@ -18,6 +18,11 @@ db, student = page_setup("Model Costs", icon="💵")
 if not parent_only("Spend on lesson generation is for your parent."):
     st.stop()
 
+# Reached by a button on Mission Control now (not its own sidebar entry), so
+# offer the trip back rather than leaving a folded page as a dead end.
+if st.button("← Back to Mission Control", key="costs_back_to_mc"):
+    st.switch_page("pages/14_Mission_Control.py")
+
 st.title("💵 Model Costs")
 st.caption(
     "What generating this student's lessons actually costs, computed from the "

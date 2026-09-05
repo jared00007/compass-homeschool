@@ -188,11 +188,11 @@ def _sidebar(db: Database, student: dict[str, Any]) -> None:
 # parent_only(), so hiding the tab is UX cleanup on top of that, not the only
 # thing standing between him and it: typing the URL directly still hits the
 # same PIN gate the tab would have.
+# Mission Control is the parent's hub and stays in the sidebar (hidden only
+# from the student); the other parent-admin pages now fold into it as buttons
+# (see _FOLDED_IN_PAGES) rather than each keeping its own sidebar entry.
 _PARENT_ONLY_PAGES = (
-    "Compliance",
-    "Student_Profile",
     "Mission_Control",
-    "Model_Costs",
 )
 
 # Folded into another page rather than removed -- Choice Topics and Coding
@@ -209,10 +209,13 @@ _FOLDED_IN_PAGES = (
     "Choice_Topics",
     "Landons_Travels",
     "Coding",
-    # Courses is a full parent page still, but reached by a button on Mission
-    # Control now (see pages/14_Mission_Control.py) rather than its own sidebar
-    # entry -- the first of the parent-admin pages to fold into that hub.
+    # The parent-admin pages: still full pages, but reached by a button row on
+    # Mission Control (see pages/14_Mission_Control.py) rather than their own
+    # sidebar entries -- the sidebar is now just the student's own subjects.
     "Courses",
+    "Student_Profile",
+    "Compliance",
+    "Model_Costs",
 )
 
 

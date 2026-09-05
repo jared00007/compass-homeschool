@@ -344,10 +344,11 @@ def test_student_view_never_hides_streamlits_own_view_more_toggle(monkeypatch):
 
 
 def test_student_view_hides_the_parent_only_nav_tabs(monkeypatch):
-    """Activity Log, Compliance, Student Profile, Courses, This Week, and Model
-    Costs are all parent admin -- record-keeping, settings, spend -- rather than
-    something he does. Each already gates its own content behind parent_only(),
-    but the tab itself has to disappear too, not just the content behind it."""
+    """Mission Control is parent admin -- weekly planning plus the hub of
+    buttons to every other parent page -- rather than something he does. It
+    already gates its own content behind parent_only(), but the tab itself has
+    to disappear too, not just the content behind it. (The other parent pages
+    are folded off the sidebar entirely now -- see _FOLDED_IN_PAGES.)"""
     import compass.ui as ui
 
     written: list[str] = []
