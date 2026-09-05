@@ -21,6 +21,7 @@ from compass.ui import (
     render_board_days,
     render_brain_break,
     render_card_heading,
+    render_daily_due,
     render_declaration_banner,
     render_first_day_celebration,
     render_morning_routine,
@@ -138,6 +139,11 @@ if not is_parent():
     with header_columns[1]:
         with st.container(border=True, key="landon_card_streak"):
             render_streak(db, student)
+            # The day's small recurring work (words, reading, life skills) folds
+            # in here beside the streak/KPIs rather than a separate tile row --
+            # only on the Today view, where "what do I owe today" belongs.
+            if active_view == "today":
+                render_daily_due(db, student, date.today().isoformat())
 
     st.divider()
 
@@ -449,87 +455,10 @@ if not is_parent():
                         )
                         st.rerun()
 
-        # 3. Words to Review, Reading, and Life Skills all in one row of
-        # three equal columns -- small, single-purpose tiles that each just
-        # say what's outstanding and link to where it's actually done,
-        # rather than each getting its own full-width or half-width row.
-        # Cuts the page's overall length versus stacking them, and every
-        # tile always renders (even with nothing due) so the row never
-        # shifts shape depending on what's assigned.
-        #
-        # Life Skills' own tile also folds in Student's Choice and Coding --
-        # both now live as tabs on the same page (see pages/6_Life_Skills.py),
-        # so a separate tile per tab would just be the same "Open Life
-        # Skills" link three times over. One tile, one link; the due-skills
-        # list stays the tile's primary content since that's the one with
-        # actual per-item day tracking, with the other two as compact counts.
-        due_skills = db.due_life_skills(student["id"], today)
-        upcoming_skills = db.upcoming_life_skills(student["id"], today)
-        later_skills_this_week = sum(
-            1 for s in upcoming_skills if s["scheduled_for"] <= this_week_end
-        )
-        later_skills_week = len(upcoming_skills) - later_skills_this_week
-
-        due = db.vocabulary_due(student["id"], limit=25)
-        book = db.current_book(student["id"])
-        topics = [
-            t
-            for t in db.list_choice_topics(student["id"])
-            if t["status"] in ("active", "approved")
-        ]
-        due_coding = db.due_coding_modules(student["id"], today)
-
-        extras_columns = st.columns(3)
-        with extras_columns[0]:
-            with st.container(border=True, key="landon_card_words"):
-                render_card_heading("🔤 Words to Review")
-                if due:
-                    st.caption(f"{len(due)} word(s) due today.")
-                    st.page_link("pages/3_English.py", label="Review them", icon="➡️")
-                else:
-                    st.success("✅ Nothing due today.")
-        with extras_columns[1]:
-            with st.container(border=True, key="landon_card_reading"):
-                render_card_heading("📖 Reading")
-                if book:
-                    st.markdown(f"**{md(book['title'])}**")
-                    if book["total_pages"]:
-                        st.progress(
-                            min((book["current_page"] or 0) / book["total_pages"], 1.0),
-                            text=f"page {book['current_page']} of {book['total_pages']}",
-                        )
-                    st.page_link("pages/3_English.py", label="Open English", icon="➡️")
-                else:
-                    st.caption("No book set up yet.")
-        with extras_columns[2]:
-            with st.container(border=True, key="landon_card_lifeskills"):
-                render_card_heading(f"🛠️ Life Skills ({len(due_skills)})")
-                # `due_life_skills`/`upcoming_life_skills` -- see those
-                # docstrings for why "assigned" is `<=`/`>` today, not `==`:
-                # a family that never assigns a day never sees anything
-                # here but the plain "nothing assigned" state.
-                if due_skills:
-                    for skill in due_skills:
-                        when = (
-                            "today" if skill["scheduled_for"] == today
-                            else f"since {skill['scheduled_for']}"
-                        )
-                        st.page_link(
-                            "pages/6_Life_Skills.py",
-                            label=f"{md(skill['title'])} — {when}",
-                            icon="🛠️",
-                        )
-                else:
-                    st.caption("Nothing due today.")
-                if later_skills_this_week:
-                    st.caption(f"+{later_skills_this_week} later this week")
-                if later_skills_week:
-                    st.caption(f"+{later_skills_week} later")
-                if topics:
-                    st.caption(f"⭐ {len(topics)} on Student's Choice")
-                if due_coding:
-                    st.caption(f"💻 {len(due_coding)} coding module(s) due")
-                st.page_link("pages/6_Life_Skills.py", label="Open Life Skills", icon="➡️")
+        # Words to Review, Reading, and Life Skills used to be a three-tile row
+        # here; they're now folded into the header card beside the streak/KPIs
+        # (render_daily_due), so "what do I owe today" lives in one place up top
+        # instead of a second row lower down the page.
 
         render_today_checklist(db, student)
 

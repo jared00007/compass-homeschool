@@ -3265,6 +3265,77 @@ def _render_learner_kpis(db: Database, student: dict[str, Any]) -> None:
         )
 
 
+def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
+    """The day's small recurring work -- words to review, where his book is,
+    and any life skills due -- folded into the header card beside the streak
+    and KPIs instead of a separate three-tile row lower down. Reported: "fold
+    in the daily work for reading words, life skills KPI and if any are due
+    that day, and reading progression of book up in this one container." Kept
+    compact for the narrow half-width card: one line each, a link when there's
+    something to do, a quiet caption when there isn't."""
+    due_words = db.vocabulary_due(student["id"], limit=25)
+    book = db.current_book(student["id"])
+    due_skills = db.due_life_skills(student["id"], today)
+    later_skills = len(db.upcoming_life_skills(student["id"], today))
+    topics = [
+        t
+        for t in db.list_choice_topics(student["id"])
+        if t["status"] in ("active", "approved")
+    ]
+    due_coding = db.due_coding_modules(student["id"], today)
+
+    st.divider()
+    st.markdown("**📌 Due today**")
+
+    if due_words:
+        st.page_link(
+            "pages/3_English.py",
+            label=f"🔤 {len(due_words)} word{'s' if len(due_words) != 1 else ''} to review",
+            icon="➡️",
+        )
+    else:
+        st.caption("🔤 Words — caught up ✅")
+
+    if book:
+        if book.get("total_pages"):
+            st.progress(
+                min((book["current_page"] or 0) / book["total_pages"], 1.0),
+                text=f"📖 {book['title']} · p{book['current_page']}/{book['total_pages']}",
+            )
+        else:
+            st.caption(f"📖 {md(book['title'])}")
+    else:
+        st.caption("📖 No book set up yet.")
+
+    st.markdown(f"🛠️ **Life Skills ({len(due_skills)})**")
+    if due_skills:
+        for skill in due_skills:
+            when = (
+                "today"
+                if skill["scheduled_for"] == today
+                else f"since {skill['scheduled_for']}"
+            )
+            st.page_link(
+                "pages/6_Life_Skills.py",
+                label=f"{md(skill['title'])} — {when}",
+                icon="➡️",
+            )
+    else:
+        st.caption("Nothing due ✅")
+    if later_skills:
+        st.caption(f"+{later_skills} later")
+
+    # Student's Choice and Coding fold in here too -- both live on the same Life
+    # Skills page now, so they ride as a compact count rather than a card apiece.
+    side_bits: list[str] = []
+    if topics:
+        side_bits.append(f"⭐ {len(topics)} Choice")
+    if due_coding:
+        side_bits.append(f"💻 {len(due_coding)} coding due")
+    if side_bits:
+        st.caption(" · ".join(side_bits))
+
+
 def render_today_checklist(db: Database, student: dict[str, Any]) -> bool:
     """His own "what I did today" list -- a fun accomplishment checklist, not
     a compliance record. Built entirely from his own signals (student_done_on,

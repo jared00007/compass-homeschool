@@ -326,12 +326,12 @@ def test_the_move_control_never_shows_in_the_students_checklist(monkeypatch, tmp
     assert move_keys == []
 
 
-def test_home_life_skills_tile_shows_the_empty_state_when_nothing_is_assigned(
+def test_home_life_skills_shows_the_empty_state_when_nothing_is_assigned(
     monkeypatch, tmp_path
 ):
-    """The Life Skills tile always renders (it's one of three fixed columns
-    in that row), but a family that never assigns a day should see its
-    plain empty state, not a due item that was never actually assigned."""
+    """The folded 'Due today' block always renders, but a family that never
+    assigns a day should see its plain caught-up state, not a due item that
+    was never actually assigned."""
     db_path = tmp_path / "home.db"
     database = Database(db_path)
     s = database.ensure_default_student()
@@ -343,16 +343,16 @@ def test_home_life_skills_tile_shows_the_empty_state_when_nothing_is_assigned(
     text = " ".join(m.value for m in at.markdown)
     assert "Life Skills (0)" in text
     labels = [pl.label for pl in at.get("page_link")]
-    assert any("Open Life Skills" in label for label in labels)
     assert not any("Bake bread" in label for label in labels)
 
 
-def test_home_merges_choice_topics_and_coding_into_the_life_skills_tile(monkeypatch, tmp_path):
+def test_home_merges_choice_topics_and_coding_into_the_daily_due_block(monkeypatch, tmp_path):
     """Reported directly: Life Skills and Choice Topics (and, once Coding
     folded into the same page too, Coding) used to each get their own
     fixed-column tile on Home, all three of them pointing at the exact same
-    page -- "theres should really be one." One tile now carries a compact
-    count for the other two rather than a whole separate card apiece."""
+    page -- "theres should really be one." The folded 'Due today' block now
+    carries a compact count for Choice and Coding rather than a whole separate
+    card apiece."""
     db_path = tmp_path / "home.db"
     database = Database(db_path)
     s = database.ensure_default_student()
@@ -365,14 +365,11 @@ def test_home_merges_choice_topics_and_coding_into_the_life_skills_tile(monkeypa
 
     at = _open_home(monkeypatch, db_path)
     captions = [c.value for c in at.caption]
-    assert any("1 on Student's Choice" in c for c in captions)
-    assert any("1 coding module(s) due" in c for c in captions)
-    # No separate "Choice Topics" card heading anymore -- it's the same tile.
+    assert any("⭐ 1 Choice" in c for c in captions)
+    assert any("💻 1 coding due" in c for c in captions)
+    # No separate "Choice Topics" card heading anymore -- it's the same block.
     markdowns = [m.value for m in at.markdown]
     assert not any("Choice Topics" in m for m in markdowns)
-    # Exactly one link to the page, not one per folded-in feature.
-    labels = [pl.label for pl in at.get("page_link")]
-    assert labels.count("Open Life Skills") == 1
 
 
 def test_a_skill_assigned_for_later_shows_an_upcoming_hint_on_home(monkeypatch, tmp_path):
