@@ -1206,6 +1206,52 @@ def _render_activity_comic_panel(
                 st.rerun()
 
 
+def _render_learn_section(lesson: dict[str, Any], *, parent: bool) -> None:
+    """The teaching half of the fixed lesson shape -- the Learn explanation (with
+    its one video) and the walked-through Worked example -- rendered before the
+    two graded activities. Silent on an old-shape lesson that has neither, so it
+    layers in without disturbing how existing lessons render."""
+    learn = lesson.get("learn") or {}
+    explanation = (learn.get("explanation") or "").strip()
+    worked = lesson.get("worked_example") or {}
+    problem = (worked.get("problem") or "").strip()
+    steps = (worked.get("steps") or "").strip()
+
+    if explanation:
+        st.markdown("### 📗 Learn")
+        st.write(md(explanation))
+        video = learn.get("video") or {}
+        if video.get("found") and video.get("url"):
+            st.markdown(f"▶️ **[{md(video.get('title', 'Watch'))}]({video['url']})**")
+            bits = [b for b in (video.get("channel"), video.get("why")) if b]
+            if bits:
+                st.caption(" — ".join(bits))
+            if parent:
+                st.caption(
+                    "Checked against a real search result and restricted to YouTube, "
+                    "but Compass doesn't control what YouTube recommends after it ends."
+                )
+
+    if problem or steps:
+        st.markdown("### 🧭 Let's do one together")
+        st.caption("Worked all the way through, so you can see how — you're not graded on this one.")
+        if problem:
+            st.markdown(f"**{md(problem)}**")
+        if steps:
+            st.markdown(
+                f'<div style="background:var(--c-panel); border-left:3px solid '
+                f'var(--c-alt); border-radius:var(--c-radius); padding:10px 14px; '
+                f'margin:6px 0 12px; font-size:14px;">'
+                f'{html.escape(steps).replace(chr(10), "<br>")}</div>',
+                unsafe_allow_html=True,
+            )
+
+    if explanation or problem or steps:
+        # The graded work starts here -- a clear line between "taught" and "your
+        # turn," since the two activities below are what actually get a grade.
+        st.markdown("### ✏️ Now you try")
+
+
 def render_lesson(
     lesson: dict[str, Any],
     for_parent: bool | None = None,
@@ -1269,6 +1315,10 @@ def render_lesson(
                         for item in materials:
                             st.markdown(f"- {md(item)}")
 
+            # The teaching half (Learn + Worked example) comes before the two
+            # graded activities in the fixed lesson shape.
+            _render_learn_section(lesson, parent=parent)
+
             # Single column, full width -- pairing two activities per row
             # (the original comic-grid mockup) left mismatched-height cards
             # squeezed side by side whenever one activity had more to show
@@ -1298,6 +1348,8 @@ def render_lesson(
             st.markdown("**Materials**")
             for item in materials:
                 st.markdown(f"- {md(item)}")
+
+        _render_learn_section(lesson, parent=parent)
 
         if activities:
             st.markdown("**Activities**")
@@ -2422,6 +2474,10 @@ def render_lesson_review(
                 st.markdown("**Materials**")
                 for item in materials:
                     st.markdown(f"- {md(item)}")
+
+    # The teaching half he worked from -- shown here too so a parent grades with
+    # the same Learn and worked example in front of them that he had.
+    _render_learn_section(lesson, parent=True)
 
     for index, activity in enumerate(activities):
         with st.container(border=True):

@@ -369,6 +369,57 @@ def test_a_missing_flag_defaults_to_no_response():
     assert ui._needs_written_response({"kind": "instruction"}) is False
 
 
+def _fixed_shape_lesson(**overrides):
+    """A lesson in the new fixed shape: Learn -> Worked example -> two graded
+    activities (each with its own answer key) -> quiz."""
+    payload = {
+        "title": "Two-Step Equations",
+        "overview": "Undo the addition, then the multiplication.",
+        "learning_objectives": ["Solve for x"],
+        "learn": {
+            "explanation": "Undo the plus first, then the times. LEARN-BODY-TEXT.",
+            "video": {"found": False, "title": "", "url": "", "channel": "", "why": ""},
+        },
+        "worked_example": {
+            "problem": "Solve 4x - 7 = 13.",
+            "steps": "1) add 7 -> 4x=20. 2) divide by 4 -> x=5. WORKED-STEP-TEXT.",
+        },
+        "activities": [
+            {"title": "Solve four", "minutes": 15,
+             "instructions": "Solve 2x+5=17 and three more.",
+             "requires_written_response": False,
+             "writing_requirements": {"min_words": None, "max_words": None,
+                                       "min_sentences": None, "requires_quote": False},
+             "answer": "SECRET-ANSWER-KEY-x-is-6"},
+            {"title": "Catch the mistake", "minutes": 10,
+             "instructions": "Riley got x=6 for 3x-5=7. Check it.",
+             "requires_written_response": True,
+             "writing_requirements": {"min_words": None, "max_words": None,
+                                       "min_sentences": 2, "requires_quote": False},
+             "answer": "SECRET-ANSWER-KEY-riley-wrong"},
+        ],
+        "materials": ["Pencil"],
+        "quiz": [],
+        "subject_credits": [], "estimated_minutes": 45, "parent_notes": "", "branches": [],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_render_lesson_shows_learn_and_worked_example_but_hides_the_answer(monkeypatch):
+    """The teaching half renders before the activities, and the parent-only
+    answer key on each activity never reaches the student's screen."""
+    written: list[str] = []
+    monkeypatch.setattr(ui, "st", Recorder(written, {}))
+    monkeypatch.setattr(ui, "is_parent", lambda: False)
+    ui.render_lesson(_fixed_shape_lesson(), for_parent=False)
+    page = "\n".join(written)
+
+    assert "📗 Learn" in page and "LEARN-BODY-TEXT" in page
+    assert "Let's do one together" in page and "WORKED-STEP-TEXT" in page
+    assert "SECRET-ANSWER-KEY" not in page, "the answer key must never reach him"
+
+
 # --- student_lesson_view: his own "I'm done" signal, separate from `status` ---
 
 
