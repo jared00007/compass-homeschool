@@ -3033,13 +3033,22 @@ def student_lesson_view(
                 f"No {subject_label} lesson has been set up yet. Ask your parent to plan one."
             )
     else:
-        planned_for = (current.get("metadata") or {}).get("planned_for")
+        current_metadata = current.get("metadata") or {}
+        planned_for = current_metadata.get("planned_for")
         if planned_for:
             weekday = date.fromisoformat(planned_for).strftime("%A")
             if planned_for < date.today().isoformat():
                 st.caption(f"⚠️ Was due {weekday}")
             else:
                 st.caption(f"📅 {weekday} — today's lesson")
+        # Part of a multi-day series: show where he is in it, so a topic
+        # chunked across days reads as one journey, not a pile of separate
+        # lessons. The next part opens on its own as he finishes this one.
+        series_total = int(current_metadata.get("series_total") or 0)
+        if series_total > 1:
+            part = int(current_metadata.get("series_index") or 0) + 1
+            series_title = current_metadata.get("series_title") or "this topic"
+            st.caption(f"📚 Part {part} of {series_total} — *{md(series_title)}*")
         render_lesson(
             current["payload"],
             for_parent=False,
