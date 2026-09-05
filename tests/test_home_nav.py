@@ -70,6 +70,20 @@ def test_the_courses_page_has_a_button_per_core_subject(monkeypatch, tmp_path):
         assert any(subject in label for label in button_labels), f"no {subject} button"
 
 
+def test_a_subject_page_offers_a_way_back_to_courses(monkeypatch, tmp_path):
+    """The subjects are reached from the Courses hub now, not the sidebar, so
+    each subject page offers a "Back to Courses" button rather than being a
+    dead end."""
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", _seed(tmp_path))
+    at = AppTest.from_file(HOME_PATH)  # entrypoint, so nav page-links resolve
+    at.run(timeout=30)
+    at.switch_page(str(REPO_ROOT / "pages" / "1_Math.py"))
+    at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+    assert any((b.key or "") == "back_to_courses" for b in at.button), "no back button"
+
+
 def test_mission_control_is_a_parent_only_nav_entry(monkeypatch, tmp_path):
     """Mission Control is the one parent-only entry in the nav -- hidden from
     the student, shown once the parent view is unlocked."""

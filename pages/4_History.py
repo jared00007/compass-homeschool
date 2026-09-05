@@ -14,6 +14,7 @@ from compass.ui import (
     is_parent,
     md,
     page_setup,
+    render_back_to_courses,
     render_past_lessons,
     render_proposal,
     render_subject_week_tab,
@@ -21,6 +22,7 @@ from compass.ui import (
 )
 
 db, student = page_setup("History", icon="🏛️")
+render_back_to_courses()
 agent = get_agent("history")
 
 st.title("🏛️ History & Social Studies Agent")

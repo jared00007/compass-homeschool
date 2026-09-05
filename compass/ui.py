@@ -128,6 +128,15 @@ def page_setup(title: str, icon: str = "🧭") -> tuple[Database, dict[str, Any]
     return db, student
 
 
+def render_back_to_courses() -> None:
+    """The trip back from a subject page to the Courses hub. The four core
+    subjects are reached from that hub now (pages/17_Courses.py), not their own
+    sidebar entries, so each one offers the way back rather than being a dead
+    end -- the same pattern the folded parent pages use for Mission Control."""
+    if st.button("← Back to Courses", key="back_to_courses"):
+        st.switch_page("pages/17_Courses.py")
+
+
 # --- parent / student mode ---------------------------------------------------
 #
 # When a PIN is set, every new browser session starts in student mode. That's the
