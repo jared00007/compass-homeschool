@@ -181,103 +181,76 @@ is worth more than one that pads four.
 - Minutes per subject may exceed the lesson's total minutes when one activity \
 really does teach several subjects at once. That is the intent.
 
-## How a lesson is shaped: Learn → Practice → Prove
-Every lesson is one sitting with three parts, and {student_name} moves through \
-them in order. Keep them distinct — don't blur teaching into testing.
+## How a lesson is shaped: Learn → Worked example → Two checks → Quiz
+Every lesson has the same four parts, in this order — never more, never fewer. \
+The shape is FIXED so every day feels the same, not a different pile of \
+activities each time. One idea: taught once, modeled once, checked twice, \
+quizzed. Do not invent extra sections or split one idea across a crowded list \
+of activities.
 
-1. **Learn** — activities with `"phase": "learn"`. Where you *teach*: explain the \
-idea in plain language, show a worked example, point to a real video if one \
-genuinely helps. He is not graded here. Set him up to succeed.
-2. **Practice** — activities with `"phase": "practice"`. Where he *does the work \
-himself*: works problems, writes a draft, reads the assigned pages. This is the \
-heart of the lesson and where he actually improves, so **every practice activity \
-must be something he can get feedback on**. For an objective practice activity \
-(math problems, a labeling task — anything with a right answer), fill its \
-`self_check` with the worked answers to that activity's own problems: Compass \
-reveals them behind a "Check your work" toggle *after* he tries, so he sees where \
-he went wrong. An open-ended written response is coached by the parent instead \
-(leave `self_check` empty). Practice is not a separate grade to chase; its job is \
-to catch what he's getting wrong *before* it counts.
-3. **Prove** — the two things that make up his grade, and the only two: the \
-`quiz` (he takes it on screen, graded automatically) and the `assessment` (the \
-one finished piece of work he hands the parent to grade). Because he reaches these \
-already having practiced with feedback, they confirm what he learned rather than \
-testing him cold.
+1. **Learn** (`learn`) — the teaching section. Explain today's ONE idea in plain \
+language {student_name} reads on his own: what it is, why it matters, and a \
+short worked example inside the prose if it helps. He is not graded here — teach \
+it well enough that the two checks below are fair.
 
-That is the whole grade: the auto quiz and the paper he hands in. Everything in \
-Learn and Practice is scaffolding that gets him there.
+2. **Worked example** (`worked_example`) — ONE problem of exactly the type the \
+two checks will ask, solved for him start to finish. Break it into small, \
+numbered steps in plain language, and use a relatable hook or comparison where \
+one fits his age. This is the "let's do one together" that comes right before he \
+tries his own — he is NOT graded on it. Use DIFFERENT specifics than the \
+activities (different numbers, a different sentence): it models the move, it is \
+never the answer to his own problem.
 
-**Give him real practice in every lesson — and keep writing central.** A lesson \
-that only explains and then quizzes has no Practice phase; that's incomplete. At \
-least one practice activity per lesson, more when the length allows. Whenever the \
-subject can carry it — and in English it always can — make one of them a real \
-piece of writing he drafts and turns in, because writing only improves by writing \
-often and being coached on it.
+3. **Two checks** (`activities`) — EXACTLY TWO short comprehension checks on what \
+Learn just taught. Both are graded: he does each, and the parent grades it \
+against that activity's own `answer`. Keep each small and focused — a single \
+clear task, not a multi-part project. This is "did he get it?", not "prove \
+mastery of everything."
+- **Math and procedural subjects: keep them simple and objective** — a few \
+problems or a short computation — with an exact worked `answer`.
+- **Every other subject requires some writing** — a few sentences or a short \
+paragraph in his own words. Writing only improves by writing, so make him put \
+the idea into words.
+- `answer` is the full worked solution (math) or what a correct/complete \
+response must contain (writing), so a parent grades without solving it \
+themselves. **{student_name} NEVER sees `answer`.**
 
-## Model it before he does it
-Every activity needs its own `example` — a worked demonstration of exactly the \
-move he's about to make, shown once before he makes it himself. Set him up to \
-succeed; don't make the first time he sees the technique be the graded attempt.
+4. **Quiz** (`quiz`) — a quick, auto-marked quiz he takes himself (see below).
 
-- **Math, or anything with a procedure or a formula: a full step-by-step worked \
-solution**, every step shown, reasoning included, not just a final answer.
-- Writing practice: a model sentence or short paragraph demonstrating the \
-technique this activity is actually teaching.
-- Reading, discussion, or observation practice: a concrete example of what a \
-strong response or observation looks like.
-- **`example` must use different specifics than `instructions`** — different \
-numbers, a different sentence, a different scenario. It demonstrates the method; \
-it is never the answer to the problem he's actually being handed. An example \
-that doubles as his own assignment's answer key isn't practice anymore, it's \
-copying — same failure mode as leaking `assessment` into an activity, just \
-through the back door.
-- Every activity gets one. Not just the ones that feel like they need it.
+That is the whole lesson and the whole grade: the two graded checks plus the \
+quiz. If a topic is too big to teach once and check twice, it is two lessons, \
+not one crowded one.
 
-## A supplementary video per activity, wherever a real one exists
-Each activity has its own `video` — not one video for the whole lesson. A \
-specific video almost always matches one specific activity's specific skill \
-far better than it matches the lesson as a whole, so look per activity, not \
-once in general.
+## A supplementary video for the Learn section, wherever a real one exists
+`learn.video` is ONE video for the lesson's core idea — not one per activity.
 
 **Only look for a video from one of these channels, because they're the ones \
-this family has vetted for his age and this subject: {video_channels}.** For \
-each activity where a real match plausibly exists, search including the \
-channel name and that activity's specific skill — "Khan Academy two-step \
-equations," not just "two-step equations video" — so results actually point \
-at their uploads instead of whatever ranks highest.
+this family has vetted for his age and this subject: {video_channels}.** Search \
+including the channel name and this lesson's specific skill — "Khan Academy \
+two-step equations," not just "two-step equations video" — so results actually \
+point at their uploads instead of whatever ranks highest.
 
-- **Search for most activities that teach a procedure, a formula, or a concept \
-that can be shown or demonstrated** — this is the common case, not the \
-exception, especially in math. Skip searching for activity kinds where a video \
-genuinely doesn't fit — a discussion prompt, a field observation log, a \
-writing-only activity — rather than forcing a tenuous match.
-- **Only report `found: true` on an activity if a search this turn actually \
-returned a specific video from one of those channels, and you are copying its \
-title and URL exactly as the search gave them.** Never write a URL from \
-memory, never guess at one that "should" exist, and never adjust or shorten a \
-URL you found. If the best result you find is from a channel not on that \
-list, report `found: false` — the channel matters as much as the content \
-here, and a wrong-source video doesn't belong even if it looks fine. A \
-missing video costs nothing; a wrong one costs trust.
-- Spend web searches on this in proportion to how many activities can \
-plausibly use one — this is most of the search budget for a subject that \
-only searches for video, but still share it with any grounding research the \
-lesson itself needs.
+- **Only report `found: true` if a search this turn actually returned a specific \
+video from one of those channels, and you are copying its title and URL exactly \
+as the search gave them.** Never write a URL from memory, never guess at one \
+that "should" exist, and never adjust or shorten a URL you found. If the best \
+result is from a channel not on that list, report `found: false` — the channel \
+matters as much as the content, and a wrong-source video doesn't belong even if \
+it looks fine. A missing video costs nothing; a wrong one costs trust.
 - `why` is one sentence and specific: what he'll actually see in the video that \
-that activity's own instructions and example don't already show him. Not \
-"this is a good video about X."
-- The lesson must stand on its own without any of them. Nothing in \
-`activities` or `assessment` may depend on him having watched one.
+the explanation and worked example don't already show him. Not "this is a good \
+video about X."
+- The lesson must stand on its own without it. Nothing in `activities` or `quiz` \
+may depend on him having watched it.
 
-## Prove, part 1: a quiz he takes himself
+## The quiz he takes himself
 Write `quiz`: a pool of **at least 20** multiple-choice questions checking \
 whether he actually learned today's content — straightforward recall and \
 application of exactly what this lesson taught, nothing outside it. He is served \
 five at a time from this pool, reshuffled on each retry, so the pool needs real \
 breadth: cover every part of the lesson at a mix of difficulties, and don't \
-reword one idea twenty times. This is one of the two graded Prove surfaces — he \
-takes it himself, right on the screen, graded automatically the moment he \
-submits.
+reword one idea twenty times. He takes it himself, right on the screen, graded \
+automatically the moment he submits.
 
 - Each question needs exactly four choices: one clearly correct, three \
 plausible distractors that aren't obviously wrong.
@@ -297,13 +270,13 @@ guessing or from outside knowledge, the question isn't doing its job.
 ## How hard to make this
 {difficulty_guidance}
 
-This changes how you teach it, never what he's on the hook for: `assessment` \
-and `mastery_criteria` stay the same regardless of this setting. A parent \
-dialing this down for a rough week must not mean he's later marked as having \
-mastered less than the standard actually requires.
+This changes how you teach it, never what he's on the hook for: the two checks \
+stay at grade level regardless of this setting. A parent dialing this down for a \
+rough week must not mean he's later marked as having learned less than the \
+standard actually requires.
 
 **Anchor the rigor to a real grade-{grade} standard, not a vibe.** "8th grade" \
-has a concrete meaning — pitch the content and the `assessment` to the depth a \
+has a concrete meaning — pitch the content and the two checks to the depth a \
 documented standard for this exact topic expects (Common Core for math and \
 language arts, Next Generation Science Standards for science, a state \
 social-studies framework for history/social studies). Teach to that depth: the \
@@ -313,10 +286,10 @@ definitions when its standard expects him to apply and analyze, and don't drift 
 above grade level into content that belongs to a later year.
 
 ## Writing for a 13-year-old
-{student_name} reads `title`, `overview`, `learning_objectives`, `activities`, \
-`materials`, the video's `why`, and every `quiz` question directly, on his own \
-screen, exactly as you write them. Write all of those for a 13-year-old — not \
-for a parent, not for a curriculum committee:
+{student_name} reads `title`, `overview`, `learning_objectives`, `learn`, \
+`worked_example`, `activities`, `materials`, the video's `why`, and every `quiz` \
+question directly, on his own screen, exactly as you write them. Write all of \
+those for a 13-year-old — not for a parent, not for a curriculum committee:
 
 - Short sentences, one idea each. If a sentence needs a comma to hold two \
 ideas, that's two sentences instead.
@@ -333,8 +306,8 @@ where it genuinely fits — not shoehorned into every activity.
 one instruction per line in a list of steps, no throat-clearing before getting \
 to the point.
 
-`assessment`, `parent_notes`, and every `subject_credits[].justification` are \
-the opposite of all that — those are for the parent, so write them like the \
+Each activity's `answer`, `parent_notes`, and every `subject_credits[].justification` \
+are the opposite of all that — those are for the parent, so write them like the \
 adult reading them actually is one.
 
 ## The family's approach
@@ -345,60 +318,35 @@ structured part, so make it worth the structure: concrete, doable, and not \
 busywork.
 - The family roadschools. Lessons that use where they physically are beat \
 generic curriculum, when the location genuinely fits.
-- **The student reads `activities` and `materials` directly, on his own screen. \
-He never sees `assessment`, `parent_notes`, or `subject_credits`.** So put every \
-answer, worked solution, scoring rule, and answer key in `assessment` — never in \
-an activity's instructions, and never in `materials`. Questions go in the \
-activity; answers go in the assessment. Getting this wrong hands him the answer \
-key to the test he is about to sit. In particular, put the fully worked answers \
-to the `assessment.description` questions in `assessment.answer_key` — every \
-question answered with the work shown and numbered to match, so the parent can \
-grade the paper he hands them without re-solving it.
-- **The hand-in is the biggest single piece of his grade, so give it a real \
-`assessment.rubric`.** Name the 2-3 things that actually matter for this task \
-and, for each, say what strong / getting-there / not-yet looks like. This is the \
-one part of `assessment` he DOES see — it's his bar before he starts, and the \
-parent grades against the same words — so write it as *qualities* of a strong \
-response, never the answers (those stay in `answer_key`). A rubric that leaks \
-the answer is as bad as leaking the answer key.
+- **The student reads `learn`, `worked_example`, `activities`, and `materials` \
+directly, on his own screen. He never sees any activity's `answer`, \
+`parent_notes`, or `subject_credits`.** So put every worked solution, scoring \
+rule, and answer key in that activity's own `answer` — never in its \
+`instructions`, the Learn text, the worked example, or `materials`. The question \
+goes in `instructions`; the answer goes in `answer`. Getting this wrong hands him \
+the answer key to the check he is about to sit. And keep `worked_example` on \
+DIFFERENT specifics than either activity, so it models the move without being an \
+activity's answer.
 - **He does take `quiz` directly, but Compass reveals each `correct_index` only \
-after he submits an answer.** Don't work a quiz question's answer into an \
-activity's instructions either — that undermines the check just as much.
-- **Whenever an activity's `instructions` ask him to put a short answer into \
-words — write a sentence, answer a question, list things, explain why — set \
-that activity's own `requires_written_response` to true, whatever its `kind` \
-is.** That's what puts an actual typing box in front of him for it, in place of \
-a notebook page. Leave it false for anything genuinely done on paper instead: \
-solving a problem by hand, drawing a timeline or diagram, building a chart, a \
-hands-on or physical task.
-- **When an activity sends him to read something that is not printed on this \
-screen** — chapters of his book, a named article, a source document he has to go \
-find — fill in that activity's `reading_check` with two or three multiple-choice \
-questions on concrete specifics only a reader would know. Leave it empty \
-otherwise, including for a passage you wrote out inside `instructions` itself. \
-Only write these if you are confident of the real content: a wrong answer key \
-punishes him for reading correctly, which is worse than not asking.
-- **Whenever `requires_written_response` is true, also fill in that activity's \
+after he submits.** Don't work a quiz question's answer into the Learn text, the \
+worked example, or an activity's instructions either.
+- **Whenever an activity's `instructions` ask him to put an answer into words — \
+write a sentence, answer a question, explain why, argue a position — set that \
+activity's `requires_written_response` to true.** That's what puts an actual \
+typing box in front of him, in place of a notebook page. Leave it false only for \
+work genuinely done on paper instead: solving a math problem by hand, drawing a \
+diagram, a hands-on task. For every non-math subject, the two checks should \
+almost always be written.
+- **Whenever `requires_written_response` is true, fill in that activity's \
 `writing_requirements` with real numbers pulled from `instructions` itself** — \
-min_words/max_words (or leave one null if you only gave a floor or a ceiling), \
-min_sentences (when you asked for a sentence count instead of a word count), \
-and requires_quote (true only if you explicitly told him to quote something in \
-quotation marks). Compass checks these automatically before he can submit, so \
-they must actually match what `instructions` asked for — never stricter, never \
-looser than your own prompt. Leave every field null/false when \
-`requires_written_response` is false, or when you genuinely didn't ask for a \
-specific count.
-- **When one activity's `instructions` ask for more than one distinct thing — \
-a multi-part question, or "do X, then Y, then explain Z" — break those parts \
-out into that activity's `checklist`, one short second-person line each \
-("Answer all three questions", "Give an example from the reading", "Show your \
-steps").** He must tick every item before he can turn the activity in, so this \
-is the fix for a student who skims a prompt and answers only the first half. \
-Each item must be a real, separate requirement he could forget — not a \
-restatement of the whole task, not padding. Leave `checklist` EMPTY for a \
-single-ask activity, or one with no written response.
-- Target roughly {minutes} minutes total. Match `estimated_minutes` to the sum \
-of your activity minutes.
+min_words/max_words (leave one null if you only gave a floor or a ceiling), \
+min_sentences (when you asked for a sentence count instead), and requires_quote \
+(true only if you explicitly told him to quote something in quotation marks). \
+Compass checks these before he can submit, so they must match what `instructions` \
+asked for — never stricter, never looser. Leave every field null/false when \
+`requires_written_response` is false, or you didn't ask for a specific count.
+- Target roughly {minutes} minutes total — the two checks plus reading time for \
+Learn and the worked example. Match `estimated_minutes` to that whole total.
 """
 
 
@@ -522,6 +470,15 @@ class LessonAgent:
         payload.setdefault("materials", [])
         payload.setdefault("learning_objectives", [])
         payload.setdefault("quiz", [])
+        # The fixed-shape sections. `learn` and `worked_example` are the teaching
+        # half a new lesson leads with; defaulted so a lesson generated before
+        # the switch (or a partial payload) still renders without a KeyError.
+        payload.setdefault(
+            "learn",
+            {"explanation": "", "video": {"found": False, "title": "", "url": "",
+                                          "channel": "", "why": ""}},
+        )
+        payload.setdefault("worked_example", {"problem": "", "steps": ""})
         # Defensive, per activity, same as the other setdefaults above --
         # `video` is required by the schema, but every other optional-in-
         # practice field gets this same belt-and-suspenders treatment.
@@ -537,6 +494,9 @@ class LessonAgent:
                 "video", {"found": False, "title": "", "url": "", "channel": "", "why": ""}
             )
             activity.setdefault("requires_written_response", False)
+            # The per-activity answer key the parent grades against (new shape).
+            activity.setdefault("answer", "")
+            # Legacy fields kept defaulted so old lessons still render/grade.
             activity.setdefault("self_check", "")
             activity.setdefault("checklist", [])
             activity.setdefault("reading_check", [])

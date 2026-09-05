@@ -72,58 +72,42 @@ def test_count_web_searches_counts_tool_use_blocks_not_results():
     assert _count_web_searches(content) == 2
 
 
-def test_lesson_schema_requires_the_video_object_closed():
-    """One video per activity now, not one per lesson -- see LESSON_SCHEMA's
-    activities item."""
-    activity_schema = LESSON_SCHEMA["properties"]["activities"]["items"]
-    video_schema = activity_schema["properties"]["video"]
+def test_lesson_schema_carries_one_video_on_the_learn_section():
+    """One video for the lesson's core idea now, on `learn` -- not one per
+    activity (see the fixed Learn -> Worked example -> Two checks -> Quiz shape)."""
+    learn_schema = LESSON_SCHEMA["properties"]["learn"]
+    assert "video" in learn_schema["properties"]
+    assert "explanation" in learn_schema["required"]
+    video_schema = learn_schema["properties"]["video"]
     assert video_schema["additionalProperties"] is False
     assert set(video_schema["required"]) == {"found", "title", "url", "channel", "why"}
-    assert video_schema["properties"]["found"]["type"] == "boolean"
 
 
-def test_lesson_schema_tags_each_activity_with_a_learn_or_practice_phase():
-    """The 8-value `kind` is gone; an activity is Learn (teaching) or Practice
-    (work he does and gets feedback on). Prove -- the quiz and the hand-in -- is
-    the top-level fields, not an activity phase."""
+def test_lesson_schema_has_a_worked_example_section():
+    """One walked-through problem sits between Learn and the checks -- its own
+    top-level section, not a field repeated on every activity."""
+    worked = LESSON_SCHEMA["properties"]["worked_example"]
+    assert set(worked["required"]) == {"problem", "steps"}
+    assert worked["additionalProperties"] is False
+
+
+def test_lesson_schema_activities_are_slim_graded_checks_with_an_answer():
+    """Each of the two activities carries its own parent-only `answer` key and
+    drops the old loose-activity clutter (phase, self_check, example,
+    reading_check, checklist, per-activity video)."""
     activity_schema = LESSON_SCHEMA["properties"]["activities"]["items"]
-    assert "kind" not in activity_schema["properties"]
-    assert "phase" in activity_schema["required"]
-    assert activity_schema["properties"]["phase"]["enum"] == ["learn", "practice"]
-
-
-def test_lesson_schema_carries_a_self_check_on_every_activity():
-    """Objective practice gets a 'Check your work' answer so he sees where he
-    went wrong -- the feedback that makes practice count."""
-    activity_schema = LESSON_SCHEMA["properties"]["activities"]["items"]
-    assert "self_check" in activity_schema["properties"]
-    assert "self_check" in activity_schema["required"]
-
-
-def test_lesson_schema_requires_a_worked_example_on_every_activity():
-    """Every activity must model the skill before he's asked to do it himself
-    -- structurally required, not left to a hopefully-remembered prompt line."""
-    activity_schema = LESSON_SCHEMA["properties"]["activities"]["items"]
-    assert "example" in activity_schema["properties"]
-    assert "example" in activity_schema["required"]
+    props = activity_schema["properties"]
+    assert "answer" in props and "answer" in activity_schema["required"]
+    for gone in ("phase", "kind", "self_check", "example", "reading_check",
+                 "checklist", "video"):
+        assert gone not in props, f"{gone} should be gone from the activity schema"
     assert activity_schema["additionalProperties"] is False
 
 
-def test_lesson_schema_requires_a_worked_answer_key_on_the_assessment():
-    """The assessment must carry a worked answer key so the parent can grade the
-    paper he hands over without re-solving it -- structurally required, and the
-    student never receives the assessment at all."""
-    assessment_schema = LESSON_SCHEMA["properties"]["assessment"]
-    assert "answer_key" in assessment_schema["properties"]
-    assert "answer_key" in assessment_schema["required"]
-
-
-def test_lesson_schema_requires_a_leveled_hand_in_rubric():
-    """The hand-in is the biggest slice of the grade, so it must carry a rubric
-    -- the one part of the assessment that's safe to show the student."""
-    assessment_schema = LESSON_SCHEMA["properties"]["assessment"]
-    assert "rubric" in assessment_schema["properties"]
-    assert "rubric" in assessment_schema["required"]
+def test_lesson_schema_no_longer_has_a_separate_hand_in_assessment():
+    """The two graded activities ARE the hand-in now -- there is no separate
+    per-lesson `assessment` surface in generation."""
+    assert "assessment" not in LESSON_SCHEMA["properties"]
 
 
 def test_an_unresolved_credential_typeerror_becomes_a_lessongenerationerror():

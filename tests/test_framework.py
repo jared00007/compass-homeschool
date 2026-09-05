@@ -203,12 +203,13 @@ def test_system_prompt_names_the_allowed_credit_subjects(db, student):
 
 
 def test_prompt_tells_the_model_where_answers_may_live(db, student):
-    """Student view depends on answers staying out of `activities`."""
+    """Student view depends on answers staying out of what he reads -- each
+    activity's answer key lives in its own `answer`, never in the instructions,
+    Learn text, or worked example."""
     agent = get_agent("math")
     prompt = agent.build_system_prompt(ctx_for(db, student))
-    assert "never in \\\nan activity's instructions" in prompt or "never in" in prompt
     assert "answer key" in prompt.lower()
-    assert "Questions go in the activity; answers go in the assessment." in prompt
+    assert "The question goes in `instructions`; the answer goes in `answer`." in prompt
 
 
 def test_secondary_credits_cannot_exceed_the_lesson_they_sit_inside(db, student):
@@ -478,10 +479,10 @@ def test_prompt_no_longer_claims_overview_is_parent_only(db, student):
     assert "for the parent: what this covers" not in prompt.lower()
 
 
-def test_prompt_still_reserves_assessment_and_parent_notes_for_the_parent(db, student):
+def test_prompt_still_reserves_the_answer_key_and_parent_notes_for_the_parent(db, student):
     agent = get_agent("math")
     prompt = agent.build_system_prompt(ctx_for(db, student))
-    assert "`assessment`, `parent_notes`, and every `subject_credits" in prompt
+    assert "`answer`, `parent_notes`, and every `subject_credits" in prompt
 
 
 def test_student_facing_writing_guidance_references_his_interests(db, student):
@@ -523,7 +524,7 @@ def test_difficulty_never_touches_the_mastery_bar_language(db, student):
     agent = get_agent("math")
     for level in config.DIFFICULTY_LEVELS:
         prompt = agent.build_system_prompt(ctx_for(db, student, difficulty=level))
-        assert "stay the same regardless of this setting" in prompt
+        assert "stay at grade level regardless of this setting" in prompt
 
 
 def test_prompt_describes_the_self_graded_quiz(db, student):
@@ -535,27 +536,26 @@ def test_prompt_describes_the_self_graded_quiz(db, student):
     assert "graded automatically" in prompt
 
 
-def test_prompt_asks_for_a_rubric_mixed_quiz_and_grade_level_rigor(db, student):
-    """The four prompt upgrades: a hand-in rubric, a self-check on objective
-    practice, a quiz spread across recall/apply/misconception, and rigor pinned
+def test_prompt_asks_for_a_mixed_quiz_and_grade_level_rigor(db, student):
+    """The quiz spreads across recall/apply/misconception, and rigor is pinned
     to a real grade-level standard."""
     prompt = get_agent("math").build_system_prompt(ctx_for(db, student))
-    assert "assessment.rubric" in prompt
-    assert "self_check" in prompt and "Check your work" in prompt
     assert "misconception" in prompt and "apply" in prompt
     assert "grade-8 standard" in prompt
 
 
-def test_prompt_lays_out_the_learn_practice_prove_spine(db, student):
-    """The reframe: every lesson reads as Learn -> Practice -> Prove, practice is
-    reviewed, and the grade is only the two Prove surfaces."""
+def test_prompt_lays_out_the_fixed_learn_example_checks_quiz_spine(db, student):
+    """The redesign: every lesson has the same fixed shape -- Learn, one worked
+    example, exactly two graded checks, and a quiz -- with the answer key per
+    activity and the worked example on different specifics than the checks."""
     agent = get_agent("english")
     prompt = agent.build_system_prompt(ctx_for(db, student))
-    assert "Learn → Practice → Prove" in prompt
-    assert '"phase": "learn"' in prompt and '"phase": "practice"' in prompt
-    # Practice must be feedback-able, and writing must keep coming.
-    assert "get feedback on" in prompt
-    assert "keep writing central" in prompt
+    assert "Learn → Worked example → Two checks → Quiz" in prompt
+    assert "EXACTLY TWO" in prompt
+    assert "worked_example" in prompt
+    assert "let's do one together" in prompt.lower()
+    # Every non-math subject's checks should require writing.
+    assert "requires some writing" in prompt
 
 
 def test_single_subject_lesson_is_untouched(db, student):

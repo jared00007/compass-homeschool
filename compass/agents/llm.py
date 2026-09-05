@@ -18,12 +18,14 @@ from compass.subjects import SUBJECT_KEYS
 # handing the parent an error. Routed by refusal category.
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
-# Every lesson reads as Learn -> Practice -> Prove. An activity is one of the
-# first two phases; the third (Prove) is the top-level `quiz` and `assessment`,
-# not an activity. `learn` is teaching -- explanation, worked example, a video.
-# `practice` is him doing the work himself and getting it reviewed, which is
-# where he actually improves. Neither phase is a separate grade to chase; the
-# grade is only the Prove surfaces.
+# Every lesson reads as Learn -> Worked example -> Two checks -> Quiz. The
+# teaching half is `learn` (explanation + one video) and `worked_example` (one
+# problem walked step by step); the graded half is the two `activities` (parent-
+# graded against each one's `answer`) plus the `quiz` (auto-graded).
+#
+# ACTIVITY_PHASES is retained only for back-compat: lessons generated under the
+# older Learn/Practice model still carry a `phase`, and some rendering/tests
+# still read it. New lessons don't set it.
 ACTIVITY_PHASES = ("learn", "practice")
 
 
@@ -90,75 +92,78 @@ LESSON_SCHEMA: dict[str, Any] = _object(
             "items": {"type": "string"},
             "description": "Observable objectives, phrased as what the student will be able to do.",
         },
+        "learn": _object(
+            {
+                "explanation": {
+                    "type": "string",
+                    "description": (
+                        "The teaching section -- today's ONE idea explained in plain "
+                        "language he reads on his own: what it is, why it matters, and a "
+                        "short worked example inside the prose if it helps. He is not "
+                        "graded here; teach it well enough that the two checks below are "
+                        "fair. Write for a 13-year-old (see the writing rules), not a "
+                        "parent-facing summary."
+                    ),
+                },
+                "video": _object(_VIDEO_PROPERTIES),
+            }
+        ),
+        "worked_example": _object(
+            {
+                "problem": {
+                    "type": "string",
+                    "description": (
+                        "ONE problem of exactly the type the two activities will ask -- but "
+                        "with DIFFERENT specifics (different numbers, a different sentence, a "
+                        "different scenario) than either activity, so it models the move "
+                        "rather than handing him an answer. A single problem, not several."
+                    ),
+                },
+                "steps": {
+                    "type": "string",
+                    "description": (
+                        "The full step-by-step walkthrough of `problem`, solved for him "
+                        "start to finish. Break it into small, numbered steps in plain "
+                        "language, and use a relatable hook or comparison where one fits "
+                        "his age. This is the 'let's do one together' that comes right "
+                        "before he tries his own -- he is NOT graded on it. For math or "
+                        "anything procedural, show every step and the check; for writing, "
+                        "model the thinking that produces a strong response."
+                    ),
+                },
+            }
+        ),
         "activities": {
             "type": "array",
+            "description": (
+                "EXACTLY TWO short comprehension checks on what `learn` just taught -- no "
+                "more, no fewer. Both are graded: he does each, and the parent grades it "
+                "against its own `answer`. Keep each one small and focused (a single clear "
+                "task, not a multi-part project). Math and procedural subjects: keep them "
+                "simple and objective -- a few problems with an exact worked answer. Every "
+                "other subject: require some writing -- a few sentences or a short "
+                "paragraph in his own words."
+            ),
             "items": _object(
                 {
                     "title": {"type": "string"},
-                    "phase": {
-                        "type": "string",
-                        "enum": list(ACTIVITY_PHASES),
-                        "description": (
-                            "'learn' for teaching -- an explanation, a worked example, "
-                            "a demonstration he reads or watches. 'practice' for work he "
-                            "does himself and gets feedback on: solving problems, writing "
-                            "a draft, reading the assigned pages. Every lesson has at "
-                            "least one of each, learn before practice. Neither is graded "
-                            "-- the grade is the quiz and the hand-in assessment."
-                        ),
-                    },
                     "minutes": {"type": "integer"},
                     "instructions": {
                         "type": "string",
                         "description": (
                             "Written to the student in second person, specific enough to do "
-                            "without further explanation."
+                            "without further explanation. A single clear task."
                         ),
                     },
                     "requires_written_response": {
                         "type": "boolean",
                         "description": (
-                            "True whenever `instructions` asks him to put a short answer into "
-                            "words -- write a sentence, answer a question, list things, explain "
-                            "why, argue a position -- regardless of `kind`; an `instruction` or "
-                            "`practice` activity that ends in 'write one sentence saying...' is "
-                            "just as true here as a `writing` one. False for anything genuinely "
-                            "done on paper instead: solving a math problem by hand, drawing a "
-                            "timeline or diagram, building a chart, a hands-on or physical task. "
-                            "This is what puts an actual typing box in front of him for this "
-                            "activity, in place of a notebook page -- get it right."
-                        ),
-                    },
-                    "reading_check": {
-                        "type": "array",
-                        "description": (
-                            "Two or three multiple-choice questions confirming he "
-                            "actually read the assigned text -- ONLY for an activity that "
-                            "sends him to read something that is NOT printed on this "
-                            "screen: chapters of his book, a named article, a source "
-                            "document he has to go find. Leave EMPTY for everything else, "
-                            "including a passage you have written out inside "
-                            "`instructions` itself (he already has that in front of him) "
-                            "and any non-reading activity.\n\n"
-                            "Ask about concrete specifics that only someone who read it "
-                            "would know -- an object used, a decision made, where a scene "
-                            "happens. Not theme, not interpretation, not anything "
-                            "answerable from the lesson text or a plot summary. Never go "
-                            "past the pages he was assigned. Only write these if you are "
-                            "confident of the actual content: a question with a wrong "
-                            "answer key punishes him for reading correctly, which is "
-                            "worse than not asking at all."
-                        ),
-                        "items": _object(
-                            {
-                                "question": {"type": "string"},
-                                "choices": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                    "description": "Exactly four, one correct.",
-                                },
-                                "correct_index": {"type": "integer"},
-                            }
+                            "True whenever `instructions` asks him to put an answer into "
+                            "words -- write a sentence, answer a question, explain why, argue "
+                            "a position. This puts an actual typing box in front of him. "
+                            "False for anything genuinely done on paper instead: solving a "
+                            "math problem by hand, drawing a diagram, a hands-on task. Every "
+                            "non-math subject's checks should almost always be True."
                         ),
                     },
                     "writing_requirements": _object(
@@ -167,25 +172,22 @@ LESSON_SCHEMA: dict[str, Any] = _object(
                                 "type": ["integer", "null"],
                                 "description": (
                                     "The minimum word count `instructions` actually asks for, "
-                                    "e.g. 150 for '150 to 200 words' or 'about 150 words'. Null "
-                                    "if requires_written_response is false, or you didn't state "
-                                    "a word count at all (e.g. you asked for a sentence count "
-                                    "instead)."
+                                    "e.g. 150 for '150 to 200 words'. Null if requires_written_"
+                                    "response is false, or you gave a sentence count instead."
                                 ),
                             },
                             "max_words": {
                                 "type": ["integer", "null"],
                                 "description": (
                                     "The maximum word count, e.g. 200 for '150 to 200 words'. "
-                                    "Null if you gave no ceiling, or only a floor ('at least "
-                                    "150 words')."
+                                    "Null if you gave no ceiling."
                                 ),
                             },
                             "min_sentences": {
                                 "type": ["integer", "null"],
                                 "description": (
                                     "The minimum sentence count `instructions` asks for, e.g. "
-                                    "6 for '6-8 sentences'. Null if you gave a word count "
+                                    "3 for '3-4 sentences'. Null if you gave a word count "
                                     "instead, or no count at all."
                                 ),
                             },
@@ -198,104 +200,21 @@ LESSON_SCHEMA: dict[str, Any] = _object(
                             },
                         }
                     ),
-                    "checklist": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": (
-                            "When `instructions` asks for more than one distinct thing -- "
-                            "a multi-part question, or 'do X, then Y, then explain Z' -- "
-                            "list each distinct part here as one short, checkable line, in "
-                            "second person: 'Answer all three questions', 'Give an example "
-                            "from the reading', 'Show your steps'. He must tick every item "
-                            "before he can turn the activity in, so each one must be a real, "
-                            "separate requirement he could actually forget -- not a "
-                            "restatement of the whole task, not padding. EMPTY for a "
-                            "single-ask activity, or one with no written response."
-                        ),
-                    },
-                    "example": {
+                    "answer": {
                         "type": "string",
                         "description": (
-                            "A worked demonstration of exactly this activity's skill, using "
-                            "different specifics (different numbers, a different sentence, a "
-                            "different scenario) than what he's actually asked to do in "
-                            "`instructions` -- modeling the move once before he tries it "
-                            "himself, not the answer to his own problem. For math or anything "
-                            "procedural, a full step-by-step worked solution. Required for "
-                            "every activity, not just the ones that feel like they need one."
+                            "The answer key for THIS activity, so the parent grades it "
+                            "without solving it themselves. For math or anything procedural, "
+                            "the full step-by-step worked solution and the final answer. For "
+                            "a written response, describe concretely what a correct/complete "
+                            "answer must contain (and, where there's a defensible range, that "
+                            "any answer meeting the bar counts). The student NEVER sees this."
                         ),
                     },
-                    "self_check": {
-                        "type": "string",
-                        "description": (
-                            "For a PRACTICE activity with objective answers he can check "
-                            "himself -- math problems, a labeling task, anything with a "
-                            "right answer -- the worked answers to THIS activity's own "
-                            "problems, so after he tries them he can see exactly where he "
-                            "went wrong. Compass reveals it behind a 'Check your work' "
-                            "toggle, AFTER he attempts, so it's fine for him to see. This "
-                            "is the feedback that makes practice count. Leave EMPTY for a "
-                            "learn activity, an open-ended writing/discussion task (the "
-                            "parent coaches those), or anything with no single right "
-                            "answer. NEVER put the quiz's or the hand-in's answers here -- "
-                            "only the answers to this activity's own practice problems, "
-                            "which must be different problems from those."
-                        ),
-                    },
-                    "video": _object(_VIDEO_PROPERTIES),
                 }
             ),
         },
         "materials": {"type": "array", "items": {"type": "string"}},
-        "assessment": _object(
-            {
-                "kind": {
-                    "type": "string",
-                    "description": (
-                        "A short label for what he hands in -- 'Problem set', "
-                        "'Short essay', 'Lab writeup'. This is the Prove hand-in: the "
-                        "one finished piece of work he turns in for the parent to grade, "
-                        "the culmination of the Practice activities. In a writing-heavy "
-                        "subject this hand-in IS his writing piece."
-                    ),
-                },
-                "description": {"type": "string"},
-                "answer_key": {
-                    "type": "string",
-                    "description": (
-                        "The worked answer key for THIS assessment -- every question in "
-                        "`description` answered, with the work shown, so the parent can "
-                        "grade it without solving it themselves. For anything with a "
-                        "procedure (math, science calculations) give the full step-by-step "
-                        "solution and the final answer, not just the final answer; for "
-                        "short-answer or writing prompts, describe what a correct/complete "
-                        "response must contain. Number your answers to match the question "
-                        "numbers in `description`. The student NEVER sees this field."
-                    ),
-                },
-                "mastery_criteria": {
-                    "type": "string",
-                    "description": "What counts as mastered, concretely enough to score.",
-                },
-                "rubric": {
-                    "type": "string",
-                    "description": (
-                        "A short, leveled grading rubric for the hand-in -- the "
-                        "single biggest piece of his grade, so it needs a real bar. "
-                        "Name 2-3 concrete criteria that matter for THIS task (e.g. "
-                        "'Claim is clear', 'Evidence from the text', 'Explains the "
-                        "reasoning') and, for each, say briefly what STRONG vs "
-                        "GETTING-THERE vs NOT-YET looks like. Describe QUALITIES of "
-                        "a good response, never the answers themselves -- the actual "
-                        "answers live in `answer_key`. This is safe to show the "
-                        "student: he sees it as the bar before he starts, and the "
-                        "parent grades against the same words, so a grade is "
-                        "consistent instead of a gut call. Keep it tight -- a few "
-                        "lines, not a page."
-                    ),
-                },
-            }
-        ),
         "subject_credits": {
             "type": "array",
             "description": (
@@ -319,8 +238,8 @@ LESSON_SCHEMA: dict[str, Any] = _object(
             "description": (
                 "A pool of AT LEAST 20 multiple-choice questions checking whether he "
                 "actually learned today's content, for him to take himself and get "
-                "graded automatically. Separate from `assessment`, which the parent "
-                "uses.\n\n"
+                "graded automatically. Separate from the two `activities`, which the "
+                "parent grades.\n\n"
                 "He is only asked five at a time, drawn from this pool and rotated on "
                 "each retry, so the pool needs real breadth: cover every part of the "
                 "lesson, at a mix of difficulties, and approach the same underlying "
