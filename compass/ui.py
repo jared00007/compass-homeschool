@@ -3271,8 +3271,9 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
     and KPIs instead of a separate three-tile row lower down. Reported: "fold
     in the daily work for reading words, life skills KPI and if any are due
     that day, and reading progression of book up in this one container." Kept
-    compact for the narrow half-width card: one line each, a link when there's
-    something to do, a quiet caption when there isn't."""
+    laid out as one lined-up row of three -- Words, Reading, Life Skills side by
+    side rather than stacked -- so the whole "what do I owe today" reads at a
+    glance in the space next to the Level card."""
     due_words = db.vocabulary_due(student["id"], limit=25)
     book = db.current_book(student["id"])
     due_skills = db.due_life_skills(student["id"], today)
@@ -3286,54 +3287,49 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
 
     st.divider()
     st.markdown("**📌 Due today**")
+    words_col, reading_col, skills_col = st.columns(3)
 
-    if due_words:
-        st.page_link(
-            "pages/3_English.py",
-            label=f"🔤 {len(due_words)} word{'s' if len(due_words) != 1 else ''} to review",
-            icon="➡️",
-        )
-    else:
-        st.caption("🔤 Words — caught up ✅")
-
-    if book:
-        if book.get("total_pages"):
-            st.progress(
-                min((book["current_page"] or 0) / book["total_pages"], 1.0),
-                text=f"📖 {book['title']} · p{book['current_page']}/{book['total_pages']}",
+    with words_col:
+        st.markdown("**🔤 Words**")
+        if due_words:
+            st.page_link(
+                "pages/3_English.py", label=f"{len(due_words)} to review", icon="➡️"
             )
         else:
-            st.caption(f"📖 {md(book['title'])}")
-    else:
-        st.caption("📖 No book set up yet.")
+            st.caption("Caught up ✅")
 
-    st.markdown(f"🛠️ **Life Skills ({len(due_skills)})**")
-    if due_skills:
-        for skill in due_skills:
-            when = (
-                "today"
-                if skill["scheduled_for"] == today
-                else f"since {skill['scheduled_for']}"
-            )
-            st.page_link(
-                "pages/6_Life_Skills.py",
-                label=f"{md(skill['title'])} — {when}",
-                icon="➡️",
-            )
-    else:
-        st.caption("Nothing due ✅")
-    if later_skills:
-        st.caption(f"+{later_skills} later")
+    with reading_col:
+        st.markdown("**📖 Reading**")
+        if book:
+            st.caption(md(book["title"]))
+            if book.get("total_pages"):
+                st.progress(
+                    min((book["current_page"] or 0) / book["total_pages"], 1.0),
+                    text=f"p{book['current_page']}/{book['total_pages']}",
+                )
+        else:
+            st.caption("No book yet")
 
-    # Student's Choice and Coding fold in here too -- both live on the same Life
-    # Skills page now, so they ride as a compact count rather than a card apiece.
-    side_bits: list[str] = []
-    if topics:
-        side_bits.append(f"⭐ {len(topics)} Choice")
-    if due_coding:
-        side_bits.append(f"💻 {len(due_coding)} coding due")
-    if side_bits:
-        st.caption(" · ".join(side_bits))
+    with skills_col:
+        st.markdown(f"**🛠️ Life Skills ({len(due_skills)})**")
+        if due_skills:
+            for skill in due_skills:
+                st.page_link(
+                    "pages/6_Life_Skills.py", label=md(skill["title"]), icon="➡️"
+                )
+        else:
+            st.caption("Nothing due ✅")
+        # +later, and the Student's Choice / Coding counts (both live on the
+        # same Life Skills page) ride as one compact caption under the column.
+        extra: list[str] = []
+        if later_skills:
+            extra.append(f"+{later_skills} later")
+        if topics:
+            extra.append(f"⭐ {len(topics)} Choice")
+        if due_coding:
+            extra.append(f"💻 {len(due_coding)} coding due")
+        if extra:
+            st.caption(" · ".join(extra))
 
 
 def render_today_checklist(db: Database, student: dict[str, Any]) -> bool:
