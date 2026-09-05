@@ -171,9 +171,52 @@ def parent_entry_requested() -> bool:
     return False
 
 
+def _render_nav() -> None:
+    """The sidebar navigation, grouped rather than one flat list of every page.
+    Reported: "there should be a home screen ... Then there should be a Courses
+    button below Home. That should contain Math, Science, English and History,
+    the core. Below that ... Big Projects and then Life Skills ... and Check In
+    and Quizzes." The four core subjects fold under a "Courses" group so the
+    daily-work pages read as one thing, not four peers of everything else.
+
+    Built with st.page_link rather than the default file-based nav (which can't
+    group or reorder), so the default nav is hidden in `_sidebar` and this is
+    the whole nav. Mission Control is the one parent-only entry -- shown only
+    when the parent view is unlocked; the other parent-admin pages are reached
+    from Mission Control's own hub buttons, not the sidebar."""
+    st.page_link("Home.py", label="Home", icon="🏠")
+    with st.expander("📚 Courses", expanded=True):
+        st.page_link("pages/1_Math.py", label="Math", icon="🔢")
+        st.page_link("pages/2_Science.py", label="Science", icon="🔬")
+        st.page_link("pages/3_English.py", label="English", icon="📖")
+        st.page_link("pages/4_History.py", label="History", icon="🏛️")
+    st.page_link("pages/7_Big_Projects.py", label="Big Projects", icon="🎬")
+    st.page_link("pages/6_Life_Skills.py", label="Life Skills", icon="🛠️")
+    st.page_link("pages/8_Check_In.py", label="Check In", icon="💬")
+    st.page_link("pages/16_Quizzes.py", label="Quizzes", icon="📝")
+    if is_parent():
+        st.divider()
+        st.page_link("pages/14_Mission_Control.py", label="Mission Control", icon="🚀")
+
+
+# Hide Streamlit's own file-based sidebar nav entirely -- `_render_nav` replaces
+# it with a grouped, reordered one. Kept separate from the per-link hiding below
+# (still applied, harmlessly, as belt-and-suspenders) so the intent reads
+# clearly: the default nav is gone, and what shows is exactly what _render_nav
+# draws.
+_HIDE_DEFAULT_NAV_CSS = """
+<style>
+div[data-testid="stSidebarNav"] { display: none !important; }
+</style>
+"""
+
+
 def _sidebar(db: Database, student: dict[str, Any]) -> None:
     with st.sidebar:
+        st.markdown(_HIDE_DEFAULT_NAV_CSS, unsafe_allow_html=True)
         st.markdown(f"### 🧭 Compass\n**{md(student['name'])}** · Grade {student['grade']}")
+        _render_nav()
+        st.divider()
         start, end = db.school_year_bounds()
         st.caption(f"School year {start} → {end}")
         _profile_control(db, student)

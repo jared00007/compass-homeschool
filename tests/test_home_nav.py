@@ -42,6 +42,38 @@ def _nav_button(at, label_substring):
     return [b for b in at.button if label_substring in (b.label or "")][0]
 
 
+def test_the_sidebar_groups_the_core_subjects_under_courses(monkeypatch, tmp_path):
+    """The four core subjects fold under a "Courses" group in the sidebar,
+    with Big Projects / Life Skills / Check In / Quizzes as their own entries
+    below -- reported: "a Courses button below Home ... contain Math, Science,
+    English and History, the core." Built as a custom grouped nav (st.page_link)
+    since the default file-based nav can't group or reorder."""
+    at = _open_home(monkeypatch, _seed(tmp_path))
+    labels = [pl.label for pl in at.get("page_link")]
+    for subject in ("Math", "Science", "English", "History"):
+        assert subject in labels, f"{subject} must be in the nav"
+    assert any((e.label or "") == "📚 Courses" for e in at.expander), "no Courses group"
+    for entry in ("Big Projects", "Life Skills", "Check In", "Quizzes"):
+        assert entry in labels, f"{entry} must be its own nav entry"
+
+
+def test_mission_control_is_a_parent_only_nav_entry(monkeypatch, tmp_path):
+    """Mission Control is the one parent-only entry in the nav -- hidden from
+    the student, shown once the parent view is unlocked."""
+    db_path = _seed(tmp_path)
+
+    student_at = _open_home(monkeypatch, db_path)
+    assert "Mission Control" not in [pl.label for pl in student_at.get("page_link")]
+
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+    parent_at = AppTest.from_file(HOME_PATH)
+    parent_at.session_state["parent_unlocked"] = True
+    parent_at.run(timeout=30)
+    assert not parent_at.exception, [e.message for e in parent_at.exception]
+    assert "Mission Control" in [pl.label for pl in parent_at.get("page_link")]
+
+
 def test_today_is_the_default_view(monkeypatch, tmp_path):
     at = _open_home(monkeypatch, _seed(tmp_path))
     assert _nav_button(at, "Today").proto.type == "primary"
