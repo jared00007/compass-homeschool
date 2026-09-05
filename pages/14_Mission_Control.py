@@ -74,7 +74,7 @@ if not parent_only("Weekly planning is for your parent."):
 # now hangs off this one hub, so the sidebar is just the student's own subjects.
 _hub_links = st.columns(4)
 if _hub_links[0].button("🎓 Course records", width="stretch", key="hub_courses"):
-    st.switch_page("pages/13_Courses.py")
+    st.switch_page("pages/13_Course_Records.py")
 if _hub_links[1].button("🧑‍🎓 Profile", width="stretch", key="hub_profile"):
     st.switch_page("pages/12_Student_Profile.py")
 if _hub_links[2].button("📋 Compliance", width="stretch", key="hub_compliance"):

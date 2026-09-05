@@ -185,11 +185,11 @@ def _render_nav() -> None:
     when the parent view is unlocked; the other parent-admin pages are reached
     from Mission Control's own hub buttons, not the sidebar."""
     st.page_link("Home.py", label="Home", icon="🏠")
-    with st.expander("📚 Courses", expanded=True):
-        st.page_link("pages/1_Math.py", label="Math", icon="🔢")
-        st.page_link("pages/2_Science.py", label="Science", icon="🔬")
-        st.page_link("pages/3_English.py", label="English", icon="📖")
-        st.page_link("pages/4_History.py", label="History", icon="🏛️")
+    # One "Courses" entry, not four subject entries -- it lands on the Courses
+    # hub page (pages/17_Courses.py), which is itself just four buttons into
+    # Math / Science / English / History. Reported: "button should be Courses
+    # and then in the Courses page, there should be 4 buttons each subject."
+    st.page_link("pages/17_Courses.py", label="Courses", icon="📚")
     st.page_link("pages/7_Big_Projects.py", label="Big Projects", icon="🎬")
     st.page_link("pages/6_Life_Skills.py", label="Life Skills", icon="🛠️")
     st.page_link("pages/8_Check_In.py", label="Check In", icon="💬")
@@ -255,10 +255,16 @@ _FOLDED_IN_PAGES = (
     # The parent-admin pages: still full pages, but reached by a button row on
     # Mission Control (see pages/14_Mission_Control.py) rather than their own
     # sidebar entries -- the sidebar is now just the student's own subjects.
-    "Courses",
+    "Course_Records",
     "Student_Profile",
     "Compliance",
     "Model_Costs",
+    # The four core subjects fold under the Courses hub page (pages/17_Courses.py,
+    # its own nav entry) -- reached by that page's buttons, not the sidebar.
+    "Math",
+    "Science",
+    "English",
+    "History",
 )
 
 

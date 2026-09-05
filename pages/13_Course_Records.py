@@ -29,9 +29,9 @@ from compass.export import course_filename, course_to_docx
 from compass.subjects import SUBJECT_KEYS, label
 from compass.ui import api_status_banner, md, page_setup, parent_only
 
-db, student = page_setup("Courses", icon="🎓")
+db, student = page_setup("Course records", icon="🎓")
 
-st.title("🎓 Courses")
+st.title("🎓 Course records")
 st.caption(
     "Grades 6-12 course documentation, one packet per course: description, "
     "goals and objectives, outline, a 150-hour-per-credit instructional time "

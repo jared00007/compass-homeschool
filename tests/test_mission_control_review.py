@@ -94,7 +94,7 @@ def test_mission_control_hub_gathers_the_parent_admin_pages(monkeypatch, tmp_pat
     button_keys = {b.key or "" for b in at.button}
     for key in ("hub_courses", "hub_profile", "hub_compliance", "hub_costs"):
         assert key in button_keys, f"no {key} button on Mission Control"
-    for slug in ("Courses", "Student_Profile", "Compliance", "Model_Costs"):
+    for slug in ("Course_Records", "Student_Profile", "Compliance", "Model_Costs"):
         assert slug in ui._FOLDED_IN_PAGES, f"{slug} must be hidden from the sidebar"
     # Mission Control itself stays reachable in the sidebar (parent-only).
     assert ui._PARENT_ONLY_PAGES == ("Mission_Control",)

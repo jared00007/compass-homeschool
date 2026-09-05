@@ -419,5 +419,8 @@ def test_folded_in_pages_are_hidden_from_the_nav_for_both_of_you(monkeypatch):
     css = "\n".join(written)
     for slug in ui._FOLDED_IN_PAGES:
         assert f'href$="/{slug}"' in css
-    for kept in ("Home", "Math", "Life_Skills", "Big_Projects", "Check_In"):
+    # The still-top-level nav entries must never be targeted. (Math et al. are
+    # folded now -- reached from the Courses hub -- so they're in the set above,
+    # not here.)
+    for kept in ("Home", "Courses", "Life_Skills", "Big_Projects", "Check_In", "Quizzes"):
         assert f'href$="/{kept}"' not in css

@@ -42,19 +42,32 @@ def _nav_button(at, label_substring):
     return [b for b in at.button if label_substring in (b.label or "")][0]
 
 
-def test_the_sidebar_groups_the_core_subjects_under_courses(monkeypatch, tmp_path):
-    """The four core subjects fold under a "Courses" group in the sidebar,
-    with Big Projects / Life Skills / Check In / Quizzes as their own entries
-    below -- reported: "a Courses button below Home ... contain Math, Science,
-    English and History, the core." Built as a custom grouped nav (st.page_link)
-    since the default file-based nav can't group or reorder."""
+def test_the_sidebar_has_a_single_courses_entry_not_a_dropdown(monkeypatch, tmp_path):
+    """The sidebar has one "Courses" entry (a link to the Courses hub page),
+    not a dropdown of the four subjects -- reported: "absolutely not with the
+    drop down button on the side bar ... button should be Courses and then in
+    the Courses page, there should be 4 buttons." Big Projects / Life Skills /
+    Check In / Quizzes stay their own entries below it."""
     at = _open_home(monkeypatch, _seed(tmp_path))
     labels = [pl.label for pl in at.get("page_link")]
-    for subject in ("Math", "Science", "English", "History"):
-        assert subject in labels, f"{subject} must be in the nav"
-    assert any((e.label or "") == "📚 Courses" for e in at.expander), "no Courses group"
+    assert "Courses" in labels, "the sidebar must have a Courses entry"
+    assert not any((e.label or "") == "📚 Courses" for e in at.expander), "no dropdown"
     for entry in ("Big Projects", "Life Skills", "Check In", "Quizzes"):
         assert entry in labels, f"{entry} must be its own nav entry"
+
+
+def test_the_courses_page_has_a_button_per_core_subject(monkeypatch, tmp_path):
+    """The Courses hub page is just four buttons -- one per core subject."""
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", _seed(tmp_path))
+    at = AppTest.from_file(HOME_PATH)  # entrypoint, so nav page-links resolve
+    at.run(timeout=30)
+    at.switch_page(str(REPO_ROOT / "pages" / "17_Courses.py"))
+    at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+    button_labels = [b.label or "" for b in at.button]
+    for subject in ("Math", "Science", "English", "History"):
+        assert any(subject in label for label in button_labels), f"no {subject} button"
 
 
 def test_mission_control_is_a_parent_only_nav_entry(monkeypatch, tmp_path):
