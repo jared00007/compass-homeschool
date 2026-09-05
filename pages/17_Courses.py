@@ -26,9 +26,8 @@ _SUBJECTS = [
     ("🏛️ History", "pages/4_History.py"),
 ]
 
-# A 2x2 grid of big launch buttons -- one row of two, then the next.
-for row_start in (0, 2):
-    columns = st.columns(2)
-    for column, (label, target) in zip(columns, _SUBJECTS[row_start:row_start + 2]):
-        if column.button(label, width="stretch", key=f"course_{target}"):
-            st.switch_page(target)
+# One row, all four buttons spread evenly across it.
+columns = st.columns(len(_SUBJECTS))
+for column, (label, target) in zip(columns, _SUBJECTS):
+    if column.button(label, width="stretch", key=f"course_{target}"):
+        st.switch_page(target)
