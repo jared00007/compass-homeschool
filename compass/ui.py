@@ -1262,6 +1262,7 @@ def render_lesson(
     comic_layout: bool = False,
     comic_frame_title: str = "📘 Current Lesson",
     student: dict[str, Any] | None = None,
+    printable: bool = False,
 ) -> None:
     """Render a lesson. In student view the answer key never reaches the page.
 
@@ -1425,6 +1426,19 @@ def render_lesson(
                         st.markdown(f"{marker} {md(choice)}")
                     if item.get("explanation"):
                         st.caption(md(item["explanation"]))
+
+    # A one-click printable worksheet for a paper day: the student copy (no
+    # answer keys) with ruled lines under written activities and the quiz laid
+    # out to circle. Offered wherever the lesson is shown to work from -- his
+    # subject page (printable=True) -- rather than only the parent's review card.
+    if printable:
+        st.download_button(
+            "🖨️ Print this as a worksheet (PDF)",
+            data=partial(lesson_to_pdf, lesson, parent=False),
+            file_name=suggested_pdf_filename(lesson),
+            mime="application/pdf",
+            key=f"print_worksheet_{lesson_id or id(lesson)}",
+        )
 
 
 # --- life skills: the AI-drafted teaching plan ---------------------------------
@@ -2747,6 +2761,7 @@ def student_lesson_view(
             comic_layout=comic_layout,
             comic_frame_title=f"{icon} {subject_label} — Current Lesson",
             student=student,
+            printable=True,
         )
         render_quiz(
             db,
@@ -2803,6 +2818,7 @@ def student_lesson_view(
             comic_layout=comic_layout,
             comic_frame_title=f"{icon} {subject_label} — Current Lesson",
             student=student,
+            printable=True,
         )
         render_quiz(
             db,

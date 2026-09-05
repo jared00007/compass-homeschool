@@ -226,15 +226,27 @@ def _render_review_card_body(lesson: dict, today_iso: str) -> None:
             "Credit: "
             + " · ".join(f"{label(c['subject'])} {c['minutes']}m" for c in credits)
         )
-    download_columns = st.columns(2)
+    download_columns = st.columns(3)
+    # His clean worksheet to print for a paper day: no answer keys, writing lines
+    # under the written activities, the quiz laid out to circle.
     download_columns[0].download_button(
-        "🖨️ Print to PDF",
-        data=partial(lesson_to_pdf, lesson["payload"]),
+        "🖨️ Worksheet",
+        data=partial(lesson_to_pdf, lesson["payload"], parent=False),
+        file_name=suggested_pdf_filename(lesson["payload"]),
+        mime="application/pdf",
+        key=f"pdf_worksheet_{lesson['id']}",
+        help="Student copy — no answers, with space to write.",
+    )
+    # The same lesson with the answer keys, for grading it on paper.
+    download_columns[1].download_button(
+        "🖨️ Answer copy",
+        data=partial(lesson_to_pdf, lesson["payload"], parent=True),
         file_name=suggested_pdf_filename(lesson["payload"]),
         mime="application/pdf",
         key=f"pdf_{lesson['id']}",
+        help="Parent copy — includes every activity's answer key.",
     )
-    download_columns[1].download_button(
+    download_columns[2].download_button(
         "📄 Word doc",
         data=partial(lesson_to_docx, lesson["payload"]),
         file_name=suggested_filename(lesson["payload"]),

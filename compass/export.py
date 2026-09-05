@@ -87,29 +87,51 @@ def lesson_to_docx(lesson: dict[str, Any], *, parent: bool = True) -> bytes:
         document.add_heading("Materials", level=2)
         _add_bullets(document, materials)
 
+    # Learn: the teaching section (new fixed shape).
+    learn = lesson.get("learn") or {}
+    if learn.get("explanation"):
+        document.add_heading("Learn", level=2)
+        document.add_paragraph(learn["explanation"])
+        video = learn.get("video") or {}
+        if video.get("found") and video.get("url"):
+            watch = document.add_paragraph()
+            watch.add_run(f"Video: {video.get('title') or 'Watch'} — ").bold = True
+            watch.add_run(video["url"])
+
+    worked = lesson.get("worked_example") or {}
+    if worked.get("problem") or worked.get("steps"):
+        document.add_heading("Worked example — let's do one together", level=2)
+        if worked.get("problem"):
+            document.add_paragraph(worked["problem"]).runs[0].bold = True
+        if worked.get("steps"):
+            document.add_paragraph(worked["steps"])
+
     activities = lesson.get("activities") or []
     if activities:
         document.add_heading("Activities", level=2)
         for index, activity in enumerate(activities, start=1):
-            heading = (
-                f"{index}. {activity.get('title', 'Activity')} "
-                f"({_activity_phase_label(activity)}, {activity.get('minutes', 0)} min)"
-            )
+            heading = f"{index}. {activity.get('title', 'Activity')} ({activity.get('minutes', 0)} min)"
             document.add_heading(heading, level=3)
             video = activity.get("video") or {}
             if video.get("found") and video.get("url"):
                 watch = document.add_paragraph()
                 watch.add_run(f"Video: {video.get('title') or 'Watch'}").bold = True
                 document.add_paragraph(video["url"])
-                if video.get("why"):
-                    document.add_paragraph(video["why"]).runs[0].italic = True
             if activity.get("example"):
-                worked = document.add_paragraph()
-                worked.add_run("Here's how: ").bold = True
-                worked.add_run(activity["example"])
+                worked_p = document.add_paragraph()
+                worked_p.add_run("Here's how: ").bold = True
+                worked_p.add_run(activity["example"])
             if activity.get("instructions"):
                 document.add_paragraph(activity["instructions"])
+            if parent and activity.get("answer"):
+                ans = document.add_paragraph()
+                ans.add_run("Answer key: ").bold = True
+                ans.add_run(activity["answer"])
+            elif not parent and activity.get("requires_written_response"):
+                for _ in range(6):
+                    document.add_paragraph("________________________________________________")
 
+    # Legacy per-lesson hand-in (old-shape lessons only).
     assessment = lesson.get("assessment") or {}
     if assessment and parent:
         document.add_heading("Assessment", level=2)
@@ -117,29 +139,28 @@ def lesson_to_docx(lesson: dict[str, Any], *, parent: bool = True) -> bytes:
             document.add_paragraph(assessment["kind"]).runs[0].bold = True
         if assessment.get("description"):
             document.add_paragraph(assessment["description"])
-        if assessment.get("rubric"):
-            rubric = document.add_paragraph()
-            rubric.add_run("Grading rubric: ").bold = True
-            rubric.add_run(assessment["rubric"])
         if assessment.get("answer_key"):
             answer = document.add_paragraph()
             answer.add_run("Answer key: ").bold = True
             answer.add_run(assessment["answer_key"])
         if assessment.get("mastery_criteria"):
-            criteria = document.add_paragraph()
-            criteria.add_run("Mastery: ").bold = True
-            criteria.add_run(assessment["mastery_criteria"])
+            mastery = document.add_paragraph()
+            mastery.add_run("Mastery: ").bold = True
+            mastery.add_run(assessment["mastery_criteria"])
 
     quiz = lesson.get("quiz") or []
-    if quiz:
-        document.add_heading("Quiz answer key", level=2)
-        for index, item in enumerate(quiz, start=1):
+    printed_quiz = quiz[:5]
+    if printed_quiz:
+        document.add_heading("Quiz answer key" if parent else "Quiz", level=2)
+        letters = ["A", "B", "C", "D", "E", "F"]
+        for index, item in enumerate(printed_quiz, start=1):
             document.add_paragraph(f"{index}. {item.get('question', '')}").runs[0].bold = True
             correct_index = item.get("correct_index")
             for choice_index, choice in enumerate(item.get("choices") or []):
-                marker = " (correct)" if choice_index == correct_index else ""
-                document.add_paragraph(f"{choice}{marker}", style="List Bullet")
-            if item.get("explanation"):
+                letter = letters[choice_index] if choice_index < len(letters) else "•"
+                marker = " (correct)" if parent and choice_index == correct_index else ""
+                document.add_paragraph(f"{letter}. {choice}{marker}", style="List Bullet")
+            if parent and item.get("explanation"):
                 explanation = document.add_paragraph()
                 explanation.add_run(item["explanation"]).italic = True
 
@@ -243,11 +264,13 @@ def lesson_to_pdf(lesson: dict[str, Any], *, parent: bool = True) -> bytes:
     the assessment, quiz answer key, parent notes, and subject credit are all
     left out, giving Landon a clean printable copy of a lesson (overview,
     objectives, materials, activities) with nothing he isn't meant to see."""
+    from reportlab.lib import colors
     from reportlab.lib.enums import TA_LEFT
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import inch
     from reportlab.platypus import (
+        HRFlowable,
         ListFlowable,
         ListItem,
         Paragraph,
@@ -288,6 +311,15 @@ def lesson_to_pdf(lesson: dict[str, Any], *, parent: bool = True) -> bytes:
             out.append(Paragraph(html, body))
         return out
 
+    def write_lines(n: int) -> list[Any]:
+        """Blank ruled lines to write an answer on, for the printed worksheet."""
+        out: list[Any] = [Spacer(1, 4)]
+        for _ in range(n):
+            out.append(Spacer(1, 16))
+            out.append(HRFlowable(width="100%", thickness=0.5, color=colors.grey))
+        out.append(Spacer(1, 6))
+        return out
+
     flow: list[Any] = [Paragraph(_pdf_text(lesson.get("title") or "Lesson"), title_style)]
     if lesson.get("overview"):
         flow += paras(lesson["overview"])
@@ -297,25 +329,53 @@ def lesson_to_pdf(lesson: dict[str, Any], *, parent: bool = True) -> bytes:
     if lesson.get("materials"):
         flow += [Paragraph("Materials", h2), bullets(lesson["materials"])]
 
+    # --- Learn: the teaching section (new fixed shape) ------------------------
+    learn = lesson.get("learn") or {}
+    if learn.get("explanation"):
+        flow.append(Paragraph("Learn", h2))
+        flow += paras(learn["explanation"])
+        video = learn.get("video") or {}
+        if video.get("found") and video.get("url"):
+            flow.append(
+                Paragraph(
+                    f"<b>Video:</b> {_pdf_text(video.get('title') or 'Watch')} — "
+                    f"{_pdf_text(video['url'])}",
+                    body,
+                )
+            )
+
+    # --- Worked example: one problem walked through, not graded ---------------
+    worked = lesson.get("worked_example") or {}
+    if worked.get("problem") or worked.get("steps"):
+        flow.append(Paragraph("Worked example — let's do one together", h2))
+        if worked.get("problem"):
+            flow.append(Paragraph(f"<b>{_pdf_text(worked['problem'])}</b>", body))
+        if worked.get("steps"):
+            flow += paras(worked["steps"])
+
     activities = lesson.get("activities") or []
     if activities:
         flow.append(Paragraph("Activities", h2))
         for index, activity in enumerate(activities, start=1):
-            heading = (
-                f"{index}. {activity.get('title', 'Activity')} "
-                f"({_activity_phase_label(activity)}, {activity.get('minutes', 0)} min)"
-            )
+            heading = f"{index}. {activity.get('title', 'Activity')} ({activity.get('minutes', 0)} min)"
             flow.append(Paragraph(_pdf_text(heading), h3))
+            # Per-activity video/example only exist on old-shape lessons; kept so
+            # those still print in full.
             video = activity.get("video") or {}
             if video.get("found") and video.get("url"):
                 flow.append(Paragraph(f"<b>Video:</b> {_pdf_text(video.get('title') or 'Watch')}", body))
                 flow.append(Paragraph(_pdf_text(video["url"]), body))
-                if video.get("why"):
-                    flow.append(Paragraph(f"<i>{_pdf_text(video['why'])}</i>", body))
             if activity.get("example"):
                 flow += paras(activity["example"], prefix_html="<b>Here's how:</b> ")
             if activity.get("instructions"):
                 flow += paras(activity["instructions"])
+            # New fixed shape: each activity is graded. On the student worksheet,
+            # written answers get ruled lines to write on; the parent copy gets
+            # the answer key instead.
+            if parent and activity.get("answer"):
+                flow += paras(activity["answer"], prefix_html="<b>Answer key:</b> ")
+            elif not parent and activity.get("requires_written_response"):
+                flow += write_lines(6)
 
     assessment = lesson.get("assessment") or {}
     if assessment and parent:
@@ -331,10 +391,25 @@ def lesson_to_pdf(lesson: dict[str, Any], *, parent: bool = True) -> bytes:
         if assessment.get("mastery_criteria"):
             flow += paras(assessment["mastery_criteria"], prefix_html="<b>Mastery:</b> ")
 
+    # The on-screen quiz draws five from a larger pool and rotates on retries;
+    # on paper we print the first few as a fixed worksheet. The student copy has
+    # the choices to circle; the parent copy marks the correct one and adds the
+    # explanation.
     quiz = lesson.get("quiz") or []
-    if quiz and parent:
-        flow.append(Paragraph("Quiz answer key", h2))
-        for index, item in enumerate(quiz, start=1):
+    _PDF_QUIZ_COUNT = 5
+    printed_quiz = quiz[:_PDF_QUIZ_COUNT]
+    if printed_quiz:
+        flow.append(Paragraph("Quiz answer key" if parent else "Quiz", h2))
+        if len(quiz) > len(printed_quiz):
+            flow.append(
+                Paragraph(
+                    f"<i>{len(printed_quiz)} of {len(quiz)} questions — the app rotates "
+                    "the rest across retries.</i>",
+                    body,
+                )
+            )
+        letters = ["A", "B", "C", "D", "E", "F"]
+        for index, item in enumerate(printed_quiz, start=1):
             flow.append(Paragraph(f"<b>{index}. {_pdf_text(item.get('question', ''))}</b>", body))
             correct_index = item.get("correct_index")
             choices = item.get("choices") or []
@@ -343,18 +418,19 @@ def lesson_to_pdf(lesson: dict[str, Any], *, parent: bool = True) -> bytes:
                     [
                         ListItem(
                             Paragraph(
-                                _pdf_text(choice)
-                                + (" <b>(correct)</b>" if choice_index == correct_index else ""),
+                                f"{letters[choice_index] if choice_index < len(letters) else '•'}. "
+                                + _pdf_text(choice)
+                                + (" <b>(correct)</b>" if parent and choice_index == correct_index else ""),
                                 body,
                             ),
                             leftIndent=12,
                         )
                         for choice_index, choice in enumerate(choices)
                     ],
-                    bulletType="bullet", start="•", leftIndent=14,
+                    bulletType="bullet", start="", leftIndent=14,
                 )
             )
-            if item.get("explanation"):
+            if parent and item.get("explanation"):
                 flow.append(Paragraph(f"<i>{_pdf_text(item['explanation'])}</i>", body))
 
     if lesson.get("parent_notes") and parent:
