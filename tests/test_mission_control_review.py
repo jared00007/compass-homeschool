@@ -75,9 +75,9 @@ def test_mission_control_has_a_courses_button(monkeypatch, tmp_path):
 
 def test_a_submitted_lesson_surfaces_open_in_waiting_on_you(monkeypatch, tmp_path):
     """A turned-in lesson is the whole point of the queue: it shows in the
-    "waiting on you" section, rendered open (its title on a bold markdown
-    line, not tucked behind a closed expander) so grading it takes no extra
-    click."""
+    "waiting on you" section as a collapsible card whose bar carries the
+    badge and title. With just one thing waiting it starts expanded, so
+    grading the sole item still takes no extra click."""
     db_path = tmp_path / "review.db"
     db = Database(db_path)
     student = db.ensure_default_student()
@@ -92,7 +92,42 @@ def test_a_submitted_lesson_surfaces_open_in_waiting_on_you(monkeypatch, tmp_pat
     assert review_tab.label == "✅ Review (1)"
     markdowns = _md(review_tab)
     assert any("Turned in — waiting on you" in m and "(1)" in m for m in markdowns)
-    assert any("turned in — waiting on you" in m and "Turned in" in m for m in markdowns)
+    # The card is a collapsible expander; its bar carries the status + title,
+    # and the sole waiting item opens automatically.
+    waiting = [
+        e for e in review_tab.expander
+        if "turned in — waiting on you" in (e.label or "") and "Turned in" in (e.label or "")
+    ]
+    assert waiting, [e.label for e in review_tab.expander]
+
+
+def test_the_waiting_bar_summarizes_hand_ins_and_quiz(monkeypatch, tmp_path):
+    """The collapsed bar has to be worth scanning: it carries a quick read of
+    what's inside -- how many hand-ins wait, and the quiz score -- so a parent
+    can triage the queue without opening every card."""
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    payload = {
+        "title": "Big one",
+        "activities": [
+            {"title": "Essay", "kind": "writing", "minutes": 30,
+             "requires_written_response": True},
+        ],
+        "quiz": [{"question": "Q", "choices": ["a", "b"], "correct_index": 0}],
+    }
+    lid = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Big one", payload=payload,
+        metadata={"quiz_result": {"correct": 4, "total": 5, "passed": True}},
+    )
+    db.submit_lesson(lid)
+    db.close()
+
+    at, review_tab = _open_review_tab(monkeypatch, db_path)
+    labels = " ".join(e.label or "" for e in review_tab.expander)
+    assert "1 hand-in" in labels
+    assert "quiz 4/5" in labels
 
 
 def test_an_overdue_this_week_lesson_shows_in_the_overdue_section(monkeypatch, tmp_path):
@@ -315,8 +350,12 @@ def test_a_submitted_travel_entry_shows_up_waiting_on_you(monkeypatch, tmp_path)
 
     at, review_tab = _open_review_tab(monkeypatch, db_path)
     assert review_tab.label == "✅ Review (1)"
-    markdowns = _md(review_tab)
-    assert any("turned in — waiting on you" in m and "Grand Canyon" in m for m in markdowns)
+    # The travel card is a collapsible expander now, same as the lesson cards;
+    # its bar carries the status and the trip title.
+    assert any(
+        "turned in — waiting on you" in (e.label or "") and "Grand Canyon" in (e.label or "")
+        for e in review_tab.expander
+    ), [e.label for e in review_tab.expander]
 
 
 def test_a_planned_unwritten_travel_stub_does_not_show_up(monkeypatch, tmp_path):

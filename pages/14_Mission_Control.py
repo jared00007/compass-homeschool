@@ -125,6 +125,41 @@ def _lesson_date(lesson: dict) -> str:
     return (lesson.get("metadata") or {}).get("planned_for") or lesson["created_at"][:10]
 
 
+def _review_summary(lesson: dict) -> str:
+    """A one-line, at-a-glance read of what's waiting inside a review card --
+    what shows on the collapsed bar so you can triage the whole list without
+    opening every one. Hand-ins waiting, whether the quiz is done and how he
+    scored: the two things that decide whether this one needs a careful read
+    or a quick approve."""
+    payload = lesson.get("payload") or {}
+    metadata = lesson.get("metadata") or {}
+    bits: list[str] = []
+
+    activities = payload.get("activities") or []
+    hand_ins = sum(
+        1
+        for a in activities
+        if a.get("kind") == "writing" or a.get("requires_written_response")
+    )
+    if hand_ins:
+        bits.append(f"✍️ {hand_ins} hand-in{'s' if hand_ins != 1 else ''}")
+
+    if payload.get("quiz"):
+        quiz_result = metadata.get("quiz_result") or {}
+        if quiz_result.get("total"):
+            correct, total = quiz_result["correct"], quiz_result["total"]
+            trophy = " 🎯" if quiz_result.get("passed") else ""
+            bits.append(f"📝 quiz {correct}/{total}{trophy}")
+        else:
+            bits.append("📝 quiz not taken")
+
+    minutes = sum(a.get("minutes", 0) for a in activities)
+    if minutes:
+        bits.append(f"⏱️ {minutes}m")
+
+    return " · ".join(bits)
+
+
 def _needs_attention(lesson: dict, today_iso: str) -> bool:
     """Genuinely waiting on you: he's turned it in, or it's overdue and still
     untouched -- but only within its own week. Once that week ends it's
@@ -260,19 +295,20 @@ def _render_review_card_body(lesson: dict, today_iso: str) -> None:
 
 
 def _render_review_card(lesson: dict, today_iso: str, *, open: bool = False) -> None:
-    """One lesson's review card. `open` renders it as a bordered panel with
-    everything already visible -- for work that's genuinely waiting on you,
-    so grading it takes no extra click. Otherwise it's a collapsed expander,
-    for the quieter overdue/sent-back/backlog/history lists where the
-    header alone is usually enough."""
+    """One lesson's review card, always a collapsible expander so a long
+    review queue stays scannable -- reported directly: the ones waiting on you
+    should "collapse to see just the bar level summary when closed and expand
+    when time to review." `open` only sets the *starting* state (expanded for
+    work that's genuinely waiting on you, collapsed for the quieter
+    overdue/sent-back/backlog/history lists); either way it collapses to the
+    same one-line summary bar. That bar carries a quick read of what's inside
+    (hand-ins, quiz score, minutes) so you can triage without opening each."""
     header = f"{_review_badge(lesson, today_iso)} · {_lesson_date(lesson)} · {md(lesson['title'])}"
-    if open:
-        with st.container(border=True):
-            st.markdown(f"**{header}**")
-            _render_review_card_body(lesson, today_iso)
-    else:
-        with st.expander(header):
-            _render_review_card_body(lesson, today_iso)
+    summary = _review_summary(lesson)
+    if summary:
+        header += f"  ·  {summary}"
+    with st.expander(header, expanded=open):
+        _render_review_card_body(lesson, today_iso)
 
 
 _TRAVEL_REVIEW_BADGES = {
@@ -328,13 +364,8 @@ def _render_travel_review_card(entry: dict, *, open: bool = False) -> None:
                         st.rerun()
         st.page_link("pages/9_Landons_Travels.py", label="Open in Landon's Travels", icon="🧭")
 
-    if open:
-        with st.container(border=True):
-            st.markdown(f"**{header}**")
-            _body()
-    else:
-        with st.expander(header):
-            _body()
+    with st.expander(header, expanded=open):
+        _body()
 
 
 # --- the parked-work and hours data every tab below reads ----------------------
@@ -575,13 +606,19 @@ with review_tab:
         st.success("Nothing turned in to grade right now.")
     else:
         st.caption(
-            "Read his work below, then approve it or send it back with a note. Each "
-            "lesson is laid out the way he saw it, his answer right under the activity."
+            "Each row collapses to a summary bar — hand-ins, quiz score, minutes — so "
+            "you can scan the queue, then open the one you're ready to grade. Inside, "
+            "the lesson is laid out the way he saw it, his answer under each activity."
         )
+        # One thing waiting takes no click -- open it. A queue of several stays
+        # collapsed to summary bars so it's scannable, the reported ask: "expand
+        # and collapse to see just the bar level summary when closed and expand
+        # when time to review."
+        auto_open = waiting_count == 1
         for entry in travel_waiting:
-            _render_travel_review_card(entry, open=True)
+            _render_travel_review_card(entry, open=auto_open)
         for lesson in submitted_lessons:
-            _render_review_card(lesson, today_iso, open=True)
+            _render_review_card(lesson, today_iso, open=auto_open)
         # Big Project steps he's submitted are reviewed on the Big Projects page
         # (where the project and its whole checklist live); surface the prompt
         # here so "needs review" isn't buried on another tab, then link out to
