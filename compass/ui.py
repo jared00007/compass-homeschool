@@ -2956,6 +2956,51 @@ def _grade_dot(percent: float) -> str:
     return "🔴"
 
 
+def _render_grade_item_editor(
+    db: Database, student: dict[str, Any], subject: str, item: Any
+) -> None:
+    """The ✏️ on one editable graded item -- a parent re-grading a single
+    hand-in or math skill by hand, right from the report card. Reported: "i
+    should have control on edit activity grading when needed." A hand-in re-picks
+    its verdict (record_assessment); a math skill flips mastered / not-yet
+    (set_mastery). Quizzes never reach here -- they're auto-graded off his
+    answers, so `item.editable` is false for them. Tucked in a popover so the
+    list stays a clean at-a-glance read until you actually want to change one."""
+    with st.popover("✏️", use_container_width=True, help="Re-grade this by hand"):
+        if item.component == "assessment" and item.lesson_id is not None:
+            st.caption(f"Re-grade the hand-in for **{md(item.title)}**")
+            verdicts = list(config.ASSESSMENT_VERDICTS)
+            current = item.verdict if item.verdict in verdicts else verdicts[0]
+            new_verdict = st.selectbox(
+                "Grade",
+                verdicts,
+                index=verdicts.index(current),
+                format_func=lambda v: config.ASSESSMENT_VERDICT_LABELS[v],
+                key=f"grade_item_verdict_{subject}_{item.lesson_id}",
+            )
+            if st.button(
+                "Save grade",
+                key=f"grade_item_save_{subject}_{item.lesson_id}",
+                type="primary",
+            ):
+                db.record_assessment(item.lesson_id, new_verdict)
+                st.success("Updated.")
+                st.rerun()
+        elif item.component == "mastery" and item.skill_id is not None:
+            st.caption(f"Set mastery for **{md(item.title)}**")
+            mastered_col, not_yet_col = st.columns(2)
+            if mastered_col.button(
+                "🎯 Mastered", key=f"grade_item_master_{subject}_{item.skill_id}"
+            ):
+                db.set_mastery(student["id"], item.skill_id, "mastered", score=100)
+                st.rerun()
+            if not_yet_col.button(
+                "↩️ Not yet", key=f"grade_item_notyet_{subject}_{item.skill_id}"
+            ):
+                db.set_mastery(student["id"], item.skill_id, "in_progress")
+                st.rerun()
+
+
 def render_report_card(db: Database, student: dict[str, Any], *, for_parent: bool) -> None:
     """Subject grades, with the arithmetic showing.
 
@@ -3071,16 +3116,29 @@ def render_report_card(db: Database, student: dict[str, Any], *, for_parent: boo
                     if for_parent
                     else "**Every graded item** — worst first:"
                 )
+                if for_parent:
+                    st.caption(
+                        "Each hand-in and math skill has an ✏️ to re-grade it by "
+                        "hand. Quizzes are auto-marked off his answers — the way "
+                        "to change one is to have him retake it."
+                    )
                 for item in items:
                     letter = config.letter_for(item.percent)
-                    st.markdown(
-                        f"- {_grade_dot(item.percent)} **{item.percent:.0f}%** "
-                        f"({letter}) — {md(item.title)}  \n"
-                        f"  <span style='color:var(--c-dim); font-size:12px;'>"
-                        f"{html.escape(item.component_label)} · "
-                        f"{html.escape(item.detail)}</span>",
-                        unsafe_allow_html=True,
+                    text_col, edit_col = (
+                        st.columns([6, 1]) if for_parent else (st.container(), None)
                     )
+                    with text_col:
+                        st.markdown(
+                            f"{_grade_dot(item.percent)} **{item.percent:.0f}%** "
+                            f"({letter}) — {md(item.title)}  \n"
+                            f"  <span style='color:var(--c-dim); font-size:12px;'>"
+                            f"{html.escape(item.component_label)} · "
+                            f"{html.escape(item.detail)}</span>",
+                            unsafe_allow_html=True,
+                        )
+                    if edit_col is not None and item.editable:
+                        with edit_col:
+                            _render_grade_item_editor(db, student, grade.subject, item)
 
             if for_parent:
                 st.caption(

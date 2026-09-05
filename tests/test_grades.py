@@ -312,6 +312,34 @@ def test_graded_items_skips_a_skipped_lesson(db, student):
     assert gradebook.graded_items(db, student["id"], "english") == []
 
 
+def test_only_hand_ins_and_math_skills_are_editable(db, student):
+    """A parent can re-grade the items they judged themselves -- a hand-in
+    verdict or a math skill -- but not an auto-marked quiz, which changes only
+    when he retakes it."""
+    lesson_id = _lesson(db, student, agent="english")
+    db.record_quiz_result(lesson_id, student["id"], 3, 5, False)
+    db.record_assessment(lesson_id, config.ASSESSMENT_GETTING_THERE, "")
+
+    items = gradebook.graded_items(db, student["id"], "english")
+    quiz = [i for i in items if i.component == "quizzes"][0]
+    hand_in = [i for i in items if i.component == "assessment"][0]
+
+    assert not quiz.editable
+    assert quiz.lesson_id is None  # nothing to hand-edit
+    assert hand_in.editable
+    assert hand_in.lesson_id == lesson_id
+    assert hand_in.verdict == config.ASSESSMENT_GETTING_THERE
+
+
+def test_a_math_skill_item_is_editable_by_its_skill_id(db, student):
+    db.set_mastery(student["id"], "integer-operations", "in_progress", score=60)
+    items = gradebook.graded_items(db, student["id"], "math")
+    skill = [i for i in items if i.component == "mastery"][0]
+    assert skill.editable
+    assert skill.skill_id == "integer-operations"
+    assert skill.percent == 0.0  # not yet mastered
+
+
 # --- on his page ------------------------------------------------------------------
 
 

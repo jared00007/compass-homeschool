@@ -153,10 +153,27 @@ class GradedItem:
     title: str       # the lesson it came from, or the skill's name
     percent: float   # 0-100; for mastery, 100 mastered / 0 not yet
     detail: str      # "best of 2 attempts", "reading check", the verdict, the status
+    # What a parent needs to *edit* this item's grade, when it's editable:
+    # `lesson_id` + `verdict` for a hand-in (re-graded via record_assessment),
+    # `skill_id` for a math skill (re-set via set_mastery). Quizzes and reading
+    # checks are auto-graded off his actual answers, so they carry neither --
+    # the way to change one is to have him retake it, not to hand-edit a score.
+    lesson_id: int | None = None
+    skill_id: str | None = None
+    verdict: str | None = None
 
     @property
     def component_label(self) -> str:
         return grades.COMPONENT_LABELS.get(self.component, self.component.title())
+
+    @property
+    def editable(self) -> bool:
+        """A hand-in verdict or a math skill -- the parent-judged items, the
+        ones a parent can legitimately override. An auto-graded quiz/reading
+        check is not."""
+        return (self.component == "assessment" and self.lesson_id is not None) or (
+            self.component == "mastery" and self.skill_id is not None
+        )
 
 
 def graded_items(db: Any, student_id: int, agent: str) -> list[GradedItem]:
@@ -204,6 +221,8 @@ def graded_items(db: Any, student_id: int, agent: str) -> list[GradedItem]:
                     "assessment", title,
                     float(config.ASSESSMENT_VERDICT_SCORES[verdict]),
                     f"hand-in · {verdict}",
+                    lesson_id=lesson["id"],
+                    verdict=verdict,
                 )
             )
 
@@ -222,6 +241,7 @@ def graded_items(db: Any, student_id: int, agent: str) -> list[GradedItem]:
                     skill.title,
                     100.0 if mastered else 0.0,
                     "mastered" if mastered else f"{row['status']} — not yet mastered",
+                    skill_id=skill_id,
                 )
             )
 

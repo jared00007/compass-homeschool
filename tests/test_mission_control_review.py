@@ -125,6 +125,38 @@ def test_grades_are_a_view_in_mission_control_with_the_override_editor(monkeypat
     assert any((b.key or "") == "grade_override_input_math" for b in grades.number_input)
 
 
+def test_a_parent_can_re_grade_a_hand_in_from_the_grades_view(monkeypatch, tmp_path):
+    """Per-activity grade editing, reported: "i should have control on edit
+    activity grading when needed." Each hand-in item on the report card has an
+    ✏️ that re-picks its verdict -- here, bumping a "not yet" hand-in up to
+    "solid" and confirming the recorded verdict changed."""
+    db_path = tmp_path / "grades.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lid = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Essay", payload={"title": "Essay", "activities": []},
+    )
+    db.record_assessment(lid, config.ASSESSMENT_NOT_YET, "")
+    db.close()
+
+    at, _ = _open_review_tab(monkeypatch, db_path)
+    _switch_view(at, "grades")
+
+    verdict_key = f"grade_item_verdict_english_{lid}"
+    sel = [s for s in at.selectbox if s.key == verdict_key]
+    assert sel, "the hand-in item must offer a verdict re-pick"
+    sel[0].set_value(config.ASSESSMENT_SOLID).run()
+
+    save = [b for b in at.button if b.key == f"grade_item_save_english_{lid}"][0]
+    save.click().run()
+
+    db = Database(db_path)
+    lesson = db.get_lesson(lid)
+    db.close()
+    assert lesson["metadata"]["assessment_result"]["verdict"] == config.ASSESSMENT_SOLID
+
+
 def test_a_submitted_lesson_surfaces_open_in_waiting_on_you(monkeypatch, tmp_path):
     """A turned-in lesson is the whole point of the queue: it shows in the
     "waiting on you" section as a collapsible card whose bar carries the
