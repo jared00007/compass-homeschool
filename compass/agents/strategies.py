@@ -34,7 +34,14 @@ def graph_walk(ctx: StudentContext) -> TopicProposal:
 
     requested = (ctx.inputs.get("skill_id") or "").strip()
     if requested:
-        return _proposal_for_skill(requested, mastered, mastery, forced=True)
+        # A parent can deliberately go out of sequence -- teach a skill whose
+        # prerequisites aren't all mastered yet -- by setting override_prereqs.
+        # Without it, a locked skill still comes back blocked with the chain to
+        # get there, so the graph stays the default and the override is a choice.
+        return _proposal_for_skill(
+            requested, mastered, mastery,
+            forced=True, override=bool(ctx.inputs.get("override_prereqs")),
+        )
 
     in_progress = [
         skill_id
@@ -81,6 +88,7 @@ def _proposal_for_skill(
     mastery: dict[str, Any],
     forced: bool = False,
     continuing: bool = False,
+    override: bool = False,
 ) -> TopicProposal:
     skill = math_graph.get_skill(skill_id)
     if skill is None:
@@ -93,7 +101,7 @@ def _proposal_for_skill(
         )
 
     missing = math_graph.missing_prerequisites(skill_id, mastered)
-    if missing and forced:
+    if missing and forced and not override:
         chain = math_graph.prerequisite_chain(skill_id, mastered)
         names = ", ".join(math_graph.MATH_GRAPH[m].title for m in missing)
         return TopicProposal(
@@ -116,6 +124,12 @@ def _proposal_for_skill(
 
     if continuing:
         rationale = f"Already in progress — finish {skill.title} before unlocking anything new."
+    elif forced and override and missing:
+        missing_names = ", ".join(math_graph.MATH_GRAPH[m].title for m in missing)
+        rationale = (
+            f"Parent selected {skill.title} out of sequence — its prerequisites "
+            f"({missing_names}) aren't all mastered yet. Teaching it anyway by request."
+        )
     elif forced:
         rationale = f"Parent selected {skill.title}; prerequisites are satisfied."
     else:
@@ -140,6 +154,13 @@ def _proposal_for_skill(
         context_lines.append("This is a foundational skill with no prerequisites.")
     if downstream:
         context_lines.append("This unlocks next: " + ", ".join(downstream))
+    if forced and override and missing:
+        missing_names = ", ".join(math_graph.MATH_GRAPH[m].title for m in missing)
+        context_lines.append(
+            "Taught OUT OF SEQUENCE by parent request — these prerequisites are NOT yet "
+            f"mastered, so scaffold the parts of them this skill leans on rather than "
+            f"assuming them: {missing_names}"
+        )
     if continuing and prior_note:
         context_lines.append(f"Notes from the previous attempt: {prior_note}")
 

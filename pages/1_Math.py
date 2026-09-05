@@ -61,13 +61,31 @@ with week_tab:
 with plan_tab:
     api_ok = api_status_banner()
 
+    ready_ids = {s.id for s in ready}
+    # Any 8th-grade skill can be chosen, not just the ones the graph has
+    # unlocked -- a parent can deliberately teach out of sequence (reported: for
+    # math "i couldnt chose the lesson to generate. it was linear"). The lock
+    # marker still shows the graph's recommendation; a locked pick just asks for
+    # a confirming tick before it'll generate.
+    LET_AGENT = "Let the agent choose"
+    all_skills = sorted(MATH_GRAPH.values(), key=lambda s: (s.strand, s.title))
+
+    def _skill_label(skill) -> str:
+        if skill.id in mastered:
+            marker = "✅"
+        elif skill.id in ready_ids:
+            marker = "🔓"
+        else:
+            marker = "🔒"
+        return f"{marker} {skill.title} — {STRANDS[skill.strand]}"
+
     columns = st.columns([2, 1, 1])
     with columns[0]:
-        options = ["Let the agent choose"] + [f"{s.title}" for s in ready]
         choice = st.selectbox(
             "Skill",
-            options,
-            help="Only unlocked skills are listed. Locked skills need their prerequisites first.",
+            [LET_AGENT] + all_skills,
+            format_func=lambda o: o if isinstance(o, str) else _skill_label(o),
+            help="🔓 unlocked · ✅ mastered · 🔒 prerequisites not all met (you can still pick it).",
         )
     with columns[1]:
         minutes = st.number_input("Minutes", min_value=15, max_value=180, value=60, step=5)
@@ -81,8 +99,21 @@ with plan_tab:
     difficulty = difficulty_override_control(db, key="math_difficulty")
 
     skill_id = ""
-    if choice != "Let the agent choose":
-        skill_id = next((s.id for s in ready if s.title == choice), "")
+    override_prereqs = False
+    if choice != LET_AGENT:
+        skill_id = choice.id
+        locked_missing = missing_prerequisites(skill_id, mastered)
+        if locked_missing and skill_id not in mastered:
+            st.warning(
+                f"**{choice.title}** is out of sequence — these prerequisites aren't "
+                "mastered yet: "
+                + ", ".join(MATH_GRAPH[m].title for m in locked_missing)
+                + ". You can still teach it now; the lesson will scaffold what it leans on."
+            )
+            override_prereqs = st.checkbox(
+                "Generate it anyway (out of sequence)",
+                key="math_override_prereqs",
+            )
 
     ctx = context_for(
         db,
@@ -90,6 +121,7 @@ with plan_tab:
         minutes=minutes,
         parent_note=parent_note,
         skill_id=skill_id,
+        override_prereqs=override_prereqs,
         difficulty=difficulty,
     )
     proposal = agent.propose_topic(ctx)

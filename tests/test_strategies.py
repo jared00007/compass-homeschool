@@ -55,6 +55,29 @@ def test_graph_walk_blocks_a_forced_locked_skill_and_shows_the_path(db, student)
     assert "Teaching order" in proposal.blocked_reason
 
 
+def test_override_prereqs_lets_a_parent_force_a_locked_skill(db, student):
+    """A parent can deliberately teach out of sequence: override_prereqs turns
+    the block into a real proposal, and the context tells the model the missing
+    prerequisites aren't mastered so it scaffolds rather than assumes them."""
+    proposal = get_agent("math").propose_topic(
+        ctx_for(db, student, skill_id="pythagorean-theorem", override_prereqs=True)
+    )
+    assert not proposal.blocked
+    assert proposal.metadata["skill_id"] == "pythagorean-theorem"
+    assert "out of sequence" in proposal.rationale.lower()
+    assert any("OUT OF SEQUENCE" in line for line in proposal.context_lines)
+
+
+def test_override_prereqs_is_a_noop_when_the_skill_is_already_unlocked(db, student):
+    """Overriding a skill whose prerequisites are all met just teaches it the
+    normal way -- no "out of sequence" framing when nothing was skipped."""
+    proposal = get_agent("math").propose_topic(
+        ctx_for(db, student, skill_id="integer-operations", override_prereqs=True)
+    )
+    assert not proposal.blocked
+    assert "out of sequence" not in proposal.rationale.lower()
+
+
 def test_graph_walk_finishes_in_progress_work_before_unlocking_more(db, student):
     db.set_mastery(student["id"], "integer-operations", "mastered")
     db.set_mastery(student["id"], "fraction-operations", "in_progress", notes="signs are shaky")
