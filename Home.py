@@ -425,6 +425,30 @@ if not is_parent():
                     )
                 st.caption("📬 waiting on you to read  \n✅ read today")
 
+        # Notes your parent left when they *approved* a piece of writing. An
+        # approved lesson counts as done and drops off every subject page, so a
+        # note riding on one would be lost the moment it's accepted -- this is
+        # what guarantees he still sees it. Shown and acknowledged inline (not a
+        # link out) precisely because there's no page a completed lesson still
+        # lives on to send him to.
+        writing_notes = db.unread_writing_feedback(student["id"])
+        if writing_notes:
+            with st.container(border=True):
+                render_card_heading(f"✍️ Notes on your writing ({len(writing_notes)})")
+                for note in writing_notes:
+                    st.markdown(
+                        f"**{md(note['activity_title'])}** — from *{md(note['lesson_title'])}*"
+                    )
+                    st.info(md(note["note"]))
+                    if st.button(
+                        "👍 Got it — I read this",
+                        key=f"home_ack_writing_{note['lesson_id']}_{note['activity_index']}",
+                    ):
+                        db.mark_writing_feedback_read(
+                            note["lesson_id"], note["activity_index"]
+                        )
+                        st.rerun()
+
         # 3. Words to Review, Reading, and Life Skills all in one row of
         # three equal columns -- small, single-purpose tiles that each just
         # say what's outstanding and link to where it's actually done,

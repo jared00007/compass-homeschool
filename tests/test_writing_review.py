@@ -292,3 +292,60 @@ def test_reviewing_never_approves_or_submits_on_its_own(monkeypatch, tmp_path):
     lesson = database.get_lesson(lesson_id)
     database.close()
     assert (lesson["metadata"].get("writing_review") or {}) == {}
+
+
+# --- approve-with-a-note and the read receipt ------------------------------------
+
+
+def test_approving_with_a_note_stores_it_unread(db, student):
+    lesson_id = _lesson(db, student["id"])
+    db.set_writing_review(
+        lesson_id, 0, config.WRITING_APPROVED, approval_note="Loved the second paragraph."
+    )
+    review = db.get_lesson(lesson_id)["metadata"]["writing_review"]["0"]
+    assert review["status"] == config.WRITING_APPROVED
+    assert review["approval_feedback"] == "Loved the second paragraph."
+    assert review["approval_read_at"] is None
+
+
+def test_approving_without_a_note_leaves_no_ack_gate(db, student):
+    lesson_id = _lesson(db, student["id"])
+    db.set_writing_review(lesson_id, 0, config.WRITING_APPROVED)
+    review = db.get_lesson(lesson_id)["metadata"]["writing_review"]["0"]
+    assert "approval_feedback" not in review
+
+
+def test_marking_a_note_read_stamps_the_time(db, student):
+    lesson_id = _lesson(db, student["id"])
+    db.set_writing_review(lesson_id, 0, config.WRITING_APPROVED, approval_note="Read this.")
+    db.mark_writing_feedback_read(lesson_id, 0)
+    review = db.get_lesson(lesson_id)["metadata"]["writing_review"]["0"]
+    assert review["approval_read_at"] is not None
+
+
+def test_marking_read_with_nothing_to_read_is_a_noop(db, student):
+    lesson_id = _lesson(db, student["id"])
+    db.set_writing_review(lesson_id, 0, config.WRITING_APPROVED)  # no note
+    db.mark_writing_feedback_read(lesson_id, 0)  # must not raise or invent a stamp
+    review = db.get_lesson(lesson_id)["metadata"]["writing_review"]["0"]
+    assert review.get("approval_read_at") is None
+
+
+def test_unread_writing_feedback_lists_only_unacknowledged_notes(db, student):
+    lesson_id = _lesson(db, student["id"])
+    db.set_writing_review(lesson_id, 0, config.WRITING_APPROVED, approval_note="Please read.")
+
+    unread = db.unread_writing_feedback(student["id"])
+    assert len(unread) == 1
+    assert unread[0]["lesson_id"] == lesson_id
+    assert unread[0]["activity_index"] == 0
+    assert unread[0]["note"] == "Please read."
+
+    db.mark_writing_feedback_read(lesson_id, 0)
+    assert db.unread_writing_feedback(student["id"]) == []
+
+
+def test_a_plain_approval_never_shows_up_as_unread(db, student):
+    lesson_id = _lesson(db, student["id"])
+    db.set_writing_review(lesson_id, 0, config.WRITING_APPROVED)  # no note
+    assert db.unread_writing_feedback(student["id"]) == []

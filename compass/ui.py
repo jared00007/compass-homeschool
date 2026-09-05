@@ -854,6 +854,21 @@ def _render_activity_body(
 
             if status == config.WRITING_APPROVED:
                 st.success("✅ Your parent approved this one.")
+                approval_note = review.get("approval_feedback")
+                if approval_note and not review.get("approval_read_at"):
+                    # Approved, so it counts -- but they left you something to
+                    # read. Same deal as travel-journal feedback: you have to
+                    # tick that you saw it, so a note isn't lost just because
+                    # the piece already passed.
+                    st.info(f"💬 A note from your parent: {md(approval_note)}")
+                    if st.button(
+                        "👍 Got it — I read this",
+                        key=f"ack_writing_{lesson_id}_{index}",
+                    ):
+                        db.mark_writing_feedback_read(lesson_id, index)
+                        st.rerun()
+                elif approval_note:
+                    st.caption(f"💬 Note from your parent: {md(approval_note)}")
                 st.write(md(saved))
                 return
 
@@ -1977,7 +1992,15 @@ def _render_writing_review_controls(
             )
 
     if status == config.WRITING_APPROVED:
-        st.success("✅ Approved.")
+        approval_note = review.get("approval_feedback")
+        if approval_note:
+            st.success(f"✅ Approved with a note for him: {md(approval_note)}")
+            if review.get("approval_read_at"):
+                st.caption(f"👀 He read it — {review['approval_read_at']}")
+            else:
+                st.caption("⏳ Waiting on him to read it and tick that he saw it.")
+        else:
+            st.success("✅ Approved.")
     elif status == config.WRITING_NEEDS_REVISION:
         history = _feedback_history(
             review, history_key="feedback_history", single_key="feedback"
@@ -1991,17 +2014,44 @@ def _render_writing_review_controls(
             for note in history:
                 st.markdown(f"- {md(note)}")
     elif status == config.WRITING_SUBMITTED and lesson["status"] == "submitted":
+        # If this is a *re*-review -- you sent it back once, he reworked it and
+        # turned it in again -- the notes you gave last time are the whole
+        # point of comparison, so surface them right above the buttons rather
+        # than making you remember what you'd asked for. Empty on a first pass.
+        prior_notes = _feedback_history(
+            review, history_key="feedback_history", single_key="feedback"
+        )
+        if prior_notes:
+            st.warning(
+                "↩️ You sent this back "
+                + (
+                    "before — what you asked for:"
+                    if len(prior_notes) == 1
+                    else "before — every note so far:"
+                )
+            )
+            for note in prior_notes:
+                st.markdown(f"- {md(note)}")
+            st.caption("His reworked response is what's shown above.")
         st.info("⏳ He's submitted this — awaiting your review.")
         review_key = f"{key_prefix}_writing_review_{lesson['id']}_{index}"
         with st.form(review_key):
             feedback = st.text_area(
-                "Feedback (shown to him if you send it back)", key=f"{review_key}_feedback"
+                "Feedback for him",
+                key=f"{review_key}_feedback",
+                help=(
+                    "Send back → he has to revise before it counts. "
+                    "Approve → it counts as done, but he still has to read this "
+                    "note and tick that he saw it."
+                ),
             )
             approve_col, bounce_col = st.columns(2)
             approve = approve_col.form_submit_button("✅ Approve", type="primary")
             bounce = bounce_col.form_submit_button("↩️ Send back for revision")
         if approve:
-            db.set_writing_review(lesson["id"], index, config.WRITING_APPROVED)
+            db.set_writing_review(
+                lesson["id"], index, config.WRITING_APPROVED, approval_note=feedback
+            )
             st.rerun()
         elif bounce:
             db.set_writing_review(lesson["id"], index, config.WRITING_NEEDS_REVISION, feedback)
@@ -2253,6 +2303,21 @@ def render_lesson_review(
     activities = payload.get("activities") or []
     review_map = metadata.get("writing_review") or {}
     reading_checks = metadata.get("reading_checks") or {}
+
+    # If you've sent this lesson back before and he's turned it in again, the
+    # notes you gave are the frame for this whole re-read -- put them at the
+    # very top so you're grading against what you asked for, not from memory.
+    lesson_notes = _feedback_history(
+        metadata, history_key="lesson_feedback_history", single_key="lesson_feedback"
+    )
+    if lesson_notes:
+        with st.container(border=True):
+            if len(lesson_notes) == 1:
+                st.markdown("↩️ **You sent this back — what you asked him for:**")
+            else:
+                st.markdown("↩️ **You've sent this back before — every note so far:**")
+            for note in lesson_notes:
+                st.markdown(f"- {md(note)}")
 
     if payload.get("overview"):
         st.write(md(payload["overview"]))

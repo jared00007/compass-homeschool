@@ -3165,7 +3165,12 @@ class Database:
             self.conn.commit()
 
     def set_writing_review(
-        self, lesson_id: int, activity_index: int, status: str, feedback: str = ""
+        self,
+        lesson_id: int,
+        activity_index: int,
+        status: str,
+        feedback: str = "",
+        approval_note: str = "",
     ) -> None:
         """Where one writing response sits in the draft -> submitted ->
         parent-decision loop: 'draft' (his to edit, the default before
@@ -3183,6 +3188,14 @@ class Database:
         already gone by the time he went looking for it. `feedback` still
         holds just the latest on its own, for anything that only ever
         needed "what did they just say."
+
+        `approval_note` is the other half of the loop: a parent can accept a
+        piece *and* leave a note he still has to read -- praise, or a "next
+        time, do X" that isn't worth another round of revision. It's stored
+        as `approval_feedback` with `approval_read_at = None`, and his view
+        holds an acknowledgement gate until he marks it read (see
+        `mark_writing_feedback_read`), mirroring the travel-journal
+        read-receipt. Only meaningful when approving.
         """
         if status not in config.WRITING_REVIEW_STATUSES:
             raise ValueError(f"invalid writing review status: {status}")
@@ -3195,16 +3208,87 @@ class Database:
             )
             if feedback:
                 history.append(feedback)
-            reviews[str(activity_index)] = {
+            entry = {
                 "status": status,
                 "feedback": feedback,
                 "feedback_history": history,
             }
+            if status == config.WRITING_APPROVED and approval_note:
+                entry["approval_feedback"] = approval_note
+                entry["approval_read_at"] = None
+            reviews[str(activity_index)] = entry
             metadata["writing_review"] = reviews
             self.conn.execute(
                 "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
             )
             self.conn.commit()
+
+    def mark_writing_feedback_read(self, lesson_id: int, activity_index: int) -> None:
+        """Stamp the moment he acknowledged an approval note (see the
+        `approval_note` half of `set_writing_review`). Unlike the travel
+        read-receipt this asks for no written reply -- the note rides on an
+        already-approved piece, so a bare "I read this" is enough to clear
+        the gate; the point is only that he can't scroll past praise or a
+        "next time" without seeing it. No-op if there's nothing to mark."""
+        with self._lock:
+            lesson = self.get_lesson(lesson_id)
+            metadata = lesson["metadata"] if lesson else {}
+            reviews = metadata.get("writing_review") or {}
+            entry = reviews.get(str(activity_index))
+            if not entry or not entry.get("approval_feedback"):
+                return
+            entry["approval_read_at"] = datetime.now().isoformat(timespec="seconds")
+            reviews[str(activity_index)] = entry
+            metadata["writing_review"] = reviews
+            self.conn.execute(
+                "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
+            )
+            self.conn.commit()
+
+    def unread_writing_feedback(self, student_id: int) -> list[dict[str, Any]]:
+        """Approval notes on writing he hasn't ticked off yet -- the thing
+        Home surfaces so a note on an *approved* piece isn't lost the moment
+        the lesson leaves his active view (approved -> completed drops it off
+        every subject page). One entry per unread note, newest lesson first:
+        each carries the lesson id, activity index, the activity's title and
+        the note itself, everything Home needs to show it and clear it inline
+        without a round trip to a page a completed lesson no longer appears on.
+
+        The writing_review map lives in each lesson's metadata JSON, so this
+        scans rather than filtering in SQL -- there are only ever a handful of
+        lessons in flight per student, and the alternative is a second table
+        duplicating state that already has one home."""
+        out: list[dict[str, Any]] = []
+        rows = _rows(
+            self.conn.execute(
+                "SELECT id, topic, title, payload, metadata FROM lessons WHERE student_id = ? "
+                "ORDER BY id DESC",
+                (student_id,),
+            )
+        )
+        for row in rows:
+            metadata = json.loads(row["metadata"])
+            reviews = metadata.get("writing_review") or {}
+            if not reviews:
+                continue
+            activities = (json.loads(row["payload"]).get("activities")) or []
+            for index_str, review in reviews.items():
+                if review.get("approval_feedback") and not review.get("approval_read_at"):
+                    try:
+                        index = int(index_str)
+                    except (TypeError, ValueError):
+                        continue
+                    activity = activities[index] if index < len(activities) else {}
+                    out.append(
+                        {
+                            "lesson_id": row["id"],
+                            "activity_index": index,
+                            "activity_title": activity.get("title") or "Writing",
+                            "lesson_title": row["title"] or row["topic"] or "a lesson",
+                            "note": review["approval_feedback"],
+                        }
+                    )
+        return out
 
     def record_assessment(self, lesson_id: int, verdict: str, notes: str = "") -> None:
         """The parent's digital check on a lesson's `assessment` block, for
