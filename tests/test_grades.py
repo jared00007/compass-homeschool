@@ -261,6 +261,57 @@ def test_an_untouched_subject_reports_ungraded(db, student):
         assert result.graded is False
 
 
+# --- the per-item drill-down: "why is his grade bad" ----------------------------
+
+
+def test_graded_items_lists_each_scored_piece_worst_first(db, student):
+    """Every individual thing that fed the average shows up as its own line,
+    lowest score first, so the reason a grade is low is the top of the list."""
+    good = _lesson(db, student, agent="english")
+    db.record_quiz_result(good, student["id"], 5, 5, True)  # 100
+    bad = _lesson(db, student, agent="english")
+    db.record_quiz_result(bad, student["id"], 2, 5, False)  # 40
+
+    items = gradebook.graded_items(db, student["id"], "english")
+    percents = [round(i.percent) for i in items]
+    assert percents == [40, 100]  # worst first
+    assert all(i.component == "quizzes" for i in items)
+
+
+def test_graded_items_includes_hand_ins_and_reading_checks(db, student):
+    lesson_id = _lesson(db, student, agent="english", reading_checks={
+        "0": {"correct": 3, "total": 4},  # 75
+    })
+    db.record_quiz_result(lesson_id, student["id"], 5, 5, True)  # 100
+    db.record_assessment(lesson_id, config.ASSESSMENT_GETTING_THERE, "")
+
+    items = gradebook.graded_items(db, student["id"], "english")
+    components = {i.component for i in items}
+    assert components == {"quizzes", "assessment"}
+    # The hand-in verdict rides in the detail so a parent sees which band it was.
+    assessment = [i for i in items if i.component == "assessment"][0]
+    assert config.ASSESSMENT_GETTING_THERE in assessment.detail
+
+
+def test_graded_items_lists_math_skills_individually(db, student):
+    db.set_mastery(student["id"], "integer-operations", "mastered", score=100)
+    db.set_mastery(student["id"], "fraction-operations", "in_progress", score=60)
+
+    items = gradebook.graded_items(db, student["id"], "math")
+    mastery = [i for i in items if i.component == "mastery"]
+    assert len(mastery) == 2
+    # The not-yet-mastered skill sorts to the top (0%), the mastered one to 100%.
+    assert mastery[0].percent == 0.0
+    assert mastery[-1].percent == 100.0
+
+
+def test_graded_items_skips_a_skipped_lesson(db, student):
+    lesson_id = _lesson(db, student, agent="english")
+    db.record_assessment(lesson_id, config.ASSESSMENT_NOT_YET, "")
+    db.set_lesson_status(lesson_id, "skipped")
+    assert gradebook.graded_items(db, student["id"], "english") == []
+
+
 # --- on his page ------------------------------------------------------------------
 
 

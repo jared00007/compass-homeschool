@@ -2942,6 +2942,17 @@ def _render_grade_override_form(db: Database, grade: Any) -> None:
             st.rerun()
 
 
+def _grade_dot(percent: float) -> str:
+    """A traffic-light dot for one graded item's score, so a parent scanning
+    the drill-down sees the shape of the list before reading a single number:
+    green passing comfortably, amber shaky, red failing."""
+    if percent >= 80:
+        return "🟢"
+    if percent >= 70:
+        return "🟡"
+    return "🔴"
+
+
 def render_report_card(db: Database, student: dict[str, Any], *, for_parent: bool) -> None:
     """Subject grades, with the arithmetic showing.
 
@@ -3043,6 +3054,31 @@ def render_report_card(db: Database, student: dict[str, Any], *, for_parent: boo
                 )
             if not grade.components:
                 st.caption("No graded work yet to average from.")
+
+            # The averages above hide which individual pieces pulled the grade
+            # down. Reported: "his math grade is bad and i dont know why -- how
+            # can the parent see into each graded item in a list with grade?"
+            # So every scored item that fed those averages is listed here,
+            # worst first, tagged with which component it belongs to.
+            items = gradebook.graded_items(db, student["id"], grade.subject)
+            if items:
+                st.markdown(
+                    "**Every graded item** — worst first, so what's pulling it "
+                    "down is right at the top:"
+                    if for_parent
+                    else "**Every graded item** — worst first:"
+                )
+                for item in items:
+                    letter = config.letter_for(item.percent)
+                    st.markdown(
+                        f"- {_grade_dot(item.percent)} **{item.percent:.0f}%** "
+                        f"({letter}) — {md(item.title)}  \n"
+                        f"  <span style='color:var(--c-dim); font-size:12px;'>"
+                        f"{html.escape(item.component_label)} · "
+                        f"{html.escape(item.detail)}</span>",
+                        unsafe_allow_html=True,
+                    )
+
             if for_parent:
                 st.caption(
                     "Weights are settings — `grade_weights_"

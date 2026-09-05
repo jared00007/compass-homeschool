@@ -8,6 +8,7 @@ This one does the querying and hands it over.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from compass import config, grades
@@ -138,3 +139,91 @@ def set_override(db: Any, agent: str, percent: float | None, note: str = "") -> 
 
 def all_subject_grades(db: Any, student_id: int) -> list[grades.SubjectGrade]:
     return [subject_grade(db, student_id, agent) for agent in GRADED_AGENTS]
+
+
+@dataclass
+class GradedItem:
+    """One individual thing that fed a subject grade -- a single quiz, a
+    reading check, a hand-in verdict, or a math skill. The component averages
+    on the report card are built from these, but a parent asking "why is his
+    grade bad" needs to see the items themselves, worst first, not just the
+    rolled-up average that hides which two quizzes tanked it."""
+
+    component: str   # "quizzes" | "assessment" | "mastery" -- matches Component.key
+    title: str       # the lesson it came from, or the skill's name
+    percent: float   # 0-100; for mastery, 100 mastered / 0 not yet
+    detail: str      # "best of 2 attempts", "reading check", the verdict, the status
+
+    @property
+    def component_label(self) -> str:
+        return grades.COMPONENT_LABELS.get(self.component, self.component.title())
+
+
+def graded_items(db: Any, student_id: int, agent: str) -> list[GradedItem]:
+    """Every individual graded item behind a subject's grade, worst score
+    first -- the drill-down under the component averages. Reads exactly the
+    same records `subject_grade` averages, so an item shown here is one that
+    actually counted (a skipped lesson, an ungraded hand-in, an untaken quiz
+    never appears). Sorted lowest-percent-first so the reason a grade is low
+    is the first thing a parent reads, not something to hunt for."""
+    deduction = db.get_int_setting("quiz_retry_deduction_percent")
+    floor = db.get_int_setting("quiz_retry_floor_percent")
+    limit = config.GRADED_QUIZ_ATTEMPTS
+
+    lessons = [
+        lesson
+        for lesson in db.list_lessons(student_id, agent=agent, limit=500)
+        if lesson["status"] != "skipped"
+    ]
+
+    items: list[GradedItem] = []
+    for lesson in lessons:
+        metadata = lesson.get("metadata") or {}
+        title = lesson.get("title") or lesson.get("topic") or "a lesson"
+
+        attempts = list(reversed(db.list_quiz_attempts(student_id, lesson_id=lesson["id"])))
+        percent, used = grades.quiz_score(attempts, deduction, floor, limit)
+        if percent is not None:
+            detail = "best score" if used == 1 else f"best of {used} attempts"
+            items.append(GradedItem("quizzes", title, percent, detail))
+
+        for check in (metadata.get("reading_checks") or {}).values():
+            if check.get("total"):
+                pct = 100 * check["correct"] / check["total"]
+                items.append(
+                    GradedItem(
+                        "quizzes", title, pct,
+                        f"reading check · {check['correct']}/{check['total']}",
+                    )
+                )
+
+        verdict = (metadata.get("assessment_result") or {}).get("verdict")
+        if verdict in config.ASSESSMENT_VERDICT_SCORES:
+            items.append(
+                GradedItem(
+                    "assessment", title,
+                    float(config.ASSESSMENT_VERDICT_SCORES[verdict]),
+                    f"hand-in · {verdict}",
+                )
+            )
+
+    # Math mastery is per-skill, not per-lesson -- each attempted skill is its
+    # own line so a parent can see exactly which ones haven't landed yet.
+    if agent == "math":
+        mastery = db.mastery_map(student_id)
+        for skill_id, row in mastery.items():
+            skill = math_graph.MATH_GRAPH.get(skill_id)
+            if skill is None:
+                continue
+            mastered = row["status"] == "mastered"
+            items.append(
+                GradedItem(
+                    "mastery",
+                    skill.title,
+                    100.0 if mastered else 0.0,
+                    "mastered" if mastered else f"{row['status']} — not yet mastered",
+                )
+            )
+
+    items.sort(key=lambda i: i.percent)
+    return items
