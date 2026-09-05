@@ -157,6 +157,42 @@ def test_a_parent_can_re_grade_a_hand_in_from_the_grades_view(monkeypatch, tmp_p
     assert lesson["metadata"]["assessment_result"]["verdict"] == config.ASSESSMENT_SOLID
 
 
+def test_a_parent_can_re_grade_one_activity_from_the_grades_view(monkeypatch, tmp_path):
+    """New fixed shape: each activity is its own graded line on the report card,
+    re-gradeable on its own -- the editor keys in the activity index so bumping
+    one activity's verdict leaves the other untouched."""
+    db_path = tmp_path / "grades.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lid = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Essay",
+        payload={"title": "Essay", "activities": [
+            {"title": "Draft", "answer": "…"},
+            {"title": "Revise", "answer": "…"},
+        ]},
+    )
+    db.record_activity_grade(lid, 0, config.ASSESSMENT_NOT_YET)
+    db.record_activity_grade(lid, 1, config.ASSESSMENT_SOLID)
+    db.close()
+
+    at, _ = _open_review_tab(monkeypatch, db_path)
+    _switch_view(at, "grades")
+
+    # Activity 0's item keys in the activity index; bump it up to solid.
+    verdict_key = f"grade_item_verdict_english_{lid}_0"
+    sel = [s for s in at.selectbox if s.key == verdict_key]
+    assert sel, "the per-activity item must offer its own verdict re-pick"
+    sel[0].set_value(config.ASSESSMENT_SOLID).run()
+    [b for b in at.button if b.key == f"grade_item_save_english_{lid}_0"][0].click().run()
+
+    db = Database(db_path)
+    results = db.get_lesson(lid)["metadata"]["activity_results"]
+    db.close()
+    assert results["0"]["verdict"] == config.ASSESSMENT_SOLID  # changed
+    assert results["1"]["verdict"] == config.ASSESSMENT_SOLID  # untouched
+
+
 def test_a_submitted_lesson_surfaces_open_in_waiting_on_you(monkeypatch, tmp_path):
     """A turned-in lesson is the whole point of the queue: it shows in the
     "waiting on you" section as a collapsible card whose bar carries the
@@ -644,6 +680,81 @@ def test_the_review_surfaces_the_assessment_answer_sheet(monkeypatch, tmp_path):
     assert "Quadrant III" in markdowns
     assert "Counts as mastered when" in markdowns
     assert "correct quadrant" in markdowns
+
+
+def _fixed_shape_lesson(db, student, agent="science"):
+    """A new-fixed-shape lesson: two graded comprehension activities, each with
+    its own answer key, neither needing a typed response (so nothing gates the
+    final decision except grading the two activities)."""
+    return db.save_lesson(
+        student_id=student["id"], agent=agent, subject=agent, topic="t",
+        title="Why the Sky Is Blue",
+        payload={
+            "title": "Why the Sky Is Blue",
+            "activities": [
+                {"title": "Explain scattering", "minutes": 15,
+                 "answer": "Blue has shorter waves; shorter waves scatter more."},
+                {"title": "Sunsets", "minutes": 10,
+                 "answer": "More air at sunset scatters the blue away, leaving red."},
+            ],
+        },
+    )
+
+
+def test_the_review_shows_a_per_activity_answer_key_and_grade_picker(monkeypatch, tmp_path):
+    """New fixed shape: each activity is graded on its own, so the review shows
+    that activity's answer key and its own verdict picker inline."""
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lid = _fixed_shape_lesson(db, student)
+    db.submit_lesson(lid)
+    db.close()
+
+    at, review_tab = _open_review_tab(monkeypatch, db_path)
+    markdowns = " ".join(_md(review_tab))
+    assert "shorter waves scatter more" in markdowns  # activity 0's answer key
+    assert "leaving red" in markdowns                 # activity 1's answer key
+    # A verdict picker per activity.
+    for index in (0, 1):
+        key = f"review_{lid}_actgrade_{lid}_{index}"
+        assert [r for r in at.radio if r.key == key], f"missing grade picker for activity {index}"
+
+
+def test_grading_both_activities_then_approving_records_and_completes(monkeypatch, tmp_path):
+    """The whole new-shape flow: grade each activity on its own, then the final
+    Approve logs hours and files the lesson -- and the two verdicts are what's
+    recorded, one per activity."""
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lid = _fixed_shape_lesson(db, student)
+    db.submit_lesson(lid)
+    db.close()
+
+    at, _ = _open_review_tab(monkeypatch, db_path)
+    # Grade activity 0.
+    at.radio(key=f"review_{lid}_actgrade_{lid}_0").set_value(config.ASSESSMENT_NAILED_IT).run()
+    [b for b in at.button if b.key == f"review_{lid}_actgrade_save_{lid}_0"][0].click().run()
+    # Grade activity 1.
+    at.radio(key=f"review_{lid}_actgrade_{lid}_1").set_value(config.ASSESSMENT_GETTING_THERE).run()
+    [b for b in at.button if b.key == f"review_{lid}_actgrade_save_{lid}_1"][0].click().run()
+
+    db2 = Database(db_path)
+    results = db2.get_lesson(lid)["metadata"]["activity_results"]
+    db2.close()
+    assert results["0"]["verdict"] == config.ASSESSMENT_NAILED_IT
+    assert results["1"]["verdict"] == config.ASSESSMENT_GETTING_THERE
+
+    # Both graded, so the final Approve is enabled -- it files the lesson.
+    approve_key = f"FormSubmitter:review_{lid}_complete_{lid}-✅ Approve & log hours"
+    [b for b in at.button if b.key == approve_key][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db3 = Database(db_path)
+    status = db3.get_lesson(lid)["status"]
+    db3.close()
+    assert status == "completed"
 
 
 def test_approving_a_below_bar_math_quiz_does_not_record_mastery(monkeypatch, tmp_path):

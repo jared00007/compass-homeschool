@@ -89,6 +89,16 @@ def subject_grade(db: Any, student_id: int, agent: str) -> grades.SubjectGrade:
         # Reading checks fold in with the quiz -- both auto-graded objective checks.
         quiz_percents.extend(_reading_percents(metadata))
 
+        # New fixed shape: each of the lesson's two activities is graded on its
+        # own against its answer key, so each recorded verdict is one entry in
+        # the assessment component -- two activities, two grades, weighted the
+        # same as any other. The legacy single per-lesson `assessment_result`
+        # still counts too, so lessons graded the old way keep their grade.
+        for result in (metadata.get("activity_results") or {}).values():
+            verdict = result.get("verdict")
+            if verdict in config.ASSESSMENT_VERDICT_SCORES:
+                assessment_percents.append(float(config.ASSESSMENT_VERDICT_SCORES[verdict]))
+
         verdict = (metadata.get("assessment_result") or {}).get("verdict")
         if verdict in config.ASSESSMENT_VERDICT_SCORES:
             assessment_percents.append(float(config.ASSESSMENT_VERDICT_SCORES[verdict]))
@@ -154,13 +164,17 @@ class GradedItem:
     percent: float   # 0-100; for mastery, 100 mastered / 0 not yet
     detail: str      # "best of 2 attempts", "reading check", the verdict, the status
     # What a parent needs to *edit* this item's grade, when it's editable:
-    # `lesson_id` + `verdict` for a hand-in (re-graded via record_assessment),
-    # `skill_id` for a math skill (re-set via set_mastery). Quizzes and reading
-    # checks are auto-graded off his actual answers, so they carry neither --
-    # the way to change one is to have him retake it, not to hand-edit a score.
+    # `lesson_id` + `verdict` for a hand-in, plus `activity_index` when it's one
+    # of the new shape's two per-activity grades (re-graded via
+    # record_activity_grade; a legacy whole-lesson hand-in leaves it None and is
+    # re-graded via record_assessment). `skill_id` for a math skill (re-set via
+    # set_mastery). Quizzes and reading checks are auto-graded off his actual
+    # answers, so they carry none of these -- the way to change one is to have
+    # him retake it, not to hand-edit a score.
     lesson_id: int | None = None
     skill_id: str | None = None
     verdict: str | None = None
+    activity_index: int | None = None
 
     @property
     def component_label(self) -> str:
@@ -214,6 +228,32 @@ def graded_items(db: Any, student_id: int, agent: str) -> list[GradedItem]:
                     )
                 )
 
+        # New fixed shape: one line per graded activity, named for the activity
+        # so a parent sees exactly which of the two checks landed and which
+        # didn't -- and can re-grade each one on its own.
+        activities = (lesson.get("payload") or {}).get("activities") or []
+        for key, result in (metadata.get("activity_results") or {}).items():
+            verdict = result.get("verdict")
+            if verdict not in config.ASSESSMENT_VERDICT_SCORES:
+                continue
+            try:
+                activity_index = int(key)
+            except (TypeError, ValueError):
+                continue
+            activity = activities[activity_index] if activity_index < len(activities) else {}
+            activity_title = activity.get("title") or f"Activity {activity_index + 1}"
+            items.append(
+                GradedItem(
+                    "assessment", f"{title} — {activity_title}",
+                    float(config.ASSESSMENT_VERDICT_SCORES[verdict]),
+                    f"activity · {verdict}",
+                    lesson_id=lesson["id"],
+                    verdict=verdict,
+                    activity_index=activity_index,
+                )
+            )
+
+        # Legacy whole-lesson hand-in (old-shape lessons only).
         verdict = (metadata.get("assessment_result") or {}).get("verdict")
         if verdict in config.ASSESSMENT_VERDICT_SCORES:
             items.append(

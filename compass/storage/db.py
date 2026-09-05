@@ -3313,6 +3313,33 @@ class Database:
             )
             self.conn.commit()
 
+    def record_activity_grade(
+        self, lesson_id: int, activity_index: int, verdict: str, notes: str = ""
+    ) -> None:
+        """The parent's grade for ONE of a lesson's two comprehension activities,
+        scored against that activity's own answer key. This is the new fixed
+        lesson shape's grading: a lesson's grade is its two activity verdicts
+        plus the quiz (plus math mastery), instead of the old single per-lesson
+        `assessment` band. Stored per index under `activity_results`, so the two
+        activities are graded and re-graded independently -- one current value
+        each, not an attempt history."""
+        if verdict not in config.ASSESSMENT_VERDICTS:
+            raise ValueError(f"invalid assessment verdict: {verdict}")
+        with self._lock:
+            lesson = self.get_lesson(lesson_id)
+            metadata = lesson["metadata"] if lesson else {}
+            results = dict(metadata.get("activity_results") or {})
+            results[str(activity_index)] = {
+                "verdict": verdict,
+                "notes": notes,
+                "assessed_on": date.today().isoformat(),
+            }
+            metadata["activity_results"] = results
+            self.conn.execute(
+                "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
+            )
+            self.conn.commit()
+
     # -- activities and multi-subject credits ---------------------------------
 
     def log_activity(

@@ -238,6 +238,44 @@ def test_the_parents_assessment_band_feeds_the_grade(db, student):
     ]
 
 
+def _two_activity_lesson(db, student, agent="english") -> int:
+    """A new-fixed-shape lesson: two graded comprehension activities, each with
+    its own answer key -- the payload the per-activity grading reads titles off."""
+    return db.save_lesson(
+        student_id=student["id"], agent=agent, subject=agent, topic="t",
+        title="A lesson",
+        payload={
+            "title": "A lesson",
+            "activities": [
+                {"title": "Explain it", "answer": "…", "requires_written_response": True},
+                {"title": "Catch the mistake", "answer": "…"},
+            ],
+        },
+    )
+
+
+def test_each_activity_verdict_feeds_the_assessment_component(db, student):
+    """New fixed shape: a lesson's two activity verdicts are two separate grades
+    in the assessment component, averaged together -- not one band per lesson."""
+    lesson_id = _two_activity_lesson(db, student)
+    db.record_activity_grade(lesson_id, 0, config.ASSESSMENT_NAILED_IT)   # 100
+    db.record_activity_grade(lesson_id, 1, config.ASSESSMENT_GETTING_THERE)  # 80
+
+    result = gradebook.subject_grade(db, student["id"], "english")
+    assessment = [c for c in result.components if c.key == "assessment"][0]
+    assert round(assessment.percent) == 90  # mean of 100 and 80
+    assert assessment.detail == "2 graded"
+
+
+def test_a_single_graded_activity_still_counts(db, student):
+    lesson_id = _two_activity_lesson(db, student)
+    db.record_activity_grade(lesson_id, 0, config.ASSESSMENT_SOLID)  # 90
+
+    result = gradebook.subject_grade(db, student["id"], "english")
+    assessment = [c for c in result.components if c.key == "assessment"][0]
+    assert assessment.percent == config.ASSESSMENT_VERDICT_SCORES[config.ASSESSMENT_SOLID]
+
+
 def test_a_skipped_lesson_does_not_drag_the_grade(db, student):
     lesson_id = _lesson(db, student)
     db.record_assessment(lesson_id, config.ASSESSMENT_NOT_YET, "")
@@ -291,6 +329,24 @@ def test_graded_items_includes_hand_ins_and_reading_checks(db, student):
     # The hand-in verdict rides in the detail so a parent sees which band it was.
     assessment = [i for i in items if i.component == "assessment"][0]
     assert config.ASSESSMENT_GETTING_THERE in assessment.detail
+
+
+def test_graded_items_lists_each_activity_grade_by_name(db, student):
+    """The new fixed shape: each graded activity is its own line, named for the
+    activity, so a parent sees which of the two checks landed and which didn't --
+    and each carries the activity_index needed to re-grade just that one."""
+    lesson_id = _two_activity_lesson(db, student, agent="english")
+    db.record_activity_grade(lesson_id, 0, config.ASSESSMENT_NAILED_IT)     # 100
+    db.record_activity_grade(lesson_id, 1, config.ASSESSMENT_NOT_YET)       # 55
+
+    items = [i for i in gradebook.graded_items(db, student["id"], "english")
+             if i.component == "assessment"]
+    assert len(items) == 2
+    worst = items[0]  # sorted worst-first
+    assert worst.percent == config.ASSESSMENT_VERDICT_SCORES[config.ASSESSMENT_NOT_YET]
+    assert "Catch the mistake" in worst.title
+    assert worst.activity_index == 1
+    assert worst.editable  # a parent can re-grade it by hand
 
 
 def test_graded_items_lists_math_skills_individually(db, student):

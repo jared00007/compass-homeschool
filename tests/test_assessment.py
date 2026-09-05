@@ -246,3 +246,53 @@ def test_recording_an_assessment_preserves_other_metadata_already_there(db, stud
 
     lesson = db.get_lesson(lesson_id)
     assert lesson["metadata"]["web_node_id"] == 7
+
+
+# --- per-activity grades (the new fixed lesson shape) --------------------------
+
+
+def test_a_recorded_activity_grade_is_readable_back(db, student):
+    lesson_id = _lesson(db, student["id"])
+    db.record_activity_grade(lesson_id, 0, "solid", notes="Clear reasoning.")
+
+    result = db.get_lesson(lesson_id)["metadata"]["activity_results"]["0"]
+    assert result["verdict"] == "solid"
+    assert result["notes"] == "Clear reasoning."
+    assert result["assessed_on"]
+
+
+def test_two_activities_are_graded_independently(db, student):
+    lesson_id = _lesson(db, student["id"])
+    db.record_activity_grade(lesson_id, 0, "nailed_it")
+    db.record_activity_grade(lesson_id, 1, "not_yet")
+
+    results = db.get_lesson(lesson_id)["metadata"]["activity_results"]
+    assert results["0"]["verdict"] == "nailed_it"
+    assert results["1"]["verdict"] == "not_yet"
+
+
+def test_re_grading_one_activity_leaves_the_other_untouched(db, student):
+    lesson_id = _lesson(db, student["id"])
+    db.record_activity_grade(lesson_id, 0, "getting_there")
+    db.record_activity_grade(lesson_id, 1, "solid")
+    db.record_activity_grade(lesson_id, 0, "nailed_it")  # re-grade only activity 0
+
+    results = db.get_lesson(lesson_id)["metadata"]["activity_results"]
+    assert results["0"]["verdict"] == "nailed_it"
+    assert results["1"]["verdict"] == "solid"
+
+
+def test_an_invalid_activity_verdict_is_rejected(db, student):
+    lesson_id = _lesson(db, student["id"])
+    with pytest.raises(ValueError):
+        db.record_activity_grade(lesson_id, 0, "great")
+
+
+def test_recording_an_activity_grade_preserves_other_metadata_already_there(db, student):
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="science", subject="science", topic="t", title="t",
+        payload={}, metadata={"web_node_id": 7},
+    )
+    db.record_activity_grade(lesson_id, 0, "getting_there")
+
+    assert db.get_lesson(lesson_id)["metadata"]["web_node_id"] == 7

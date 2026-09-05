@@ -584,6 +584,31 @@ def _needs_written_response(activity: dict[str, Any]) -> bool:
     )
 
 
+def _has_answer_key(activity: dict[str, Any]) -> bool:
+    """Whether this activity carries its own answer key -- the new fixed lesson
+    shape, where each of the two comprehension activities is graded on its own.
+    Old-shape activities have no `answer` and are graded by the lesson-wide
+    `assessment` band instead, so this is what tells the two shapes apart."""
+    return bool((activity.get("answer") or "").strip())
+
+
+def _gradeable_activities(payload: dict[str, Any]) -> list[tuple[int, dict[str, Any]]]:
+    """The activities a parent grades individually (new fixed shape): the ones
+    carrying an answer key, in order, paired with their real indices so a
+    recorded verdict lands on the right activity."""
+    return [
+        (index, activity)
+        for index, activity in enumerate(payload.get("activities") or [])
+        if _has_answer_key(activity)
+    ]
+
+
+def _activity_grades_recorded(metadata: dict[str, Any], payload: dict[str, Any]) -> int:
+    """How many of a lesson's gradeable activities already have a verdict."""
+    results = metadata.get("activity_results") or {}
+    return sum(1 for index, _ in _gradeable_activities(payload) if str(index) in results)
+
+
 def hand_in_activity_count(payload: dict[str, Any]) -> int:
     """How many activities in this lesson end in something he has to write and
     turn in -- i.e. how many separate pieces of work a parent should expect
@@ -2271,6 +2296,66 @@ def _render_writing_review_controls(
                     )
 
 
+def _render_activity_grade_picker(
+    db: Database,
+    lesson: dict[str, Any],
+    index: int,
+    activity: dict[str, Any],
+    *,
+    metadata: dict[str, Any],
+    key_prefix: str,
+) -> None:
+    """Grade one activity against its own answer key, inline under his work.
+
+    The new fixed lesson shape: a lesson's grade is its two activity verdicts
+    plus the quiz (plus math mastery), each activity scored on its own rather
+    than one band for the whole lesson. The answer key (which the student never
+    sees) sits right above the picker so the parent grades against it without
+    scrolling, and each verdict is saved independently."""
+    answer = (activity.get("answer") or "").strip()
+    if answer:
+        st.markdown(
+            f'<div style="background:var(--c-panel); border-left:3px solid '
+            f'var(--c-good); border-radius:var(--c-radius); padding:10px 14px; '
+            f'margin:8px 0;"><b>✅ Answer key</b><br>'
+            f'{html.escape(answer).replace(chr(10), "<br>")}'
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    result = (metadata.get("activity_results") or {}).get(str(index)) or {}
+    current = result.get("verdict")
+    # No pre-selected default -- index=0 would sit on "Nailed it," so a parent
+    # who saved without reading would hand out a 100%.
+    verdict = st.radio(
+        "How did he do on this one?",
+        config.ASSESSMENT_VERDICTS,
+        index=config.ASSESSMENT_VERDICTS.index(current)
+        if current in config.ASSESSMENT_VERDICTS
+        else None,
+        format_func=lambda v: config.ASSESSMENT_VERDICT_LABELS[v],
+        key=f"{key_prefix}_actgrade_{lesson['id']}_{index}",
+    )
+    st.caption(
+        "This activity's band is part of his grade for the subject — the "
+        "percentage on each one is what it's worth."
+    )
+    if st.button(
+        "💾 Save this grade",
+        key=f"{key_prefix}_actgrade_save_{lesson['id']}_{index}",
+    ):
+        if verdict is None:
+            st.warning("Pick a band first.")
+        else:
+            db.record_activity_grade(lesson["id"], index, verdict)
+            st.success("Saved.")
+            st.rerun()
+    if result:
+        st.caption(
+            f"Last recorded: {config.ASSESSMENT_VERDICT_LABELS.get(result.get('verdict'), '')} "
+            f"on {result.get('assessed_on', '')}"
+        )
+
+
 def _render_final_grade_decision(
     db: Database,
     student: dict[str, Any],
@@ -2429,6 +2514,55 @@ def _render_final_grade_decision(
                 f"Last recorded: {config.ASSESSMENT_VERDICT_LABELS.get(result.get('verdict'), '')} "
                 f"on {result.get('assessed_on', '')}"
             )
+    else:
+        # New fixed shape: no lesson-wide band. Each activity was graded on its
+        # own above; the final call here just files the lesson and logs the
+        # hours once every activity has a verdict (and every writing piece is
+        # approved). His grade for the lesson is those activity verdicts plus
+        # the quiz -- shown here so the parent knows what they're filing.
+        gradeable = _gradeable_activities(lesson["payload"])
+        if not gradeable:
+            return
+        recorded = _activity_grades_recorded(metadata, lesson["payload"])
+        total = len(gradeable)
+        if lesson["status"] == "submitted" and writing_all_approved:
+            if recorded < total:
+                st.info(
+                    f"Grade each activity above first — {recorded} of {total} done. "
+                    "Each activity's verdict is part of his grade for the subject."
+                )
+            with st.form(f"{key_prefix}_complete_{lesson['id']}"):
+                st.caption(
+                    "His grade for this lesson is the two activity verdicts above "
+                    "plus the quiz. Approving logs the hours and files it."
+                )
+                feedback = st.text_area("Feedback (shown to him if you send it back)")
+                minutes, where, credits = _hours_inputs(
+                    lesson["payload"], f"{key_prefix}_hrs_{lesson['id']}"
+                )
+                approve_col, bounce_col = st.columns(2)
+                approve = approve_col.form_submit_button(
+                    "✅ Approve & log hours",
+                    type="primary",
+                    disabled=recorded < total,
+                )
+                bounce = bounce_col.form_submit_button("↩️ Send back for revision")
+            if approve:
+                _log_hours_for_lesson(
+                    db, student, lesson, minutes=minutes, location=where, credits=credits
+                )
+                st.success("Approved and logged.")
+                st.rerun()
+            elif bounce:
+                db.send_lesson_back(lesson["id"], feedback)
+                st.success("Sent back for revision.")
+                st.rerun()
+        elif lesson["status"] == "submitted":
+            st.caption("Approve his written responses above before filing the lesson.")
+        elif lesson["status"] == "needs_revision":
+            st.caption("↩️ Sent back — waiting on him to revise and turn it in again.")
+        elif lesson["status"] == "planned":
+            st.caption("Still working — nothing to review yet.")
 
 
 def render_lesson_review(
@@ -2527,6 +2661,13 @@ def render_lesson_review(
                 _render_writing_review_controls(
                     db, student, lesson, index, activity,
                     key_prefix=key_prefix, metadata=metadata, review_map=review_map,
+                )
+            # New fixed shape: grade this activity on its own, against its answer
+            # key, right here under his work -- once he's turned the lesson in.
+            if _has_answer_key(activity) and lesson["status"] in ("submitted", "completed"):
+                _render_activity_grade_picker(
+                    db, lesson, index, activity,
+                    metadata=metadata, key_prefix=key_prefix,
                 )
 
     if payload.get("quiz"):
@@ -3124,22 +3265,33 @@ def _render_grade_item_editor(
     list stays a clean at-a-glance read until you actually want to change one."""
     with st.popover("✏️", use_container_width=True, help="Re-grade this by hand"):
         if item.component == "assessment" and item.lesson_id is not None:
-            st.caption(f"Re-grade the hand-in for **{md(item.title)}**")
+            st.caption(f"Re-grade **{md(item.title)}**")
             verdicts = list(config.ASSESSMENT_VERDICTS)
             current = item.verdict if item.verdict in verdicts else verdicts[0]
+            # A per-activity grade and a legacy whole-lesson hand-in can both be
+            # open at once, so the widget keys mix in the activity index to stay
+            # unique per item.
+            slug = (
+                f"{item.lesson_id}_{item.activity_index}"
+                if item.activity_index is not None
+                else str(item.lesson_id)
+            )
             new_verdict = st.selectbox(
                 "Grade",
                 verdicts,
                 index=verdicts.index(current),
                 format_func=lambda v: config.ASSESSMENT_VERDICT_LABELS[v],
-                key=f"grade_item_verdict_{subject}_{item.lesson_id}",
+                key=f"grade_item_verdict_{subject}_{slug}",
             )
             if st.button(
                 "Save grade",
-                key=f"grade_item_save_{subject}_{item.lesson_id}",
+                key=f"grade_item_save_{subject}_{slug}",
                 type="primary",
             ):
-                db.record_assessment(item.lesson_id, new_verdict)
+                if item.activity_index is not None:
+                    db.record_activity_grade(item.lesson_id, item.activity_index, new_verdict)
+                else:
+                    db.record_assessment(item.lesson_id, new_verdict)
                 st.success("Updated.")
                 st.rerun()
         elif item.component == "mastery" and item.skill_id is not None:
