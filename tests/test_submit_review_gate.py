@@ -887,7 +887,7 @@ def test_a_submitted_lesson_counts_as_needing_attention(monkeypatch, tmp_path):
     db.close()
 
     at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
-    review_tab = [t for t in at.tabs if t.label.startswith("✅ Review")][0]
+    review_tab = at  # Review is Mission Control's default view; its content is on `at`
     markdowns = [m.value for m in review_tab.markdown]
     assert any("Turned in — waiting on you" in m and "(1)" in m for m in markdowns)
 
@@ -905,7 +905,7 @@ def test_a_sent_back_lesson_gets_its_own_quiet_section(monkeypatch, tmp_path):
     db.close()
 
     at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
-    review_tab = [t for t in at.tabs if t.label.startswith("✅ Review")][0]
+    review_tab = at  # Review is Mission Control's default view; its content is on `at`
     markdowns = [m.value for m in review_tab.markdown]
     assert any("Sent back" in m and "waiting on him" in m for m in markdowns)
     # A sent-back lesson is waiting on him, not counted as waiting on you.

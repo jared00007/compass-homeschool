@@ -27,6 +27,16 @@ THIS_WEEK_PATH = str(REPO_ROOT / "pages" / "14_Mission_Control.py")
 TARGET_MONDAY = weekly.week_start(date(2026, 11, 23))
 
 
+def _switch_mc_view(at, view_key):
+    """Mission Control's Review/Board/Plan/Record/Grades surfaces are a button
+    row now, not tabs, and only the active view renders. This clicks the view's
+    button (idempotent -- a no-op when already on it) and returns the app."""
+    current = at.session_state["mc_view"] if "mc_view" in at.session_state else None
+    if current != view_key:
+        [b for b in at.button if (b.key or "") == f"mc_viewbtn_{view_key}"][0].click().run()
+    return at
+
+
 def _open_plan_tab(monkeypatch, db_path):
     st.cache_resource.clear()
     monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
@@ -36,14 +46,15 @@ def _open_plan_tab(monkeypatch, db_path):
     at.switch_page(THIS_WEEK_PATH)
     at.run(timeout=30)
     assert not at.exception, [e.message for e in at.exception]
+    _plan_tab(at)  # switch to the plan view before its widgets exist
     date_picker = [d for d in at.date_input if d.label.startswith("Week to plan")][0]
     date_picker.set_value(TARGET_MONDAY).run()
     assert not at.exception, [e.message for e in at.exception]
-    return at, _plan_tab(at)
+    return at, at
 
 
 def _plan_tab(at):
-    return [t for t in at.tabs if t.label == "📆 Plan next week"][0]
+    return _switch_mc_view(at, "plan")
 
 
 def test_all_four_days_are_checked_by_default(monkeypatch, tmp_path):
@@ -251,24 +262,34 @@ def _open_board_tab(monkeypatch, db_path):
     at.switch_page(THIS_WEEK_PATH)
     at.run(timeout=30)
     assert not at.exception, [e.message for e in at.exception]
+    _board_tab(at)  # switch to the board view before its widgets exist
     date_picker = [d for d in at.date_input if d.label == "Week to view"][0]
     date_picker.set_value(TARGET_MONDAY).run()
     assert not at.exception, [e.message for e in at.exception]
-    return at, _board_tab(at)
+    return at, at
 
 
 def _board_tab(at):
-    return [t for t in at.tabs if t.label == "📋 Board"][0]
+    return _switch_mc_view(at, "board")
 
 
-def test_review_is_the_first_tab_and_board_is_second(monkeypatch, tmp_path):
+def test_review_is_the_first_view_and_board_is_second(monkeypatch, tmp_path):
     """Mission Control opens on Review -- the parent's daily job -- with the
-    planning Board right behind it."""
+    planning Board right behind it in the view button row."""
     db_path = tmp_path / "week.db"
     Database(db_path).close()
-    at, _ = _open_board_tab(monkeypatch, db_path)
-    assert at.tabs[0].label.startswith("✅ Review")
-    assert at.tabs[1].label == "📋 Board"
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+    at = AppTest.from_file(HOME_PATH)
+    at.session_state["parent_unlocked"] = True
+    at.run(timeout=30)
+    at.switch_page(THIS_WEEK_PATH)
+    at.run(timeout=30)
+    view_labels = [b.label for b in at.button if (b.key or "").startswith("mc_viewbtn_")]
+    assert view_labels[0].startswith("✅ Review")
+    assert view_labels[1].startswith("📋 Board")
+    # Review is the default view, so its content is what renders first.
+    assert at.session_state["mc_view"] == "review"
 
 
 def test_the_board_packs_each_day_from_the_top(monkeypatch, tmp_path):

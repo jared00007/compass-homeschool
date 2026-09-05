@@ -52,7 +52,9 @@ from compass.ui import (
     render_friday_plan,
     render_lesson,
     render_lesson_review,
+    render_report_card,
     render_story_move_control,
+    render_xp_reward_editor,
 )
 
 db, student = page_setup("Mission Control", icon="🚀")
@@ -458,15 +460,35 @@ div[class*="st-key-backlog_row_"] div[data-testid="stColumn"] {
 </style>
 """
 
-review_tab, board_tab, plan_tab, backlog_tab, record_tab = st.tabs(
-    [
-        f"✅ Review ({needs_review_count})",
-        "📋 Board",
-        "📆 Plan next week",
-        f"🗄️ Backlog ({backlog_count})",
-        "🗂️ Record",
-    ]
-)
+# The workflow views are a button row, matching the parent-admin hub buttons
+# above rather than a separate tab strip -- reported: "the review, board, plan
+# the week ... and record. all buttons just like the others." The Backlog is
+# folded into the Board (its own parked-work section below the sprint board),
+# and Grades joins the row so "base for all parent stuff" actually holds every
+# parent surface. `mc_view` is the active one; each section below renders only
+# when it's selected (the `if mc_view == ...` blocks that used to be `with
+# <tab>:`), so the button row behaves exactly like the tabs did.
+_MC_VIEWS = [
+    ("review", f"✅ Review ({needs_review_count})"),
+    ("board", f"📋 Board · Backlog ({backlog_count})"),
+    ("plan", "📆 Plan next week"),
+    ("record", "🗂️ Record"),
+    ("grades", "📊 Grades"),
+]
+if "mc_view" not in st.session_state:
+    st.session_state["mc_view"] = "review"
+mc_view = st.session_state["mc_view"]
+_view_cols = st.columns(len(_MC_VIEWS))
+for _i, (_view_key, _view_label) in enumerate(_MC_VIEWS):
+    if _view_cols[_i].button(
+        _view_label,
+        key=f"mc_viewbtn_{_view_key}",
+        width="stretch",
+        type="primary" if _view_key == mc_view else "secondary",
+    ):
+        st.session_state["mc_view"] = _view_key
+        st.rerun()
+st.divider()
 
 # --- Board: every subject's stories, one week, one place ------------------------
 #
@@ -477,7 +499,7 @@ review_tab, board_tab, plan_tab, backlog_tab, record_tab = st.tabs(
 # card. This tab changes nothing about *how* a story moves -- only where a
 # parent has to go to do it.
 
-with board_tab:
+if mc_view == "board":
     # Seeded once, before the buttons below ever run -- a button writes
     # straight into this same session_state key and reruns, so the
     # date_input picks up the jump on the very next run instead of needing
@@ -547,10 +569,11 @@ with board_tab:
     st.divider()
 
     # Product Backlog, full width below the board -- every story currently
-    # parked, any week it originally came from, grouped by epic. The move
-    # control on each card is exactly what "assign" means: opening it is
-    # how a parked story gets a day (or moves to a different one). Shared with
-    # Landon's read-only Home board via render_board_backlog.
+    # parked, any week it originally came from, grouped by epic. The Backlog is
+    # folded into the Board here (reported: "backlog can fold into the board"),
+    # so this is the one place parked work lives; the move control on each card
+    # is exactly what "assign" means. Shared with Landon's read-only Home board
+    # via render_board_backlog.
     st.markdown("**📋 Product Backlog**")
     render_board_backlog(
         db, student, board,
@@ -566,7 +589,7 @@ with board_tab:
 # back. No scheduling board here -- rearranging days is the Board tab's job --
 # so this stays a read-and-decide surface, not a planner.
 
-with review_tab:
+if mc_view == "review":
     this_week_start = weekly.week_start()
     this_week_friday = this_week_start + timedelta(days=4)
     report = build_report(
@@ -684,7 +707,7 @@ with review_tab:
 
 # --- Plan next week --------------------------------------------------------------
 
-with plan_tab:
+if mc_view == "plan":
     default_target = weekly.default_plan_target()
     picked = st.date_input(
         "Week to plan (any day in the target week -- snapped to that week's Monday)",
@@ -936,71 +959,9 @@ with plan_tab:
             )
             st.rerun()
 
-# --- Backlog: everything parked, in one place -----------------------------------
-
-with backlog_tab:
-    st.subheader("Everything parked, in one place")
-    st.caption(
-        "Every item type shares the same idea: parked out of his own view until you "
-        "pull it back. This is the one flow to see all of it and spread it back out "
-        "across the weeks ahead, rather than checking four separate pages. Life "
-        "Skills isn't one of the sections below -- its own Master List tab is already "
-        "the pace-control view for that whole catalog."
-    )
-
-    if not backlog_count:
-        st.success("Nothing parked anywhere right now.")
-
-    if lesson_backlog:
-        st.markdown(f"**📐 Lessons** ({len(lesson_backlog)})")
-        for lesson in lesson_backlog:
-            _render_review_card(lesson, today_iso)
-        st.divider()
-
-    if project_backlog:
-        total_remaining = sum(len(steps) for _, steps in project_backlog)
-        st.markdown(f"**🎬 Big Projects** ({total_remaining})")
-        st.caption(
-            "What's left in each project still underway -- steps not yet committed "
-            "to the plan (Backlog) and steps already in To Do but not finished yet, "
-            "together, since both are genuinely still ahead of him. One collapsible "
-            "row per project; open it to see and move its remaining steps."
-        )
-        for project, steps in project_backlog:
-            with st.expander(f"🎬 {md(project['title'])} — {len(steps)} left", expanded=False):
-                for step in steps:
-                    with st.container(border=True):
-                        status = "🗄️ Backlog" if not step["active"] else "▶ To Do"
-                        st.markdown(f"**{md(step['title'])}** · {status}")
-                        if step["description"]:
-                            st.caption(md(step["description"]))
-                        meta = []
-                        if step["materials"]:
-                            meta.append(f"**You'll need:** {md(step['materials'])}")
-                        meta.append(f"Credits toward {label(step['credit_subject'])}")
-                        st.caption(" · ".join(meta))
-                        render_story_move_control(
-                            key=f"backlog_step_{step['id']}",
-                            active=bool(step["active"]),
-                            scheduled_for=step["scheduled_for"],
-                            set_active=lambda a, sid=step["id"]: db.set_project_step_active(sid, a),
-                            schedule=lambda s, sid=step["id"]: db.schedule_project_step(sid, s),
-                        )
-                st.page_link("pages/7_Big_Projects.py", label="Open Big Projects", icon="➡️")
-        st.divider()
-
-    if topic_backlog:
-        st.markdown(f"**⭐ Choice Topics** ({len(topic_backlog)})")
-        for topic in topic_backlog:
-            columns = st.columns([5, 1])
-            columns[0].caption(f"🗄️ {md(topic['title'])} — {topic['status']}")
-            if columns[1].button("➡️ Un-backlog", key=f"backlog_tab_untopic_{topic['id']}"):
-                db.set_choice_topic_active(topic["id"], True)
-                st.rerun()
-
 # --- Record: the hours ledger, and logging one by hand --------------------------
 
-with record_tab:
+if mc_view == "record":
     st.markdown("### 🗂️ The instructional record")
     st.caption(
         "Every hour that counts. Activities created from agent lessons land here "
@@ -1109,3 +1070,27 @@ with record_tab:
             st.caption("Nothing logged yet.")
         for lesson in history:
             _render_review_card(lesson, today_iso)
+
+
+# --- Grades: the report card, editable, in the parent's own hub -----------------
+#
+# Reported: "how can the parent edit/review these grades ... i feel like this
+# should also live in the mission control. thats base for all parent stuff." The
+# full report card -- every subject's number, the per-item drill-down (worst
+# first, with its traffic-light dots), and the hand-set override form inside each
+# subject's breakdown -- renders here now, off the same gradebook the student
+# sees, so there is still only one set of numbers.
+
+if mc_view == "grades":
+    st.markdown("### 📊 Report card")
+    st.caption(
+        "The same numbers he sees. Open a subject to read every graded item that "
+        "made up its grade (worst first) and, at the bottom of each, set that "
+        "subject's grade by hand if a number needs overriding."
+    )
+    render_report_card(db, student, for_parent=True)
+
+    # The XP reward ladder he's climbing toward, editable here -- the student's
+    # own XP card is view-only, so this is where a parent tunes what he unlocks.
+    with st.expander("🎁 XP rewards he can unlock"):
+        render_xp_reward_editor(db)
