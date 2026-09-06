@@ -334,14 +334,20 @@ def is_backlogged(lesson: dict[str, Any], today: str) -> bool:
     a new day (`Database.reschedule_lesson`), at which point it's live
     again exactly like a freshly planned lesson.
 
-    Two ways in, checked in this order:
+    Three ways in, checked in this order:
 
     1. `metadata.held_back` -- a parent explicitly sent it there
        (`Database.send_to_backlog`), any lesson, any day, whether it's
        even due yet. This is the "move a story to the backlog myself,
        whenever I decide, not just once its whole week has quietly run
        out" freedom, reported directly.
-    2. Its whole week already ended without it being turned in, with
+    2. An unscheduled lesson from a generated series (`series_id` set,
+       no `planned_for`): a series is raw material the parent schedules
+       by day, so it lives in the backlog until they assign one. New
+       series lessons also carry `held_back` (caught above); this catches
+       ones generated before that flag existed, so they don't strand in
+       the "planned" list.
+    3. Its whole week already ended without it being turned in, with
        nobody touching it by hand at all -- the original, automatic path.
 
     Only the second check needs a `planned_for` at all -- an on-demand
@@ -355,6 +361,8 @@ def is_backlogged(lesson: dict[str, Any], today: str) -> bool:
     if metadata.get("held_back"):
         return True
     planned_for = metadata.get("planned_for") or ""
+    if metadata.get("series_id") and not planned_for:
+        return True
     if not planned_for:
         return False
     return week_start(date.fromisoformat(planned_for)) < week_start(date.fromisoformat(today))

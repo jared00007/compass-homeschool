@@ -203,22 +203,26 @@ def test_plan_lesson_series_caps_the_day_count():
 
 
 
-def test_due_lessons_walks_a_series_in_index_order(db, student):
-    """Even if a later day has a lower id (or the list comes back in any order),
-    the student sees day 1 first, then day 2 -- ordered by series_index."""
+def test_an_unscheduled_series_lesson_is_backlogged_not_due(db, student):
+    """A series lives in the parent's Backlog until a day is assigned, so an
+    unscheduled series lesson is backlogged and never shows in the student's due
+    list -- and this holds even for one generated before the `held_back` flag
+    existed (series_id + no planned_for is enough), so old series don't strand
+    in the 'planned' list."""
     from compass import weekly
 
-    day2 = db.save_lesson(
-        student_id=student["id"], agent="math", subject="math", topic="t",
-        title="Day 2", payload={"title": "Day 2", "activities": []},
-        metadata={"series_id": "s1", "series_index": 1, "series_total": 2},
-    )
-    day1 = db.save_lesson(
+    lid = db.save_lesson(
         student_id=student["id"], agent="math", subject="math", topic="t",
         title="Day 1", payload={"title": "Day 1", "activities": []},
-        metadata={"series_id": "s1", "series_index": 0, "series_total": 2},
+        metadata={"series_id": "s1", "series_index": 0, "series_total": 2},  # no held_back
     )
-    lessons = db.list_lessons(student["id"], agent="math", limit=10)
-    due = weekly.due_lessons(lessons, "2026-09-05")
-    assert [l["title"] for l in due] == ["Day 1", "Day 2"]
-    assert due[0]["id"] == day1 and due[1]["id"] == day2
+    lesson = db.get_lesson(lid)
+    today = "2026-09-06"
+    assert weekly.is_backlogged(lesson, today)
+    assert weekly.due_lessons([lesson], today) == []
+
+    # Assigning a day clears the backlog and makes it live.
+    db.reschedule_lesson(lid, today)
+    live = db.get_lesson(lid)
+    assert not weekly.is_backlogged(live, today)
+    assert [l["id"] for l in weekly.due_lessons([live], today)] == [lid]
