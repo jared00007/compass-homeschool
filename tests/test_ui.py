@@ -1285,47 +1285,6 @@ def test_big_project_status_text_celebrates_when_all_steps_are_done(db, student)
     db.set_project_step_done(step_id, True)
     assert "all done" in ui.big_project_status_text(db, student["id"]).lower()
 
-
-def test_render_friday_plan_falls_back_to_the_fixed_pairing_when_nothing_is_set(
-    monkeypatch, db, student
-):
-    written: list[str] = []
-    monkeypatch.setattr(ui, "st", Recorder(written, {}))
-    ui.render_friday_plan(db, student, "2026-08-28")
-    page = "\n".join(written)
-    assert "pick one to work on this year" in page
-    assert "Travel Journal" in page
-
-
-def test_render_friday_plan_shows_whatever_the_parent_set_instead(monkeypatch, db, student):
-    db.add_friday_plan_item(
-        student["id"], "2026-08-28", "travel_catchup", "Catch up on 5 older trips"
-    )
-    db.add_friday_plan_item(
-        student["id"], "2026-08-28", "custom", "Practice guitar for 30 minutes"
-    )
-
-    written: list[str] = []
-    monkeypatch.setattr(ui, "st", Recorder(written, {}))
-    ui.render_friday_plan(db, student, "2026-08-28")
-    page = "\n".join(written)
-    assert "Catch up on 5 older trips" in page
-    assert "Practice guitar for 30 minutes" in page
-    assert "pick one to work on this year" not in page  # fallback must not also show
-
-
-def test_render_friday_plan_only_shows_items_for_that_exact_date(monkeypatch, db, student):
-    db.add_friday_plan_item(student["id"], "2026-08-28", "custom", "This Friday's thing")
-    db.add_friday_plan_item(student["id"], "2026-09-04", "custom", "Next Friday's thing")
-
-    written: list[str] = []
-    monkeypatch.setattr(ui, "st", Recorder(written, {}))
-    ui.render_friday_plan(db, student, "2026-08-28")
-    page = "\n".join(written)
-    assert "This Friday's thing" in page
-    assert "Next Friday's thing" not in page
-
-
 # --- render_first_day_celebration: one-time "Issue #1" cover on the first day ---
 
 

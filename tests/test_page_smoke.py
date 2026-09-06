@@ -71,7 +71,6 @@ def _seed(db_path: Path, *, with_pin: bool) -> None:
     db.set_active_big_project(project_id)
     db.add_choice_topic(sid, "3D printing")
     db.add_life_skill(sid, "Do laundry")
-    db.add_friday_plan_item(sid, "2026-08-28", "custom", "Guitar practice")
     if with_pin:
         auth.set_pin(db, "1234")
     db.close()
