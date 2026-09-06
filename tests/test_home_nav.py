@@ -230,10 +230,9 @@ def test_today_shows_the_daily_delights(monkeypatch, tmp_path):
     assert "Fun fact" in text
     assert "Word of the day" in text
     assert "History flashback" in text
-    # His level bar + the week progress gauge both render.
-    progress_text = " ".join(p.proto.text for p in at.get("progress"))
+    # His level bar renders. (The week-progress "X of Y lessons done" gauge was
+    # removed from the Today view -- reported "not needed".)
     assert "Level 1" in text  # the XP level card heading
-    assert "0 of 1 lessons done this week" in progress_text
 
 
 def test_travel_passport_shows_stamps_for_completed_trips(monkeypatch, tmp_path):

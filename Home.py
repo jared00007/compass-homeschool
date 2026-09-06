@@ -28,7 +28,6 @@ from compass.ui import (
     render_today_summary,
     render_today_checklist,
     render_travel_passport,
-    render_week_progress,
     render_xp_level,
 )
 
@@ -193,9 +192,6 @@ if not is_parent():
         # desktop actually has instead of one narrow scrolling column.
         today = date.today().isoformat()
 
-        # A little fuel gauge for the week right up top -- effort made visible.
-        render_week_progress(db, student)
-
         # Morning Routine and Check-In no longer get their own cards here --
         # they're folded into the "Due today" list in the header card as tight
         # tiles that link out to their pages (render_daily_due), so the whole
@@ -216,20 +212,11 @@ if not is_parent():
             "history": ("pages/4_History.py", "History"),
         }
         roster: list[tuple[dict, str, str, str]] = []
-        later_this_week = 0
-        later_week = 0
         for agent_key, (page_path, subject_label) in CORE_SUBJECT_PAGES.items():
             agent_lessons = db.list_lessons(student["id"], agent=agent_key, limit=10)
             lesson, marker = weekly.today_subject_status(agent_lessons, today)
             if lesson is not None:
                 roster.append((lesson, marker, page_path, subject_label))
-            for candidate in agent_lessons:
-                planned_for = (candidate.get("metadata") or {}).get("planned_for")
-                if planned_for and planned_for > today and candidate["status"] == "planned":
-                    if planned_for <= this_week_end:
-                        later_this_week += 1
-                    else:
-                        later_week += 1
 
         # Each lesson gets its own bordered card -- the same white-box
         # treatment the Morning Routine and Check-In cards use -- with its
@@ -248,11 +235,6 @@ if not is_parent():
         # as the same white cards right under the lessons so it reads as one
         # to-do list.
         due_steps = db.due_project_steps(student["id"], today)
-        upcoming_steps = db.upcoming_project_steps(student["id"], today)
-        later_steps_this_week = sum(
-            1 for s in upcoming_steps if s["scheduled_for"] <= this_week_end
-        )
-        later_steps_week = len(upcoming_steps) - later_steps_this_week
 
         render_card_heading(f"📚 Lessons ({len(roster) + len(due_steps)})")
         if not roster and not due_steps:
@@ -321,26 +303,6 @@ if not is_parent():
                         )
                     else:
                         st.caption(f"{marker} {step_label}")
-        if later_this_week:
-            st.caption(
-                f"{later_this_week} more lesson(s) planned for later this week — "
-                "see the **Board**."
-            )
-        if later_week:
-            st.caption(
-                f"{later_week} more lesson(s) planned for a later week — see "
-                "the **Board**."
-            )
-        if later_steps_this_week:
-            st.caption(
-                f"{later_steps_this_week} more project step(s) assigned for later "
-                "this week — see the **Board**."
-            )
-        if later_steps_week:
-            st.caption(
-                f"{later_steps_week} more project step(s) assigned for a later week "
-                "— see the **Board**."
-            )
 
         # 2b. Travel journal entries a parent assigned to a specific day --
         # only when there's actually one due or upcoming, same as Life
