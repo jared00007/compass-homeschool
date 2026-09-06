@@ -4350,6 +4350,46 @@ class Database:
         )
         self.conn.commit()
 
+    def complete_life_skill(
+        self, skill_id: int, *, minutes: int | None = None, notes: str = ""
+    ) -> None:
+        """Mark a life skill done AND log its instructional time.
+
+        A life skill IS the app's occupational-education coverage, so finishing
+        one should count toward that subject's hours, not just flip a checkbox.
+        Marking done via the bare `set_life_skill_done` left completed skills
+        with zero logged hours, so Compliance showed Occupational Education at 0
+        even after several were finished (reported: "occupations edu shows 0 but
+        he has completed 2 or 3 life skills").
+
+        Idempotent: only the not-done -> done transition logs time, so
+        re-clicking never double-counts, and the "Log time on a life skill" form
+        -- which logs its own hours and then marks done -- keeps using the bare
+        setter so it isn't double-charged either. `minutes` overrides the default
+        block (config.LIFE_SKILL_DEFAULT_MINUTES) when a real figure is known."""
+        row = self.conn.execute(
+            "SELECT * FROM life_skills WHERE id = ?", (skill_id,)
+        ).fetchone()
+        if row is None:
+            return
+        skill = dict(row)
+        already_done = bool(skill.get("completed_on"))
+        self.set_life_skill_done(skill_id, True, notes)
+        if already_done:
+            return
+        subject = skill.get("credit_subject") or "occupational_education"
+        logged = int(minutes) if minutes else config.LIFE_SKILL_DEFAULT_MINUTES
+        self.log_activity(
+            student_id=skill["student_id"],
+            title=skill["title"],
+            tier=config.TIER_LIFE_SKILLS,
+            primary_subject=subject,
+            minutes=logged,
+            subject_credits={subject: logged},
+            description=notes or f"Completed the '{skill['title']}' life skill.",
+            source="life_skills",
+        )
+
     def set_life_skill_active(self, skill_id: int, active: bool) -> None:
         """Unlocks or hides a catalog skill from the student view. Never
         touches `completed_on` -- an already-earned skill stays visible to

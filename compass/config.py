@@ -107,6 +107,14 @@ TRAVEL_JOURNAL_DEFAULT_REQUIREMENTS = "\n".join(
 XP_PER_LESSON = 20
 XP_QUIZ_PASS_BONUS = 10
 XP_PER_LIFE_SKILL = 15
+
+# Default instructional minutes credited when a life skill is marked complete
+# without hours being logged by hand -- a life skill IS the app's
+# occupational-education coverage, so finishing one should count toward that
+# subject's hours rather than leaving it at zero. A parent who wants a precise
+# figure still uses the "Log time on a life skill" form; this is the sensible
+# fallback for the quick "mark complete" path.
+LIFE_SKILL_DEFAULT_MINUTES = 45
 XP_PER_CODING_MODULE = 15
 XP_PER_TRAVEL_ENTRY = 30
 XP_PER_CHOICE_TOPIC = 15

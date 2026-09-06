@@ -891,7 +891,10 @@ def test_board_surfaces_an_on_the_fly_lesson_on_today(board_db, board_student):
     from datetime import date
 
     monday = week_start()
-    today_iso = date.today().isoformat()
+    # Anchor "today" to a weekday in-range so the assertion holds every day of
+    # the week -- the board only has Mon-Fri columns, so on a weekend the real
+    # date.today() isn't a column key and this would spuriously KeyError.
+    today_iso = monday.isoformat()
     sid = board_student["id"]
     lesson_id = board_db.save_lesson(
         student_id=sid, agent="math", subject="math", topic="t",
@@ -899,7 +902,7 @@ def test_board_surfaces_an_on_the_fly_lesson_on_today(board_db, board_student):
         metadata={},  # on the fly: no planned_for, no week_start
     )
 
-    board = board_for_week(board_db, board_student, monday)
+    board = board_for_week(board_db, board_student, monday, today=monday)
     assert ("lesson", lesson_id) in {(k, i["id"]) for k, i in board[today_iso]}
     # and not duplicated into the backlog
     assert ("lesson", lesson_id) not in {(k, i["id"]) for k, i in board["backlog"]}
@@ -911,7 +914,9 @@ def test_board_keeps_only_the_newest_on_the_fly_lesson_per_subject(board_db, boa
     from datetime import date
 
     monday = week_start()
-    today_iso = date.today().isoformat()
+    # Anchor "today" to a weekday in-range (see the sibling test) so this holds
+    # on weekends too, when the real date.today() is not a board column.
+    today_iso = monday.isoformat()
     sid = board_student["id"]
     older = board_db.save_lesson(
         student_id=sid, agent="math", subject="math", topic="t",
@@ -921,7 +926,7 @@ def test_board_keeps_only_the_newest_on_the_fly_lesson_per_subject(board_db, boa
         student_id=sid, agent="math", subject="math", topic="t",
         title="Newer Math", payload={"activities": []}, metadata={},
     )
-    board = board_for_week(board_db, board_student, monday)
+    board = board_for_week(board_db, board_student, monday, today=monday)
     today_lesson_ids = {i["id"] for k, i in board[today_iso] if k == "lesson"}
     assert newer in today_lesson_ids
     assert older not in today_lesson_ids

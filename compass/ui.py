@@ -5065,7 +5065,7 @@ def render_student_life_skills(db: Database, skills: list[dict[str, Any]]) -> No
                     unsafe_allow_html=True,
                 )
             if st.checkbox("Mark done", value=False, key=f"ls_done_{skill['id']}"):
-                db.set_life_skill_done(skill["id"], True)
+                db.complete_life_skill(skill["id"])  # marks done + logs occ-ed hours
                 st.rerun()
 
 

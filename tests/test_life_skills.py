@@ -420,3 +420,73 @@ def test_a_life_skill_assigned_this_week_shows_on_the_student_board(monkeypatch,
     board_button.click().run()
     assert not at.exception, [e.message for e in at.exception]
     assert any("Change a tire" in (e.label or "") for e in at.expander)
+
+
+# --- completing a life skill credits occupational-education hours ------------
+# Reported: "occupations edu shows 0 but he has completed 2 or 3 life skills."
+# The bare `set_life_skill_done` only stamps `completed_on`; Compliance sums
+# per-subject hours from logged activities, so a completed-but-unlogged skill
+# showed nothing. `complete_life_skill` closes that gap.
+
+
+def test_completing_a_skill_logs_occupational_education_hours(db, student, skill):
+    db.complete_life_skill(skill["id"])
+
+    done = next(s for s in db.list_life_skills(student["id"]) if s["id"] == skill["id"])
+    assert done["completed_on"]  # still marks it done
+
+    activities = db.list_activities(student["id"])
+    occ = [a for a in activities if a["credits"].get("occupational_education")]
+    assert len(occ) == 1
+    assert occ[0]["credits"]["occupational_education"] == config.LIFE_SKILL_DEFAULT_MINUTES
+    assert occ[0]["source"] == "life_skills"
+
+
+def test_completing_a_skill_is_idempotent(db, student, skill):
+    db.complete_life_skill(skill["id"])
+    db.complete_life_skill(skill["id"])  # re-click must not double-count
+
+    activities = db.list_activities(student["id"])
+    occ = [a for a in activities if a["credits"].get("occupational_education")]
+    assert len(occ) == 1
+
+
+def test_completing_honours_an_explicit_minutes_override(db, student, skill):
+    db.complete_life_skill(skill["id"], minutes=90)
+
+    activities = db.list_activities(student["id"])
+    occ = [a for a in activities if a["credits"].get("occupational_education")]
+    assert occ[0]["credits"]["occupational_education"] == 90
+
+
+def test_completing_credits_the_skills_own_subject(db, student):
+    skill_id = db.add_life_skill(
+        student["id"], "Balance a budget", category="Money",
+        credit_subject="mathematics",
+    )
+    db.complete_life_skill(skill_id)
+
+    activities = db.list_activities(student["id"])
+    credited = [a for a in activities if a["credits"].get("mathematics")]
+    assert len(credited) == 1
+    assert credited[0]["credits"]["mathematics"] == config.LIFE_SKILL_DEFAULT_MINUTES
+
+
+def test_the_log_time_form_path_does_not_double_count(db, student, skill):
+    """The 'Log time on a life skill' form logs its own hours and then marks the
+    skill done via the bare setter. If a parent later hits the quick 'mark
+    complete' button on that already-done skill, no extra hours are added."""
+    db.log_activity(
+        student_id=student["id"], title=skill["title"],
+        tier=config.TIER_LIFE_SKILLS, primary_subject="occupational_education",
+        minutes=60, subject_credits={"occupational_education": 60},
+        source="life_skills",
+    )
+    db.set_life_skill_done(skill["id"], True)
+
+    db.complete_life_skill(skill["id"])  # already done -> no second credit
+
+    activities = db.list_activities(student["id"])
+    occ = [a for a in activities if a["credits"].get("occupational_education")]
+    assert len(occ) == 1
+    assert occ[0]["credits"]["occupational_education"] == 60

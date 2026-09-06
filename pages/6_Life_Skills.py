@@ -382,7 +382,7 @@ if plan_tab is not None:
             if not skill["completed_on"] and st.button(
                 "Mark this skill complete", key=f"plan_done_{skill['id']}"
             ):
-                db.set_life_skill_done(skill["id"], True)
+                db.complete_life_skill(skill["id"])  # marks done + logs occ-ed hours
                 st.rerun()
 
 if log_tab is not None:
