@@ -610,14 +610,14 @@ def test_generate_passes_the_familys_effort_setting_to_the_model_call(db, studen
     with patch(
         "compass.agents.framework.generate_lesson", return_value=a_payload()
     ) as call:
-        agent.generate(ctx_for(db, student), proposal)
+        agent.generate_series(ctx_for(db, student), proposal, target_days=1)
     assert call.call_args.kwargs["effort"] == config.EFFORT_MEDIUM
 
 
 def test_generate_leaves_usage_in_the_saved_payload_for_the_cost_tracker(db, student):
     """compass.costs.build_cost_report reads `_usage` straight out of the
     saved payload with SQL (`json_extract(payload, '$._usage...')`), not from
-    metadata -- generate() must never pop or otherwise strip it before
+    metadata -- generation must never pop or otherwise strip it before
     save_lesson persists the payload, or every lesson generated goes dark
     for cost tracking."""
     agent = get_agent("math")
@@ -627,6 +627,6 @@ def test_generate_leaves_usage_in_the_saved_payload_for_the_cost_tracker(db, stu
         "compass.agents.framework.generate_lesson",
         return_value=a_payload(_usage=usage),
     ):
-        result = agent.generate(ctx_for(db, student), proposal)
+        result = agent.generate_series(ctx_for(db, student), proposal, target_days=1)[0]
     saved = db.get_lesson(result.lesson_id)
     assert saved["payload"]["_usage"] == usage

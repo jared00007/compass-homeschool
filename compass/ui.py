@@ -74,9 +74,7 @@ from compass.compliance import declaration_status
 from compass.export import (
     DocxExtractionError,
     extract_docx_text,
-    lesson_to_docx,
     lesson_to_pdf,
-    suggested_filename,
     suggested_pdf_filename,
 )
 from compass.morning_routines import MORNING_ROUTINES, routine_for_date
@@ -434,107 +432,6 @@ def context_for(
 
 
 # --- the generate → review → log loop ----------------------------------------
-
-
-def generate_and_log(
-    db: Database,
-    student: dict[str, Any],
-    agent: LessonAgent,
-    ctx: StudentContext,
-    proposal,
-    *,
-    primary_subject: str,
-    spinner: str,
-    api_ok: bool,
-    location: str = "",
-    after_render: str = "",
-) -> None:
-    """The whole Tier 1 loop: generate, surface warnings, render, offer to log.
-
-    All four agent pages ran a near-identical copy of this. Keeping one copy
-    matters beyond tidiness: the redaction in `render_lesson` and the warnings
-    from credit/video normalization are the two things that must never be
-    skipped on any page, and four hand-maintained copies is four chances to
-    forget one.
-
-    The generated lesson is held in session state under the agent's own key, so
-    a rerun (logging hours, changing a widget) doesn't lose an expensive lesson.
-
-    Session state is what makes a just-generated lesson stick around across
-    reruns on *this* page -- but it's memory, not the record, so it's empty
-    again after an app restart or a fresh browser session even though the
-    lesson itself is still sitting in the database, unlogged. That gap is
-    exactly what let two near-identical English lessons get generated one
-    session apart with nothing on the page to say the first was still
-    waiting: the button looked untouched. Checking the database itself for
-    an existing planned lesson -- not just session state -- catches that.
-    """
-    state_key = f"{agent.key}_lesson"
-    current = st.session_state.get(state_key)
-
-    pending = [
-        lesson
-        for lesson in db.list_lessons(student["id"], agent=agent.key, limit=10)
-        if lesson["status"] in ("planned", "submitted", "needs_revision")
-        and (not current or lesson["id"] != current.lesson_id)
-    ]
-    if pending:
-        st.warning(
-            f"⚠️ **{pending[0]['title']}** is already generated and still open for this "
-            "subject. Generating another leaves both waiting on his Home page -- review "
-            "or remove the old one from Mission Control → Review."
-        )
-
-    if st.button("Generate lesson", type="primary", disabled=not api_ok or proposal.blocked):
-        with st.spinner(spinner):
-            try:
-                st.session_state[state_key] = agent.generate(ctx, proposal)
-            except LessonGenerationError as exc:
-                st.error(str(exc))
-
-    generated = st.session_state.get(state_key)
-    if not generated:
-        return
-
-    # An on-demand lesson is "do this now" work -- stamp it for today so it's
-    # real today-scheduled work on both Home and the board, rather than a
-    # dateless lesson that shows on Home's roster but nowhere on the schedule
-    # (reported: "today should only display lessons he is expected to review
-    # TODAY... he has nothing scheduled in the boardview for today?"). A no-op
-    # once it already has a day, so it never fights a real schedule.
-    db.schedule_lesson_today_if_unscheduled(generated.lesson_id)
-
-    st.divider()
-    for warning in generated.warnings:
-        st.caption(f"⚠️ {warning}")
-    render_lesson(generated.payload)
-    download_columns = st.columns(2)
-    download_columns[0].download_button(
-        "🖨️ Print to PDF",
-        data=partial(lesson_to_pdf, generated.payload),
-        file_name=suggested_pdf_filename(generated.payload),
-        mime="application/pdf",
-        key=f"{agent.key}_pdf_download",
-    )
-    download_columns[1].download_button(
-        "📄 Word doc",
-        data=partial(lesson_to_docx, generated.payload),
-        file_name=suggested_filename(generated.payload),
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        key=f"{agent.key}_docx_download",
-    )
-    if after_render:
-        st.caption(after_render)
-    st.divider()
-    log_lesson_form(
-        db,
-        student,
-        generated,
-        source=agent.key,
-        primary_subject=primary_subject,
-        location=location,
-        key_prefix=agent.key,
-    )
 
 
 def generate_series_and_log(
@@ -3427,24 +3324,6 @@ EPIC_ICONS = {
     "Life Skills": "🛠️", "Big Projects": "🎬",
 }
 
-def big_project_status_text(db: Database, student_id: int) -> str:
-    """'<title> — <next step>', or a nudge to pick one at all -- a smart
-    one-line status for his active Big Project, reused wherever a Big Project
-    needs a label rather than a generic string."""
-    active = db.active_big_project(student_id)
-    if active is None:
-        return "Big Projects — pick one to work on this year"
-    steps = db.list_project_steps(active["id"])
-    next_step = next((s for s in steps if s["active"] and not s["completed_on"]), None)
-    if next_step:
-        return f"{md(active['title'])} — {md(next_step['title'])}"
-    # Steps exist and aren't all done, but none of them are in To Do yet --
-    # a real, different state from "all done", not the same thing.
-    if any(not s["completed_on"] for s in steps):
-        return f"{md(active['title'])} — pull a step into To Do"
-    return f"{md(active['title'])} — all done! 🎉"
-
-
 def _render_grade_override_form(db: Database, grade: Any) -> None:
     """Parent-only: set (or clear) a subject's grade by hand, right where the
     grade is shown. Reported directly: "where can i find/edit a grading record
@@ -6057,14 +5936,6 @@ def render_card_heading(text: str) -> None:
     )
 
 
-def render_fun_fact() -> None:
-    """Student view only -- a small reward for showing up, not a lesson.
-    Same card styling as an st.info, so it reads as part of the page rather
-    than an ad. Rotates daily; see fun_facts.fact_of_the_day for why that's
-    deterministic rather than random."""
-    st.info(f"🎲 **Fun fact of the day**\n\n{fun_facts.fact_of_the_day()}")
-
-
 def render_brain_break() -> None:
     """Student view only -- a little daily bonus round: a riddle he can guess
     before revealing, the word of the day, and a quick history flashback. Pure
@@ -6306,32 +6177,6 @@ def render_xp_reward_editor(db: Database) -> None:
     if reset_col.button("Reset to defaults", key="reset_xp_rewards"):
         db.set_setting("xp_rewards", "")
         st.rerun()
-
-
-def render_week_progress(db: Database, student: dict[str, Any]) -> None:
-    """A small fuel gauge for the week: how many of this week's planned lessons
-    he's finished. Effort made visible -- reported wish: "little things ... to
-    make this fun." Reads his own `student_done_on` signal, so it fills in the
-    moment he finishes something, never waiting on a parent to log hours. Shown
-    only once there's actually a plan for the week (nothing to gauge otherwise).
-    """
-    week_start = weekly.week_start()
-    week_lessons = weekly.latest_per_day(
-        db.lessons_for_week(student["id"], week_start.isoformat())
-    )
-    total = len(week_lessons)
-    if not total:
-        return
-    done = sum(
-        1 for lesson in week_lessons
-        if (lesson.get("metadata") or {}).get("student_done_on")
-    )
-    fraction = done / total
-    if done >= total:
-        label = f"🏁 All {total} lessons done this week — you crushed it!"
-    else:
-        label = f"⚡ {done} of {total} lessons done this week — keep it rolling!"
-    st.progress(fraction, text=label)
 
 
 def render_declaration_banner(db: Database, student: dict[str, Any]) -> None:

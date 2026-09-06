@@ -75,9 +75,6 @@ MORNING_ROUTINES: tuple[MorningRoutine, ...] = (
      )),
 )
 
-MORNING_ROUTINES_BY_KEY = {r[0]: r for r in MORNING_ROUTINES}
-
-
 def routine_for_date(iso_date: str) -> MorningRoutine:
     """Deterministic day-to-day rotation via the date's ordinal day count --
     stable within a day, cycles cleanly across days, no randomness that

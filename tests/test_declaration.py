@@ -16,7 +16,7 @@ import pytest
 
 from compass import config
 from compass.compliance.declaration import status
-from compass.school_calendar import date_in_year, days_until, next_annual_date
+from compass.school_calendar import date_in_year, days_until
 from compass.storage.db import Database
 
 
@@ -46,21 +46,6 @@ def test_date_in_year_falls_back_on_garbage_rather_than_raising():
 
 def test_date_in_year_falls_back_on_feb_29_in_a_non_leap_year():
     assert date_in_year("02-29", 2026) == date(2026, 9, 1)
-
-
-def test_next_annual_date_stays_this_year_if_not_passed_yet():
-    on = date(2026, 8, 1)
-    assert next_annual_date("09-01", on) == date(2026, 9, 1)
-
-
-def test_next_annual_date_rolls_forward_once_passed():
-    on = date(2026, 9, 15)
-    assert next_annual_date("09-01", on) == date(2027, 9, 1)
-
-
-def test_next_annual_date_treats_today_as_not_yet_passed():
-    on = date(2026, 9, 1)
-    assert next_annual_date("09-01", on) == date(2026, 9, 1)
 
 
 def test_days_until():

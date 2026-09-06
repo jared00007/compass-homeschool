@@ -31,7 +31,7 @@ def test_park_by_key_finds_a_real_park_and_none_for_junk():
 
 
 def test_map_insets_have_real_bounds_and_dimensions():
-    insets = parks.map_insets()
+    insets = parks._MAP_INSETS
     assert set(insets) == {"conus", "alaska", "hawaii"}
     for name, box in insets.items():
         assert box["lon_min"] < box["lon_max"], name
@@ -44,8 +44,8 @@ def test_project_places_a_lower_48_park_in_conus():
     assert result is not None
     inset, x, y = result
     assert inset == "conus"
-    assert 0 <= x <= parks.map_insets()["conus"]["w"]
-    assert 0 <= y <= parks.map_insets()["conus"]["h"]
+    assert 0 <= x <= parks._MAP_INSETS["conus"]["w"]
+    assert 0 <= y <= parks._MAP_INSETS["conus"]["h"]
 
 
 def test_project_places_an_alaska_park_in_the_alaska_inset():
@@ -83,7 +83,7 @@ def test_every_park_has_an_icon():
 def test_states_catalog_has_all_50_states_with_real_path_data():
     assert len(parks.STATES) == 50
     for name in parks.STATES:
-        box = parks.state_inset(name)
+        box = parks._STATE_PATHS.get(name)
         assert box is not None, name
         assert box["inset"] in {"conus", "alaska", "hawaii"}
         assert box["path"].startswith("M"), name

@@ -286,9 +286,9 @@ def test_travel_log_card_shows_states_and_parks_progress(monkeypatch, tmp_path):
 
 
 def test_travel_log_project_is_never_offered_for_the_year_pick(monkeypatch, tmp_path):
-    """big_project_status_text assumes an active project has steps with a
-    next one due -- never true for a travel log, so it must not be
-    selectable as "the one" worked on this year."""
+    """The active-project machinery assumes a project has steps with a next
+    one due -- never true for a travel log, so it must not be selectable as
+    "the one" worked on this year."""
     db_path = tmp_path / "projects.db"
     db = Database(db_path)
     student = db.ensure_default_student()

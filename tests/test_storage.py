@@ -1099,18 +1099,6 @@ def test_due_coding_modules_excludes_completed_and_locked(db, student):
     assert [m["id"] for m in due] == [due_id]
 
 
-def test_upcoming_coding_modules_only_includes_the_future(db, student):
-    today = date.today().isoformat()
-    tomorrow = (date.today() + timedelta(days=1)).isoformat()
-    today_id = db.add_coding_module(student["id"], "Due today")
-    db.schedule_coding_module(today_id, today)
-    future_id = db.add_coding_module(student["id"], "Due tomorrow")
-    db.schedule_coding_module(future_id, tomorrow)
-
-    upcoming = db.upcoming_coding_modules(student["id"], today)
-    assert [m["id"] for m in upcoming] == [future_id]
-
-
 def test_delete_coding_module_removes_it(db, student):
     module_id = db.add_coding_module(student["id"], "Build a text adventure")
     db.delete_coding_module(module_id)
@@ -1282,8 +1270,6 @@ def test_due_and_upcoming_project_steps(db, student):
     due = db.due_project_steps(student["id"], "2026-08-24")
     assert [s["id"] for s in due] == [due_step]
     assert due[0]["project_title"] == "Lego Movie"
-    # Upcoming = still ahead of the given day.
-    assert [s["id"] for s in db.upcoming_project_steps(student["id"], "2026-08-24")] == [later_step]
 
     # Once done, it drops off due.
     db.set_project_step_done(due_step, True)
@@ -1862,14 +1848,6 @@ def test_clearing_a_project_step_schedule_does_not_re_lock_it(db, student):
     assert step["active"] == 1
 
 
-def test_delete_big_project_cascades_to_its_steps(db, student):
-    project_id = db.add_big_project(student["id"], "Test Project")
-    db.add_project_step(project_id, "Step one")
-    db.delete_big_project(project_id)
-    assert db.list_project_steps(project_id) == []
-    assert db.list_big_projects(student["id"]) == []
-
-
 def test_set_big_project_shelved_toggles_and_is_reversible(db, student):
     project_id = db.add_big_project(student["id"], "Test Project")
     db.set_big_project_shelved(project_id, True)
@@ -1879,8 +1857,8 @@ def test_set_big_project_shelved_toggles_and_is_reversible(db, student):
 
 
 def test_shelving_a_project_does_not_delete_it(db, student):
-    """The whole point: unlike delete_big_project, the row (and its steps)
-    survive -- shelving is reversible, delete never was."""
+    """The whole point: shelving keeps the row (and its steps) -- it's
+    reversible, and a project is never hard-deleted."""
     project_id = db.add_big_project(student["id"], "Test Project")
     db.add_project_step(project_id, "Step one")
     db.set_big_project_shelved(project_id, True)
@@ -2051,11 +2029,13 @@ def test_active_big_project_can_be_cleared(db, student):
 
 
 def test_active_big_project_self_heals_after_deletion(db, student):
-    """Deleting the chosen project shouldn't leave a dangling reference --
-    the lookup just comes back empty, same as never having picked one."""
+    """If the chosen project's row goes missing, the lookup shouldn't leave a
+    dangling reference -- it just comes back empty, same as never having
+    picked one."""
     project_id = db.add_big_project(student["id"], "Test Project")
     db.set_active_big_project(project_id)
-    db.delete_big_project(project_id)
+    db.conn.execute("DELETE FROM big_projects WHERE id = ?", (project_id,))
+    db.conn.commit()
     assert db.active_big_project(student["id"]) is None
 
 
@@ -2087,9 +2067,8 @@ def test_add_project_step_can_branch_off_another_step(db, student):
 
 
 def test_deleting_a_step_cascades_to_whatever_branches_off_of_it(db, student):
-    """Same reasoning delete_big_project's own cascade already gives for a
-    whole project's steps -- removing a step that other steps branch off of
-    must not leave those children pointing at nothing."""
+    """Removing a step that other steps branch off of must not leave those
+    children pointing at nothing -- the delete cascades to them."""
     project_id = db.add_big_project(student["id"], "Branching Project", mode="choice")
     root_id = db.add_project_step(project_id, "Path A")
     db.add_project_step(project_id, "A, leg two", parent_step_id=root_id)
@@ -2181,21 +2160,21 @@ def test_migrate_adds_course_id_to_a_pre_existing_activities_table(db, student):
     assert row["course_id"] is None
 
 
-def test_create_and_get_course_round_trips(db, student):
+def _course(db, student, course_id):
+    return next((c for c in db.list_courses(student["id"]) if c["id"] == course_id), None)
+
+
+def test_create_course_round_trips(db, student):
     course_id = db.create_course(
         student["id"], "Washington State History", "history", "2025-09-01", "2026-08-31",
         grade_level="8", description="desc", goals="goals", outline="outline",
     )
-    course = db.get_course(course_id)
+    course = _course(db, student, course_id)
     assert course["title"] == "Washington State History"
     assert course["credit_subject"] == "history"
     assert course["credit_value"] == 1.0
     assert course["pass_fail"] is None
     assert course["final_grade"] == ""
-
-
-def test_get_course_is_none_for_an_unknown_id(db, student):
-    assert db.get_course(999999) is None
 
 
 def test_list_courses_is_most_recent_start_date_first(db, student):
@@ -2208,16 +2187,16 @@ def test_list_courses_is_most_recent_start_date_first(db, student):
 def test_update_course_ignores_unknown_fields(db, student):
     course_id = db.create_course(student["id"], "Algebra 1", "math", "2025-09-01", "2026-06-01")
     db.update_course(course_id, final_grade="B+", not_a_real_field="x")
-    course = db.get_course(course_id)
+    course = _course(db, student, course_id)
     assert course["final_grade"] == "B+"
     assert "not_a_real_field" not in course
 
 
 def test_update_course_with_no_recognised_fields_is_a_no_op(db, student):
     course_id = db.create_course(student["id"], "Algebra 1", "math", "2025-09-01", "2026-06-01")
-    before = db.get_course(course_id)
+    before = _course(db, student, course_id)
     db.update_course(course_id)
-    assert db.get_course(course_id) == before
+    assert _course(db, student, course_id) == before
 
 
 def test_pass_fail_rejects_anything_other_than_pass_or_fail(db, student):
@@ -2234,7 +2213,7 @@ def test_delete_course_untags_its_activities_but_keeps_them(db, student):
     )
     db.set_activity_course(activity_id, course_id)
     db.delete_course(course_id)
-    assert db.get_course(course_id) is None
+    assert _course(db, student, course_id) is None
     remaining = db.conn.execute(
         "SELECT course_id FROM activities WHERE id = ?", (activity_id,)
     ).fetchone()
@@ -2507,37 +2486,6 @@ def test_set_board_estimate_ignores_an_unknown_kind(db, student):
     """An unknown kind is a no-op, never a SQL error -- the board only ever
     passes one of the six it renders, but a stray call must not raise."""
     db.set_board_estimate("not_a_real_kind", 1, 30)  # must not raise
-
-
-def test_schedule_lesson_today_if_unscheduled_stamps_an_undated_lesson(db, student):
-    """On-demand lessons come in with no day; this gives them today's date (and
-    today's own Monday as week_start) so they're real today-scheduled work,
-    while leaving an already-scheduled lesson alone."""
-    from datetime import date, timedelta
-
-    sid = student["id"]
-    undated = db.save_lesson(
-        student_id=sid, agent="math", subject="math", topic="t", title="On demand",
-        payload={"activities": []}, metadata={},
-    )
-    db.schedule_lesson_today_if_unscheduled(undated)
-    lesson = db.get_lesson(undated)
-    today = date.today()
-    monday = today - timedelta(days=today.weekday())
-    assert lesson["metadata"]["planned_for"] == today.isoformat()
-    assert lesson["metadata"]["week_start"] == monday.isoformat()
-
-
-def test_schedule_lesson_today_leaves_an_already_scheduled_lesson_alone(db, student):
-    sid = student["id"]
-    dated = db.save_lesson(
-        student_id=sid, agent="math", subject="math", topic="t", title="Planned",
-        payload={"activities": []},
-        metadata={"planned_for": "2026-11-25", "week_start": "2026-11-23"},
-    )
-    db.schedule_lesson_today_if_unscheduled(dated)
-    lesson = db.get_lesson(dated)
-    assert lesson["metadata"]["planned_for"] == "2026-11-25"  # untouched
 
 
 # --- mastery reconciliation off a recorded quiz --------------------------------

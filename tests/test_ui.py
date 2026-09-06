@@ -1,11 +1,6 @@
-"""The shared UI loop every Tier 1 agent page runs through.
-
-`generate_and_log` replaced four near-identical hand-maintained copies of the
-generate → review → log block. That consolidation is only worth it if the copy
-that survived actually does the things the four were each responsible for, so
-these tests pin the parts that would be silently skippable: the warnings from
-credit/video normalization, the redacting renderer, and the per-agent session
-key that keeps an expensive lesson alive across a rerun.
+"""UI helpers shared across the app -- lesson rendering, life-skill cards, the
+report card, and the small pure helpers (md escaping, written-response
+detection) that the pages lean on.
 """
 
 from __future__ import annotations
@@ -15,8 +10,6 @@ from datetime import date
 import pytest
 
 import compass.ui as ui
-from compass.agents import get_agent
-from compass.agents.framework import GeneratedLesson, TopicProposal
 from compass.storage.db import Database
 
 
@@ -107,48 +100,6 @@ def a_lesson(**overrides):
     return payload
 
 
-def run(monkeypatch, db, student, *, generated=None, state=None, **kwargs):
-    written: list[str] = []
-    state = {} if state is None else state
-    monkeypatch.setattr(ui, "st", Recorder(written, state))
-    monkeypatch.setattr(ui, "is_parent", lambda: True)
-
-    agent = get_agent("math")
-    ctx = ui.context_for(db, student, minutes=60)
-    proposal = TopicProposal(topic="t", rationale="r", strategy="s")
-    if generated is not None:
-        state[f"{agent.key}_lesson"] = generated
-
-    params = dict(primary_subject="math", spinner="working…", api_ok=True)
-    params.update(kwargs)
-    ui.generate_and_log(db, student, agent, ctx, proposal, **params)
-    return "\n".join(written), state
-
-
-def test_normalization_warnings_always_reach_the_page(monkeypatch, db, student):
-    """The whole point of one shared copy: a warning can't be dropped on one page."""
-    generated = GeneratedLesson(
-        lesson_id=1,
-        proposal=TopicProposal(topic="t", rationale="r", strategy="s"),
-        payload=a_lesson(),
-        warnings=["Secondary subjects claimed 200 min inside a 60 min lesson."],
-    )
-    page, _ = run(monkeypatch, db, student, generated=generated)
-    assert "Secondary subjects claimed 200 min" in page
-
-
-def test_the_lesson_is_rendered_through_the_redacting_renderer(monkeypatch, db, student):
-    generated = GeneratedLesson(
-        lesson_id=1,
-        proposal=TopicProposal(topic="t", rationale="r", strategy="s"),
-        payload=a_lesson(),
-        warnings=[],
-    )
-    page, _ = run(monkeypatch, db, student, generated=generated)
-    assert "Two-Step Equations" in page
-    assert "Solve problems 1-10." in page
-
-
 def test_md_escapes_dollar_signs_so_streamlit_never_renders_them_as_latex():
     """Streamlit's markdown renderer treats a `$...$` pair as inline LaTeX --
     without escaping, a word problem mentioning two prices in the same block
@@ -161,189 +112,6 @@ def test_md_escapes_dollar_signs_so_streamlit_never_renders_them_as_latex():
     assert ui.md(None) == ""
     assert ui.md("") == ""
     assert ui.md("no dollar signs here") == "no dollar signs here"
-
-
-def test_activity_instructions_with_dollar_amounts_render_escaped(monkeypatch, db, student):
-    lesson = a_lesson()
-    lesson["activities"][0]["instructions"] = (
-        "Snack bars: 6 bars for $4.20, or 10 bars for $6.50. Which is cheaper?"
-    )
-    generated = GeneratedLesson(
-        lesson_id=1,
-        proposal=TopicProposal(topic="t", rationale="r", strategy="s"),
-        payload=lesson,
-        warnings=[],
-    )
-    page, _ = run(monkeypatch, db, student, generated=generated)
-    assert "6 bars for \\$4.20, or 10 bars for \\$6.50" in page
-
-
-def test_the_worked_example_is_shown_before_the_instructions(monkeypatch, db, student):
-    generated = GeneratedLesson(
-        lesson_id=1,
-        proposal=TopicProposal(topic="t", rationale="r", strategy="s"),
-        payload=a_lesson(),
-        warnings=[],
-    )
-    page, _ = run(monkeypatch, db, student, generated=generated)
-    assert "Worked model: solve 5x + 3 = 18 step by step." in page
-    assert page.index("Worked model:") < page.index("Solve problems 1-10.")
-
-
-def test_materials_render_before_activities(monkeypatch, db, student):
-    """He should see what he needs before being told what to do with it."""
-    generated = GeneratedLesson(
-        lesson_id=1,
-        proposal=TopicProposal(topic="t", rationale="r", strategy="s"),
-        payload=a_lesson(),
-        warnings=[],
-    )
-    page, _ = run(monkeypatch, db, student, generated=generated)
-    assert page.index("**Materials**") < page.index("**Activities**")
-
-
-def test_an_activitys_video_renders_before_its_example_and_instructions(monkeypatch, db, student):
-    """One video per activity, not one per lesson -- it's that activity's own
-    entry point, so it shows before the worked example and instructions for
-    that same activity."""
-    lesson = a_lesson()
-    lesson["activities"][0]["video"] = {
-        "found": True, "title": "Two-Step Equations Explained",
-        "url": "https://youtube.com/watch?v=abc", "channel": "Khan Academy",
-        "why": "Shows the same undo-in-order idea worked out loud.",
-    }
-    generated = GeneratedLesson(
-        lesson_id=1,
-        proposal=TopicProposal(topic="t", rationale="r", strategy="s"),
-        payload=lesson,
-        warnings=[],
-    )
-    page, _ = run(monkeypatch, db, student, generated=generated)
-    assert "Two-Step Equations Explained" in page
-    assert page.index("**Activities**") < page.index("Two-Step Equations Explained")
-    assert page.index("Two-Step Equations Explained") < page.index("Worked model:")
-    assert page.index("Worked model:") < page.index("Solve problems 1-10.")
-
-
-def test_a_generated_lesson_offers_a_word_doc_download(monkeypatch, db, student):
-    """generate_and_log only ever runs behind is_parent(), so it's safe for the
-    downloadable doc to include the assessment and answer key too."""
-    generated = GeneratedLesson(
-        lesson_id=1,
-        proposal=TopicProposal(topic="t", rationale="r", strategy="s"),
-        payload=a_lesson(),
-        warnings=[],
-    )
-    page, _ = run(monkeypatch, db, student, generated=generated)
-    assert "Print to PDF" in page  # per-lesson PDF export sits beside the Word doc
-    assert "Word doc" in page
-
-
-def test_word_doc_download_defers_docx_generation(monkeypatch, db, student):
-    """`data` must be a callable, not already-built bytes -- otherwise a page
-
-    listing many lessons (Activity Log's "Generated lessons" tab) would rebuild
-    every lesson's export on every rerun, not just the one being downloaded.
-    Requires streamlit>=1.52.0, which is why requirements.txt's floor was
-    bumped -- an older streamlit would reject or mishandle a callable here.
-    Both exports (PDF and Word) defer the same way.
-    """
-    calls: list[dict] = []
-    written: list[str] = []
-    state: dict = {}
-    recorder = Recorder(written, state)
-    recorder.download_button = lambda *args, **kwargs: calls.append(kwargs)
-    monkeypatch.setattr(ui, "st", recorder)
-    monkeypatch.setattr(ui, "is_parent", lambda: True)
-
-    agent = get_agent("math")
-    ctx = ui.context_for(db, student, minutes=60)
-    proposal = TopicProposal(topic="t", rationale="r", strategy="s")
-    state[f"{agent.key}_lesson"] = GeneratedLesson(
-        lesson_id=1, proposal=proposal, payload=a_lesson(), warnings=[]
-    )
-
-    ui.generate_and_log(
-        db, student, agent, ctx, proposal,
-        primary_subject="math", spinner="x", api_ok=True,
-    )
-
-    # Two export buttons now -- Print to PDF and Word doc -- each deferring its
-    # own generation behind a callable.
-    assert len(calls) == 2
-    assert all(callable(call["data"]) for call in calls)
-    outputs = [call["data"]() for call in calls]
-    assert any(out.startswith(b"%PDF") for out in outputs)  # the PDF
-    assert any(out.startswith(b"PK") for out in outputs)  # the .docx (a zip)
-
-
-def test_the_optional_trailing_note_is_shown_when_given(monkeypatch, db, student):
-    """English is the only caller that passes one; it must not leak to the others."""
-    generated = GeneratedLesson(
-        lesson_id=1,
-        proposal=TopicProposal(topic="t", rationale="r", strategy="s"),
-        payload=a_lesson(),
-        warnings=[],
-    )
-    with_note, _ = run(
-        monkeypatch, db, student, generated=generated, after_render="VOCAB lines were saved."
-    )
-    assert "VOCAB lines were saved." in with_note
-
-    without, _ = run(monkeypatch, db, student, generated=generated)
-    assert "VOCAB lines were saved." not in without
-
-
-def test_nothing_renders_before_a_lesson_exists(monkeypatch, db, student):
-    """An un-generated page shows the button and stops -- no empty divider or form."""
-    page, _ = run(monkeypatch, db, student)
-    assert "Log this as completed" not in page
-    assert "Two-Step Equations" not in page
-
-
-def test_no_pending_lesson_shows_no_warning(monkeypatch, db, student):
-    page, _ = run(monkeypatch, db, student)
-    assert "already generated and still open" not in page
-
-
-def test_a_pending_planned_lesson_warns_before_generating_another(monkeypatch, db, student):
-    """The actual bug this guards against: session state is empty (a fresh
-    session, e.g. after an app restart) but the database already has an
-    unlogged lesson for this agent -- the page must say so instead of
-    looking untouched and inviting a duplicate."""
-    db.save_lesson(
-        student["id"], "math", "math", "topic", "Two-Step Equations", payload={"a": 1}
-    )
-    page, _ = run(monkeypatch, db, student)
-    assert "already generated and still open" in page
-    assert "Two-Step Equations" in page
-
-
-def test_no_warning_for_the_lesson_already_held_in_session(monkeypatch, db, student):
-    """The one exception: a pending lesson that IS the one already on screen
-    isn't a forgotten duplicate, so it shouldn't warn about itself."""
-    lesson_id = db.save_lesson(
-        student["id"], "math", "math", "topic", "Two-Step Equations", payload={"a": 1}
-    )
-    generated = GeneratedLesson(
-        lesson_id=lesson_id,
-        proposal=TopicProposal(topic="t", rationale="r", strategy="s"),
-        payload=a_lesson(),
-        warnings=[],
-    )
-    page, _ = run(monkeypatch, db, student, generated=generated)
-    assert "already generated and still open" not in page
-
-
-def test_the_session_key_is_per_agent(monkeypatch, db, student):
-    """Four agents share this function; one shared key would have them overwrite
-    each other's lessons on every page switch."""
-    keys = set()
-    for name in ("math", "science", "english", "history"):
-        keys.add(f"{get_agent(name).key}_lesson")
-    assert len(keys) == 4
-    # and it matches the keys the pages used before consolidation
-    assert keys == {"math_lesson", "science_lesson", "english_lesson", "history_lesson"}
 
 
 # --- _needs_written_response: kind == "writing" is not the only trigger ------------
@@ -1080,7 +848,8 @@ def test_materials_only_show_when_present(monkeypatch, db, student):
     page = render_cards(monkeypatch, db, db.list_life_skills(student["id"]))
     assert "You'll need" not in page
 
-    db.delete_life_skill(skill_id)
+    db.conn.execute("DELETE FROM life_skills WHERE id = ?", (skill_id,))
+    db.conn.commit()
     db.add_life_skill(
         student["id"], "Sew a button", "Sewing", "Thread it and knot it.",
         materials="needle, thread, a button",
@@ -1264,26 +1033,6 @@ def test_switching_routines_the_same_day_does_not_double_credit(monkeypatch, db,
     assert logged["routine_key"] == "sun_salutation"
     assert len(db.list_activities(student["id"])) == 1
 
-
-def test_big_project_status_text_nudges_when_none_is_active(db, student):
-    assert "pick one" in ui.big_project_status_text(db, student["id"]).lower()
-
-
-def test_big_project_status_text_shows_the_next_step(db, student):
-    project_id = db.add_big_project(student["id"], "Stop-motion film")
-    db.add_project_step(project_id, "Write the script", active=True)
-    db.set_active_big_project(project_id)
-    text = ui.big_project_status_text(db, student["id"])
-    assert "Stop-motion film" in text
-    assert "Write the script" in text
-
-
-def test_big_project_status_text_celebrates_when_all_steps_are_done(db, student):
-    project_id = db.add_big_project(student["id"], "Stop-motion film")
-    step_id = db.add_project_step(project_id, "Write the script")
-    db.set_active_big_project(project_id)
-    db.set_project_step_done(step_id, True)
-    assert "all done" in ui.big_project_status_text(db, student["id"]).lower()
 
 # --- render_first_day_celebration: one-time "Issue #1" cover on the first day ---
 

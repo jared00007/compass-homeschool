@@ -22,11 +22,6 @@ FALLBACK_BETA = "server-side-fallback-2026-07-01"
 # teaching half is `learn` (explanation + one video) and `worked_example` (one
 # problem walked step by step); the graded half is the two `activities` (parent-
 # graded against each one's `answer`) plus the `quiz` (auto-graded).
-#
-# ACTIVITY_PHASES is retained only for back-compat: lessons generated under the
-# older Learn/Practice model still carry a `phase`, and some rendering/tests
-# still read it. New lessons don't set it.
-ACTIVITY_PHASES = ("learn", "practice")
 
 
 class LessonGenerationError(RuntimeError):

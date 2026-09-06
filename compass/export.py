@@ -41,15 +41,6 @@ from docx.shared import Pt
 from compass import config, subjects
 
 
-def _activity_phase_label(activity: dict[str, Any]) -> str:
-    """Learn/Practice for the printout. New lessons carry `phase`; older ones
-    are read off the retired `kind` (only a bare "instruction" was teaching)."""
-    phase = activity.get("phase")
-    if phase not in ("learn", "practice"):
-        phase = "learn" if activity.get("kind") == "instruction" else "practice"
-    return phase.capitalize()
-
-
 def suggested_filename(lesson: dict[str, Any]) -> str:
     """A readable .docx filename: the lesson title, slugged, plus today's date."""
     title = lesson.get("title") or "lesson"

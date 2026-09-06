@@ -107,20 +107,6 @@ def test_a_review_is_stored_on_the_lesson(monkeypatch, db, student):
     assert stored["concerns"] == A_REVIEW["concerns"]
 
 
-def test_existing_review_reports_none_before_and_the_review_after(monkeypatch, db, student):
-    lesson_id = _lesson(db, student["id"])
-    assert writing_review.existing_review(db.get_lesson(lesson_id), 0) is None
-
-    monkeypatch.setattr(
-        writing_review, "generate_lesson", lambda **kwargs: dict(A_REVIEW)
-    )
-    writing_review.review_writing(db, student, db.get_lesson(lesson_id), 0, "Response.")
-
-    assert writing_review.existing_review(db.get_lesson(lesson_id), 0) is not None
-    # ...and only for the activity actually reviewed.
-    assert writing_review.existing_review(db.get_lesson(lesson_id), 1) is None
-
-
 def test_it_runs_on_the_cheap_review_model_not_the_lesson_model(monkeypatch, db, student):
     lesson_id = _lesson(db, student["id"])
     seen = {}

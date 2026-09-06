@@ -180,12 +180,3 @@ def review_writing(
     )
     db.set_lesson_status(bookkeeping_id, "completed")
     return review
-
-
-def existing_review(lesson: dict[str, Any], activity_index: int) -> dict[str, Any] | None:
-    """The stored review for this activity, if one has already been run.
-
-    The one-and-done gate: the UI shows the button only when this is None.
-    """
-    reviews = (lesson.get("metadata") or {}).get("writing_ai_review") or {}
-    return reviews.get(str(activity_index))

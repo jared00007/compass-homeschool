@@ -412,43 +412,6 @@ class LessonAgent:
             ),
         )
 
-    def generate(
-        self, ctx: StudentContext, proposal: TopicProposal | None = None
-    ) -> GeneratedLesson:
-        proposal = proposal or self.propose_topic(ctx)
-        if proposal.blocked:
-            raise LessonGenerationError(proposal.blocked_reason or "This agent is blocked.")
-
-        payload = generate_lesson(
-            system=self.build_system_prompt(ctx),
-            user_prompt=self.spec.build_user_prompt(ctx, proposal),
-            use_web_search=self.spec.use_web_search,
-            max_web_searches=self.spec.max_web_searches,
-            effort=ctx.effort,
-        )
-        warnings = self._normalize(payload, proposal, ctx)
-
-        lesson_id = ctx.db.save_lesson(
-            student_id=ctx.student_id,
-            agent=self.spec.key,
-            subject=self.spec.primary_subject,
-            topic=payload.get("topic") or proposal.topic,
-            title=payload.get("title") or proposal.topic,
-            payload=payload,
-            strategy=proposal.strategy,
-            rationale=proposal.rationale,
-            metadata=proposal.metadata,
-        )
-
-        if self.spec.post_process:
-            self.spec.post_process(ctx, proposal, payload)
-
-        return GeneratedLesson(
-            lesson_id=lesson_id, proposal=proposal, payload=payload, warnings=warnings
-        )
-
-    # -- step 2b: write a whole topic as a multi-day series ------------------
-
     def _day_proposal(
         self,
         base: TopicProposal,

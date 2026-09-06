@@ -25,14 +25,5 @@ def date_in_year(mmdd: str, year: int) -> date:
         return date(year, 9, 1)
 
 
-def next_annual_date(mmdd: str, on: date | None = None) -> date:
-    """The next date matching `mmdd` that is `on` or later."""
-    on = on or date.today()
-    candidate = date_in_year(mmdd, on.year)
-    if candidate < on:
-        candidate = date_in_year(mmdd, on.year + 1)
-    return candidate
-
-
 def days_until(target: date, on: date | None = None) -> int:
     return (target - (on or date.today())).days

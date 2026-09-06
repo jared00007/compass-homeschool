@@ -34,7 +34,7 @@ def course(db, student):
         student["id"], "Washington State History", "history", "2025-09-01", "2026-08-31",
         grade_level="8",
     )
-    return db.get_course(course_id)
+    return next(c for c in db.list_courses(student["id"]) if c["id"] == course_id)
 
 
 def a_summary_payload(**overrides):
@@ -117,7 +117,7 @@ def test_credit_value_scales_the_target_hours_in_the_prompt(db, student):
         student["id"], "Half-Credit Elective", "art_and_music", "2025-09-01", "2026-01-31",
         grade_level="9", credit_value=0.5,
     )
-    half_course = db.get_course(db_id)
+    half_course = next(c for c in db.list_courses(student["id"]) if c["id"] == db_id)
     _, call = generate(db, student, half_course, [], a_summary_payload())
     system = call.call_args.kwargs["system"]
     assert "0.5-credit art_and_music" in system or "75" in system

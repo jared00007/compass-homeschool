@@ -2670,28 +2670,6 @@ class Database:
         )
         self.conn.commit()
 
-    def schedule_lesson_today_if_unscheduled(self, lesson_id: int) -> None:
-        """Give a still-`planned` lesson today's date if it has none yet.
-
-        On-demand lessons (generated from a subject page, not batch-planned)
-        used to be saved with no planned_for/week_start at all -- "do it now"
-        work with no day attached. That made them show on Home's daily roster
-        (due_lessons treats an undated open lesson as due) while landing on no
-        day column of the board, so the two disagreed -- reported directly:
-        "today should only display lessons he is expected to review TODAY... he
-        has nothing scheduled in the boardview for today?" Stamping today at
-        generation makes an on-demand lesson genuine today-scheduled work: it
-        shows on Home's today and on the board's Today column, the same day,
-        because it now actually has a day. A no-op once a lesson already has a
-        day (a batch-planned or already-stamped one), so it never overrides a
-        real schedule."""
-        lesson = self.get_lesson(lesson_id)
-        if lesson is None or lesson["status"] != "planned":
-            return
-        if (lesson["metadata"] or {}).get("planned_for"):
-            return
-        self.reschedule_lesson(lesson_id, date.today().isoformat())
-
     def send_to_backlog(self, lesson_id: int) -> None:
         """A parent's own "not this week" call on any still-open lesson,
         any day -- the manual counterpart to `compass.weekly.is_backlogged`'s
@@ -3079,67 +3057,6 @@ class Database:
                 "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
             )
             self.conn.commit()
-
-    def active_days(self, student_id: int) -> set[str]:
-        """Every date he did real work on, as ISO strings.
-
-        "Real work" is his own signal, not the parent's: a lesson he marked
-        done, or a life skill checked off. Deliberately *not* the vocab
-        review or the morning routine -- both are one button press, and a
-        streak a nine-year-old could farm by tapping one button a day isn't
-        measuring anything. Feeds compass.weekly's streak counting.
-        """
-        lesson_days = self.conn.execute(
-            "SELECT DISTINCT json_extract(metadata, '$.student_done_on') AS day "
-            "FROM lessons WHERE student_id = ? "
-            "AND json_extract(metadata, '$.student_done_on') IS NOT NULL",
-            (student_id,),
-        ).fetchall()
-        skill_days = self.conn.execute(
-            "SELECT DISTINCT completed_on AS day FROM life_skills "
-            "WHERE student_id = ? AND completed_on IS NOT NULL AND completed_on != ''",
-            (student_id,),
-        ).fetchall()
-        return {row["day"] for row in [*lesson_days, *skill_days] if row["day"]}
-
-    def planned_days(self, student_id: int) -> set[str]:
-        """Every date that ever had at least one lesson scheduled for it,
-        across every subject -- not just the ones he finished.
-
-        Feeds compass.weekly's streak counting one half of what it needs to
-        tell a deliberate day off (a holiday, on a day nothing was scheduled
-        for) from a day he just didn't do the work that was sitting there
-        waiting -- see `planned_weeks` for the other half, and why both are
-        needed together rather than this alone.
-        """
-        rows = self.conn.execute(
-            "SELECT DISTINCT json_extract(metadata, '$.planned_for') AS day "
-            "FROM lessons WHERE student_id = ? "
-            "AND json_extract(metadata, '$.planned_for') IS NOT NULL",
-            (student_id,),
-        ).fetchall()
-        return {row["day"] for row in rows if row["day"]}
-
-    def planned_weeks(self, student_id: int) -> set[str]:
-        """Every Monday that ever had at least one lesson scheduled into its
-        week, regardless of which specific days within it ended up with a
-        lesson.
-
-        `planned_days` alone can't safely tell "this day was deliberately
-        skipped" from "this family has never scheduled anything, so no day
-        ever carries a planned_for tag" -- both look identical, an absence.
-        Only a day whose *week* is in here but the day itself isn't in
-        `planned_days` is a real, deliberate skip; a family that generates
-        every lesson on demand (never scheduling anything onto a day) has an
-        empty set here, so nothing about their streak changes.
-        """
-        rows = self.conn.execute(
-            "SELECT DISTINCT json_extract(metadata, '$.week_start') AS week "
-            "FROM lessons WHERE student_id = ? "
-            "AND json_extract(metadata, '$.week_start') IS NOT NULL",
-            (student_id,),
-        ).fetchall()
-        return {row["week"] for row in rows if row["week"]}
 
     def save_writing_ai_review(
         self, lesson_id: int, activity_index: int, review: dict[str, Any]
@@ -3919,10 +3836,6 @@ class Database:
             kind="travel_log",
         )
 
-    def delete_big_project(self, project_id: int) -> None:
-        self.conn.execute("DELETE FROM big_projects WHERE id = ?", (project_id,))
-        self.conn.commit()
-
     def set_big_project_shelved(self, project_id: int, shelved: bool) -> None:
         """"Not an interest" -- a reversible parent-only back-burner, not a
         delete. Unlike delete_big_project, a shelved row survives migrate()'s
@@ -4011,23 +3924,6 @@ class Database:
                 "AND project_steps.completed_on IS NULL AND project_steps.active = 1 "
                 "ORDER BY project_steps.scheduled_for, project_steps.sort_order, project_steps.id",
                 (student_id, today),
-            )
-        )
-
-    def upcoming_project_steps(self, student_id: int, after: str) -> list[dict[str, Any]]:
-        """Assigned Big Project steps still ahead of `after` -- the "later this
-        week / later" counts on Home, same shape as `upcoming_life_skills`."""
-        return _rows(
-            self.conn.execute(
-                "SELECT project_steps.*, big_projects.title AS project_title "
-                "FROM project_steps "
-                "JOIN big_projects ON big_projects.id = project_steps.project_id "
-                "WHERE big_projects.student_id = ? AND big_projects.kind != 'travel_log' "
-                "AND project_steps.scheduled_for IS NOT NULL "
-                "AND project_steps.scheduled_for > ? "
-                "AND project_steps.completed_on IS NULL AND project_steps.active = 1 "
-                "ORDER BY project_steps.scheduled_for, project_steps.sort_order, project_steps.id",
-                (student_id, after),
             )
         )
 
@@ -4472,10 +4368,6 @@ class Database:
             )
         )
 
-    def delete_life_skill(self, skill_id: int) -> None:
-        self.conn.execute("DELETE FROM life_skills WHERE id = ?", (skill_id,))
-        self.conn.commit()
-
     def seed_life_skills(self, student_id: int) -> int:
         """Seed the full master catalog, once. Whether a skill starts
         unlocked is the catalog's own `active` default -- see
@@ -4575,18 +4467,6 @@ class Database:
                 "AND scheduled_for <= ? AND completed_on IS NULL AND active = 1 "
                 "ORDER BY scheduled_for, sort_order, id",
                 (student_id, today),
-            )
-        )
-
-    def upcoming_coding_modules(self, student_id: int, after: str) -> list[dict[str, Any]]:
-        """Assigned modules not due yet -- same reasoning as
-        `upcoming_life_skills`."""
-        return _rows(
-            self.conn.execute(
-                "SELECT * FROM coding_modules WHERE student_id = ? AND scheduled_for IS NOT NULL "
-                "AND scheduled_for > ? AND completed_on IS NULL AND active = 1 "
-                "ORDER BY scheduled_for, sort_order, id",
-                (student_id, after),
             )
         )
 
@@ -4774,9 +4654,6 @@ class Database:
                 (student_id,),
             )
         )
-
-    def get_course(self, course_id: int) -> dict[str, Any] | None:
-        return _row(self.conn.execute("SELECT * FROM courses WHERE id = ?", (course_id,)))
 
     def update_course(self, course_id: int, **fields: Any) -> None:
         allowed = {
