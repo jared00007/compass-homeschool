@@ -83,6 +83,7 @@ def plan_lesson_series(
     grade: int | str,
     minutes_per_day: int,
     context: str = "",
+    target_days: int | None = None,
     model: str = config.REVIEW_MODEL,
 ) -> list[dict[str, str]]:
     """Split `topic` into an ordered list of `{"title", "focus"}` days.
@@ -90,8 +91,9 @@ def plan_lesson_series(
     Returns at least one day. The caller (an agent's `generate_series`) writes a
     real fixed-shape lesson for each. On a blank or unusable model response the
     caller falls back to a single day, so this never returns an empty list for a
-    non-empty topic.
-    """
+    non-empty topic. `target_days`, when the parent has asked for a specific
+    number, tells the planner exactly how many days to produce (still capped at
+    MAX_SERIES_DAYS); left None, the planner decides."""
     parts = [
         f"Subject: {subject_label}",
         f"Grade level: {grade}",
@@ -102,6 +104,12 @@ def plan_lesson_series(
     ]
     if context.strip():
         parts += ["", "## Context about where this sits", context.strip()]
+    if target_days:
+        parts += [
+            "",
+            f"## How many days\nSplit this into EXACTLY {target_days} day-sized "
+            "lessons, in teaching order -- no more, no fewer.",
+        ]
     parts += ["", "Return the day-by-day plan in the required JSON format."]
 
     payload = generate_lesson(

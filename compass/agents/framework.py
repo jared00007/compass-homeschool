@@ -491,6 +491,7 @@ class LessonAgent:
         proposal: TopicProposal | None = None,
         *,
         plan: list[dict[str, str]] | None = None,
+        target_days: int | None = None,
     ) -> list[GeneratedLesson]:
         """Write a whole topic as an ordered series of fixed-shape lessons.
 
@@ -513,13 +514,22 @@ class LessonAgent:
             raise LessonGenerationError(proposal.blocked_reason or "This agent is blocked.")
 
         if plan is None:
-            plan = plan_lesson_series(
-                topic=proposal.topic,
-                subject_label=subjects.label(self.spec.primary_subject),
-                grade=ctx.grade,
-                minutes_per_day=ctx.minutes,
-                context="\n".join(proposal.context_lines or []),
-            )
+            if target_days == 1:
+                # The parent asked for a single lesson (a book report, a one-off):
+                # skip the planning call and teach the whole topic in one day.
+                plan = [{"title": proposal.topic, "focus": proposal.topic}]
+            else:
+                plan = plan_lesson_series(
+                    topic=proposal.topic,
+                    subject_label=subjects.label(self.spec.primary_subject),
+                    grade=ctx.grade,
+                    minutes_per_day=ctx.minutes,
+                    context="\n".join(proposal.context_lines or []),
+                    target_days=target_days,
+                )
+                # Honor an exact request even if the planner over/under-shoots.
+                if target_days:
+                    plan = plan[:target_days]
         # A blank or unusable plan still produces one real lesson rather than
         # nothing -- a single-day series on the whole topic.
         if not plan:

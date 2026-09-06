@@ -565,10 +565,32 @@ def generate_series_and_log(
             "open ones from Mission Control → Review first if you don't want them stacking up."
         )
 
+    # How many lessons: default lets the generator size the topic, but a parent
+    # can force a count -- a book report or a one-off is a single lesson, while a
+    # broad skill wants several (reported: "i should be able to choose how many
+    # lessons to generate ... a book report style should be a single lesson").
+    _DAYS_AUTO = "Let the generator decide"
+    days_choice = st.selectbox(
+        "How many lessons?",
+        [_DAYS_AUTO, *range(1, 9)],
+        format_func=lambda v: v if v == _DAYS_AUTO else (
+            "1 lesson (single)" if v == 1 else f"{v} lessons"
+        ),
+        key=f"{agent.key}_series_days",
+        help="Leave on auto for the generator to size it, or pick a number — "
+        "1 for a book report or a one-off, more for a topic that needs building up.",
+    )
+    target_days = None if days_choice == _DAYS_AUTO else int(days_choice)
+    # A skill-graph subject (math) genuinely needs building up; one lesson rarely
+    # covers a skill well, so flag it rather than block it.
+    if target_days == 1 and agent.key == "math":
+        st.caption(
+            "⚠️ Math skills usually need more than one lesson to teach and check — "
+            "one is fine for a quick review, but consider letting it decide."
+        )
     st.caption(
-        "One click generates the whole topic as a series of day-sized lessons — the "
-        "generator decides how many days it needs. They queue for him in order, no days "
-        "to assign."
+        "Generates the topic as day-sized lessons that land in the Board's Backlog "
+        "for you to schedule."
     )
     if st.button(
         "✍️ Generate the full series",
@@ -578,7 +600,7 @@ def generate_series_and_log(
     ):
         with st.spinner(spinner):
             try:
-                results = agent.generate_series(ctx, proposal)
+                results = agent.generate_series(ctx, proposal, target_days=target_days)
             except LessonGenerationError as exc:
                 st.error(str(exc))
                 return

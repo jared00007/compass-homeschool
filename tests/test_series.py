@@ -125,6 +125,34 @@ def test_each_day_is_pointed_at_its_own_focus_without_reteaching(db, student):
     assert "do NOT reteach" not in seen_prompts[0]
 
 
+def test_target_days_one_generates_a_single_lesson_without_planning(db, student):
+    """A parent asking for one lesson (a book report, a one-off) gets exactly one
+    -- and it skips the planning call entirely."""
+    agent = get_agent("english")
+    proposal = TopicProposal(topic="Book report on Holes", rationale="r", strategy="s")
+    with patch("compass.agents.series.plan_lesson_series") as planner, patch(
+        "compass.agents.framework.generate_lesson", side_effect=lambda **k: a_payload()
+    ):
+        results = agent.generate_series(ctx_for(db, student), proposal, target_days=1)
+    assert len(results) == 1
+    planner.assert_not_called()  # single lesson never needs the planner
+    assert db.get_lesson(results[0].lesson_id)["metadata"]["series_total"] == 1
+
+
+def test_target_days_caps_the_series_to_the_requested_count(db, student):
+    """If the parent asks for 3 and the planner over-shoots, the series is held
+    to exactly 3."""
+    agent = get_agent("math")
+    proposal = TopicProposal(topic="Fractions", rationale="r", strategy="graph_walk")
+    five = [{"title": f"D{i}", "focus": f"f{i}"} for i in range(5)]
+    with patch("compass.agents.series.plan_lesson_series", return_value=five), patch(
+        "compass.agents.framework.generate_lesson", side_effect=lambda **k: a_payload()
+    ):
+        results = agent.generate_series(ctx_for(db, student), proposal, target_days=3)
+    assert len(results) == 3
+    assert [db.get_lesson(r.lesson_id)["metadata"]["series_index"] for r in results] == [0, 1, 2]
+
+
 def test_an_empty_plan_still_produces_one_real_lesson(db, student):
     """A blank/unusable planning response must not silently generate nothing --
     it falls back to a single-day series on the whole topic."""
