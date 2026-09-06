@@ -497,11 +497,12 @@ class LessonAgent:
         The generator decides how many days the topic needs (see
         `series.plan_lesson_series`) and every day is written by this agent's
         normal path, so each is a complete Learn -> worked example -> two graded
-        activities -> quiz lesson. The days carry no `planned_for` date: they
-        queue for him in `series_index` order and he works through them one at a
-        time, which is what drops the day-by-day scheduling the parent didn't
-        want. `plan` can be passed in to skip the planning call (tests, or a
-        parent who edited the day breakdown first)."""
+        activities -> quiz lesson. Each day is stamped `held_back` and carries no
+        `planned_for`, so the whole series lands in the parent's Backlog as raw
+        material to schedule by day like any other lesson (reported: "these need
+        to just flow into the parents backlog and i will assign them by day").
+        `plan` can be passed in to skip the planning call (tests, or a parent who
+        edited the day breakdown first)."""
         from uuid import uuid4
 
         from compass.agents.series import plan_lesson_series
@@ -546,6 +547,13 @@ class LessonAgent:
                     "series_total": total,
                     "series_title": proposal.topic,
                     "series_focus": day["focus"],
+                    # Land in the parent's Backlog, not the student's queue: a
+                    # generated series is raw material the parent schedules by
+                    # day like any other lesson (reported: "these need to just
+                    # flow into the parents backlog and i will assign them by
+                    # day"). `held_back` keeps them out of due_lessons until the
+                    # parent gives one a day (reschedule_lesson clears it).
+                    "held_back": True,
                 }
             )
             lesson_id = ctx.db.save_lesson(

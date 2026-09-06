@@ -81,17 +81,29 @@ def test_series_lessons_carry_shared_id_and_ordered_index(db, student):
     assert all(m["series_title"] == "Pythagorean Theorem" for m in metas)
 
 
-def test_series_lessons_have_no_planned_for_date(db, student):
-    """The whole point of the change: no day is pinned to a calendar date --
-    they just queue in order."""
+def test_series_lessons_land_in_the_backlog_with_no_day_assigned(db, student):
+    """A generated series flows into the parent's Backlog as raw material to
+    schedule by day: each lesson is held_back (so it's backlogged and stays out
+    of the student's queue) and carries no planned_for until the parent assigns
+    one."""
+    from compass import weekly
+
     agent = get_agent("math")
     proposal = TopicProposal(topic="Pythagorean Theorem", rationale="r", strategy="graph_walk")
     with patch("compass.agents.series.plan_lesson_series", return_value=THREE_DAYS), patch(
         "compass.agents.framework.generate_lesson", side_effect=lambda **k: a_payload()
     ):
         results = agent.generate_series(ctx_for(db, student), proposal)
+    today = "2026-09-06"
     for r in results:
-        assert "planned_for" not in db.get_lesson(r.lesson_id)["metadata"]
+        lesson = db.get_lesson(r.lesson_id)
+        assert "planned_for" not in lesson["metadata"]
+        assert lesson["metadata"]["held_back"] is True
+        assert weekly.is_backlogged(lesson, today)
+    # Backlogged, so the student sees none of them until a day is assigned.
+    assert weekly.due_lessons(
+        [db.get_lesson(r.lesson_id) for r in results], today
+    ) == []
 
 
 def test_each_day_is_pointed_at_its_own_focus_without_reteaching(db, student):

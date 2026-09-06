@@ -685,8 +685,8 @@ if mc_view == "plan":
     st.markdown("### ✍️ Plan a lesson")
     st.caption(
         "Pick a subject, choose the topic, and generate the whole thing as a series of "
-        "day-sized lessons — the generator decides how many days it needs, and they queue "
-        "for him in order. No days to assign."
+        "day-sized lessons — the generator decides how many days it needs. They land in the "
+        "**Board's Backlog** for you to assign to days, same as any other lesson."
     )
     plan_api_ok = api_status_banner()
 

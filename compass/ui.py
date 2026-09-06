@@ -604,8 +604,9 @@ def generate_series_and_log(
     days = summary["days"]
     st.success(
         f"✅ Generated **{len(days)}** {'day' if len(days) == 1 else 'days'} for "
-        f"“{summary['topic']}.” They're queued for him in order on his {primary_subject.title()} "
-        "page — he'll get day 1 first, and the next opens as he finishes each."
+        f"“{summary['topic']}.” They're waiting in the **Backlog** "
+        "(Mission Control → 📋 Board) — assign each one to a day and he'll get it then, "
+        "same as any other lesson."
     )
     for index, day in enumerate(days, start=1):
         st.markdown(f"**Day {index}.** {md(day['title'])}")
@@ -613,7 +614,7 @@ def generate_series_and_log(
             st.caption(md(day["focus"]))
         for warning in day.get("warnings") or []:
             st.caption(f"⚠️ {warning}")
-    st.caption("Grade each day from Mission Control → Review as he turns it in.")
+    st.caption("Schedule them from the Board's Backlog, then grade each from Review as he turns it in.")
     if st.button("Clear this summary", key=f"{agent.key}_series_clear"):
         del st.session_state[state_key]
         st.rerun()
