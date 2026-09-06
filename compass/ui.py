@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import html
 import random
+import re
 import sqlite3
 import time
 from datetime import date
@@ -4293,6 +4294,28 @@ def render_board_move_notice() -> None:
         st.info(notice)
 
 
+_SERIES_DAY_PREFIX_RE = re.compile(
+    r"^\s*Day\s+\d+\s*(?:of\s+\d+)?\s*[:.\-–—]?\s*", re.IGNORECASE
+)
+
+
+def series_day_title(item: dict[str, Any]) -> str:
+    """A lesson's title with a guaranteed 'Day N/M —' prefix when it belongs to
+    a generated series, derived from `series_index` so every day in the series
+    is labelled and in order -- not left to whatever the model happened to title
+    it (some days come back with 'Day 1' in the title, some don't). A model title
+    that already leads with its own 'Day N …' is stripped first so the label
+    never doubles up. Not part of a series -> the plain title."""
+    metadata = item.get("metadata") or {}
+    raw = (item.get("title") or "Lesson").strip()
+    total = int(metadata.get("series_total") or 0)
+    if total <= 1:
+        return md(raw)
+    number = int(metadata.get("series_index") or 0) + 1
+    clean = _SERIES_DAY_PREFIX_RE.sub("", raw).strip() or raw
+    return f"Day {number}/{total} — {md(clean)}"
+
+
 def render_board_card(
     db: Database,
     kind: str,
@@ -4364,7 +4387,7 @@ def render_board_card(
             icon = SUBJECT_ICONS.get(item["agent"], "📘")
             done = bool((item.get("metadata") or {}).get("student_done_on"))
             marker = "✅" if done else "⬜"
-            with st.expander(f"{marker} {icon} **{md(item['title'])}**", expanded=False):
+            with st.expander(f"{marker} {icon} **{series_day_title(item)}**", expanded=False):
                 st.caption(f"{item['agent'].replace('_', ' ').title()} agent")
                 status_note = {
                     "submitted": "📤 waiting on you to review",

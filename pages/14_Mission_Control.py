@@ -47,6 +47,7 @@ from compass.ui import (
     render_story_move_control,
     render_subject_plan_panel,
     render_xp_reward_editor,
+    series_day_title,
 )
 
 db, student = page_setup("Mission Control", icon="🚀")
@@ -278,7 +279,7 @@ def _render_review_card(lesson: dict, today_iso: str, *, open: bool = False) -> 
     overdue/sent-back/backlog/history lists); either way it collapses to the
     same one-line summary bar. That bar carries a quick read of what's inside
     (hand-ins, quiz score, minutes) so you can triage without opening each."""
-    header = f"{_review_badge(lesson, today_iso)} · {_lesson_date(lesson)} · {md(lesson['title'])}"
+    header = f"{_review_badge(lesson, today_iso)} · {_lesson_date(lesson)} · {series_day_title(lesson)}"
     summary = _review_summary(lesson)
     if summary:
         header += f"  ·  {summary}"
