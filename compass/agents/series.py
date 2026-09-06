@@ -25,13 +25,16 @@ SERIES_PLAN_SCHEMA = _object(
     {
         "days": {
             "type": "array",
-            "minItems": 1,
-            "maxItems": MAX_SERIES_DAYS,
+            # The count is bounded in the prompt and hard-capped in
+            # `plan_lesson_series` after the fact -- the structured-output API
+            # rejects `minItems`/`maxItems` on an array schema, so they can't be
+            # expressed here.
             "description": (
                 "The topic split into consecutive day-sized lessons, in teaching "
-                "order. Use as many days as the topic genuinely needs and no more: "
-                "a small topic is one day; a big one is several. Each day is one "
-                "self-contained lesson of the target length."
+                f"order -- at least 1 day and at most {MAX_SERIES_DAYS}. Use as many "
+                "days as the topic genuinely needs and no more: a small topic is one "
+                "day; a big one is several. Each day is one self-contained lesson of "
+                "the target length."
             ),
             "items": _object(
                 {
@@ -53,7 +56,7 @@ SERIES_PLAN_SCHEMA = _object(
     }
 )
 
-SYSTEM_PROMPT = """\
+SYSTEM_PROMPT = f"""\
 You break a single teaching topic into a short series of day-sized lessons for a \
 homeschool student. Given a subject, grade level, a topic, and a per-day time \
 budget, decide how many days the topic honestly needs and give each day a title \
@@ -62,7 +65,8 @@ and a one-to-two sentence focus.
 Rules:
 - Use as few days as the topic genuinely needs. A narrow skill is ONE day. Only \
 split into more when a single day couldn't teach and check it all at the target \
-length. Never pad a topic into more days than it warrants.
+length. Never pad a topic into more days than it warrants, and never return more \
+than {MAX_SERIES_DAYS} days total.
 - The days must be in teaching order, each building on the ones before it, with \
 no overlap -- day 2 must not re-teach day 1.
 - Each day must be a complete lesson on its own: something to learn, then practice \
