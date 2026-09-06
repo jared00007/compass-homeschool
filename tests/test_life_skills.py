@@ -346,6 +346,49 @@ def test_home_life_skills_shows_the_empty_state_when_nothing_is_assigned(
     assert not any("Bake bread" in label for label in labels)
 
 
+def test_due_today_links_out_to_morning_routine_and_check_in(monkeypatch, tmp_path):
+    """Reported: "squeeze morning routine and daily check in on that due today
+    list ... just links to the actual function." Both ride the Due-today block
+    as tight tiles that link to their own pages -- not the full widget inline."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    database.close()
+
+    at = _open_home(monkeypatch, db_path)
+    text = " ".join(m.value for m in at.markdown)
+    assert "Morning Routine — start your day" in text
+    assert "Check-In — say how you're doing" in text
+    # The tiles link out to the actual pages (page attr drops the numeric
+    # prefix). Morning Routine has no sidebar entry, so its link can only come
+    # from the Due-today tile.
+    hrefs = [pl.page for pl in at.get("page_link")]
+    assert "Morning_Routine" in hrefs
+    assert "Check_In" in hrefs
+    labels = [pl.label for pl in at.get("page_link")]
+    assert "Do it now" in labels
+    assert "Open Check-In" in labels
+
+
+def test_due_today_reflects_a_completed_routine_and_check_in(monkeypatch, tmp_path):
+    """Once he's done the routine and checked in, the tiles flip to their calm
+    'done' state instead of still nagging him to start."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    today = date.today().isoformat()
+    database.log_morning_routine(s["id"], today, "box_breathing")
+    database.save_journal_entry(s["id"], today, "Good")
+    database.close()
+
+    at = _open_home(monkeypatch, db_path)
+    text = " ".join(m.value for m in at.markdown)
+    assert "Morning Routine — done ✅" in text
+    assert "Check-In — done ✅" in text
+
+
 def test_home_merges_choice_topics_and_coding_into_the_daily_due_block(monkeypatch, tmp_path):
     """Reported directly: Life Skills and Choice Topics (and, once Coding
     folded into the same page too, Coding) used to each get their own

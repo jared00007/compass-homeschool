@@ -3772,11 +3772,16 @@ def _render_learner_kpis(db: Database, student: dict[str, Any], *, columns: int 
 
 
 def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
-    """The day's small recurring work -- words to review, where his book is,
-    and any life skills due -- rendered to POP at the top of the Home Today card
-    so it's the first thing he sees and does daily. Each item is a bright,
-    colored tile: gold when there's something waiting (a big count he can't miss),
-    calm green when he's caught up, blue for his reading progress bar."""
+    """The day's small recurring work -- his start-of-day routine and check-in,
+    words to review, where his book is, and any life skills due -- rendered to
+    POP at the top of the Home Today card so it's the first thing he sees and
+    does daily. Each item is a bright, colored tile: gold when there's something
+    waiting (a big count he can't miss), calm green when he's caught up, blue for
+    his reading progress bar. Morning Routine and Check-In sit at the top as
+    tight tiles that link out to their own pages rather than unrolling the full
+    widget here."""
+    routine_done = db.morning_routine_for_date(student["id"], today) is not None
+    checked_in = db.journal_entry_for_date(student["id"], today) is not None
     due_words = db.vocabulary_due(student["id"], limit=25)
     book = db.current_book(student["id"])
     due_skills = db.due_life_skills(student["id"], today)
@@ -3814,6 +3819,22 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
         '<div style="font-size:16px; font-weight:900; margin:2px 0 9px;">📌 Due today</div>',
         unsafe_allow_html=True,
     )
+
+    # Start-of-day pair -- Morning Routine and Check-In, kept tight: a status
+    # tile plus a single link out to the actual page, not the full widget
+    # inline. They lead the list because they're what he does first each day.
+    if routine_done:
+        _tile("🧘", "Morning Routine — done ✅", tone="done")
+    else:
+        _tile("🧘", "Morning Routine — start your day", tone="todo")
+        st.page_link("pages/5_Morning_Routine.py", label="Do it now", icon="➡️")
+
+    if checked_in:
+        _tile("💬", "Check-In — done ✅", tone="done")
+        st.page_link("pages/8_Check_In.py", label="Check in again", icon="➡️")
+    else:
+        _tile("💬", "Check-In — say how you're doing", tone="todo")
+        st.page_link("pages/8_Check_In.py", label="Open Check-In", icon="➡️")
 
     # Words
     if due_words:

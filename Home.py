@@ -23,7 +23,6 @@ from compass.ui import (
     render_card_heading,
     render_declaration_banner,
     render_first_day_celebration,
-    render_morning_routine,
     render_report_card,
     render_xp_reward_editor,
     render_today_summary,
@@ -197,31 +196,13 @@ if not is_parent():
         # A little fuel gauge for the week right up top -- effort made visible.
         render_week_progress(db, student)
 
-        # 1. Morning routine and Check-In, side by side, right under the
-        # header -- balances the header row's left/right split instead of
-        # leaving the space under the greeting empty until Lessons starts.
-        # Both stay exactly as compact as they already render (Morning
-        # Routine's own steps sit behind a collapsed expander), just moved
-        # up rather than resized.
-        grid_columns = st.columns(2)
-        with grid_columns[0]:
-            with st.container(border=True, key="landon_card_morning"):
-                render_morning_routine(db, student)
-        with grid_columns[1]:
-            with st.container(border=True, key="landon_card_checkin"):
-                checked_in = db.journal_entry_for_date(student["id"], today) is not None
-                render_card_heading("💬 Check-In")
-                if checked_in:
-                    st.success("✅ You've checked in today.")
-                else:
-                    st.caption("Take a second to say how you're doing today.")
-                st.page_link(
-                    "pages/8_Check_In.py",
-                    label="Check in again" if checked_in else "Open Check-In",
-                    icon="➡️",
-                )
+        # Morning Routine and Check-In no longer get their own cards here --
+        # they're folded into the "Due today" list in the header card as tight
+        # tiles that link out to their pages (render_daily_due), so the whole
+        # "what do I do today" flow, start-of-day rituals included, lives in one
+        # place up top instead of a separate row of cards.
 
-        # 2. Lessons -- a roster of *links* out to each subject's own page,
+        # Lessons -- a roster of *links* out to each subject's own page,
         # not the lesson's own content embedded here. Each subject's marker
         # reflects its real review-gate state (weekly.today_subject_status),
         # not just whether he's clicked anything: turned in and waiting on a
