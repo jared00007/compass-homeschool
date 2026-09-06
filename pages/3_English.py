@@ -11,17 +11,12 @@ from datetime import date
 import streamlit as st
 
 from compass.agents import LessonGenerationError, book_summary, get_agent
-from compass.agents.strategies import ELA_FOCUS_ROTATION, STANDALONE_FOCUS_ROTATION
 from compass.ui import (
     api_status_banner,
-    context_for,
-    difficulty_override_control,
-    generate_series_and_log,
     is_parent,
     md,
     page_setup,
     render_past_lessons,
-    render_proposal,
     render_subject_week_tab,
     render_vocab_quiz,
     student_lesson_view,
@@ -47,98 +42,18 @@ if not is_parent():
     render_past_lessons(db, student, "english", "English")
     st.stop()
 
-week_tab, plan_tab, books_tab, vocab_tab = st.tabs(
-    ["This week", "Plan a lesson", "Books", "Vocabulary"]
+week_tab, books_tab, vocab_tab = st.tabs(
+    ["This week", "Books", "Vocabulary"]
 )
 
 # --- this week's (and next's) own board, scoped to English ---------------------
 
 with week_tab:
     render_subject_week_tab(db, student, "english")
-
-# --- plan --------------------------------------------------------------------
-
-with plan_tab:
-    api_ok = api_status_banner()
-    book = db.current_book(student["id"])
-
-    if not book:
-        st.info(
-            "No book is marked as currently being read, so this will be a standalone "
-            "grammar/writing lesson instead -- add one on the **Books** tab for "
-            "lessons tied to what he's actually reading."
-        )
-        focus_rotation = STANDALONE_FOCUS_ROTATION
-    else:
-        focus_rotation = ELA_FOCUS_ROTATION
-
-    columns = st.columns([2, 1, 1])
-    with columns[0]:
-        focus_labels = {key: text for key, text in focus_rotation}
-        focus_choice = st.selectbox(
-            "Focus",
-            ["Let the agent rotate"] + list(focus_labels),
-            format_func=lambda k: k if k == "Let the agent rotate" else focus_labels[k],
-        )
-    with columns[1]:
-        minutes = st.number_input("Minutes", min_value=15, max_value=180, value=60, step=5)
-    with columns[2]:
-        due = db.vocabulary_due(student["id"])
-        st.metric("Words due", len(due))
-
-    if book:
-        page = st.number_input(
-            "Current page",
-            min_value=0,
-            max_value=int(book["total_pages"] or 5000),
-            value=int(book["current_page"] or 0),
-            help="The agent will not reference anything past this page.",
-        )
-        if page != book["current_page"]:
-            db.update_book(book["id"], current_page=int(page))
-            book["current_page"] = int(page)
-
-    seed_topic = st.text_input(
-        "Or point this lesson at something specific (optional)",
-        placeholder="e.g. the courtroom scene in chapter 12" if book else "e.g. writing a thank-you note",
-        help="Overrides the Focus pick above with exactly this.",
-    )
-    parent_note = st.text_input("Note for this lesson (optional)")
-    difficulty = difficulty_override_control(db, key="english_difficulty")
-
-    ctx = context_for(
-        db,
-        student,
-        minutes=minutes,
-        parent_note=parent_note,
-        focus="" if focus_choice == "Let the agent rotate" else focus_choice,
-        seed_topic=seed_topic,
-        difficulty=difficulty,
-    )
-    proposal = agent.propose_topic(ctx)
-    render_proposal(agent, proposal)
-
-    generate_series_and_log(
-        db,
-        student,
-        agent,
-        ctx,
-        proposal,
-        # A standalone lesson (no book) is grammar/writing practice, not
-        # reading comprehension -- this is only the fallback tag used if the
-        # model's own subject_credits ever comes back empty, but it should
-        # still describe the lesson accurately when it is used.
-        primary_subject="reading" if book else "writing",
-        spinner="Planning the days and writing each lesson — this can take a few minutes.",
-        api_ok=api_ok,
-    )
-    st.caption(
-        "Any `VOCAB:` lines in a day's materials are added to his spaced-repetition deck."
-    )
-
-# --- books -------------------------------------------------------------------
+    st.caption("✍️ Generate new lessons from **Mission Control → Plan a lesson**.")
 
 with books_tab:
+    api_ok = api_status_banner()
     st.subheader(f"What's {student['name']} reading?")
     st.caption(
         "Running two books this year, one per half? Tag each with **When is "

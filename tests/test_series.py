@@ -190,46 +190,6 @@ def test_plan_lesson_series_caps_the_day_count():
 # --- ordering: the student walks a series in order ----------------------------
 
 
-def test_the_math_plan_button_generates_a_whole_series(monkeypatch, tmp_path):
-    """The subject page's one click: pick a topic, hit Generate the full series,
-    and the whole topic lands as ordered dateless lessons queued for him."""
-    from pathlib import Path
-
-    import streamlit as st
-    from streamlit.testing.v1 import AppTest
-
-    from compass import config as cfg
-
-    db_path = tmp_path / "series_page.db"
-    d = Database(db_path)
-    s = d.ensure_default_student()
-    d.close()
-
-    st.cache_resource.clear()
-    monkeypatch.setattr(cfg, "DEFAULT_DB_PATH", db_path)
-    repo = Path(__file__).resolve().parent.parent
-
-    at = AppTest.from_file(str(repo / "Home.py"))
-    at.session_state["parent_unlocked"] = True
-    at.run(timeout=60)
-    at.switch_page(str(repo / "pages" / "1_Math.py"))
-    at.run(timeout=60)
-
-    plan = [{"title": "Day A", "focus": "focus a"}, {"title": "Day B", "focus": "focus b"}]
-    with patch("compass.agents.series.plan_lesson_series", return_value=plan), patch(
-        "compass.agents.framework.generate_lesson", side_effect=lambda **k: a_payload()
-    ):
-        button = [b for b in at.button if (b.key or "") == "math_gen_series"][0]
-        button.click().run(timeout=60)
-    assert not at.exception, [e.message for e in at.exception]
-
-    d = Database(db_path)
-    lessons = d.list_lessons(s["id"], agent="math", limit=10)
-    d.close()
-    assert len(lessons) == 2
-    assert sorted(l["metadata"]["series_index"] for l in lessons) == [0, 1]
-    assert not any("planned_for" in (l["metadata"] or {}) for l in lessons)
-
 
 def test_due_lessons_walks_a_series_in_index_order(db, student):
     """Even if a later day has a lower id (or the list comes back in any order),

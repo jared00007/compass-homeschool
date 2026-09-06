@@ -643,6 +643,187 @@ def difficulty_override_control(db: Database, key: str) -> str:
     )
 
 
+def render_subject_plan_panel(
+    db: Database, student: dict[str, Any], agent_key: str, *, api_ok: bool
+) -> None:
+    """One subject's 'plan a lesson' panel: its own topic controls, then one
+    click to generate the whole topic as a multi-day series.
+
+    This is the single place a parent plans lessons -- broken out per subject in
+    Mission Control's Plan view, after the old day-by-day week planner was
+    removed (reported: "remove that 100% ... have the new plan a lesson to be in
+    mission control and broken out for each subject"). Every widget key is
+    prefixed with `agent_key` so all four panels can render on one page without
+    colliding.
+    """
+    from compass.agents import get_agent
+
+    agent = get_agent(agent_key)
+    k = agent_key  # widget-key prefix
+    difficulty = difficulty_override_control(db, key=f"{k}_difficulty")
+    primary_subject = agent_key
+
+    if agent_key == "math":
+        from compass.curriculum import MATH_GRAPH, STRANDS, available_skills, missing_prerequisites
+
+        mastered = db.mastered_skills(student["id"])
+        ready_ids = {s.id for s in available_skills(mastered)}
+        LET_AGENT = "Let the agent choose"
+        all_skills = sorted(MATH_GRAPH.values(), key=lambda s: (s.strand, s.title))
+
+        def _skill_label(skill) -> str:
+            if skill.id in mastered:
+                marker = "✅"
+            elif skill.id in ready_ids:
+                marker = "🔓"
+            else:
+                marker = "🔒"
+            return f"{marker} {skill.title} — {STRANDS[skill.strand]}"
+
+        columns = st.columns([2, 1])
+        with columns[0]:
+            choice = st.selectbox(
+                "Skill",
+                [LET_AGENT] + all_skills,
+                format_func=lambda o: o if isinstance(o, str) else _skill_label(o),
+                help="🔓 unlocked · ✅ mastered · 🔒 prerequisites not all met (you can still pick it).",
+                key=f"{k}_skill",
+            )
+        with columns[1]:
+            minutes = st.number_input(
+                "Minutes / day", min_value=15, max_value=180, value=60, step=5, key=f"{k}_minutes"
+            )
+        parent_note = st.text_input(
+            "Note for this lesson (optional)",
+            placeholder="e.g. he struggled with negative signs last time",
+            key=f"{k}_note",
+        )
+        skill_id = ""
+        override_prereqs = False
+        if choice != LET_AGENT:
+            skill_id = choice.id
+            locked_missing = missing_prerequisites(skill_id, mastered)
+            if locked_missing and skill_id not in mastered:
+                st.warning(
+                    f"**{choice.title}** is out of sequence — these prerequisites aren't "
+                    "mastered yet: "
+                    + ", ".join(MATH_GRAPH[m].title for m in locked_missing)
+                    + ". You can still teach it now; the lesson will scaffold what it leans on."
+                )
+                override_prereqs = st.checkbox(
+                    "Generate it anyway (out of sequence)", key=f"{k}_override_prereqs"
+                )
+        ctx = context_for(
+            db, student, minutes=minutes, parent_note=parent_note,
+            skill_id=skill_id, override_prereqs=override_prereqs, difficulty=difficulty,
+        )
+    elif agent_key in ("science", "history"):
+        location_label = (
+            "Location-specific (optional)" if agent_key == "science"
+            else "Location-specific (optional)"
+        )
+        placeholder = (
+            "e.g. Olympic National Park, Hoh Rain Forest" if agent_key == "science"
+            else "e.g. Whitman Mission, Walla Walla WA"
+        )
+        columns = st.columns([2, 1])
+        with columns[0]:
+            location = st.text_input(location_label, placeholder=placeholder, key=f"{k}_location")
+        with columns[1]:
+            minutes = st.number_input(
+                "Minutes / day", min_value=15, max_value=240, value=75, step=15, key=f"{k}_minutes"
+            )
+        pool = db.unexplored_web_nodes(student["id"], agent_key, location or None)
+        thread_label = "Which thread to pull" if agent_key == "science" else "Which thread to follow"
+        thread_options = [(0, "Let the agent choose the next branch")] + [
+            (n["id"], f"{'  ' * n.get('depth', 0)}{n['topic']}") for n in pool
+        ]
+        picked_id = st.selectbox(
+            thread_label,
+            [o[0] for o in thread_options],
+            format_func=lambda i: dict(thread_options)[i],
+            help="Open branches proposed by earlier lessons.",
+            key=f"{k}_thread",
+        )
+        seed_topic = st.text_input(
+            "Or start something new entirely (optional)",
+            placeholder=(
+                "e.g. why nurse logs grow hemlocks and not spruce" if agent_key == "science"
+                else "e.g. the 1855 Walla Walla Treaty Council"
+            ),
+            key=f"{k}_seed",
+        )
+        parent_note = st.text_input("Note for this lesson (optional)", key=f"{k}_note")
+        ctx = context_for(
+            db, student, location=location, minutes=minutes, parent_note=parent_note,
+            seed_topic=seed_topic, node_id=picked_id or None, difficulty=difficulty,
+        )
+    elif agent_key == "english":
+        from compass.agents.strategies import ELA_FOCUS_ROTATION, STANDALONE_FOCUS_ROTATION
+
+        book = db.current_book(student["id"])
+        if not book:
+            st.info(
+                "No book is marked as currently being read, so this will be a standalone "
+                "grammar/writing lesson instead — add one on the English page's **Books** tab "
+                "for lessons tied to what he's actually reading."
+            )
+            focus_rotation = STANDALONE_FOCUS_ROTATION
+        else:
+            focus_rotation = ELA_FOCUS_ROTATION
+        columns = st.columns([2, 1])
+        with columns[0]:
+            focus_labels = {key: text for key, text in focus_rotation}
+            focus_choice = st.selectbox(
+                "Focus",
+                ["Let the agent rotate"] + list(focus_labels),
+                format_func=lambda key: key if key == "Let the agent rotate" else focus_labels[key],
+                key=f"{k}_focus",
+            )
+        with columns[1]:
+            minutes = st.number_input(
+                "Minutes / day", min_value=15, max_value=180, value=60, step=5, key=f"{k}_minutes"
+            )
+        if book:
+            page = st.number_input(
+                "Current page", min_value=0, max_value=int(book["total_pages"] or 5000),
+                value=int(book["current_page"] or 0),
+                help="The agent will not reference anything past this page.",
+                key=f"{k}_page",
+            )
+            if page != book["current_page"]:
+                db.update_book(book["id"], current_page=int(page))
+                book["current_page"] = int(page)
+        seed_topic = st.text_input(
+            "Or point this lesson at something specific (optional)",
+            placeholder="e.g. the courtroom scene in chapter 12" if book else "e.g. writing a thank-you note",
+            key=f"{k}_seed",
+        )
+        parent_note = st.text_input("Note for this lesson (optional)", key=f"{k}_note")
+        ctx = context_for(
+            db, student, minutes=minutes, parent_note=parent_note,
+            focus="" if focus_choice == "Let the agent rotate" else focus_choice,
+            seed_topic=seed_topic, difficulty=difficulty,
+        )
+        primary_subject = "reading" if book else "writing"
+    else:
+        st.error(f"Unknown subject: {agent_key}")
+        return
+
+    proposal = agent.propose_topic(ctx)
+    render_proposal(agent, proposal)
+    generate_series_and_log(
+        db, student, agent, ctx, proposal,
+        primary_subject=primary_subject,
+        spinner="Planning the days and writing each lesson — this can take a few minutes.",
+        api_ok=api_ok,
+    )
+    if agent_key == "english":
+        st.caption(
+            "Any `VOCAB:` lines in a day's materials are added to his spaced-repetition deck."
+        )
+
+
 # --- lesson rendering --------------------------------------------------------
 
 

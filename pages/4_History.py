@@ -4,24 +4,17 @@ from __future__ import annotations
 
 import streamlit as st
 
-from compass.agents import get_agent
 from compass.agents.strategies import ERAS
 from compass.ui import (
-    api_status_banner,
-    context_for,
-    difficulty_override_control,
-    generate_series_and_log,
     is_parent,
     md,
     page_setup,
     render_past_lessons,
-    render_proposal,
     render_subject_week_tab,
     student_lesson_view,
 )
 
 db, student = page_setup("History", icon="🏛️")
-agent = get_agent("history")
 
 st.title("🏛️ History & Social Studies Agent")
 st.caption(
@@ -35,70 +28,11 @@ if not is_parent():
     render_past_lessons(db, student, "history", "history")
     st.stop()
 
-week_tab, plan_tab, timeline_tab = st.tabs(["This week", "Plan a lesson", "Timeline coverage"])
+week_tab, timeline_tab = st.tabs(["This week", "Timeline coverage"])
 
 with week_tab:
     render_subject_week_tab(db, student, "history")
-
-with plan_tab:
-    api_ok = api_status_banner()
-
-    columns = st.columns([2, 1, 1])
-    with columns[0]:
-        location = st.text_input(
-            "Location-specific (optional)",
-            placeholder="e.g. Whitman Mission, Walla Walla WA",
-            help=(
-                "A real historical site or place ties the lesson to it instead of the "
-                "next era in sequence. Leave blank to keep following the curriculum."
-            ),
-        )
-    with columns[1]:
-        minutes = st.number_input("Minutes", min_value=15, max_value=240, value=60, step=15)
-    with columns[2]:
-        pool = db.unexplored_web_nodes(student["id"], "history", location or None)
-        st.metric("Open threads", len(pool))
-
-    thread_options = [(0, "Let the agent choose (era coverage, or the location)")] + [
-        (n["id"], n["topic"]) for n in pool
-    ]
-    picked_id = st.selectbox(
-        "Which thread to follow",
-        [o[0] for o in thread_options],
-        format_func=lambda i: dict(thread_options)[i],
-        help="Open threads proposed by earlier lessons.",
-    )
-
-    seed_topic = st.text_input(
-        "Or start something new entirely (optional)",
-        placeholder="e.g. the 1855 Walla Walla Treaty Council",
-    )
-    parent_note = st.text_input("Note for this lesson (optional)")
-    difficulty = difficulty_override_control(db, key="history_difficulty")
-
-    ctx = context_for(
-        db,
-        student,
-        location=location,
-        minutes=minutes,
-        parent_note=parent_note,
-        seed_topic=seed_topic,
-        node_id=picked_id or None,
-        difficulty=difficulty,
-    )
-    proposal = agent.propose_topic(ctx)
-    render_proposal(agent, proposal)
-
-    generate_series_and_log(
-        db,
-        student,
-        agent,
-        ctx,
-        proposal,
-        primary_subject="history",
-        spinner="Planning the days and researching each lesson — this can take a few minutes.",
-        api_ok=api_ok,
-    )
+    st.caption("✍️ Generate new lessons from **Mission Control → Plan a lesson**.")
 
 with timeline_tab:
     lessons = db.list_lessons(student["id"], agent="history", limit=200)

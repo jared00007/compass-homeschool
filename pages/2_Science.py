@@ -4,23 +4,16 @@ from __future__ import annotations
 
 import streamlit as st
 
-from compass.agents import get_agent
 from compass.ui import (
-    api_status_banner,
-    context_for,
-    difficulty_override_control,
-    generate_series_and_log,
     is_parent,
     md,
     page_setup,
     render_past_lessons,
-    render_proposal,
     render_subject_week_tab,
     student_lesson_view,
 )
 
 db, student = page_setup("Science", icon="🔬")
-agent = get_agent("science")
 
 st.title("🔬 Science Agent")
 st.caption(
@@ -34,76 +27,11 @@ if not is_parent():
     render_past_lessons(db, student, "science", "science")
     st.stop()
 
-week_tab, plan_tab, web_tab = st.tabs(["This week", "Plan a lesson", "The web"])
+week_tab, web_tab = st.tabs(["This week", "The web"])
 
 with week_tab:
     render_subject_week_tab(db, student, "science")
-
-with plan_tab:
-    api_ok = api_status_banner()
-
-    columns = st.columns([2, 1, 1])
-    with columns[0]:
-        location = st.text_input(
-            "Location-specific (optional)",
-            placeholder="e.g. Olympic National Park, Hoh Rain Forest",
-            help=(
-                "If you're somewhere with hands-on science nearby -- a park, a trail, a "
-                "garden -- the lesson builds around it. Leave blank for a normal at-home "
-                "lesson continuing the current thread."
-            ),
-        )
-    with columns[1]:
-        minutes = st.number_input("Minutes", min_value=15, max_value=240, value=75, step=15)
-    with columns[2]:
-        pool = db.unexplored_web_nodes(student["id"], "science", location or None)
-        st.metric("Open branches", len(pool))
-
-    branch_options = [(0, "Let the agent choose the next branch")] + [
-        (n["id"], f"{'  ' * n['depth']}{n['topic']}") for n in pool
-    ]
-    picked_id = st.selectbox(
-        "Which thread to pull",
-        [o[0] for o in branch_options],
-        format_func=lambda i: dict(branch_options)[i],
-        help="Open branches proposed by earlier lessons. The agent takes the top one "
-             "unless you choose.",
-    )
-
-    seed_topic = st.text_input(
-        "Or start something new entirely (optional)",
-        placeholder="e.g. why nurse logs grow hemlocks and not spruce",
-        help="Typing here ignores the branches above and starts a fresh thread. The "
-             "existing branches stay in the web for later.",
-    )
-    parent_note = st.text_input(
-        "Note for this lesson (optional)", placeholder="e.g. keep it to a two-hour hike"
-    )
-    difficulty = difficulty_override_control(db, key="science_difficulty")
-
-    ctx = context_for(
-        db,
-        student,
-        location=location,
-        minutes=minutes,
-        parent_note=parent_note,
-        seed_topic=seed_topic,
-        node_id=picked_id or None,
-        difficulty=difficulty,
-    )
-    proposal = agent.propose_topic(ctx)
-    render_proposal(agent, proposal)
-
-    generate_series_and_log(
-        db,
-        student,
-        agent,
-        ctx,
-        proposal,
-        primary_subject="science",
-        spinner="Planning the days and researching each lesson — this can take a few minutes.",
-        api_ok=api_ok,
-    )
+    st.caption("✍️ Generate new lessons from **Mission Control → Plan a lesson**.")
 
 with web_tab:
     nodes = db.web_nodes(student["id"], "science")

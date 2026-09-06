@@ -1,21 +1,16 @@
-"""Mission Control -- the parent's weekly planner. Friday reviews the week just
-finished, then plans the week ahead, so Monday through Thursday he opens a
-lesson that's already sitting there instead of someone remembering to generate
-one that morning. (Named "This Week" originally; renamed because reviewing and
-planning several weeks out from one screen is the main planning surface, not a
-this-week-only view -- "That function is the main planner.")
+"""Mission Control -- the parent's home base. Five views, chosen by a button
+row: Review (his turned-in work), Board (every subject's stories on one week),
+Plan a lesson (pick a subject and topic, generate the whole thing as a
+multi-day series), Record (the hours ledger), and Grades.
 
-Math is handled differently from the other three subjects here -- see
-compass/weekly.py's module docstring for why: its next skill only unlocks
-once a real assessment gets graded, so nothing changes between four calls
-made in the same Friday sitting the way it does for Science, English, and
-History (each of those updates its own state -- a new web branch, an era
-touched -- the moment a lesson is generated). Math gets one skill, framed
-across the week, instead of four different topics.
+The old day-by-day "Plan next week" batch planner was removed in full
+(reported: "remove that 100%"). Planning is now the per-subject Plan-a-lesson
+view -- the same panel each subject page used to carry, consolidated here so
+there's one place to plan. Each subject's panel lives in
+`compass.ui.render_subject_plan_panel`.
 
-Parent-only throughout: planning ahead means previewing lesson content
-before he's meant to see it, same reasoning as everywhere else generation
-happens.
+Parent-only throughout: planning means previewing lesson content before he's
+meant to see it, same reasoning as everywhere else generation happens.
 """
 
 from __future__ import annotations
@@ -26,9 +21,7 @@ from functools import partial
 import streamlit as st
 
 from compass import config, gradebook, weekly
-from compass.agents import all_agents
 from compass.agents.framework import GeneratedLesson, TopicProposal
-from compass.agents.strategies import ERAS, SCIENCE_DOMAINS
 from compass.compliance import build_report
 from compass.export import (
     lesson_to_docx,
@@ -38,8 +31,8 @@ from compass.export import (
 )
 from compass.subjects import SUBJECT_KEYS, label
 from compass.ui import (
-    FRIDAY_PLAN_KINDS,
     SUBJECT_ICONS,
+    api_status_banner,
     hand_in_summary,
     log_lesson_form,
     md,
@@ -49,11 +42,10 @@ from compass.ui import (
     render_board_days,
     render_board_move_notice,
     render_earned_rewards,
-    render_friday_plan,
-    render_lesson,
     render_lesson_review,
     render_report_card,
     render_story_move_control,
+    render_subject_plan_panel,
     render_xp_reward_editor,
 )
 
@@ -61,9 +53,9 @@ db, student = page_setup("Mission Control", icon="🚀")
 
 st.title("🚀 Mission Control")
 st.caption(
-    "Friday reviews the week that just finished, then plans the next one -- "
-    "so Monday through Thursday, a lesson is already waiting instead of "
-    "someone remembering to generate it that morning."
+    "The parent's home base: review what he's turned in, see the week laid out on the "
+    "board, plan a lesson (pick a topic and it generates the whole thing as a day-by-day "
+    "series), keep the record, and read his grades."
 )
 
 if not parent_only("Weekly planning is for your parent."):
@@ -82,43 +74,6 @@ if _hub_links[2].button("📋 Compliance", width="stretch", key="hub_compliance"
 if _hub_links[3].button("💵 Spend", width="stretch", key="hub_costs"):
     st.switch_page("pages/15_Model_Costs.py")
 st.divider()
-
-AGENTS = all_agents()
-AGENT_ORDER = ("math", "science", "english", "history")
-
-
-def _agent_label(key: str) -> str:
-    agent = AGENTS.get(key)
-    return f"{SUBJECT_ICONS.get(key, '📘')} {agent.name if agent else key.title()}"
-
-
-def _day_label(iso_date: str) -> str:
-    if not iso_date:
-        return "no day set"
-    return date.fromisoformat(iso_date).strftime("%A, %b %-d")
-
-
-def _idea_options(db, student_id: int, key: str) -> list[tuple[str, str]]:
-    """Monday's optional topic picker for Science/History: real open
-    branches from earlier lessons (if any exist yet -- a fresh topic web,
-    like right after the school-year reset, has none), plus the built-in
-    domain/era rotation those same strategies fall back to automatically
-    when a web is empty -- ready-made ideas at both levels of specificity,
-    rather than a blank box. Value encodes which kind of pick it is:
-    "node:<id>" for an existing branch, "domain:<index>" for a built-in
-    rotation entry, so the caller can route it to node_id or seed_topic.
-    """
-    options: list[tuple[str, str]] = [("auto", "Let the agent choose automatically")]
-    options += [
-        (f"node:{n['id']}", f"🔗 {n['topic']}")
-        for n in db.unexplored_web_nodes(student_id, key)
-    ]
-    if key == "science":
-        options += [(f"domain:{i}", f"💡 {label}") for i, label in enumerate(SCIENCE_DOMAINS)]
-    elif key == "history":
-        options += [(f"domain:{i}", f"💡 {label}") for i, (_, label) in enumerate(ERAS)]
-    return options
-
 
 # --- the review queue: reading his work and acting on it ------------------------
 
@@ -483,7 +438,7 @@ div[class*="st-key-backlog_row_"] div[data-testid="stColumn"] {
 _MC_VIEWS = [
     ("review", f"✅ Review ({needs_review_count})"),
     ("board", f"📋 Board · Backlog ({backlog_count})"),
-    ("plan", "📆 Plan next week"),
+    ("plan", "✍️ Plan a lesson"),
     ("record", "🗂️ Record"),
     ("grades", "📊 Grades"),
 ]
@@ -717,259 +672,48 @@ if mc_view == "review":
             "**🗄️ Backlog** tab."
         )
 
-# --- Plan next week --------------------------------------------------------------
+# --- Plan a lesson: pick a topic per subject, generate the whole series ---------
+#
+# Replaced the old day-by-day "Plan next week" batch planner entirely (reported:
+# "remove that 100% ... have the new plan a lesson to be in mission control and
+# broken out for each subject"). A parent picks one subject, chooses the topic,
+# and one click generates the whole topic as a multi-day series with no calendar
+# days to assign -- `render_subject_plan_panel` is the same panel each subject
+# page used to carry, now consolidated here so planning lives in one place.
 
 if mc_view == "plan":
-    default_target = weekly.default_plan_target()
-    picked = st.date_input(
-        "Week to plan (any day in the target week -- snapped to that week's Monday)",
-        value=default_target,
-    )
-    target_week_start = weekly.week_start(picked)
-    # Friday's included here even though it's unchecked by default below --
-    # the whole point is to have it available to opt into for this one week.
-    full_week_dates = weekly.week_dates(target_week_start, include_friday=True)
+    st.markdown("### ✍️ Plan a lesson")
     st.caption(
-        f"Planning {full_week_dates[0].strftime('%b %-d')} – "
-        f"{full_week_dates[-1].strftime('%b %-d, %Y')}."
+        "Pick a subject, choose the topic, and generate the whole thing as a series of "
+        "day-sized lessons — the generator decides how many days it needs, and they queue "
+        "for him in order. No days to assign."
     )
+    plan_api_ok = api_status_banner()
 
-    st.markdown("**School days this week**")
-    st.caption(
-        "Uncheck a day to skip it entirely -- a holiday, a field trip, whatever. "
-        "Friday's unchecked by default (it's normally the review/light day below), "
-        "but check it when another day's out and you want four real lesson days "
-        "anyway -- a holiday Monday, say, made up for with a Friday lesson instead. "
-        "Applies to every subject below; nothing gets generated for an unchecked "
-        "day, and Math's practice notes ('day 2 of 3', say) count against however "
-        "many days are actually checked, not always four."
-    )
-    day_columns = st.columns(len(full_week_dates))
-    target_dates = []
-    for column, day in zip(day_columns, full_week_dates):
-        with column:
-            is_school_day = st.checkbox(
-                day.strftime("%A"),
-                value=day.weekday() != 4,
-                key=f"weekplan_schoolday_{day.isoformat()}",
-            )
-        if is_school_day:
-            target_dates.append(day)
-    if not target_dates:
-        st.info("No school days checked above — check at least one to plan anything.")
-
-    existing = weekly.latest_per_day(
-        db.lessons_for_week(student["id"], target_week_start.isoformat())
-    )
-    existing_by_agent: dict[str, list[dict]] = {}
-    for lesson in existing:
-        existing_by_agent.setdefault(lesson["agent"], []).append(lesson)
-    st.caption(
-        "Each subject plans on its own click -- at most four lessons at a time, "
-        "never all sixteen in one shot. A batch that large can run well past "
-        "ten minutes -- long enough for the browser connection to drop, or for "
-        "clicking to another page before it finishes (see the warning below), "
-        "either of which silently strands whatever hadn't been reached yet. "
-        "The three spiderweb/timeline/reading-driven subjects each get four "
-        "fresh topics; Math gets one skill framed across the week (see This "
-        "Week's own notes on why). Science and History offer Monday's topic as "
-        "a picklist -- open branches from earlier lessons, plus the built-in "
-        "domain/era rotation -- or type something new entirely; this is where a "
-        "Class CrunchLabs unit would get slotted into Science on purpose. "
-        "Filling in only covers days that don't have a lesson yet -- it never "
-        "touches a day that's already planned, whether he's done it or not. "
-        "To replace a specific day on purpose, open it below and use "
-        "**Regenerate just this day**."
-    )
-    st.warning(
-        "⚠️ **Stay on this page until the spinner below finishes.** Clicking to "
-        "Check-In, Home, or anywhere else mid-generation stops it immediately -- "
-        "Streamlit cancels whatever a page was doing the moment you navigate "
-        "away from it. Whatever day it already reached is saved; whatever day "
-        "it hadn't gotten to yet just never happens, with no error shown. If "
-        "that happens, come back here and click **Fill in missing days** again "
-        "-- it only ever fills the actual gaps, never touches what already "
-        "planned successfully."
-    )
-
-    for key in AGENT_ORDER:
-        lessons = existing_by_agent.get(key, [])
-        covered = {lesson["metadata"].get("planned_for") for lesson in lessons}
-        missing_dates = [d for d in target_dates if d.isoformat() not in covered]
-        # Not literally "Monday" once a day's been unchecked above -- this is
-        # really "the first checked day still missing," whichever weekday
-        # that turns out to be.
-        first_day_missing = (
-            key != "math" and bool(target_dates) and target_dates[0] in missing_dates
-        )
-        first_day_label = target_dates[0].strftime("%A") if target_dates else "First day's"
-
-        with st.container(border=True):
-            st.markdown(f"**{_agent_label(key)}**")
-            seed = ""
-            picked_node_id = ""
-            if first_day_missing and key in ("science", "history"):
-                idea_options = _idea_options(db, student["id"], key)
-                idea_labels = dict(idea_options)
-                picked_idea = st.selectbox(
-                    f"{first_day_label}'s topic -- pick an idea, or let the agent choose",
-                    [value for value, _ in idea_options],
-                    format_func=lambda v: idea_labels[v],
-                    key=f"weekplan_idea_{key}",
-                    help="Open branches proposed by earlier lessons, plus the built-in "
-                    "topic rotation those same lessons fall back to automatically when "
-                    "there's nothing open yet.",
-                )
-                if picked_idea.startswith("node:"):
-                    picked_node_id = picked_idea.split(":", 1)[1]
-                elif picked_idea.startswith("domain:"):
-                    domain_index = int(picked_idea.split(":", 1)[1])
-                    seed = SCIENCE_DOMAINS[domain_index] if key == "science" else ERAS[domain_index][1]
-                seed_override = st.text_input(
-                    "Or type something specific instead (optional)",
-                    key=f"weekplan_seed_{key}",
-                    help="Typing here ignores the pick above and starts something new; "
-                    "the branches/domains stay available for later.",
-                )
-                if seed_override.strip():
-                    seed = seed_override.strip()
-                    picked_node_id = ""
-            elif first_day_missing:
-                seed = st.text_input(
-                    f"{first_day_label}'s topic (optional, leave blank to let the agent choose)",
-                    key=f"weekplan_seed_{key}",
-                )
-            button_label = "Plan this week" if not lessons else "Fill in missing days"
-            if st.button(button_label, key=f"regen_week_{key}", disabled=not missing_dates):
-                with st.spinner(f"Planning {_agent_label(key)}… don't navigate away"):
-                    # Math's missing days must continue the week's one
-                    # shared skill rather than each proposing fresh --
-                    # read it off whatever's already planned this week,
-                    # or let the first missing day pick it naturally if
-                    # nothing exists yet at all.
-                    skill_id = lessons[0]["metadata"].get("skill_id", "") if (
-                        key == "math" and lessons
-                    ) else ""
-                    day_results = weekly.plan_missing_days(
-                        db, student, AGENTS[key], target_week_start,
-                        target_dates, missing_dates,
-                        is_math=(key == "math"),
-                        skill_id=skill_id,
-                        seed_topics={0: seed.strip()} if seed.strip() else None,
-                        node_ids={0: picked_node_id} if picked_node_id else None,
-                    )
-                day_errors = [d for d in day_results if d.error]
-                for day in day_errors:
-                    st.error(f"{day.target_date}: {day.error}")
-                if not day_errors:
-                    st.rerun()
-
-            if not lessons:
-                st.caption(f"Not planned yet — use **{button_label}** above to set it up.")
-            for lesson in lessons:
-                planned_for = lesson["metadata"].get("planned_for", "")
-                done = bool(lesson["metadata"].get("student_done_on"))
-                with st.expander(
-                    f"{_day_label(planned_for)} — {md(lesson['title'])}"
-                    + (" ✅" if done else ""),
-                    expanded=False,
-                ):
-                    render_lesson(lesson["payload"], for_parent=True)
-
-                    # Sprint-board freedom: send this lesson back to Backlog,
-                    # or move it to a different day entirely -- the same
-                    # shared control every other story type uses, offered
-                    # for every agent including math (moving a day doesn't
-                    # touch the shared skill_id the way regenerating one
-                    # would, so math isn't excluded here the way it is below).
-                    # No collision check on the target day: a day is allowed to
-                    # hold two lessons of the same subject (a new one plus one
-                    # from a prior day still waiting on his revision), so moving
-                    # a subject into any day is never blocked.
-                    render_story_move_control(
-                        key=f"weekplan_lesson_{lesson['id']}",
-                        active=not weekly.is_backlogged(lesson, date.today().isoformat()),
-                        scheduled_for=lesson["metadata"].get("planned_for"),
-                        set_active=lambda a, lid=lesson["id"]: (
-                            db.unhold_lesson(lid) if a else db.send_to_backlog(lid)
-                        ),
-                        schedule=lambda d, lid=lesson["id"]: (
-                            db.reschedule_lesson(lid, d) if d else None
-                        ),
-                    )
-
-                    # Math isn't offered a single-day regenerate: its four days
-                    # share one skill, so swapping just one out of sequence
-                    # would need to re-derive that shared skill_id from a
-                    # sibling day -- simpler and safer to fill in or fully
-                    # replan (above) when math needs to change at all.
-                    if key == "math":
-                        continue
-                    if done:
-                        st.caption(
-                            "⚠️ He's already marked this done — regenerating replaces "
-                            "what's shown here but doesn't touch his completed record."
-                        )
-                    if st.button("Regenerate just this day", key=f"regen_day_{lesson['id']}"):
-                        target = (
-                            date.fromisoformat(planned_for)
-                            if planned_for
-                            else target_week_start
-                        )
-                        with st.spinner("Regenerating…"):
-                            result = weekly.plan_day(
-                                db, student, AGENTS[key], target_week_start, target
-                            )
-                        if result.error:
-                            st.error(result.error)
-                        else:
-                            st.rerun()
-
+    _PLAN_SUBJECTS = [
+        ("math", "📐 Math"),
+        ("science", "🔬 Science"),
+        ("english", "📖 English"),
+        ("history", "🏛️ History"),
+    ]
+    if "plan_subject" not in st.session_state:
+        st.session_state["plan_subject"] = "math"
+    plan_subject = st.session_state["plan_subject"]
+    subject_cols = st.columns(len(_PLAN_SUBJECTS))
+    for _i, (_subject_key, _subject_label) in enumerate(_PLAN_SUBJECTS):
+        if subject_cols[_i].button(
+            _subject_label,
+            key=f"plan_subjectbtn_{_subject_key}",
+            width="stretch",
+            type="primary" if _subject_key == plan_subject else "secondary",
+        ):
+            st.session_state["plan_subject"] = _subject_key
+            st.rerun()
     st.divider()
-    # This widget always exists for Friday, whether or not Friday's also
-    # checked above as a lesson day this particular week -- its date is
-    # derived from the Monday directly rather than indexed off
-    # target_dates (which may or may not include Friday, and may hold
-    # fewer than four either way).
-    friday_date = target_week_start + timedelta(days=4)
-    st.markdown(f"**Friday's plan** — {friday_date.strftime('%b %-d')}")
-    st.caption(
-        "Friday's the review/light day by default -- check it above in the "
-        "school-days picker to make it a real lesson day instead, just for "
-        "this week. This is what shows on the Week grid either way, alongside "
-        "any subject lesson you did plan for Friday. Pick any mix of the "
-        "standard options below, or add your own; nothing picked yet falls "
-        "back to the original Big Project + Travel Journal pairing."
-    )
 
-    friday_items = db.list_friday_plan_items(student["id"], friday_date.isoformat())
-    for item in friday_items:
-        icon, default_label, _, _ = FRIDAY_PLAN_KINDS[item["kind"]]
-        text = md(item["label"]) if item["label"] else default_label
-        item_columns = st.columns([8, 1])
-        item_columns[0].markdown(f"{icon} {text}")
-        if item_columns[1].button("✕", key=f"remove_friday_item_{item['id']}"):
-            db.delete_friday_plan_item(item["id"])
-            st.rerun()
+    with st.container(border=True):
+        render_subject_plan_panel(db, student, plan_subject, api_ok=plan_api_ok)
 
-    with st.form(f"add_friday_item_{friday_date.isoformat()}", clear_on_submit=True):
-        form_columns = st.columns([2, 3])
-        kind = form_columns[0].selectbox(
-            "Add to Friday",
-            list(FRIDAY_PLAN_KINDS),
-            format_func=lambda k: f"{FRIDAY_PLAN_KINDS[k][0]} "
-            + (FRIDAY_PLAN_KINDS[k][1] or "Custom…"),
-        )
-        friday_detail = form_columns[1].text_input(
-            "Detail",
-            placeholder="Required for Custom -- optional detail for the rest, "
-            "e.g. \"catch up on 5 older trips\"",
-        )
-        if st.form_submit_button("Add") and (kind != "custom" or friday_detail.strip()):
-            db.add_friday_plan_item(
-                student["id"], friday_date.isoformat(), kind, friday_detail.strip()
-            )
-            st.rerun()
 
 # --- Record: the hours ledger, and logging one by hand --------------------------
 

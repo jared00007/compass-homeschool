@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import streamlit as st
 
-from compass.agents import get_agent
 from compass.curriculum import (
     MATH_GRAPH,
     STRANDS,
@@ -14,20 +13,14 @@ from compass.curriculum import (
     prerequisite_chain,
 )
 from compass.ui import (
-    api_status_banner,
-    context_for,
-    difficulty_override_control,
-    generate_series_and_log,
     is_parent,
     page_setup,
     render_past_lessons,
-    render_proposal,
     render_subject_week_tab,
     student_lesson_view,
 )
 
 db, student = page_setup("Math", icon="📐")
-agent = get_agent("math")
 
 st.title("📐 Math Agent")
 st.caption(
@@ -47,96 +40,15 @@ if not is_parent():
     render_past_lessons(db, student, "math", "math")
     st.stop()
 
-week_tab, plan_tab, mastery_tab, graph_tab = st.tabs(
-    ["This week", "Plan a lesson", "Record mastery", "The graph"]
+week_tab, mastery_tab, graph_tab = st.tabs(
+    ["This week", "Record mastery", "The graph"]
 )
 
 # --- this week's (and next's) own board, scoped to Math ------------------------
 
 with week_tab:
     render_subject_week_tab(db, student, "math")
-
-# --- plan --------------------------------------------------------------------
-
-with plan_tab:
-    api_ok = api_status_banner()
-
-    ready_ids = {s.id for s in ready}
-    # Any 8th-grade skill can be chosen, not just the ones the graph has
-    # unlocked -- a parent can deliberately teach out of sequence (reported: for
-    # math "i couldnt chose the lesson to generate. it was linear"). The lock
-    # marker still shows the graph's recommendation; a locked pick just asks for
-    # a confirming tick before it'll generate.
-    LET_AGENT = "Let the agent choose"
-    all_skills = sorted(MATH_GRAPH.values(), key=lambda s: (s.strand, s.title))
-
-    def _skill_label(skill) -> str:
-        if skill.id in mastered:
-            marker = "✅"
-        elif skill.id in ready_ids:
-            marker = "🔓"
-        else:
-            marker = "🔒"
-        return f"{marker} {skill.title} — {STRANDS[skill.strand]}"
-
-    columns = st.columns([2, 1, 1])
-    with columns[0]:
-        choice = st.selectbox(
-            "Skill",
-            [LET_AGENT] + all_skills,
-            format_func=lambda o: o if isinstance(o, str) else _skill_label(o),
-            help="🔓 unlocked · ✅ mastered · 🔒 prerequisites not all met (you can still pick it).",
-        )
-    with columns[1]:
-        minutes = st.number_input("Minutes", min_value=15, max_value=180, value=60, step=5)
-    with columns[2]:
-        st.metric("Unlocked now", len(ready))
-
-    parent_note = st.text_input(
-        "Note for this lesson (optional)",
-        placeholder="e.g. he struggled with negative signs last time",
-    )
-    difficulty = difficulty_override_control(db, key="math_difficulty")
-
-    skill_id = ""
-    override_prereqs = False
-    if choice != LET_AGENT:
-        skill_id = choice.id
-        locked_missing = missing_prerequisites(skill_id, mastered)
-        if locked_missing and skill_id not in mastered:
-            st.warning(
-                f"**{choice.title}** is out of sequence — these prerequisites aren't "
-                "mastered yet: "
-                + ", ".join(MATH_GRAPH[m].title for m in locked_missing)
-                + ". You can still teach it now; the lesson will scaffold what it leans on."
-            )
-            override_prereqs = st.checkbox(
-                "Generate it anyway (out of sequence)",
-                key="math_override_prereqs",
-            )
-
-    ctx = context_for(
-        db,
-        student,
-        minutes=minutes,
-        parent_note=parent_note,
-        skill_id=skill_id,
-        override_prereqs=override_prereqs,
-        difficulty=difficulty,
-    )
-    proposal = agent.propose_topic(ctx)
-    render_proposal(agent, proposal)
-
-    generate_series_and_log(
-        db,
-        student,
-        agent,
-        ctx,
-        proposal,
-        primary_subject="math",
-        spinner="Planning the days and writing each lesson — this can take a few minutes.",
-        api_ok=api_ok,
-    )
+    st.caption("✍️ Generate new lessons from **Mission Control → Plan a lesson**.")
 
 # --- mastery -----------------------------------------------------------------
 
