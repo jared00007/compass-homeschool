@@ -53,12 +53,16 @@ SPEC = AgentSpec(
     agent_guidance=GUIDANCE,
     next_topic=reading_tied,
     build_user_prompt=_prompt,
-    # On for video search, now per activity rather than once per lesson -- the
-    # book itself is the source of truth here, not the web, so this budget is
-    # spent entirely on finding a real matching video per activity, not on
-    # grounding research.
+    # On for video search only -- the book itself is the source of truth here,
+    # not the web, so this budget buys nothing but a supplementary video per
+    # activity. Kept deliberately small: every server-side search can make the
+    # model pause and resume the whole (Opus, high-effort) request, and that
+    # resume loop -- not the writing -- is what stretched a single English
+    # lesson toward the SDK's 10-minute ceiling. Two activities need at most a
+    # couple of tries apiece, and an unfound video is dropped gracefully, so a
+    # tight budget costs almost nothing and roughly halves the worst case.
     use_web_search=True,
-    max_web_searches=6,
+    max_web_searches=3,
     post_process=_post_process,
 )
 
