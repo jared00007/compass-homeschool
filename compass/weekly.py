@@ -19,12 +19,9 @@ That's enough to answer "what's this week's plan" without a new table --
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
 
-from compass.agents.framework import GeneratedLesson, LessonAgent, StudentContext
-from compass.agents.llm import LessonGenerationError
 
 # Friday is review/plan/filler, not a scheduled new-content day -- see the
 # module docstring.
@@ -42,11 +39,9 @@ def week_dates(start: date, *, include_friday: bool = False) -> list[date]:
     plus Friday itself when `include_friday=True`.
 
     Friday stays out by default -- see the module docstring for why it's
-    not a new-content day -- but a parent can opt it back in as a fifth
-    lesson day for one particular week: a holiday lands on Monday (or any
-    other weekday), that day gets unchecked in This Week's school-days
-    picker, and Friday gets checked instead so the week still has four
-    real lesson days rather than three.
+    not a new-content day -- but callers that render the board pass
+    `include_friday=True` so it shows as a fifth column, giving a week that
+    lost a weekday to a holiday somewhere to still put five lesson days.
 
     `start` is assumed to already be a Monday -- callers get one from
     `week_start()` rather than an arbitrary date, so this doesn't re-derive it.
@@ -76,25 +71,25 @@ def _school_days_back(today: date):
 def _is_deliberate_day_off(
     day: date, planned_days: set[str] | None, planned_weeks: set[str] | None
 ) -> bool:
-    """Whether `day` looks like a real, deliberate day off -- a holiday
-    unchecked in This Week's school-days picker -- rather than a day he
-    just didn't get to.
+    """Whether `day` looks like a real, deliberate day off -- a holiday, on
+    a day nothing was ever scheduled for -- rather than a day he just didn't
+    get to.
 
     Both sets have to agree, and for a reason that isn't obvious: a day
     missing from `planned_days` alone is ambiguous. It's exactly what a
     genuine holiday looks like, but it's *also* exactly what every single
-    day looks like for a family that never uses This Week's batch planner
-    at all and generates every lesson on demand instead -- `planned_days`
-    would just be permanently empty, and treating every gap as forgivable
-    would silently make the whole streak meaningless (never breakable, no
-    matter how long he actually goes without doing anything).
+    day looks like for a family that never schedules anything onto a day
+    and generates every lesson on demand instead -- `planned_days` would
+    just be permanently empty, and treating every gap as forgivable would
+    silently make the whole streak meaningless (never breakable, no matter
+    how long he actually goes without doing anything).
 
     `planned_weeks` is what breaks that tie: it only forgives a day if its
-    *week* was actually run through the batch planner at all -- one of its
-    days really did get planned_for -- and this particular day still isn't
-    among them. A family that never touches This Week has an empty
-    `planned_weeks` forever, so nothing here ever fires and every gap is
-    judged exactly as it was before this existed.
+    *week* had anything scheduled onto a day at all -- one of its days
+    really did get planned_for -- and this particular day still isn't among
+    them. A family that never schedules anything has an empty `planned_weeks`
+    forever, so nothing here ever fires and every gap is judged exactly as
+    it was before this existed.
     """
     if planned_days is None or planned_weeks is None:
         return False
@@ -187,69 +182,6 @@ def default_plan_target(on: date | None = None) -> date:
     "which week should Friday's planning target," since planning is always
     for the week ahead, not the one about to end."""
     return week_start(on) + timedelta(days=7)
-
-
-# --- batch generation ----------------------------------------------------------
-
-
-@dataclass
-class PlannedDay:
-    """The result of planning one subject's lesson for one day -- always
-    produced, even on failure, so a page can render a consistent 4-row table
-    regardless of what happened underneath."""
-
-    target_date: date
-    subject: str
-    generated: GeneratedLesson | None
-    error: str | None = None
-
-
-def plan_day(
-    db: Any,
-    student: dict[str, Any],
-    agent: LessonAgent,
-    week_start_date: date,
-    target_date: date,
-    *,
-    seed_topic: str = "",
-    skill_id: str = "",
-    parent_note: str = "",
-    node_id: str = "",
-) -> PlannedDay:
-    """Generate and persist one subject's lesson for one specific day,
-    tagging it with which week's plan it belongs to and which day it's
-    meant for. The one primitive every other function in this module (and
-    a page regenerating a single day later) builds on.
-
-    `node_id` points Science/History at a specific open branch already
-    sitting in their topic web (see spiderweb/timeline's own
-    `ctx.inputs.get("node_id")`) -- the same mechanism their single-lesson
-    pages use, now reachable from the batch planner too. `seed_topic` wins
-    over it if both are given, same priority those strategies already
-    apply.
-    """
-    inputs: dict[str, Any] = {}
-    if seed_topic:
-        inputs["seed_topic"] = seed_topic
-    if skill_id:
-        inputs["skill_id"] = skill_id
-    if parent_note:
-        inputs["parent_note"] = parent_note
-    if node_id:
-        inputs["node_id"] = node_id
-    ctx = StudentContext(db=db, student_id=student["id"], student=student, inputs=inputs)
-
-    try:
-        proposal = agent.propose_topic(ctx)
-        if proposal.blocked:
-            return PlannedDay(target_date, agent.key, None, proposal.blocked_reason or "Blocked.")
-        proposal.metadata["week_start"] = week_start_date.isoformat()
-        proposal.metadata["planned_for"] = target_date.isoformat()
-        generated = agent.generate(ctx, proposal)
-        return PlannedDay(target_date, agent.key, generated, None)
-    except LessonGenerationError as exc:
-        return PlannedDay(target_date, agent.key, None, str(exc))
-
 
 
 def latest_per_day(lessons: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -661,125 +593,3 @@ def today_subject_status(
         return completed_today[0], "✅"
 
     return None, ""
-
-
-MATH_STAGE_NOTES: tuple[str, ...] = (
-    "",  # Day 1: no note. A fresh introduction, taught the normal way.
-    "This is day 2 of 4 on this same skill this week -- additional "
-    "practice, not a re-introduction. Escalate the difficulty slightly "
-    "from the first day.",
-    "This is day 3 of 4 on this same skill this week -- more practice, "
-    "escalating further toward the assessment.",
-    "This is day 4 of 4 on this same skill this week -- weight this "
-    "lesson toward the graded assessment that determines whether the "
-    "next skill unlocks next week.",
-)
-
-
-def math_stage_note(index: int, total: int) -> str:
-    """The same escalating note as MATH_STAGE_NOTES, generalized to
-    however many school days a week actually has -- a holiday can shrink
-    it to two or three, and "day 2 of 4" is simply wrong once the week
-    itself is only 2 or 3 days long.
-
-    The ordinary four-day case reuses MATH_STAGE_NOTES verbatim (its two
-    middle days read differently from each other -- "escalate slightly"
-    vs. "more practice, escalating further" -- which a generic formula
-    below collapses into one repeated sentence). Only a week actually
-    shortened by something like a holiday falls through to the generic
-    three-tier version: no note on day one, escalating practice through
-    the middle, weighted toward the assessment on the last day (which can
-    be the same day as the first, on a single-day week).
-    """
-    if total == 4:
-        return MATH_STAGE_NOTES[index]
-    if index == 0:
-        return ""
-    if index == total - 1:
-        return (
-            f"This is day {index + 1} of {total} on this same skill this week -- "
-            "weight this lesson toward the graded assessment that determines "
-            "whether the next skill unlocks next week."
-        )
-    return (
-        f"This is day {index + 1} of {total} on this same skill this week -- "
-        "additional practice, not a re-introduction, escalating toward the "
-        "assessment."
-    )
-
-
-def plan_missing_days(
-    db: Any,
-    student: dict[str, Any],
-    agent: LessonAgent,
-    week_start_date: date,
-    target_dates: list[date],
-    missing_dates: list[date],
-    *,
-    is_math: bool = False,
-    skill_id: str = "",
-    seed_topics: dict[int, str] | None = None,
-    node_ids: dict[int, str] | None = None,
-) -> list[PlannedDay]:
-    """Generate whichever of `target_dates` are still missing a lesson
-    (`missing_dates`, always a subset) for one subject/agent.
-
-    `target_dates` is the full checked-days list for the week (see the
-    school-days picker on pages/14_Mission_Control.py) -- `math_stage_note` and
-    `seed_topics`/`node_ids` both need a day's position in the *whole*
-    week, not just its position among the days still missing a lesson, so
-    both lists are taken separately rather than one being inferred from
-    the other.
-
-    Math (`is_math=True`) reuses one skill for the whole week rather than
-    a fresh topic each day. The reason lives one level down, in
-    `graph_walk` (compass/agents/strategies.py): the next skill only
-    unlocks once the parent has actually graded this week's assessment
-    against real performance, so calling propose-then-generate several
-    times in the same sitting would just hand back the same skill every
-    time -- not a bug, the mastery gate working as designed, but not a
-    useful week's plan either. Instead, the first missing day introduces
-    the skill (or continues `skill_id`, when an earlier day this week
-    already picked one and only later days are being filled in);
-    `math_stage_note` escalates the framing on each day after that toward
-    the graded assessment. Once any day fails -- a real error, or the
-    graph turning out to already be fully mastered -- every day after it
-    in this call is reported as skipped rather than attempted: continuing
-    to reinforce a skill that never got confirmed would frame the rest of
-    the week around whatever the agent's own automatic pick happened to
-    be at that moment, not the skill that actually failed.
-
-    Non-math subjects have no such dependency -- each of their own
-    agents' state updates the moment a lesson is generated (a new branch
-    added to Science's web, an era marked touched in History) -- so one
-    day's failure never blocks the rest.
-
-    `seed_topics`/`node_ids` point a specific day (keyed by its index in
-    `target_dates`) at an explicit topic or an already-open branch instead
-    of the agent's own automatic pick -- the hook for slotting in
-    something specific, like a Class CrunchLabs unit for Science on a
-    chosen day.
-    """
-    results: list[PlannedDay] = []
-    stopped_reason = ""
-    for target_date in missing_dates:
-        index = target_dates.index(target_date)
-        if is_math and stopped_reason:
-            results.append(
-                PlannedDay(target_date, agent.key, None, f"Skipped — {stopped_reason}")
-            )
-            continue
-        day = plan_day(
-            db, student, agent, week_start_date, target_date,
-            seed_topic=(seed_topics or {}).get(index, ""),
-            skill_id=skill_id,
-            parent_note=math_stage_note(index, len(target_dates)) if is_math else "",
-            node_id=(node_ids or {}).get(index, ""),
-        )
-        results.append(day)
-        if is_math:
-            if day.error:
-                stopped_reason = day.error
-            elif index == 0 and day.generated:
-                skill_id = day.generated.proposal.metadata.get("skill_id", "")
-    return results
