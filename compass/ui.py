@@ -69,7 +69,7 @@ from compass.agents import (
     StudentContext,
 )
 from compass.agents import checklist_suggest, writing_review
-from compass.agents.quiz import grade, passed as quiz_passes, select_questions
+from compass.agents.quiz import grade as grade_quiz, passed as quiz_passes, select_questions
 from compass.compliance import declaration_status
 from compass.export import (
     DocxExtractionError,
@@ -2090,7 +2090,7 @@ def render_quiz(
                     st.warning("Answer every question before submitting.")
                     return
 
-                correct, total = grade(quiz, picks)
+                correct, total = grade_quiz(quiz, picks)
                 threshold = db.get_int_setting("quiz_pass_percent")
                 did_pass = quiz_passes(correct, total, threshold)
                 started_at = st.session_state.pop(start_key, None)
@@ -3138,10 +3138,10 @@ def student_lesson_view(
 
     Picks the same lesson Home's own "Lessons ready for you" list would
     (weekly.due_lessons -- today's, or the oldest overdue one) rather than
-    whichever lesson happens to have the highest id. Those used to
-    disagree: batch-planning a whole week in one sitting means the last
-    day generated (often Friday) has the most recent `created_at`, which
-    is a different thing entirely from "the one due today." A day badge
+    whichever lesson happens to have the highest id. Those disagree:
+    generating a multi-day series in one sitting means the last day
+    generated has the most recent `created_at`, which is a different thing
+    entirely from "the one due today." A day badge
     above the lesson (only shown when it carries a `planned_for` tag at
     all -- an ordinary on-demand generation has no day attached) makes
     that same fact visible here, not just inferred from being on the page.

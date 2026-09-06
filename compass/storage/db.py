@@ -2640,12 +2640,11 @@ class Database:
 
         Also reassigns `week_start` to the new date's own Monday, not just
         `planned_for` -- without that, the lesson would still look "this
-        week's" to its *old* week (blocking This Week's planner from ever
-        treating that old day as missing again) while being invisible to
-        the *new* week's own "already covered" check, risking a second
-        lesson getting batch-generated for the same day. It also needs the
-        right `week_start` to be found by Math's shared-skill continuation,
-        which reads off whatever's already planned for the *target* week.
+        week's" to its *old* week while being invisible to the *new* week's
+        own "already covered" check, so the subject's week board could show
+        it under a stale week. It also needs the right `week_start` to be
+        found by Math's shared-skill continuation, which reads off whatever's
+        already planned for the *target* week.
 
         Also clears `held_back` (see `send_to_backlog`) -- a lesson that
         got to the backlog by a parent's own click leaves it the exact same
@@ -3108,10 +3107,10 @@ class Database:
         across every subject -- not just the ones he finished.
 
         Feeds compass.weekly's streak counting one half of what it needs to
-        tell a deliberate day off (a holiday unchecked in This Week's
-        school-days picker) from a day he just didn't do the work that was
-        sitting there waiting -- see `planned_weeks` for the other half,
-        and why both are needed together rather than this alone.
+        tell a deliberate day off (a holiday, on a day nothing was scheduled
+        for) from a day he just didn't do the work that was sitting there
+        waiting -- see `planned_weeks` for the other half, and why both are
+        needed together rather than this alone.
         """
         rows = self.conn.execute(
             "SELECT DISTINCT json_extract(metadata, '$.planned_for') AS day "
@@ -3122,16 +3121,16 @@ class Database:
         return {row["day"] for row in rows if row["day"]}
 
     def planned_weeks(self, student_id: int) -> set[str]:
-        """Every Monday that ever got a This Week batch-planning pass at
-        all, regardless of which specific days within it ended up with a
+        """Every Monday that ever had at least one lesson scheduled into its
+        week, regardless of which specific days within it ended up with a
         lesson.
 
         `planned_days` alone can't safely tell "this day was deliberately
-        skipped" from "this family has never used batch planning, so no day
+        skipped" from "this family has never scheduled anything, so no day
         ever carries a planned_for tag" -- both look identical, an absence.
         Only a day whose *week* is in here but the day itself isn't in
         `planned_days` is a real, deliberate skip; a family that generates
-        every lesson on demand (never touching This Week at all) has an
+        every lesson on demand (never scheduling anything onto a day) has an
         empty set here, so nothing about their streak changes.
         """
         rows = self.conn.execute(

@@ -12,7 +12,6 @@ from compass.compliance import build_report
 from compass.curriculum import frontier_report
 from compass.subjects import label
 from compass.ui import (
-    SUBJECT_ICONS,
     context_for,
     is_parent,
     md,
@@ -434,14 +433,13 @@ if not is_parent():
         render_brain_break()
 
     # === Board ===================================================================
-    # The exact same sprint board a parent sees on This Week, rendered
-    # read-only for him (render_board_days(interactive=False) -- no move
-    # controls, no parent management deep links, just the cards and, on a
+    # The same sprint board a parent sees on Mission Control's Board tab,
+    # rendered read-only for him (render_board_days(interactive=False) -- no
+    # move controls, no parent management deep links, just the cards and, on a
     # lesson, the View-full-lesson dialog). A forward week-pager, not just a
-    # this/next toggle: a parent can plan several weeks ahead now (This Week's
-    # "Plan next week" takes any target week), so he can page forward as far as
-    # there's anything to see. Read-only either way -- the plan is set by a
-    # parent's Friday planning; this only lays out what's already scheduled.
+    # this/next toggle: a parent can schedule several weeks ahead, so he can
+    # page forward as far as there's anything to see. Read-only either way --
+    # this only lays out whatever a parent has already scheduled onto a day.
 
     if active_view == "board":
         # 0 = this week; never goes before it (the past is on the record, not

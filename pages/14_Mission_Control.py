@@ -31,7 +31,6 @@ from compass.export import (
 )
 from compass.subjects import SUBJECT_KEYS, label
 from compass.ui import (
-    SUBJECT_ICONS,
     api_status_banner,
     hand_in_summary,
     log_lesson_form,
