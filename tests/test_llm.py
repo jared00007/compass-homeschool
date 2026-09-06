@@ -161,3 +161,80 @@ def test_a_real_effort_level_is_still_sent():
 
     request = fake_client.beta.messages.create.call_args.kwargs
     assert request["output_config"]["effort"] == "high"
+
+
+# --- time bounds: a generation must fail cleanly, not hang forever -----------
+# Reported: a single lesson ran 15+ minutes and produced nothing, because
+# generation is one blocking call that only saves once it returns and nothing
+# bounded the web-search pause/resume loop.
+
+
+def _pause_response():
+    return SimpleNamespace(
+        stop_reason="pause_turn",
+        content=[SimpleNamespace(type="text", text="")],
+        usage=SimpleNamespace(
+            input_tokens=1, output_tokens=1,
+            cache_read_input_tokens=0, cache_creation_input_tokens=0,
+        ),
+        model="test-model",
+    )
+
+
+def test_each_call_carries_an_explicit_timeout():
+    from compass import config
+
+    fake_client = MagicMock()
+    fake_client.beta.messages.create.return_value = _fake_response()
+    with patch("compass.agents.llm._client", return_value=fake_client):
+        generate_lesson(system="s", user_prompt="u")
+
+    kwargs = fake_client.beta.messages.create.call_args.kwargs
+    assert kwargs["timeout"] == config.GENERATION_REQUEST_TIMEOUT_SECONDS
+
+
+def test_a_runaway_pause_loop_is_stopped_by_the_total_budget(monkeypatch):
+    """Once the whole generation blows GENERATION_TOTAL_BUDGET_SECONDS across
+    resume turns, stop with a clear error instead of grinding on."""
+    import time
+
+    from compass import config
+
+    fake_client = MagicMock()
+    fake_client.beta.messages.create.return_value = _pause_response()
+
+    calls = {"n": 0}
+
+    def fake_monotonic():
+        calls["n"] += 1
+        # First read is started_at; the pause check then sees the budget blown.
+        return 0.0 if calls["n"] == 1 else config.GENERATION_TOTAL_BUDGET_SECONDS + 1
+
+    monkeypatch.setattr(time, "monotonic", fake_monotonic)
+    with patch("compass.agents.llm._client", return_value=fake_client):
+        with pytest.raises(LessonGenerationError, match="stopped|too long|needing more time"):
+            generate_lesson(system="s", user_prompt="u", use_web_search=True)
+
+
+def test_exhausting_the_resume_turns_reports_it_didnt_finish(monkeypatch):
+    """If it stays paused until max_turns runs out, say so plainly rather than
+    letting JSON extraction fail on a tool-only response."""
+    import time
+
+    fake_client = MagicMock()
+    fake_client.beta.messages.create.return_value = _pause_response()
+    monkeypatch.setattr(time, "monotonic", lambda: 0.0)  # never blow the budget
+
+    with patch("compass.agents.llm._client", return_value=fake_client):
+        with pytest.raises(LessonGenerationError, match="didn't finish|too many web searches"):
+            generate_lesson(system="s", user_prompt="u", use_web_search=True, max_turns=2)
+
+
+def test_an_api_timeout_becomes_a_friendly_took_too_long_error():
+    import anthropic
+
+    fake_client = MagicMock()
+    fake_client.beta.messages.create.side_effect = anthropic.APITimeoutError(request=MagicMock())
+    with patch("compass.agents.llm._client", return_value=fake_client):
+        with pytest.raises(LessonGenerationError, match="too long"):
+            generate_lesson(system="s", user_prompt="u")

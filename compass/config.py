@@ -21,6 +21,22 @@ DEFAULT_MODEL = "claude-opus-5"
 DEFAULT_EFFORT = "high"
 DEFAULT_MAX_TOKENS = 16000
 
+# Time bounds for a single lesson generation. Generation is one synchronous,
+# blocking call and the lesson is only saved once it returns, so an unbounded
+# call means a parent can wait 15+ minutes and get nothing (reported exactly
+# that). Two guards:
+#   * REQUEST_TIMEOUT caps any single API round-trip -- without it the SDK
+#     default is 10 minutes, and a web-search "pause/resume" turn that stalls
+#     would sit there the whole time.
+#   * TOTAL_BUDGET caps the whole generation across every pause/resume turn, so
+#     the wait can't stack up turn after turn. When it's blown we raise a clear,
+#     actionable error instead of grinding on invisibly.
+# Generous enough for the heaviest legitimate lesson (Opus, high effort, the
+# location-grounding agents' several searches) while cutting off the runaway
+# case a parent would otherwise sit through.
+GENERATION_REQUEST_TIMEOUT_SECONDS = 300
+GENERATION_TOTAL_BUDGET_SECONDS = 600
+
 # Reviewing or summarizing something that already exists is a much smaller job
 # than authoring a lesson from scratch, and doesn't need the frontier model to
 # do it well: checking a response against a rubric that's already written, or

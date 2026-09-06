@@ -350,9 +350,16 @@ def generate_lesson(
     summaries) doesn't support at all, and passing it there is a 400, not a
     no-op.
     """
+    import time
+
     import anthropic
 
     client = _client()
+    started_at = time.monotonic()
+    # Cap any single API round-trip (the SDK default is 10 minutes), passed per
+    # call rather than on the client so the pause/resume loop below can't have
+    # one stalled turn hang for the full default on its own.
+    request_timeout = config.GENERATION_REQUEST_TIMEOUT_SECONDS
 
     tools: list[dict[str, Any]] = []
     if use_web_search:
@@ -387,12 +394,12 @@ def generate_lesson(
     for _ in range(max_turns):
         try:
             response = client.beta.messages.create(
-                **request, betas=[FALLBACK_BETA], fallbacks="default"
+                **request, betas=[FALLBACK_BETA], fallbacks="default", timeout=request_timeout
             )
         except anthropic.BadRequestError:
             # Server-side fallbacks may not be enabled for this key/platform.
             # The lesson matters more than the safety net — retry without it.
-            response = client.messages.create(**request)
+            response = client.messages.create(**request, timeout=request_timeout)
         except anthropic.AuthenticationError as exc:
             raise LessonGenerationError(
                 "Anthropic rejected the API key. Check ANTHROPIC_API_KEY."
@@ -400,6 +407,15 @@ def generate_lesson(
         except anthropic.RateLimitError as exc:
             raise LessonGenerationError(
                 "Rate limited by the Anthropic API. Wait a moment and try again."
+            ) from exc
+        except anthropic.APITimeoutError as exc:
+            # A single round-trip blew GENERATION_REQUEST_TIMEOUT_SECONDS. Must
+            # be caught before APIConnectionError (its parent class), or a slow
+            # generation would masquerade as a network problem.
+            raise LessonGenerationError(
+                "This lesson took too long to generate and was stopped. Try again "
+                "— or, if it keeps happening, lower the model effort on the Student "
+                "Profile page or generate fewer lessons at once."
             ) from exc
         except anthropic.APIConnectionError as exc:
             raise LessonGenerationError(
@@ -422,8 +438,19 @@ def generate_lesson(
             )
 
         if response.stop_reason == "pause_turn":
-            # A long server-tool turn hit its iteration limit. Echo the turn back
-            # and let the server resume where it left off.
+            # A long server-tool turn (web search) hit its iteration limit. Echo
+            # the turn back and let the server resume. This is the loop that used
+            # to stack up minute after minute -- each resume is a whole fresh
+            # generation -- so bound the *total* wait here, not just each call:
+            # once the budget's blown, stop with a clear error rather than
+            # grinding on invisibly for another turn.
+            if time.monotonic() - started_at > config.GENERATION_TOTAL_BUDGET_SECONDS:
+                raise LessonGenerationError(
+                    "This lesson kept needing more time (repeated web searches) and "
+                    "was stopped before it finished. Try again — or lower the model "
+                    "effort on the Student Profile page, or generate fewer lessons "
+                    "at once."
+                )
             messages.append({"role": "assistant", "content": response.content})
             continue
 
@@ -435,6 +462,17 @@ def generate_lesson(
 
     if response is None:  # pragma: no cover - defensive
         raise LessonGenerationError("No response from the model.")
+
+    if response.stop_reason == "pause_turn":
+        # The pause/resume loop ran out of turns before the model produced a
+        # final lesson -- almost always too many web searches. Say so plainly
+        # rather than letting _extract_json fail on a toolonly response with a
+        # cryptic "no text content".
+        raise LessonGenerationError(
+            "This lesson didn't finish generating (too many web searches in one "
+            "pass). Try again — or lower the model effort on the Student Profile "
+            "page, or generate fewer lessons at once."
+        )
 
     lesson = _extract_json(response.content)
     # Every URL a real search actually surfaced this turn -- the only thing a
