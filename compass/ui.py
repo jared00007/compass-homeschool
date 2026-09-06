@@ -3725,19 +3725,15 @@ def render_today_summary(
     """The right-hand Home card: his progress numbers and -- on the Today view
     -- what's due today.
 
-    Two-panel layout so the card uses its width instead of leaving vertical
-    gaps: a 2x2 KPI block on the left and the "Due today" list on the right. Off
-    the Today view (nothing due to show) the KPIs go back to one full-width
-    strip."""
+    Stacked vertically, "Due today" on top: what he owes today is the thing that
+    should grab him the moment he opens the app, rendered to pop, with his
+    progress numbers as a quieter strip underneath. Off the Today view (nothing
+    due to show) it's just the progress strip."""
     if show_due:
-        left, right = st.columns(2)
-        with left:
-            st.markdown("**📈 Progress**")
-            _render_learner_kpis(db, student, columns=2)
-        with right:
-            render_daily_due(db, student, today)
-    else:
-        _render_learner_kpis(db, student, columns=4)
+        render_daily_due(db, student, today)
+        st.divider()
+    st.markdown("**📈 Progress**")
+    _render_learner_kpis(db, student, columns=4)
 
 
 def _render_learner_kpis(db: Database, student: dict[str, Any], *, columns: int = 4) -> None:
@@ -3777,10 +3773,10 @@ def _render_learner_kpis(db: Database, student: dict[str, Any], *, columns: int 
 
 def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
     """The day's small recurring work -- words to review, where his book is,
-    and any life skills due -- shown in the right half of the two-panel Today
-    card (render_today_summary), stacked Words / Reading / Life Skills down the
-    column so "what do I owe today" reads top-to-bottom and fills the space
-    beside the Level card instead of pooling into a gap."""
+    and any life skills due -- rendered to POP at the top of the Home Today card
+    so it's the first thing he sees and does daily. Each item is a bright,
+    colored tile: gold when there's something waiting (a big count he can't miss),
+    calm green when he's caught up, blue for his reading progress bar."""
     due_words = db.vocabulary_due(student["id"], limit=25)
     book = db.current_book(student["id"])
     due_skills = db.due_life_skills(student["id"], today)
@@ -3792,35 +3788,59 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
     ]
     due_coding = db.due_coding_modules(student["id"], today)
 
-    # Stacked, not three columns: this now lives in the right half of the
-    # two-panel Today card (render_today_summary), so Words, Reading and Life
-    # Skills read top-to-bottom down that column and fill its height rather than
-    # sitting in a cramped little three-across row.
-    st.markdown("**📌 Due today**")
+    def _tile(icon: str, label_html: str, *, tone: str, big: Any = "") -> None:
+        # tone: "todo" (gold, something waiting) | "done" (green, caught up) |
+        # "info" (blue, neutral progress).
+        accent, bg = {
+            "todo": ("var(--c-primary)", "rgba(242,183,5,.16)"),
+            "done": ("var(--c-good)", "rgba(47,155,104,.12)"),
+            "info": ("var(--c-alt)", "rgba(47,99,224,.09)"),
+        }[tone]
+        big_html = (
+            f'<span style="font-size:27px; font-weight:900; color:{accent}; '
+            f'line-height:1; margin:0 3px;">{big}</span>'
+            if big != ""
+            else ""
+        )
+        st.markdown(
+            f'<div style="background:{bg}; border-left:5px solid {accent}; '
+            f'border-radius:8px; padding:10px 13px; margin-bottom:6px;">'
+            f'<span style="font-size:17px;">{icon}</span>{big_html}'
+            f'<span style="font-weight:800; font-size:14px;">{label_html}</span></div>',
+            unsafe_allow_html=True,
+        )
 
-    st.markdown("**🔤 Words**")
+    st.markdown(
+        '<div style="font-size:16px; font-weight:900; margin:2px 0 9px;">📌 Due today</div>',
+        unsafe_allow_html=True,
+    )
+
+    # Words
     if due_words:
-        st.page_link("pages/3_English.py", label=f"{len(due_words)} to review", icon="➡️")
+        _tile("🔤", "words to review", tone="todo", big=len(due_words))
+        st.page_link("pages/3_English.py", label="Review now", icon="➡️")
     else:
-        st.caption("Caught up ✅")
+        _tile("🔤", "Words — all caught up ✅", tone="done")
 
-    st.markdown("**📖 Reading**")
+    # Reading -- his book and how far in he is, as a real progress bar.
     if book:
-        st.caption(md(book["title"]))
+        _tile("📖", f"Reading — {md(book['title'])}", tone="info")
         if book.get("total_pages"):
             st.progress(
                 min((book["current_page"] or 0) / book["total_pages"], 1.0),
-                text=f"p{book['current_page']}/{book['total_pages']}",
+                text=f"page {book['current_page']} of {book['total_pages']}",
             )
     else:
-        st.caption("No book yet")
+        _tile("📖", "Reading — no book set yet", tone="info")
 
-    st.markdown(f"**🛠️ Life Skills ({len(due_skills)})**")
+    # Life Skills -- keep the "(N)" count in the label (Home surfaces it), big
+    # gold count when something's due, calm green when nothing is.
     if due_skills:
+        _tile("🛠️", f"Life Skills ({len(due_skills)}) due", tone="todo", big=len(due_skills))
         for skill in due_skills:
             st.page_link("pages/6_Life_Skills.py", label=md(skill["title"]), icon="➡️")
     else:
-        st.caption("Nothing due ✅")
+        _tile("🛠️", "Life Skills (0) — nothing due ✅", tone="done")
     # +later, and the Student's Choice / Coding counts (both live on the
     # same Life Skills page) ride as one compact caption at the bottom.
     extra: list[str] = []
