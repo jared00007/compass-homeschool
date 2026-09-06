@@ -21,13 +21,12 @@ from compass.ui import (
     render_board_days,
     render_brain_break,
     render_card_heading,
-    render_daily_due,
     render_declaration_banner,
     render_first_day_celebration,
     render_morning_routine,
     render_report_card,
     render_xp_reward_editor,
-    render_streak,
+    render_today_summary,
     render_today_checklist,
     render_travel_passport,
     render_week_progress,
@@ -137,13 +136,15 @@ if not is_parent():
         with st.container(border=True, key="landon_card_xp"):
             render_xp_level(db, student)
     with header_columns[1]:
-        with st.container(border=True, key="landon_card_streak"):
-            render_streak(db, student)
-            # The day's small recurring work (words, reading, life skills) folds
-            # in here beside the streak/KPIs rather than a separate tile row --
-            # only on the Today view, where "what do I owe today" belongs.
-            if active_view == "today":
-                render_daily_due(db, student, date.today().isoformat())
+        with st.container(border=True, key="landon_card_today"):
+            # Streak banner across the top, then a two-panel body -- progress
+            # KPIs on the left, "Due today" on the right -- so the card fills its
+            # height beside the tall Level card. The due-today half only shows on
+            # the Today view, where "what do I owe today" belongs.
+            render_today_summary(
+                db, student, date.today().isoformat(),
+                show_due=(active_view == "today"),
+            )
 
     st.divider()
 

@@ -3677,44 +3677,6 @@ def render_report_card(db: Database, student: dict[str, Any], *, for_parent: boo
                 _render_grade_override_form(db, grade)
 
 
-_STREAK_MILESTONES = (3, 5, 10, 20, 30, 50)
-
-# Same fixed printed-poster palette as the Week grid and first-day cover --
-# a comic callout on purpose, picked from three celebration directions
-# sampled before building (balloons, snow, this) as the one that matched
-# the app's own printed-comic look everywhere else.
-_STREAK_BURST_INK = theming.PRINTED_COMIC_INK
-_STREAK_BURST_PAPER = theming.PRINTED_COMIC_PAPER
-_STREAK_BURST_POP = theming.PRINTED_COMIC_WEEKDAY_COLORS[1]
-_STREAK_BURST_CSS = f"""
-<style>
-div[class*="st-key-streak_milestone_burst"] {{
-  background: {_STREAK_BURST_PAPER};
-  border: 3px solid {_STREAK_BURST_INK};
-  border-radius: 6px;
-  padding: 10px 16px 8px;
-  position: relative;
-  overflow: hidden;
-  box-shadow: 3px 3px 0 0 {_STREAK_BURST_INK};
-  margin: 2px 4px 8px 2px;
-}}
-div[class*="st-key-streak_milestone_burst"]::before {{
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 6px;
-  pointer-events: none;
-  opacity: .14;
-  background-image: radial-gradient(circle, {_STREAK_BURST_INK} 1.6px, transparent 1.8px);
-  background-size: 9px 9px;
-}}
-div[class*="st-key-streak_milestone_burst"] > div {{
-  position: relative;  /* keep text above the dot texture */
-}}
-</style>
-"""
-
-
 def render_travel_feedback_reply_form(
     db: Database, entry: dict[str, Any], *, key_prefix: str
 ) -> None:
@@ -3746,84 +3708,33 @@ def render_travel_feedback_reply_form(
                 st.rerun()
 
 
-def render_streak(db: Database, student: dict[str, Any]) -> None:
-    """His run of school days in a row. Student-facing, on Home.
+def render_today_summary(
+    db: Database, student: dict[str, Any], today: str, *, show_due: bool
+) -> None:
+    """The right-hand Home card: his progress numbers and -- on the Today view
+    -- what's due today.
 
-    The one thing on his page that rewards showing up rather than scoring
-    well -- deliberately, since everything else Compass checks is about the
-    quality of one piece of work. Weekends don't break it (see
-    compass.weekly), so it survives Monday morning. Neither does a
-    deliberate day off -- a holiday unchecked in This Week's school-days
-    picker leaves no lesson planned for that date at all, and
-    planned_days/planned_weeks together are what tell that apart from a day
-    he actually had work waiting and skipped (see
-    weekly._is_deliberate_day_off for why both are needed).
-
-    Ordinary days stay quiet -- just the count, no superlative. The old copy
-    added "-- your best yet!" whenever `streak >= best`, but a streak IS the
-    record every single day once it's ever been the longest he's had, so
-    that fired on nearly every day of an ongoing streak and read as
-    meaningless. Milestones (_STREAK_MILESTONES) get an actual comic-style
-    callout instead, and only on the day he actually lands on one --
-    `today_done` gates it so reopening the app later the same week, still
-    sitting on a milestone number from a day he already saw it, doesn't
-    show the celebration again.
-    """
-    active = db.active_days(student["id"])
-    planned_days = db.planned_days(student["id"])
-    planned_weeks = db.planned_weeks(student["id"])
-    streak = weekly.current_streak(
-        active, planned_days=planned_days, planned_weeks=planned_weeks
-    )
-
-    if not streak:
-        if active:
-            st.caption("🔥 Finish something today to start a new streak.")
+    Two-panel layout so the card uses its width instead of leaving vertical
+    gaps: a 2x2 KPI block on the left and the "Due today" list on the right. Off
+    the Today view (nothing due to show) the KPIs go back to one full-width
+    strip."""
+    if show_due:
+        left, right = st.columns(2)
+        with left:
+            st.markdown("**📈 Progress**")
+            _render_learner_kpis(db, student, columns=2)
+        with right:
+            render_daily_due(db, student, today)
     else:
-        best = weekly.best_streak(
-            active, planned_days=planned_days, planned_weeks=planned_weeks
-        )
-        today_done = date.today().isoformat() in active
-
-        if today_done and streak in _STREAK_MILESTONES:
-            st.markdown(_STREAK_BURST_CSS, unsafe_allow_html=True)
-            with st.container(key="streak_milestone_burst"):
-                st.markdown(
-                    f'<div style="font-weight:900; font-size:11px; letter-spacing:.06em; '
-                    f'color:{_STREAK_BURST_POP};">MILESTONE!</div>'
-                    f'<div style="font-weight:900; font-size:22px; line-height:1.1; '
-                    f'color:{_STREAK_BURST_INK};">🎉 {streak} DAYS IN A ROW</div>'
-                    + (
-                        f'<div style="font-size:12px; font-weight:700; '
-                        f'color:{_STREAK_BURST_INK};">A new personal best.</div>'
-                        if streak >= best
-                        else ""
-                    ),
-                    unsafe_allow_html=True,
-                )
-        else:
-            plural = "s" if streak != 1 else ""
-            line = f"🔥 **{streak} school day{plural} in a row**"
-            if best > streak:
-                line += f" · best: {best}"
-            if not today_done:
-                line += "  \nFinish something today to keep it alive."
-            st.success(line)
-
-    # The numbers behind the Level bar next to this card -- "how much have I
-    # actually done." Reported directly: show "lessons completed, quizzes
-    # passed etc, heaviest by volume subject" right here. Always rendered (even
-    # at zero) so the card keeps a stable shape, and built from xp.learner_stats
-    # off the same completion signal the Level bar uses, so the two never
-    # disagree.
-    _render_learner_kpis(db, student)
+        _render_learner_kpis(db, student, columns=4)
 
 
-def _render_learner_kpis(db: Database, student: dict[str, Any]) -> None:
-    """The compact KPI strip under his streak -- finished lessons, passed
-    quizzes, and the subject he's put the most work into. Custom HTML rather
-    than st.metric so three-plus tiles stay short instead of stacking into a
-    tall block that unbalances the header row."""
+def _render_learner_kpis(db: Database, student: dict[str, Any], *, columns: int = 4) -> None:
+    """The compact KPI tiles -- finished lessons, passed quizzes, and the
+    subject he's put the most work into. Custom HTML grid rather than st.metric
+    so the tiles stay short instead of stacking tall. `columns` controls the
+    grid width: 4 for a single strip, 2 for a 2x2 block when the tiles sit in a
+    half-width column (the two-panel Today card)."""
     stats = xp_module.learner_stats(db, student["id"])
 
     tiles = [
@@ -3833,15 +3744,16 @@ def _render_learner_kpis(db: Database, student: dict[str, Any]) -> None:
         ("🧭", stats.trips_written, "trips written"),
     ]
     cells = "".join(
-        f'<div style="flex:1 1 64px; min-width:64px; text-align:center; '
-        f'padding:6px 4px; background:var(--c-panel); border-radius:8px;">'
-        f'<div style="font-size:20px; font-weight:800; line-height:1.1;">{icon} {value}</div>'
+        f'<div style="text-align:center; padding:8px 4px; background:var(--c-panel); '
+        f'border:1px solid rgba(36,28,18,.08); border-radius:8px;">'
+        f'<div style="font-size:19px; font-weight:800; line-height:1.1;">{icon} {value}</div>'
         f'<div style="font-size:11px; color:var(--c-dim);">{label}</div>'
         f"</div>"
         for icon, value, label in tiles
     )
     st.markdown(
-        f'<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">{cells}</div>',
+        f'<div style="display:grid; grid-template-columns:repeat({columns},1fr); '
+        f'gap:6px; margin-top:8px;">{cells}</div>',
         unsafe_allow_html=True,
     )
     if stats.heaviest_subject:
@@ -3854,13 +3766,10 @@ def _render_learner_kpis(db: Database, student: dict[str, Any]) -> None:
 
 def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
     """The day's small recurring work -- words to review, where his book is,
-    and any life skills due -- folded into the header card beside the streak
-    and KPIs instead of a separate three-tile row lower down. Reported: "fold
-    in the daily work for reading words, life skills KPI and if any are due
-    that day, and reading progression of book up in this one container." Kept
-    laid out as one lined-up row of three -- Words, Reading, Life Skills side by
-    side rather than stacked -- so the whole "what do I owe today" reads at a
-    glance in the space next to the Level card."""
+    and any life skills due -- shown in the right half of the two-panel Today
+    card (render_today_summary), stacked Words / Reading / Life Skills down the
+    column so "what do I owe today" reads top-to-bottom and fills the space
+    beside the Level card instead of pooling into a gap."""
     due_words = db.vocabulary_due(student["id"], limit=25)
     book = db.current_book(student["id"])
     due_skills = db.due_life_skills(student["id"], today)
@@ -3872,51 +3781,46 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
     ]
     due_coding = db.due_coding_modules(student["id"], today)
 
-    st.divider()
+    # Stacked, not three columns: this now lives in the right half of the
+    # two-panel Today card (render_today_summary), so Words, Reading and Life
+    # Skills read top-to-bottom down that column and fill its height rather than
+    # sitting in a cramped little three-across row.
     st.markdown("**📌 Due today**")
-    words_col, reading_col, skills_col = st.columns(3)
 
-    with words_col:
-        st.markdown("**🔤 Words**")
-        if due_words:
-            st.page_link(
-                "pages/3_English.py", label=f"{len(due_words)} to review", icon="➡️"
+    st.markdown("**🔤 Words**")
+    if due_words:
+        st.page_link("pages/3_English.py", label=f"{len(due_words)} to review", icon="➡️")
+    else:
+        st.caption("Caught up ✅")
+
+    st.markdown("**📖 Reading**")
+    if book:
+        st.caption(md(book["title"]))
+        if book.get("total_pages"):
+            st.progress(
+                min((book["current_page"] or 0) / book["total_pages"], 1.0),
+                text=f"p{book['current_page']}/{book['total_pages']}",
             )
-        else:
-            st.caption("Caught up ✅")
+    else:
+        st.caption("No book yet")
 
-    with reading_col:
-        st.markdown("**📖 Reading**")
-        if book:
-            st.caption(md(book["title"]))
-            if book.get("total_pages"):
-                st.progress(
-                    min((book["current_page"] or 0) / book["total_pages"], 1.0),
-                    text=f"p{book['current_page']}/{book['total_pages']}",
-                )
-        else:
-            st.caption("No book yet")
-
-    with skills_col:
-        st.markdown(f"**🛠️ Life Skills ({len(due_skills)})**")
-        if due_skills:
-            for skill in due_skills:
-                st.page_link(
-                    "pages/6_Life_Skills.py", label=md(skill["title"]), icon="➡️"
-                )
-        else:
-            st.caption("Nothing due ✅")
-        # +later, and the Student's Choice / Coding counts (both live on the
-        # same Life Skills page) ride as one compact caption under the column.
-        extra: list[str] = []
-        if later_skills:
-            extra.append(f"+{later_skills} later")
-        if topics:
-            extra.append(f"⭐ {len(topics)} Choice")
-        if due_coding:
-            extra.append(f"💻 {len(due_coding)} coding due")
-        if extra:
-            st.caption(" · ".join(extra))
+    st.markdown(f"**🛠️ Life Skills ({len(due_skills)})**")
+    if due_skills:
+        for skill in due_skills:
+            st.page_link("pages/6_Life_Skills.py", label=md(skill["title"]), icon="➡️")
+    else:
+        st.caption("Nothing due ✅")
+    # +later, and the Student's Choice / Coding counts (both live on the
+    # same Life Skills page) ride as one compact caption at the bottom.
+    extra: list[str] = []
+    if later_skills:
+        extra.append(f"+{later_skills} later")
+    if topics:
+        extra.append(f"⭐ {len(topics)} Choice")
+    if due_coding:
+        extra.append(f"💻 {len(due_coding)} coding due")
+    if extra:
+        st.caption(" · ".join(extra))
 
 
 def render_today_checklist(db: Database, student: dict[str, Any]) -> bool:

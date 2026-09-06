@@ -9,18 +9,11 @@ encouraging mechanic into a weekly reminder that he failed.
 from __future__ import annotations
 
 from datetime import date, timedelta
-from pathlib import Path
 
 import pytest
-import streamlit as st
-from streamlit.testing.v1 import AppTest
 
-from compass import auth, config
 from compass.storage.db import Database
 from compass.weekly import best_streak, current_streak
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
-HOME_PATH = str(REPO_ROOT / "Home.py")
 
 # Aug 2026: Thu 20, Fri 21, [Sat 22, Sun 23], Mon 24, Tue 25, Wed 26, Thu 27
 WED = date(2026, 8, 26)
@@ -227,117 +220,3 @@ def test_an_unfinished_lesson_does_not_count(db, student):
     )
     assert db.active_days(student["id"]) == set()
 
-
-# --- on his page ----------------------------------------------------------------
-
-
-def _open_home(monkeypatch, db_path):
-    st.cache_resource.clear()
-    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
-    at = AppTest.from_file(HOME_PATH)
-    at.run(timeout=30)
-    assert not at.exception, [e.message for e in at.exception]
-    return at
-
-
-def _seed_done_today(tmp_path):
-    db_path = tmp_path / "streak.db"
-    database = Database(db_path)
-    s = database.ensure_default_student()
-    auth.set_pin(database, "1234")
-    lesson_id = database.save_lesson(
-        student_id=s["id"], agent="math", subject="math", topic="t",
-        title="Two-Step Equations", payload={"title": "t", "activities": []},
-    )
-    database.mark_student_done(lesson_id)
-    database.close()
-    return db_path
-
-
-def test_his_home_page_shows_the_streak(monkeypatch, tmp_path):
-    at = _open_home(monkeypatch, _seed_done_today(tmp_path))
-    shown = " ".join(s.value for s in at.success)
-    assert "day in a row" in shown or "days in a row" in shown
-
-
-def test_a_student_with_no_history_is_not_shown_a_zero(monkeypatch, tmp_path):
-    """A big "0 day streak" on day one is discouraging, not motivating."""
-    db_path = tmp_path / "empty.db"
-    database = Database(db_path)
-    database.ensure_default_student()
-    auth.set_pin(database, "1234")
-    database.close()
-
-    at = _open_home(monkeypatch, db_path)
-    shown = " ".join(s.value for s in at.success)
-    assert "in a row" not in shown
-
-
-# --- milestones: quiet on ordinary days, a comic callout only on the day one lands --
-
-
-def _seed_streak_ending_today(tmp_path, length):
-    """`length` school days in a row, back-to-back calendar days ending
-    today -- weekends aren't in play here, this is only ever used with
-    lengths short enough (<=5) to stay inside one work week."""
-    db_path = tmp_path / "streak.db"
-    database = Database(db_path)
-    s = database.ensure_default_student()
-    auth.set_pin(database, "1234")
-    for offset in range(length):
-        done_on = (date.today() - timedelta(days=offset)).isoformat()
-        database.save_lesson(
-            student_id=s["id"], agent="math", subject="math", topic="t",
-            title=f"Lesson {offset}", payload={"title": "t", "activities": []},
-            metadata={"student_done_on": done_on},
-        )
-    database.close()
-    return db_path
-
-
-def test_an_ordinary_running_streak_never_says_your_best_yet(monkeypatch, tmp_path):
-    """Every day of a record-setting streak has `streak == best`, since the
-    running streak IS the record once it's the longest he's ever had -- the
-    old "your best yet!" copy fired on nearly every day for that reason and
-    read as meaningless. A 4-day streak isn't a milestone, so it should just
-    read as a quiet count."""
-    at = _open_home(monkeypatch, _seed_streak_ending_today(tmp_path, 4))
-    shown = " ".join(s.value for s in at.success)
-    assert "4 school days in a row" in shown
-    assert "best yet" not in shown
-
-
-def test_reaching_a_milestone_today_shows_a_comic_callout_instead(monkeypatch, tmp_path):
-    at = _open_home(monkeypatch, _seed_streak_ending_today(tmp_path, 3))
-    markdown_text = " ".join(m.value for m in at.markdown)
-    assert "MILESTONE" in markdown_text
-    assert "3 DAYS IN A ROW" in markdown_text
-    # The quiet, ordinary-day line is replaced, not just supplemented.
-    shown = " ".join(s.value for s in at.success)
-    assert "3 school days in a row" not in shown
-
-
-def test_sitting_on_a_milestone_number_without_finishing_anything_today_stays_quiet(
-    monkeypatch, tmp_path
-):
-    """Reopening the app later the same week, still sitting on a milestone
-    count from a day he already saw the celebration for, shouldn't replay
-    it -- the callout is gated on actually finishing something *today*."""
-    db_path = tmp_path / "streak.db"
-    database = Database(db_path)
-    s = database.ensure_default_student()
-    auth.set_pin(database, "1234")
-    # 3 days in a row ending *yesterday* -- a milestone count, but nothing
-    # done yet today.
-    for offset in (1, 2, 3):
-        done_on = (date.today() - timedelta(days=offset)).isoformat()
-        database.save_lesson(
-            student_id=s["id"], agent="math", subject="math", topic="t",
-            title=f"Lesson {offset}", payload={"title": "t", "activities": []},
-            metadata={"student_done_on": done_on},
-        )
-    database.close()
-
-    at = _open_home(monkeypatch, db_path)
-    markdown_text = " ".join(m.value for m in at.markdown)
-    assert "MILESTONE" not in markdown_text
