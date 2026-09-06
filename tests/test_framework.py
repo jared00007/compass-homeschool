@@ -262,16 +262,18 @@ def test_reasonable_secondary_credits_are_left_alone(db, student):
 
 def test_all_four_agents_may_search_for_a_video(db, student):
     """Every agent can search now. Science and History get the largest budget
-    (location grounding plus a per-activity video search each); Math and
-    English spend their whole budget on video, now per activity rather than
-    once per lesson, so they need more than the old single-video days too."""
+    (location grounding plus a per-activity video search each); Math and English
+    spend their budget on video only. English's is kept deliberately small (3) --
+    every search can make the model pause and resume the whole Opus request, and
+    that resume loop was stretching a single English lesson toward the SDK's
+    10-minute ceiling; a video is optional and an unfound one is dropped."""
     from compass.agents import all_agents
 
     for key, agent in all_agents().items():
         assert agent.spec.use_web_search is True, key
 
     assert get_agent("math").spec.max_web_searches == 6
-    assert get_agent("english").spec.max_web_searches == 6
+    assert get_agent("english").spec.max_web_searches == 3
     assert get_agent("science").spec.max_web_searches == 9
     assert get_agent("history").spec.max_web_searches == 9
 
