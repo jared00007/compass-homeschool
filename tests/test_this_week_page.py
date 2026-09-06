@@ -141,7 +141,7 @@ def _open_board_tab(monkeypatch, db_path):
     at.run(timeout=30)
     assert not at.exception, [e.message for e in at.exception]
     _board_tab(at)  # switch to the board view before its widgets exist
-    date_picker = [d for d in at.date_input if d.label == "Week to view"][0]
+    date_picker = [d for d in at.date_input if d.label == "Jump to any week"][0]
     date_picker.set_value(TARGET_MONDAY).run()
     assert not at.exception, [e.message for e in at.exception]
     return at, at
@@ -559,16 +559,13 @@ def test_reactivating_a_lesson_from_the_board_does_not_clobber_its_picked_day(
     assert "held_back" not in reloaded["metadata"]
 
 
-def test_next_week_button_jumps_the_board_to_next_weeks_monday(monkeypatch, tmp_path):
-    """The actual point of the button: right after a Friday planning
-    session generates next week's lessons, this is the one click that
-    shows them on the board, ready to move around -- not hand-picking
-    next week's date via the date_input every time."""
+def test_the_calendar_picker_jumps_the_board_to_any_week(monkeypatch, tmp_path):
+    """Jumping straight to a week is the date picker's job (the old This
+    week/Next week buttons were duplicative of it): set it to a Monday and
+    that week's lessons show."""
     db_path = tmp_path / "week.db"
     db = Database(db_path)
     student = db.ensure_default_student()
-    # Relative to *real* today, not TARGET_MONDAY -- the button itself
-    # computes weekly.default_plan_target() off the real current date.
     next_monday = weekly.default_plan_target()
     lesson_id = db.save_lesson(
         student_id=student["id"], agent="math", subject="math", topic="t",
@@ -579,43 +576,20 @@ def test_next_week_button_jumps_the_board_to_next_weeks_monday(monkeypatch, tmp_
     db.close()
 
     at, board_tab = _open_board_tab(monkeypatch, db_path)
-    # _open_board_tab already parks the picker on TARGET_MONDAY -- confirm
-    # next week's lesson isn't visible yet before the jump.
+    # Parked on TARGET_MONDAY -- next week's lesson isn't visible yet.
     assert not any("Next Week's Lesson" in e.label for e in board_tab.expander)
 
-    next_week_button = [b for b in board_tab.button if b.label == "Next week"][0]
-    next_week_button.click().run()
+    date_widget = [d for d in board_tab.date_input if d.key == "board_week_picker"][0]
+    date_widget.set_value(next_monday).run()
 
     board_tab = _board_tab(at)
     assert any("Next Week's Lesson" in e.label for e in board_tab.expander)
-    date_widget = [d for d in board_tab.date_input if d.key == "board_week_picker"][0]
-    assert weekly.week_start(date_widget.value) == weekly.default_plan_target()
     assert lesson_id  # sanity: the lesson really was created
 
 
-def test_this_week_button_returns_from_next_week(monkeypatch, tmp_path):
-    db_path = tmp_path / "week.db"
-    db = Database(db_path)
-    db.ensure_default_student()
-    db.close()
-
-    at, board_tab = _open_board_tab(monkeypatch, db_path)
-    next_week_button = [b for b in board_tab.button if b.label == "Next week"][0]
-    next_week_button.click().run()
-
-    board_tab = _board_tab(at)
-    this_week_button = [b for b in board_tab.button if b.label == "This week"][0]
-    this_week_button.click().run()
-
-    board_tab = _board_tab(at)
-    date_widget = [d for d in board_tab.date_input if d.key == "board_week_picker"][0]
-    assert weekly.week_start(date_widget.value) == weekly.week_start(date.today())
-
-
 def test_the_board_arrows_step_the_viewed_week_one_at_a_time(monkeypatch, tmp_path):
-    """Planning several weeks out is already supported, so a parent needs to
-    be able to page forward (and back) through those weeks on the board a week
-    at a time, not just jump to this-or-next."""
+    """One button per direction pages the board a week at a time (the calendar
+    picker handles jumping straight to any week)."""
     db_path = tmp_path / "week.db"
     db = Database(db_path)
     db.ensure_default_student()
@@ -625,13 +599,13 @@ def test_the_board_arrows_step_the_viewed_week_one_at_a_time(monkeypatch, tmp_pa
     # Two steps forward = two weeks past the currently-viewed Monday.
     for _ in range(2):
         board_tab = _board_tab(at)
-        [b for b in board_tab.button if b.label == "Next ▶"][0].click().run()
+        [b for b in board_tab.button if b.label == "Next week ▶"][0].click().run()
     board_tab = _board_tab(at)
     date_widget = [d for d in board_tab.date_input if d.key == "board_week_picker"][0]
     assert weekly.week_start(date_widget.value) == TARGET_MONDAY + timedelta(days=14)
 
     # One step back = one week earlier.
-    [b for b in board_tab.button if b.label == "◀ Prev"][0].click().run()
+    [b for b in board_tab.button if b.label == "◀ Prev week"][0].click().run()
     board_tab = _board_tab(at)
     date_widget = [d for d in board_tab.date_input if d.key == "board_week_picker"][0]
     assert weekly.week_start(date_widget.value) == TARGET_MONDAY + timedelta(days=7)
@@ -663,8 +637,8 @@ def test_view_full_lesson_works_for_a_story_on_next_weeks_board(monkeypatch, tmp
     db.close()
 
     at, board_tab = _open_board_tab(monkeypatch, db_path)
-    next_week_button = [b for b in board_tab.button if b.label == "Next week"][0]
-    next_week_button.click().run()
+    date_widget = [d for d in board_tab.date_input if d.key == "board_week_picker"][0]
+    date_widget.set_value(next_monday).run()
 
     board_tab = _board_tab(at)
     view_key = f"board_view_lesson_{lesson_id}"

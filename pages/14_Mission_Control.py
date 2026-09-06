@@ -475,38 +475,26 @@ if mc_view == "board":
     if "board_week_picker" not in st.session_state:
         st.session_state["board_week_picker"] = date.today()
 
-    # ◀/▶ step the viewed week by one at a time; This week / Next week jump
-    # straight to those two. Planning several weeks out is already supported
-    # (Plan next week takes any target week), so paging forward here is how a
-    # parent reviews and rearranges those further-out weeks without typing a
-    # date each time.
-    jump_columns = st.columns([1, 1, 1, 1, 4])
-    if jump_columns[0].button("◀ Prev", key="board_jump_prev"):
+    # One button per direction to page a week at a time; the date picker below
+    # is the calendar filter for jumping straight to any week (including this
+    # one). The old "This week"/"Next week" jump buttons were duplicative of
+    # that picker, so they're gone -- ◀/▶ plus the calendar covers it.
+    jump_columns = st.columns([1, 1, 6])
+    if jump_columns[0].button("◀ Prev week", key="board_jump_prev", width="stretch"):
         current = st.session_state.get("board_week_picker", date.today())
         st.session_state["board_week_picker"] = weekly.week_start(current) - timedelta(days=7)
         st.rerun()
-    if jump_columns[1].button("This week", key="board_jump_this_week"):
-        st.session_state["board_week_picker"] = date.today()
-        st.rerun()
-    if jump_columns[2].button("Next week", key="board_jump_next_week"):
-        # Same Monday "Plan next week" itself targets by default -- the
-        # actual point of this button: right after a Friday planning
-        # session generates next week's lessons, this is the one click
-        # that shows them laid out on the same board, ready to move
-        # around, instead of hand-picking next week's date here too.
-        st.session_state["board_week_picker"] = weekly.default_plan_target()
-        st.rerun()
-    if jump_columns[3].button("Next ▶", key="board_jump_next"):
+    if jump_columns[1].button("Next week ▶", key="board_jump_next", width="stretch"):
         current = st.session_state.get("board_week_picker", date.today())
         st.session_state["board_week_picker"] = weekly.week_start(current) + timedelta(days=7)
         st.rerun()
 
     board_week_start = weekly.week_start(
         st.date_input(
-            "Week to view",
+            "Jump to any week",
             key="board_week_picker",
-            help="Any day in the week you want to see -- snapped to that week's Monday. "
-            "The buttons above step a week at a time, or jump to this week or next.",
+            help="Pick any day and the board snaps to that week's Monday. "
+            "The ◀/▶ buttons step one week at a time.",
         )
     )
     board_days = weekly.week_dates(board_week_start, include_friday=True)
