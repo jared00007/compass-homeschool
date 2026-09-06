@@ -312,6 +312,57 @@ def test_profile_editor_is_parent_only(monkeypatch, tmp_path):
     assert not written, "the student-view branch must render nothing at all"
 
 
+def test_parent_controls_are_consolidated_under_one_grouping(monkeypatch, tmp_path):
+    """Reported: "all these parent only sidebar buttons can be consolidated
+    into ... grouping there." Profile edit, the view switch, and PIN management
+    all render inside a single "Parent settings" expander for a parent."""
+    import compass.ui as ui
+    from compass import auth
+
+    written: list[str] = []
+
+    class Recorder:
+        session_state: dict = {}
+
+        def __getattr__(self, name):
+            def record(*args, **kwargs):
+                for arg in (*args, *kwargs.values()):
+                    if isinstance(arg, str):
+                        written.append(arg)
+                # Widgets that gate a branch return falsy so the recorder never
+                # walks into a click handler (which would rerun / write state).
+                return False if name in ("button", "checkbox") else Recorder()
+            return record
+
+        def __getitem__(self, _index):
+            return Recorder()
+
+        def __iter__(self):
+            return iter([Recorder(), Recorder()])
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    from compass.storage.db import Database
+
+    db = Database(tmp_path / "test.db")
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")  # a PIN must exist for the parent-view branch
+
+    monkeypatch.setattr(ui, "st", Recorder())
+    monkeypatch.setattr(ui, "is_parent", lambda: True)
+    ui._mode_control(db, student)
+    db.close()
+
+    assert "🔓 Parent settings" in written  # the single grouping
+    assert any("Edit his profile" in w for w in written)
+    assert "Switch to student view" in written
+    assert any("Change or remove the PIN" in w for w in written)
+
+
 def test_student_view_never_hides_streamlits_own_view_more_toggle(monkeypatch):
     """Regression: this used to force-hide Streamlit's native "View N more"
     sidebar collapse toggle for the student unconditionally, on the theory

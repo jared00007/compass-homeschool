@@ -255,9 +255,8 @@ def _sidebar(db: Database, student: dict[str, Any]) -> None:
         st.divider()
         start, end = db.school_year_bounds()
         st.caption(f"School year {start} → {end}")
-        _profile_control(db, student)
         st.divider()
-        _mode_control(db)
+        _mode_control(db, student)
     _hide_folded_in_nav()
     _hide_parent_only_nav()
 
@@ -343,7 +342,7 @@ def _profile_control(db: Database, student: dict[str, Any]) -> None:
     st.page_link("pages/12_Student_Profile.py", label="Edit his profile", icon="✏️")
 
 
-def _mode_control(db: Database) -> None:
+def _mode_control(db: Database, student: dict[str, Any]) -> None:
     if not auth.pin_is_set(db):
         st.caption("**Parent view** — everything visible.")
         with st.expander("Set a parent PIN"):
@@ -368,14 +367,22 @@ def _mode_control(db: Database) -> None:
         return
 
     if is_parent():
-        st.caption("🔓 **Parent view**")
-        if st.button("Switch to student view", width="stretch"):
-            st.session_state["parent_unlocked"] = False
-            st.rerun()
-        with st.expander("Change or remove the PIN"):
+        # One grouping for every parent-only control instead of a loose stack
+        # of buttons in the sidebar (reported: "all these parent only sidebar
+        # buttons can be consolidated into ... grouping there"). Profile edit,
+        # the view switch, and PIN management all live under one expander. The
+        # PIN fields sit inline here rather than in their own nested expander --
+        # Streamlit can't nest expanders, and this is tidier anyway.
+        with st.expander("🔓 Parent settings", expanded=False):
+            _profile_control(db, student)
+            if st.button("Switch to student view", width="stretch"):
+                st.session_state["parent_unlocked"] = False
+                st.rerun()
+            st.divider()
+            st.caption("**Change or remove the PIN**")
             current = st.text_input("Current PIN", type="password", key="pin_cur")
             replacement = st.text_input("New PIN (blank to remove)", type="password", key="pin_rep")
-            if st.button("Save"):
+            if st.button("Save", key="pin_save"):
                 if not auth.verify(db, current):
                     st.error("That PIN is not right.")
                 elif replacement.strip() == "":
