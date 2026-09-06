@@ -473,10 +473,9 @@ def test_turning_it_in_blocks_further_edits(monkeypatch, tmp_path):
     assert not any("Turn it in for review" in (b.label or "") for b in at2.button)
 
 
-def test_the_writing_box_coaches_grammar_and_structure(monkeypatch, tmp_path):
+def test_the_writing_box_coaches_grammar(monkeypatch, tmp_path):
     """Coach-only self-help on his side: the mechanical basics he skips are
-    flagged as gentle hints (never a block), and a paragraph activity offers
-    a structure to lean on."""
+    flagged as gentle hints (never a block)."""
     db_path = tmp_path / "a.db"
     db = Database(db_path)
     student = db.ensure_default_student()
@@ -502,7 +501,6 @@ def test_the_writing_box_coaches_grammar_and_structure(monkeypatch, tmp_path):
     captions = "\n".join(c.value for c in at.caption)
     assert "Quick check before you turn it in" in captions
     assert any("capital letter" in c.value or "period" in c.value.lower() for c in at.caption)
-    assert any("Not sure how to structure it" in (e.label or "") for e in at.expander)
 
 
 def test_a_writing_checklist_gates_submission_until_every_part_is_ticked(monkeypatch, tmp_path):

@@ -1369,19 +1369,6 @@ def _render_activity_body(
                 if hint_index == 0:
                     st.caption("✍️ Quick check before you turn it in:")
                 st.caption(f"• {hint}")
-            _writing_reqs = activity.get("writing_requirements") or {}
-            wants_paragraph = (
-                activity.get("kind") == "writing"
-                or (_writing_reqs.get("min_words") or 0) >= 40
-                or (_writing_reqs.get("min_sentences") or 0) >= 3
-            )
-            if wants_paragraph:
-                with st.expander("🧱 Not sure how to structure it?"):
-                    st.markdown(
-                        "- **Start** with your main point in one clear sentence.\n"
-                        "- **Then** give two reasons or examples that back it up.\n"
-                        "- **End** by restating your point in a new way."
-                    )
 
             ai_review = _stored_ai_review(metadata, index)
             save_col, check_col, submit_col = st.columns(3)
