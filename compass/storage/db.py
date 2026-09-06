@@ -1526,6 +1526,7 @@ class Database:
         self._ensure_column("travel_entries", "active", "INTEGER NOT NULL DEFAULT 1")
         self._backfill_life_skill_content()
         self._backfill_life_skill_catalog()
+        self._backfill_life_skill_credits()
         self._backfill_coding_module_catalog()
         self._migrate_park_visits_to_travel_entries()
         self._migrate_interests_string_to_list()
@@ -2011,6 +2012,49 @@ class Database:
                 "UPDATE life_skills SET materials = ? "
                 "WHERE title = ? AND materials = ''",
                 (materials, title),
+            )
+
+    def _backfill_life_skill_credits(self) -> None:
+        """Log instructional time for any life skill that was marked complete
+        before completing one started crediting hours.
+
+        A completed life skill IS occupational-education coverage, but for a
+        long time marking one done only stamped `completed_on` -- so a family
+        that finished several still saw Occupational Education sitting at 0 on
+        the Compliance page (reported more than once). `complete_life_skill`
+        now logs the hours going forward, but only on the not-done -> done
+        transition, so skills finished earlier never got them. This credits
+        those, once: for every completed skill with no life-skills activity yet
+        logged against it, it logs a default block on the day it was completed.
+
+        Idempotent, and safe alongside the "Log time on a life skill" form:
+        both that form and `complete_life_skill` log with source='life_skills'
+        and the skill's own title, so a skill that already has real logged
+        hours is skipped here rather than double-counted."""
+        rows = self.conn.execute(
+            "SELECT * FROM life_skills "
+            "WHERE completed_on IS NOT NULL AND completed_on != ''"
+        ).fetchall()
+        for row in rows:
+            skill = dict(row)
+            already = self.conn.execute(
+                "SELECT 1 FROM activities "
+                "WHERE student_id = ? AND source = 'life_skills' AND title = ? LIMIT 1",
+                (skill["student_id"], skill["title"]),
+            ).fetchone()
+            if already:
+                continue
+            subject = skill.get("credit_subject") or "occupational_education"
+            self.log_activity(
+                student_id=skill["student_id"],
+                title=skill["title"],
+                tier=config.TIER_LIFE_SKILLS,
+                primary_subject=subject,
+                minutes=config.LIFE_SKILL_DEFAULT_MINUTES,
+                subject_credits={subject: config.LIFE_SKILL_DEFAULT_MINUTES},
+                occurred_on=skill["completed_on"],
+                description=f"Completed the '{skill['title']}' life skill.",
+                source="life_skills",
             )
 
     def _backfill_life_skill_catalog(self) -> None:

@@ -533,3 +533,52 @@ def test_the_log_time_form_path_does_not_double_count(db, student, skill):
     occ = [a for a in activities if a["credits"].get("occupational_education")]
     assert len(occ) == 1
     assert occ[0]["credits"]["occupational_education"] == 60
+
+
+# --- backfilling occupational-education hours for older completions ----------
+# Reported repeatedly: "occupational education 0 but we've done ~3 life skills."
+# complete_life_skill logs hours going forward, but skills marked done before
+# that never got them. _backfill_life_skill_credits (run in migrate) fixes it.
+
+
+def test_backfill_credits_a_skill_marked_done_before_hours_were_logged(db, student, skill):
+    # Simulate a pre-fix completion: done, but no activity ever logged.
+    db.set_life_skill_done(skill["id"], True)
+    assert not [a for a in db.list_activities(student["id"]) if a["credits"]]
+
+    db._backfill_life_skill_credits()
+
+    occ = [a for a in db.list_activities(student["id"]) if a["credits"].get("occupational_education")]
+    assert len(occ) == 1
+    assert occ[0]["credits"]["occupational_education"] == config.LIFE_SKILL_DEFAULT_MINUTES
+    # credited on the day it was actually completed, not today
+    assert occ[0]["occurred_on"] == db.list_life_skills(student["id"])[0]["completed_on"]
+
+
+def test_backfill_is_idempotent(db, student, skill):
+    db.set_life_skill_done(skill["id"], True)
+    db._backfill_life_skill_credits()
+    db._backfill_life_skill_credits()  # a second app open must not re-credit
+    occ = [a for a in db.list_activities(student["id"]) if a["credits"].get("occupational_education")]
+    assert len(occ) == 1
+
+
+def test_backfill_skips_a_skill_that_already_logged_real_hours(db, student, skill):
+    # The "Log time" form logged 60 real minutes and marked it done.
+    db.log_activity(
+        student_id=student["id"], title=skill["title"], tier=config.TIER_LIFE_SKILLS,
+        primary_subject="occupational_education", minutes=60,
+        subject_credits={"occupational_education": 60}, source="life_skills",
+    )
+    db.set_life_skill_done(skill["id"], True)
+
+    db._backfill_life_skill_credits()  # must not add a second, default block
+
+    occ = [a for a in db.list_activities(student["id"]) if a["credits"].get("occupational_education")]
+    assert len(occ) == 1
+    assert occ[0]["credits"]["occupational_education"] == 60
+
+
+def test_backfill_leaves_an_uncompleted_skill_alone(db, student, skill):
+    db._backfill_life_skill_credits()  # skill is not completed
+    assert not [a for a in db.list_activities(student["id"]) if a["credits"]]
