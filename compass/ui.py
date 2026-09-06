@@ -3726,21 +3726,12 @@ def render_travel_feedback_reply_form(
                 st.rerun()
 
 
-def render_today_summary(
-    db: Database, student: dict[str, Any], today: str, *, show_due: bool
-) -> None:
-    """The right-hand Home card: his progress numbers and -- on the Today view
-    -- what's due today.
-
-    Stacked vertically, "Due today" on top: what he owes today is the thing that
-    should grab him the moment he opens the app, rendered to pop, with his
-    progress numbers as a quieter strip underneath. Off the Today view (nothing
-    due to show) it's just the progress strip."""
-    if show_due:
-        render_daily_due(db, student, today)
-        st.divider()
+def render_progress_panel(db: Database, student: dict[str, Any], *, columns: int = 4) -> None:
+    """His progress numbers -- the "📈 Progress" heading and KPI tiles. Lives at
+    the bottom of the Level card on Home (moved out of the Due-today card so Due
+    today stands on its own)."""
     st.markdown("**📈 Progress**")
-    _render_learner_kpis(db, student, columns=4)
+    _render_learner_kpis(db, student, columns=columns)
 
 
 def _render_learner_kpis(db: Database, student: dict[str, Any], *, columns: int = 4) -> None:
@@ -4014,6 +4005,7 @@ def render_story_move_control(
     schedule: Callable[[str | None], None],
     validate_schedule: Callable[[str], str | None] | None = None,
     show_backlog_toggle: bool = True,
+    delete: Callable[[], None] | None = None,
 ) -> None:
     """`key` must be unique per story (the caller's own id namespace, e.g.
     `f"step_{step['id']}"`). `set_active`/`schedule` are the two writes this
@@ -4025,6 +4017,12 @@ def render_story_move_control(
     the popover stays open) or `None` to let it through. Only lessons need
     this (two lessons from the same agent can't share a day); every other
     story type leaves it unset.
+
+    `delete`, if given, adds a "🗑️ Delete" section at the bottom, gated behind a
+    confirm checkbox because it's irreversible -- `delete()` is the caller's own
+    hard-delete write (e.g. `lambda: db.delete_lesson(lid)`). Only lessons pass
+    it today (an accidental double-generate a parent wants gone for good);
+    catalog-backed stories like life skills are hidden/parked, never deleted.
 
     `show_backlog_toggle` stays on its default (on) for every caller today.
     Backlogging and un-backlogging are each their own one-way button --
@@ -4104,6 +4102,21 @@ def render_story_move_control(
                 if st.button("↩️ Take out of Backlog", key=f"move_{key}_take_out_of_backlog"):
                     set_active(True)
                     st.rerun()
+
+        if delete is not None:
+            st.divider()
+            st.caption("🗑️ **Delete** — once it's gone, it's gone for good.")
+            confirm = st.checkbox(
+                "Yes, delete this for good", key=f"move_{key}_delete_confirm"
+            )
+            if st.button(
+                "🗑️ Delete",
+                key=f"move_{key}_delete",
+                disabled=not confirm,
+                type="primary",
+            ):
+                delete()
+                st.rerun()
 
 
 # Where a story's own full content already renders elsewhere in the app --
@@ -4491,6 +4504,7 @@ def render_board_card(
                             ),
                             board_week_start,
                         ),
+                        delete=lambda lid=item["id"]: db.delete_lesson(lid),
                     )
                 _render_board_deep_link(kind, item, db=db)
 

@@ -21,11 +21,12 @@ from compass.ui import (
     render_board_days,
     render_brain_break,
     render_card_heading,
+    render_daily_due,
     render_declaration_banner,
     render_first_day_celebration,
+    render_progress_panel,
     render_report_card,
     render_xp_reward_editor,
-    render_today_summary,
     render_today_checklist,
     render_travel_passport,
     render_xp_level,
@@ -124,25 +125,30 @@ if not is_parent():
     # morning to morning.
     st.caption(f"{daily.greeting_of_the_day()} Work down the list, or jump around — up to you.")
 
-    # Two progress cards side by side: his level bar and his streak, both
-    # "how far have I come" at a glance. (The fun fact moved into the Brain
-    # Break card below, alongside the riddle and word of the day.) Bordered
-    # containers opt both into the same balance CSS (theme.py) that equalizes
+    # Two cards side by side. On the Today view: "Due today" on the LEFT (what he
+    # owes today, the first thing to grab him), and his Level card on the RIGHT
+    # with the progress KPIs at the bottom of it. Off the Today view there's
+    # nothing due to show, so the Level+progress card stands alone, full width.
+    # Bordered containers opt into the same balance CSS (theme.py) that equalizes
     # a row of `st.container(border=True)` cards.
-    header_columns = st.columns(2)
-    with header_columns[0]:
+    today_iso = date.today().isoformat()
+
+    def _render_level_and_progress() -> None:
+        render_xp_level(db, student)
+        st.divider()
+        render_progress_panel(db, student)
+
+    if active_view == "today":
+        header_columns = st.columns(2)
+        with header_columns[0]:
+            with st.container(border=True, key="landon_card_today"):
+                render_daily_due(db, student, today_iso)
+        with header_columns[1]:
+            with st.container(border=True, key="landon_card_xp"):
+                _render_level_and_progress()
+    else:
         with st.container(border=True, key="landon_card_xp"):
-            render_xp_level(db, student)
-    with header_columns[1]:
-        with st.container(border=True, key="landon_card_today"):
-            # Streak banner across the top, then a two-panel body -- progress
-            # KPIs on the left, "Due today" on the right -- so the card fills its
-            # height beside the tall Level card. The due-today half only shows on
-            # the Today view, where "what do I owe today" belongs.
-            render_today_summary(
-                db, student, date.today().isoformat(),
-                show_due=(active_view == "today"),
-            )
+            _render_level_and_progress()
 
     st.divider()
 
