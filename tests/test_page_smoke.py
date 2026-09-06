@@ -123,34 +123,6 @@ def test_every_page_file_is_covered():
     assert on_disk == covered
 
 
-def test_home_actually_renders_the_skipped_planning_nudge(monkeypatch, tmp_path):
-    """Not a crash check like the rest of this file -- weekly.planning_nudge
-    itself is unit-tested in test_weekly.py against an injected `today`, but
-    nothing there confirms Home.py actually calls it (with no `today`
-    override, so it falls back to date.today()) and renders the result.
-    Pins "today" to a fixed Sunday by patching weekly's own `date` rather
-    than relying on whatever real day the test happens to run on."""
-    from datetime import date as real_date
-
-    from compass import weekly
-
-    class _FixedToday(real_date):
-        @classmethod
-        def today(cls):
-            return real_date(2026, 8, 23)  # a Sunday
-
-    monkeypatch.setattr(weekly, "date", _FixedToday)
-
-    db_path = tmp_path / "smoke.db"
-    _seed(db_path, with_pin=False)
-    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
-
-    at = _load(HOME_PATH, as_parent=True)
-
-    assert not at.exception
-    assert any("hasn't been planned yet" in i.value for i in at.info)
-
-
 @pytest.mark.parametrize("as_parent", [True, False])
 def test_home_no_longer_shows_the_days_until_school_countdown(monkeypatch, tmp_path, as_parent):
     """Removed on request -- "364 days until 1st day of school" read as

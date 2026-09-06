@@ -509,11 +509,6 @@ st.caption(
 )
 render_declaration_banner(db, student)
 
-nudge = weekly.planning_nudge(db, student["id"])
-if nudge is not None:
-    severity, message = nudge
-    getattr(st, severity)(message)
-
 report = build_report(db, student["id"])
 pace = report.pace()
 
