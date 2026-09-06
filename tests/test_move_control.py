@@ -91,3 +91,67 @@ def test_an_active_unscheduled_story_shows_the_icon_alone(monkeypatch):
 def test_a_backlogged_unscheduled_story_also_shows_backlog(monkeypatch):
     label = _label_for(monkeypatch, active=False, scheduled_for=None)
     assert label == "🗄️ Backlog"
+
+
+# --- the optional Delete section (lessons only) ------------------------------
+# Reported: "i need the ability to DELETE a single generated [lesson] in its
+# edit card ... a simple delete, and then warning, once gone its gone for good."
+
+
+class _DeleteSt(_FakeSt):
+    """Drives the delete branch: `confirm` is what the confirm checkbox
+    reports, `click` is what the Delete button reports. Records every button
+    label + disabled flag so a test can assert the gate."""
+
+    def __init__(self, *, confirm: bool = False, click: bool = False) -> None:
+        super().__init__()
+        self._confirm = confirm
+        self._click = click
+        self.buttons: list[tuple[str, bool]] = []
+
+    def checkbox(self, label, *args, **kwargs):
+        return self._confirm if "delete" in label.lower() else False
+
+    def button(self, label, *args, **kwargs):
+        self.buttons.append((label, bool(kwargs.get("disabled"))))
+        return self._click if label == "🗑️ Delete" else False
+
+
+def _run_with_delete(monkeypatch, fake, deleted):
+    monkeypatch.setattr(ui, "st", fake)
+    ui.render_story_move_control(
+        key="x",
+        active=True,
+        scheduled_for=None,
+        set_active=lambda a: None,
+        schedule=lambda s: None,
+        delete=lambda: deleted.append(True),
+    )
+
+
+def test_no_delete_button_when_delete_is_not_wired(monkeypatch):
+    fake = _DeleteSt()
+    monkeypatch.setattr(ui, "st", fake)
+    ui.render_story_move_control(
+        key="x", active=True, scheduled_for=None,
+        set_active=lambda a: None, schedule=lambda s: None,
+    )
+    assert not any(label == "🗑️ Delete" for label, _ in fake.buttons)
+
+
+def test_delete_button_is_disabled_until_confirmed(monkeypatch):
+    deleted: list[bool] = []
+    fake = _DeleteSt(confirm=False, click=False)
+    _run_with_delete(monkeypatch, fake, deleted)
+    delete_btns = [(label, disabled) for label, disabled in fake.buttons if label == "🗑️ Delete"]
+    assert delete_btns == [("🗑️ Delete", True)]  # present but disabled
+    assert deleted == []  # nothing deleted
+
+
+def test_confirming_and_clicking_delete_fires_the_callback(monkeypatch):
+    deleted: list[bool] = []
+    fake = _DeleteSt(confirm=True, click=True)
+    _run_with_delete(monkeypatch, fake, deleted)
+    delete_btns = [(label, disabled) for label, disabled in fake.buttons if label == "🗑️ Delete"]
+    assert delete_btns == [("🗑️ Delete", False)]  # enabled once confirmed
+    assert deleted == [True]  # callback fired
