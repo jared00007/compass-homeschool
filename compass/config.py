@@ -182,9 +182,13 @@ DEFAULT_SETTINGS: dict[str, str] = {
     # above: an 80% still passes and feels good, but Math treats "mastered"
     # (which unlocks the next skill) as a higher bar than "passed," and nudges
     # a retry in between rather than silently calling 80% good enough to move
-    # on. Math-only: Science/English/History have no mastery gate to hook
-    # into (see GUIDE.md), so this setting has no effect there.
-    "math_mastery_percent": "100",
+    # on. 85, not 100: mastery-based learning uses a "solidly got it" bar (~85-90),
+    # not perfection -- a 100 default left every not-flawless skill stuck at 0%,
+    # which then dragged the grade (reported: "not all lessons will be @100% ...
+    # could bring it down to 85?"). Adjustable per family on Student Profile.
+    # Math-only: Science/English/History have no mastery gate to hook into (see
+    # GUIDE.md), so this setting has no effect there.
+    "math_mastery_percent": "85",
     # Anti-rushing: the fewest seconds he must spend before the quiz will accept
     # a submission, counted per question. Quizzes are always five questions, so
     # 48s each sets a 4-minute floor on the whole quiz -- reported directly, he

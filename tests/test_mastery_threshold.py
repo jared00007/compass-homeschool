@@ -1,9 +1,9 @@
 """Passing a Math quiz and fully mastering the skill are two different
 bars now, not one: quiz_pass_percent (default 80) is real, encouraging
-feedback on its own, while math_mastery_percent (default 100) is the
+feedback on its own, while math_mastery_percent (default 85) is the
 stricter bar that actually auto-records mastery and unlocks the next
-skill. A score in between should still feel like a pass, just with a
-nudge to go again for full mastery -- it should NOT record mastery.
+skill. A score in between (an 80% pass) should still feel like a pass,
+just with a nudge to go again for mastery -- it should NOT record mastery.
 
 Drives the real quiz form end-to-end (five questions, so 80% is an exact,
 reachable score) rather than asserting on compass.agents.quiz.grade
@@ -125,7 +125,7 @@ def test_a_passing_but_imperfect_score_still_shows_encouraging_feedback(monkeypa
 
     text = " ".join(s.value for s in at.success) + " ".join(c.value for c in at.caption)
     assert "nice work, that's a pass" in text
-    assert "Mastery on this skill needs 100%" in text
+    assert "Mastery on this skill needs 85%" in text
     assert "try again" in text.lower()
 
 

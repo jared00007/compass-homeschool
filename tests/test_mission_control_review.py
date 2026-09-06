@@ -771,7 +771,7 @@ def test_approving_a_below_bar_math_quiz_does_not_record_mastery(monkeypatch, tm
         payload={"title": "Coordinate Plane", "activities": []},
         metadata={"skill_id": "coord-plane"},
     )
-    # 80% quiz -- passes, but under the default 100% mastery bar. Reconcile
+    # 80% quiz -- passes, but under the default 85% mastery bar. Reconcile
     # leaves it unmastered (it was never mastered).
     db.record_quiz_result(lid, student["id"], correct=4, total=5, passed=True)
     db.submit_lesson(lid)
