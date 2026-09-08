@@ -396,6 +396,42 @@ def test_a_bounced_writing_activity_with_no_feedback_still_gets_a_warning(
     assert any(t.label == "Your response" for t in at.text_area)
 
 
+def test_a_bounced_piece_needs_a_reply_before_it_can_go_back_in(monkeypatch, tmp_path):
+    """The redo reply gate: a piece a parent sent back can't be resubmitted on a
+    silent click -- he has to say, in a few words, what he's changing, and that
+    reply is stored for the parent to see (reported: "require him to do more than
+    just i read it")."""
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Essay", payload=_writing_lesson_payload(),
+    )
+    db.save_writing_response(lesson_id, 0, "A response comfortably past any word minimum.")
+    db.set_writing_review(lesson_id, 0, config.WRITING_NEEDS_REVISION, "Add a quote from the text.")
+    db.send_lesson_back(lesson_id)
+    auth.set_pin(db, "1234")
+    db.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    submit = [b for b in at.button if b.label == "Submit for review"][0]
+    assert submit.proto.disabled is True, "locked until he replies to the send-back"
+
+    reply = [t for t in at.text_input if "what are you changing" in (t.label or "").lower()][0]
+    reply.set_value("I'm adding a quote from chapter two to back up my point.").run()
+    submit = [b for b in at.button if b.label == "Submit for review"][0]
+    assert submit.proto.disabled is False, "unlocked once he's said what he'll change"
+    submit.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db2 = Database(db_path)
+    review = db2.get_lesson(lesson_id)["metadata"]["writing_review"]["0"]
+    db2.close()
+    assert review["status"] == config.WRITING_SUBMITTED
+    assert "chapter two" in review["revision_reply"]
+
+
 def test_turn_it_in_is_disabled_until_ready(monkeypatch, tmp_path):
     db_path = tmp_path / "a.db"
     db = Database(db_path)

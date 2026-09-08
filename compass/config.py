@@ -425,6 +425,14 @@ LIFE_SKILL_STATUSES = (
     LIFE_SKILL_NEEDS_REVISION, LIFE_SKILL_APPROVED,
 )
 
+# The same "a click alone doesn't prove he read it" gate the Travel Journal
+# uses (TRAVEL_JOURNAL_FEEDBACK_REPLY_MIN_WORDS), applied to a parent's notes on
+# his writing: clearing an approval note, or turning a sent-back piece back in,
+# both take a short reply in his own words rather than a one-tap "I read this".
+# Downgrade, don't block -- the caller nudges when it's too short, same as the
+# story word count does. Reported: "require him to do more than just i read it."
+WRITING_FEEDBACK_REPLY_MIN_WORDS = 4
+
 
 # --- Lesson difficulty --------------------------------------------------------
 # Family-wide by default (the `lesson_difficulty` setting above), with a

@@ -3195,6 +3195,14 @@ class Database:
             if status == config.WRITING_APPROVED and approval_note:
                 entry["approval_feedback"] = approval_note
                 entry["approval_read_at"] = None
+            # His reply to a send-back rides through to SUBMITTED so a parent
+            # sees, next to the reworked piece, what he said he'd change. A
+            # fresh bounce (NEEDS_REVISION) or a reopen (DRAFT) clears it --
+            # that reply was about the previous note.
+            if status == config.WRITING_SUBMITTED:
+                prior_reply = (reviews.get(str(activity_index)) or {}).get("revision_reply")
+                if prior_reply:
+                    entry["revision_reply"] = prior_reply
             reviews[str(activity_index)] = entry
             metadata["writing_review"] = reviews
             self.conn.execute(
@@ -3202,13 +3210,17 @@ class Database:
             )
             self.conn.commit()
 
-    def mark_writing_feedback_read(self, lesson_id: int, activity_index: int) -> None:
-        """Stamp the moment he acknowledged an approval note (see the
-        `approval_note` half of `set_writing_review`). Unlike the travel
-        read-receipt this asks for no written reply -- the note rides on an
-        already-approved piece, so a bare "I read this" is enough to clear
-        the gate; the point is only that he can't scroll past praise or a
-        "next time" without seeing it. No-op if there's nothing to mark."""
+    def mark_writing_feedback_read(
+        self, lesson_id: int, activity_index: int, reply: str
+    ) -> None:
+        """Clear an approval note -- but on the same terms the travel
+        read-receipt uses, not a bare tap. `reply` is his own words on
+        something specific in the note (min-word count enforced by the caller,
+        the "downgrade, don't block" pattern from
+        config.WRITING_FEEDBACK_REPLY_MIN_WORDS), stored as `approval_reply`
+        next to the read stamp so a parent has something real to read rather
+        than a timestamp (reported: "require him to do more than just i read
+        it"). No-op if there's nothing to acknowledge."""
         with self._lock:
             lesson = self.get_lesson(lesson_id)
             metadata = lesson["metadata"] if lesson else {}
@@ -3217,6 +3229,30 @@ class Database:
             if not entry or not entry.get("approval_feedback"):
                 return
             entry["approval_read_at"] = datetime.now().isoformat(timespec="seconds")
+            entry["approval_reply"] = reply
+            reviews[str(activity_index)] = entry
+            metadata["writing_review"] = reviews
+            self.conn.execute(
+                "UPDATE lessons SET metadata = ? WHERE id = ?", (json.dumps(metadata), lesson_id)
+            )
+            self.conn.commit()
+
+    def set_writing_revision_reply(
+        self, lesson_id: int, activity_index: int, reply: str
+    ) -> None:
+        """His reply to a send-back, stored as `revision_reply` on the piece so
+        turning a redo back in takes a few real words about what he's changing,
+        not a silent resubmit (the same gate approval notes carry). Kept when he
+        resubmits so a parent sees it beside the reworked piece; cleared by a
+        fresh bounce. No-op if the piece isn't sent back."""
+        with self._lock:
+            lesson = self.get_lesson(lesson_id)
+            metadata = lesson["metadata"] if lesson else {}
+            reviews = metadata.get("writing_review") or {}
+            entry = reviews.get(str(activity_index))
+            if not entry or entry.get("status") != config.WRITING_NEEDS_REVISION:
+                return
+            entry["revision_reply"] = reply
             reviews[str(activity_index)] = entry
             metadata["writing_review"] = reviews
             self.conn.execute(

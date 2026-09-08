@@ -28,6 +28,7 @@ from compass.ui import (
     render_xp_reward_editor,
     render_today_checklist,
     render_travel_passport,
+    render_writing_feedback_reply_form,
     render_xp_level,
 )
 
@@ -394,15 +395,12 @@ if not is_parent():
                     st.markdown(
                         f"**{md(note['activity_title'])}** — from *{md(note['lesson_title'])}*"
                     )
-                    st.info(md(note["note"]))
-                    if st.button(
-                        "👍 Got it — I read this",
-                        key=f"home_ack_writing_{note['lesson_id']}_{note['activity_index']}",
-                    ):
-                        db.mark_writing_feedback_read(
-                            note["lesson_id"], note["activity_index"]
-                        )
-                        st.rerun()
+                    # A short reply in his own words clears it, not a one-tap --
+                    # same gate as his subject page and the Travel Journal.
+                    render_writing_feedback_reply_form(
+                        db, note["lesson_id"], note["activity_index"], note["note"],
+                        key_prefix="home",
+                    )
 
         # Words to Review, Reading, and Life Skills used to be a three-tile row
         # here; they're now folded into the header card beside the streak/KPIs

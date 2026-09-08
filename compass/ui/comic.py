@@ -415,18 +415,16 @@ def _render_activity_body(
                 approval_note = review.get("approval_feedback")
                 if approval_note and not review.get("approval_read_at"):
                     # Approved, so it counts -- but they left you something to
-                    # read. Same deal as travel-journal feedback: you have to
-                    # tick that you saw it, so a note isn't lost just because
-                    # the piece already passed.
-                    _ui.st.info(f"💬 A note from your parent: {md(approval_note)}")
-                    if _ui.st.button(
-                        "👍 Got it — I read this",
-                        key=f"ack_writing_{lesson_id}_{index}",
-                    ):
-                        db.mark_writing_feedback_read(lesson_id, index)
-                        _ui.st.rerun()
+                    # read. Same deal as travel-journal feedback: clearing it
+                    # takes a real reply in your own words, not a one-tap, so a
+                    # note isn't scrolled past just because the piece passed.
+                    _ui.render_writing_feedback_reply_form(
+                        db, lesson_id, index, approval_note, key_prefix="lesson"
+                    )
                 elif approval_note:
                     _ui.st.caption(f"💬 Note from your parent: {md(approval_note)}")
+                    if review.get("approval_reply"):
+                        _ui.st.caption(f"✅ You replied: {md(review['approval_reply'])}")
                 _ui.st.write(md(saved))
                 return
 
@@ -544,6 +542,29 @@ def _render_activity_body(
                     _ui.st.caption("✍️ Quick check before you turn it in:")
                 _ui.st.caption(f"• {hint}")
 
+            # Redo gate: a piece the parent sent back can't go straight back in
+            # on a silent resubmit -- he has to say, in a few words, what he's
+            # changing. Same "more than a one-tap" bar the approval note carries,
+            # and the reply rides along to the parent next to the reworked piece.
+            revision_reply = ""
+            revision_reply_ok = True
+            if status == config.WRITING_NEEDS_REVISION:
+                revision_reply = _ui.st.text_input(
+                    "Before you turn it back in — what are you changing? (in your own words)",
+                    value=review.get("revision_reply", ""),
+                    key=f"revision_reply_{lesson_id}_{index}",
+                    placeholder="e.g. I'm adding a quote to back up my point",
+                )
+                revision_reply_ok = (
+                    len(revision_reply.split()) >= config.WRITING_FEEDBACK_REPLY_MIN_WORDS
+                )
+                if not revision_reply_ok:
+                    _ui.st.caption(
+                        f"Say a little about what you'll fix — at least "
+                        f"{config.WRITING_FEEDBACK_REPLY_MIN_WORDS} words — before you "
+                        "turn it back in."
+                    )
+
             ai_review = _stored_ai_review(metadata, index)
             save_col, check_col, submit_col = _ui.st.columns(3)
             if save_col.button("Save draft", key=f"save_writing_{lesson_id}_{index}"):
@@ -572,7 +593,7 @@ def _render_activity_body(
                 "Submit for review",
                 key=f"submit_writing_{lesson_id}_{index}",
                 type="primary",
-                disabled=not checklist_ready,
+                disabled=not (checklist_ready and revision_reply_ok),
             )
             if not checklist_ready:
                 _ui.st.caption(
@@ -580,6 +601,11 @@ def _render_activity_body(
                     "you turn this in."
                 )
             if submit_clicked:
+                # Record his reply to the send-back first, while the piece is
+                # still 'needs_revision' (the setter's own guard) -- then the
+                # resubmit below carries it forward for the parent to see.
+                if status == config.WRITING_NEEDS_REVISION and revision_reply.strip():
+                    db.set_writing_revision_reply(lesson_id, index, revision_reply.strip())
                 requirements = activity.get("writing_requirements")
                 # A math answer is a number or an expression, not prose --
                 # "42" is a complete answer, not a zero-sentence failure. The

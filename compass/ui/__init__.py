@@ -2043,6 +2043,40 @@ def render_travel_feedback_reply_form(
                 st.rerun()
 
 
+def render_writing_feedback_reply_form(
+    db: Database,
+    lesson_id: int,
+    activity_index: int,
+    note: str,
+    *,
+    key_prefix: str,
+) -> None:
+    """The acknowledgement gate on a parent's note about an *approved* piece of
+    writing -- the same reply-in-your-own-words the Travel Journal asks for,
+    replacing the old one-tap "I read this" (reported: "require him to do more
+    than just i read it lol"). Shared by his subject-page lesson view and Home's
+    "Notes on your writing" card, so `key_prefix` keeps their widgets apart. His
+    reply is stored next to the read stamp for a parent to see."""
+    with st.form(f"{key_prefix}_writing_reply_{lesson_id}_{activity_index}"):
+        st.caption(f"💬 Your parent's note: {md(note)}")
+        reply = st.text_input(
+            "What's one thing you'll take from this? (in your own words)",
+            key=f"{key_prefix}_writing_reply_input_{lesson_id}_{activity_index}",
+            placeholder="e.g. Next time I'll back up my point with an example",
+        )
+        if st.form_submit_button("✅ I read this"):
+            word_count = len(reply.split())
+            if word_count < config.WRITING_FEEDBACK_REPLY_MIN_WORDS:
+                st.warning(
+                    f"Say a little more — needs at least "
+                    f"{config.WRITING_FEEDBACK_REPLY_MIN_WORDS} words about something "
+                    f"specific ({word_count} so far)."
+                )
+            else:
+                db.mark_writing_feedback_read(lesson_id, activity_index, reply.strip())
+                st.rerun()
+
+
 def render_progress_panel(db: Database, student: dict[str, Any], *, columns: int = 4) -> None:
     """His progress numbers -- the "📈 Progress" heading and KPI tiles. Lives at
     the bottom of the Level card on Home (moved out of the Due-today card so Due

@@ -301,18 +301,20 @@ def test_approving_without_a_note_leaves_no_ack_gate(db, student):
     assert "approval_feedback" not in review
 
 
-def test_marking_a_note_read_stamps_the_time(db, student):
+def test_marking_a_note_read_stamps_the_time_and_stores_his_reply(db, student):
     lesson_id = _lesson(db, student["id"])
     db.set_writing_review(lesson_id, 0, config.WRITING_APPROVED, approval_note="Read this.")
-    db.mark_writing_feedback_read(lesson_id, 0)
+    db.mark_writing_feedback_read(lesson_id, 0, "I'll add an example next time.")
     review = db.get_lesson(lesson_id)["metadata"]["writing_review"]["0"]
     assert review["approval_read_at"] is not None
+    # A reply, not a bare timestamp -- the parent has something real to read.
+    assert review["approval_reply"] == "I'll add an example next time."
 
 
 def test_marking_read_with_nothing_to_read_is_a_noop(db, student):
     lesson_id = _lesson(db, student["id"])
     db.set_writing_review(lesson_id, 0, config.WRITING_APPROVED)  # no note
-    db.mark_writing_feedback_read(lesson_id, 0)  # must not raise or invent a stamp
+    db.mark_writing_feedback_read(lesson_id, 0, "anything")  # must not raise or invent a stamp
     review = db.get_lesson(lesson_id)["metadata"]["writing_review"]["0"]
     assert review.get("approval_read_at") is None
 
@@ -327,7 +329,7 @@ def test_unread_writing_feedback_lists_only_unacknowledged_notes(db, student):
     assert unread[0]["activity_index"] == 0
     assert unread[0]["note"] == "Please read."
 
-    db.mark_writing_feedback_read(lesson_id, 0)
+    db.mark_writing_feedback_read(lesson_id, 0, "Got it, tighten my intro.")
     assert db.unread_writing_feedback(student["id"]) == []
 
 
@@ -335,3 +337,75 @@ def test_a_plain_approval_never_shows_up_as_unread(db, student):
     lesson_id = _lesson(db, student["id"])
     db.set_writing_review(lesson_id, 0, config.WRITING_APPROVED)  # no note
     assert db.unread_writing_feedback(student["id"]) == []
+
+
+# --- the redo reply gate ----------------------------------------------------------
+
+
+def test_a_revision_reply_survives_resubmission(db, student):
+    """His reply to a send-back rides through to the parent next to the reworked
+    piece -- it isn't wiped when he turns it back in."""
+    lesson_id = _lesson(db, student["id"])
+    db.set_writing_review(lesson_id, 0, config.WRITING_NEEDS_REVISION, "Add a quote.")
+    db.set_writing_revision_reply(lesson_id, 0, "I'll add a quote from chapter two.")
+    db.set_writing_review(lesson_id, 0, config.WRITING_SUBMITTED)  # he resubmits
+    review = db.get_lesson(lesson_id)["metadata"]["writing_review"]["0"]
+    assert review["revision_reply"] == "I'll add a quote from chapter two."
+
+
+def test_a_fresh_bounce_clears_the_old_revision_reply(db, student):
+    """A second send-back is about a new note, so his old reply doesn't linger
+    against it."""
+    lesson_id = _lesson(db, student["id"])
+    db.set_writing_review(lesson_id, 0, config.WRITING_NEEDS_REVISION, "Add a quote.")
+    db.set_writing_revision_reply(lesson_id, 0, "I'll add a quote from chapter two.")
+    db.set_writing_review(lesson_id, 0, config.WRITING_SUBMITTED)
+    db.set_writing_review(lesson_id, 0, config.WRITING_NEEDS_REVISION, "Now strengthen the close.")
+    review = db.get_lesson(lesson_id)["metadata"]["writing_review"]["0"]
+    assert "revision_reply" not in review
+
+
+def test_a_revision_reply_is_a_noop_unless_the_piece_is_sent_back(db, student):
+    lesson_id = _lesson(db, student["id"])
+    db.set_writing_review(lesson_id, 0, config.WRITING_SUBMITTED)
+    db.set_writing_revision_reply(lesson_id, 0, "trying to reply with nothing to reply to")
+    review = db.get_lesson(lesson_id)["metadata"]["writing_review"]["0"]
+    assert "revision_reply" not in review
+
+
+# --- the gates, end to end on his English page -----------------------------------
+
+
+def test_an_approval_note_takes_a_typed_reply_not_a_one_tap(monkeypatch, tmp_path):
+    """Reported: "require him to do more than just i read it lol." The approved
+    piece's note is cleared by a real reply in his own words, and the old
+    one-tap button is gone."""
+    db_path, lesson_id = _seed_page_db(tmp_path)
+    database = Database(db_path)
+    database.set_writing_review(
+        lesson_id, 0, config.WRITING_APPROVED, approval_note="Tighten your intro."
+    )
+    database.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    assert not any("Got it" in (b.label or "") for b in at.button)
+
+    reply = [t for t in at.text_input if "one thing" in (t.label or "").lower()][0]
+    reply.set_value("ok").run()  # too short -- doesn't clear it
+    [b for b in at.button if b.label == "✅ I read this"][0].click().run()
+    review = _current_review(db_path, lesson_id)
+    assert review.get("approval_read_at") is None
+
+    reply = [t for t in at.text_input if "one thing" in (t.label or "").lower()][0]
+    reply.set_value("I'll open with my strongest point instead.").run()
+    [b for b in at.button if b.label == "✅ I read this"][0].click().run()
+    review = _current_review(db_path, lesson_id)
+    assert review["approval_read_at"] is not None
+    assert "strongest point" in review["approval_reply"]
+
+
+def _current_review(db_path, lesson_id, index=0):
+    database = Database(db_path)
+    review = database.get_lesson(lesson_id)["metadata"]["writing_review"][str(index)]
+    database.close()
+    return review

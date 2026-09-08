@@ -247,6 +247,8 @@ def _render_writing_review_controls(
             _ui.st.success(f"✅ Approved with a note for him: {md(approval_note)}")
             if review.get("approval_read_at"):
                 _ui.st.caption(f"👀 He read it — {review['approval_read_at']}")
+                if review.get("approval_reply"):
+                    _ui.st.caption(f"💬 He said: {md(review['approval_reply'])}")
             else:
                 _ui.st.caption("⏳ Waiting on him to read it and reply that he saw it.")
         else:
@@ -291,6 +293,11 @@ def _render_writing_review_controls(
             for note in prior_notes:
                 _ui.st.markdown(f"- {md(note)}")
             _ui.st.caption("His reworked response is what's shown above.")
+            if review.get("revision_reply"):
+                # What he said he'd change when he turned it back in -- so you
+                # can check the rework against his own stated plan, not just the
+                # note you gave.
+                _ui.st.info(f"💬 He said he'd change: {md(review['revision_reply'])}")
         _ui.st.info("⏳ He's submitted this — awaiting your review.")
         review_key = f"{key_prefix}_writing_review_{lesson['id']}_{index}"
         with _ui.st.form(review_key):
