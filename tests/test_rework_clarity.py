@@ -131,7 +131,10 @@ def _open_student(monkeypatch, db_path):
 def test_the_banner_names_the_specific_piece_that_needs_work(monkeypatch, tmp_path):
     at = _open_student(monkeypatch, _seed_sent_back(tmp_path))
     banner = " ".join(w.value for w in at.warning)
-    assert "These pieces need another look" in banner
+    assert "another look" in banner
+    # Named by its activity number so he knows exactly which one -- index 1 is
+    # the second activity.
+    assert "Activity #2" in banner
     assert "Name a group left out" in banner
     assert "Name one group left out." in banner
     # The two pieces that were fine are not dragged into the list.

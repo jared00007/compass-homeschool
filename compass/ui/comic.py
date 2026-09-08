@@ -411,7 +411,7 @@ def _render_activity_body(
             status = review.get("status", config.WRITING_DRAFT)
 
             if status == config.WRITING_APPROVED:
-                _ui.st.success("✅ Your parent approved this one.")
+                _ui.st.success(f"✅ Activity #{index + 1} — your parent approved this.")
                 approval_note = review.get("approval_feedback")
                 if approval_note and not review.get("approval_read_at"):
                     # Approved, so it counts -- but they left you something to
@@ -432,15 +432,20 @@ def _render_activity_body(
                 history = _feedback_history(
                     review, history_key="feedback_history", single_key="feedback"
                 )
+                # Lead with the activity number so he knows exactly which one to
+                # fix -- "Activity #2 was sent back," not a floating note he has
+                # to match to a box. Any number of activities in a lesson can be
+                # sent back at once, and each shows its own numbered flag here.
+                lead = f"↩️ **Activity #{index + 1} — sent back to fix.**"
                 if len(history) == 1:
-                    _ui.st.warning(f"Your parent asked for another look: {md(history[0])}")
+                    _ui.st.warning(f"{lead} {md(history[0])}")
                 elif history:
                     _ui.st.warning(
-                        "Your parent asked for another look — everything they've flagged "
-                        "so far:\n\n" + "\n".join(f"- {md(note)}" for note in history)
+                        f"{lead} Everything your parent flagged so far:\n\n"
+                        + "\n".join(f"- {md(note)}" for note in history)
                     )
                 else:
-                    _ui.st.warning("Your parent asked for another look — revise it below.")
+                    _ui.st.warning(f"{lead} Revise it below.")
 
             if status == config.WRITING_SUBMITTED:
                 _ui.st.info("⏳ Submitted — waiting on your parent to look at it.")

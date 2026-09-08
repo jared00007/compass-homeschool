@@ -391,7 +391,9 @@ def test_a_bounced_writing_activity_with_no_feedback_still_gets_a_warning(
 
     at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
     text = "\n".join(w.value for w in at.warning)
-    assert "asked for another look" in text
+    # Marked as sent back, and numbered so he knows which activity it is.
+    assert "sent back" in text.lower()
+    assert "Activity #1" in text
     # And the draft box he's meant to revise is still right there.
     assert any(t.label == "Your response" for t in at.text_area)
 

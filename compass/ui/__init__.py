@@ -1512,10 +1512,14 @@ def student_lesson_view(
             if flagged:
                 lines = []
                 for item in flagged:
-                    head = f"↩️ **No. {item['number']} — {md(item['title'])}**"
+                    head = f"↩️ **Activity #{item['number']} — {md(item['title'])}**"
                     lines.append(f"{head}: {md(item['note'])}" if item["note"] else head)
+                count = len(flagged)
                 st.warning(
-                    "**These pieces need another look:**\n\n" + "\n\n".join(lines)
+                    f"**{count} "
+                    f"{'activity needs' if count == 1 else 'activities need'} "
+                    "another look — scroll down to each one to fix it:**\n\n"
+                    + "\n\n".join(lines)
                 )
         render_lesson(
             pending["payload"],

@@ -280,8 +280,10 @@ if not is_parent():
                             lesson.get("metadata") or {},
                         )
                         if flagged:
-                            names = ", ".join(md(item["title"]) for item in flagged)
-                            st.markdown(f":red[**↩️ Sent back — fix: {names}**]")
+                            names = ", ".join(
+                                f"#{item['number']} {md(item['title'])}" for item in flagged
+                            )
+                            st.markdown(f":red[**↩️ Sent back — fix activity {names}**]")
                         else:
                             st.markdown(
                                 ":red[**↩️ Sent back — open it to see what to fix**]"
