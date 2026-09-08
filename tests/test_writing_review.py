@@ -435,3 +435,5 @@ def test_the_parent_vocab_tab_shows_what_he_did_in_the_words_game_today(
     assert "ZEBRAWORDXYZ" in blob
     assert "gave **2** answer(s)" in blob  # two tries on the one word
     assert "1 right" in blob and "1 missed" in blob
+    # The recent-days rollup rides underneath as its own expander.
+    assert any("Last 7 days" in (e.label or "") for e in at.get("expander"))

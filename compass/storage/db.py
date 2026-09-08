@@ -2531,6 +2531,23 @@ class Database:
             )
         )
 
+    def vocab_activity_rollup(
+        self, student_id: int, start_date: str, end_date: str
+    ) -> list[dict[str, Any]]:
+        """A per-day tally of words-game answers across an inclusive date range,
+        most recent day first -- the parent's recent-activity rollup on top of
+        the per-answer log. Only days he actually answered something appear;
+        each row is {reviewed_on, answered, correct}."""
+        return _rows(
+            self.conn.execute(
+                "SELECT reviewed_on, COUNT(*) AS answered, "
+                "SUM(correct) AS correct FROM vocab_review_attempts "
+                "WHERE student_id = ? AND reviewed_on BETWEEN ? AND ? "
+                "GROUP BY reviewed_on ORDER BY reviewed_on DESC",
+                (student_id, start_date, end_date),
+            )
+        )
+
     # -- lessons --------------------------------------------------------------
 
     def save_lesson(

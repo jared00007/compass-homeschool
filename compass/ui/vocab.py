@@ -5,6 +5,7 @@ Split out of compass.ui. Only st/date/is_parent go through `_ui`.
 from __future__ import annotations
 
 import random
+from datetime import timedelta
 from typing import Any
 
 import compass.ui as _ui
@@ -47,34 +48,65 @@ def render_vocab_activity_for_parent(
     insight into what he actually did for that today"). Reads the per-answer
     log; the marks are his real picks, so a word he got wrong then right in the
     same sitting shows both. Meant for the parent Vocabulary tab."""
-    day = day or _ui.date.today().isoformat()
-    attempts = db.vocab_attempts_on(student["id"], day)
+    today = day or _ui.date.today().isoformat()
+    attempts = db.vocab_attempts_on(student["id"], today)
     _ui.st.markdown("**👀 What he did in the words game today**")
     if not attempts:
-        if db.vocab_reviewed_on(student["id"], day):
+        if db.vocab_reviewed_on(student["id"], today):
             _ui.st.caption(
                 "He marked words done for today but didn't answer any — nothing "
                 "was due, or he cleared the game before a word came up."
             )
         else:
             _ui.st.caption("He hasn't played the words game yet today.")
-        return
+    else:
+        total = len(attempts)
+        correct = sum(1 for a in attempts if a["correct"])
+        _ui.st.caption(
+            f"He gave **{total}** answer(s) in the words game today — ✅ {correct} "
+            f"right, ❌ {total - correct} missed."
+        )
+        # Collapse to one line per word, in the order he first met it, with a
+        # mark per try -- so a word he missed then got shows "❌✅" not twice.
+        by_word: dict[str, list[bool]] = {}
+        for attempt in attempts:
+            by_word.setdefault(attempt["word"], []).append(bool(attempt["correct"]))
+        for word, results in by_word.items():
+            marks = "".join("✅" if r else "❌" for r in results)
+            tries = f" · {len(results)} tries" if len(results) > 1 else ""
+            _ui.st.markdown(f"{marks} **{md(word)}**{tries}")
 
-    total = len(attempts)
-    correct = sum(1 for a in attempts if a["correct"])
-    _ui.st.caption(
-        f"He gave **{total}** answer(s) in the words game today — ✅ {correct} right, "
-        f"❌ {total - correct} missed."
+    _render_vocab_rollup(db, student, today)
+
+
+def _render_vocab_rollup(
+    db: Database, student: dict[str, Any], today: str, *, days: int = 7
+) -> None:
+    """A compact last-week view under today's detail: one line per day he
+    played, with answers and accuracy, plus a window total -- so a parent can
+    see whether he's keeping up with words over time, not just today."""
+    end = _ui.date.fromisoformat(today)
+    start = end - timedelta(days=days - 1)
+    rows = db.vocab_activity_rollup(
+        student["id"], start.isoformat(), end.isoformat()
     )
-    # Collapse to one line per word, in the order he first met it, with a mark
-    # per try -- so a word he missed then got shows "❌✅" rather than twice.
-    by_word: dict[str, list[bool]] = {}
-    for attempt in attempts:
-        by_word.setdefault(attempt["word"], []).append(bool(attempt["correct"]))
-    for word, results in by_word.items():
-        marks = "".join("✅" if r else "❌" for r in results)
-        tries = f" · {len(results)} tries" if len(results) > 1 else ""
-        _ui.st.markdown(f"{marks} **{md(word)}**{tries}")
+    if not rows:
+        return
+    total = sum(r["answered"] for r in rows)
+    correct = sum(r["correct"] or 0 for r in rows)
+    pct = round(100 * correct / total) if total else 0
+    with _ui.st.expander(
+        f"📅 Last {days} days — {correct}/{total} right ({pct}%), "
+        f"{len(rows)} day(s) played"
+    ):
+        for row in rows:
+            answered = row["answered"]
+            day_correct = row["correct"] or 0
+            day_pct = round(100 * day_correct / answered) if answered else 0
+            label = _ui.date.fromisoformat(row["reviewed_on"]).strftime("%a %b %-d")
+            _ui.st.markdown(
+                f"**{label}** — {day_correct}/{answered} right ({day_pct}%)"
+            )
 
 
 def render_vocab_quiz(db: Database, student: dict[str, Any]) -> None:

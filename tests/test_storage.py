@@ -1025,6 +1025,36 @@ def test_each_word_answer_is_logged_for_a_parent_to_see(db, student):
     ]
 
 
+def test_vocab_rollup_tallies_answers_per_day(db, student):
+    """The recent-days rollup groups answers by day, most recent first, so a
+    parent can see whether he's keeping up over the week."""
+    from datetime import date as _date, timedelta as _td
+
+    db.add_vocabulary(student["id"], "prudent", "careful")
+    wid = db.list_vocabulary(student["id"])[0]["id"]
+    today = _date.today()
+    yesterday = (today - _td(days=1)).isoformat()
+
+    db.record_vocabulary_review(wid, correct=True)   # today
+    db.record_vocabulary_review(wid, correct=False)  # today
+    db.conn.execute(  # one right, backdated to yesterday
+        "INSERT INTO vocab_review_attempts "
+        "(student_id, vocab_id, word, correct, reviewed_on) VALUES (?, ?, ?, ?, ?)",
+        (student["id"], wid, "prudent", 1, yesterday),
+    )
+    db.conn.commit()
+
+    rollup = db.vocab_activity_rollup(
+        student["id"], (today - _td(days=6)).isoformat(), today.isoformat()
+    )
+    assert rollup[0]["reviewed_on"] == today.isoformat()
+    assert rollup[0]["answered"] == 2
+    assert rollup[0]["correct"] == 1
+    assert rollup[1]["reviewed_on"] == yesterday
+    assert rollup[1]["answered"] == 1
+    assert rollup[1]["correct"] == 1
+
+
 def test_a_deleted_word_keeps_its_logged_attempts(db, student):
     """The attempt log denormalizes the word, so removing the vocabulary entry
     never erases the history of what he practiced."""
