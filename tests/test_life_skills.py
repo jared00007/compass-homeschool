@@ -385,8 +385,11 @@ def test_due_today_reflects_a_completed_routine_and_check_in(monkeypatch, tmp_pa
 
     at = _open_home(monkeypatch, db_path)
     text = " ".join(m.value for m in at.markdown)
-    assert "Morning Routine — done ✅" in text
-    assert "Check-In — done ✅" in text
+    # Standardized "done for today ✅" across the Due-today tiles.
+    assert "Morning Routine — done for today ✅" in text
+    assert "Check-In — done for today ✅" in text
+    # And the "check in again" link sits inline in the tile, not on its own line.
+    assert 'href="Check_In"' in text
 
 
 def test_home_merges_choice_topics_and_coding_into_the_daily_due_block(monkeypatch, tmp_path):
@@ -799,8 +802,10 @@ def test_home_life_skill_tile_greens_when_handed_in_for_approval(monkeypatch, tm
 
     at = _open_home(monkeypatch, db_path)
     text = " ".join(m.value for m in at.markdown)
-    assert "handed in, waiting on your parent" in text
-    assert "Life Skills (1) due" not in text  # not nagged as still to do
+    blob = text + " ".join(c.value for c in at.caption)
+    assert "Life Skills — done for today ✅" in text  # his part is done
+    assert "waiting on your parent" in blob            # and it's pending approval
+    assert "Life Skills (1) due" not in text           # not nagged as still to do
 
 
 def test_parent_master_list_undo_unchecks_a_completed_skill(monkeypatch, tmp_path):

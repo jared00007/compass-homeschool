@@ -2195,9 +2195,21 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
     ]
     due_coding = db.due_coding_modules(student["id"], today)
 
-    def _tile(icon: str, label_html: str, *, tone: str, big: Any = "") -> None:
+    def _tile(
+        icon: str,
+        label_html: str,
+        *,
+        tone: str,
+        big: Any = "",
+        link: tuple[str, str] | None = None,
+    ) -> None:
         # tone: "todo" (gold, something waiting) | "done" (green, caught up) |
-        # "info" (blue, neutral progress).
+        # "info" (blue, neutral progress). `link` is an optional (label, href)
+        # rendered as an anchor on the SAME row, pushed to the right edge -- so a
+        # tile's follow-up action ("check in again") sits beside its status
+        # instead of on a separate line below it. The href is relative to the
+        # app root so it survives a base-path deployment, same slug Streamlit's
+        # own multipage links use (e.g. "Check_In" for pages/8_Check_In.py).
         accent, bg = {
             "todo": ("var(--c-primary)", "rgba(242,183,5,.16)"),
             "done": ("var(--c-good)", "rgba(47,155,104,.12)"),
@@ -2209,11 +2221,22 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
             if big != ""
             else ""
         )
+        link_html = ""
+        if link is not None:
+            link_label, link_href = link
+            link_html = (
+                f'<a href="{html.escape(link_href)}" target="_self" '
+                f'style="margin-left:auto; padding-left:10px; white-space:nowrap; '
+                f'font-weight:700; font-size:13px; color:{accent}; '
+                f'text-decoration:none;">{html.escape(link_label)}</a>'
+            )
         st.markdown(
-            f'<div style="background:{bg}; border-left:5px solid {accent}; '
-            f'border-radius:8px; padding:10px 13px; margin-bottom:6px;">'
+            f'<div style="display:flex; align-items:center; gap:4px; background:{bg}; '
+            f'border-left:5px solid {accent}; border-radius:8px; padding:10px 13px; '
+            f'margin-bottom:6px;">'
             f'<span style="font-size:17px;">{icon}</span>{big_html}'
-            f'<span style="font-weight:800; font-size:14px;">{label_html}</span></div>',
+            f'<span style="font-weight:800; font-size:14px;">{label_html}</span>'
+            f'{link_html}</div>',
             unsafe_allow_html=True,
         )
 
@@ -2226,14 +2249,18 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
     # tile plus a single link out to the actual page, not the full widget
     # inline. They lead the list because they're what he does first each day.
     if routine_done:
-        _tile("🧘", "Morning Routine — done ✅", tone="done")
+        _tile("🧘", "Morning Routine — done for today ✅", tone="done")
     else:
         _tile("🧘", "Morning Routine — start your day", tone="todo")
         st.page_link("pages/5_Morning_Routine.py", label="Do it now", icon="➡️")
 
     if checked_in:
-        _tile("💬", "Check-In — done ✅", tone="done")
-        st.page_link("pages/8_Check_In.py", label="Check in again", icon="➡️")
+        # The follow-up "check in again" sits on the same row as the done
+        # status, right-aligned inside the tile, rather than on a line below.
+        _tile(
+            "💬", "Check-In — done for today ✅", tone="done",
+            link=("↩️ Check in again", "Check_In"),
+        )
     else:
         _tile("💬", "Check-In — say how you're doing", tone="todo")
         st.page_link("pages/8_Check_In.py", label="Open Check-In", icon="➡️")
@@ -2280,7 +2307,10 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
         if awaiting_skills:
             st.caption(f"✅ {len(awaiting_skills)} handed in, waiting on your parent")
     elif awaiting_skills:
-        _tile("🛠️", "Life Skills — handed in, waiting on your parent ✅", tone="done")
+        # He's done his part -- standard "done for today" like the other tiles;
+        # the parent-approval it's waiting on rides underneath as a note.
+        _tile("🛠️", "Life Skills — done for today ✅", tone="done")
+        st.caption("Handed in — waiting on your parent to check it off.")
     else:
         _tile("🛠️", "Life Skills (0) — nothing due ✅", tone="done")
     # +later, and the Student's Choice / Coding counts (both live on the
