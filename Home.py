@@ -30,6 +30,7 @@ from compass.ui import (
     render_travel_passport,
     render_writing_feedback_reply_form,
     render_xp_level,
+    _writing_rework_summary,
 )
 
 db, student = page_setup("Home", icon="🧭")
@@ -269,9 +270,22 @@ if not is_parent():
                         page_path, label=f"{md(title)} — {subject_label}", icon=marker
                     )
                     if sent_back:
-                        st.markdown(
-                            ":red[**↩️ Sent back — open it to see what to fix**]"
+                        # Name the specific pieces that need work right on the
+                        # card, so he knows which activity to open the lesson for
+                        # rather than a blanket "something's wrong in here"
+                        # ("its hard for him to know which actual activity has
+                        # feedback/rework required").
+                        flagged = _writing_rework_summary(
+                            lesson["payload"].get("activities") or [],
+                            lesson.get("metadata") or {},
                         )
+                        if flagged:
+                            names = ", ".join(md(item["title"]) for item in flagged)
+                            st.markdown(f":red[**↩️ Sent back — fix: {names}**]")
+                        else:
+                            st.markdown(
+                                ":red[**↩️ Sent back — open it to see what to fix**]"
+                            )
                     else:
                         status_label = LESSON_STATUS_LABELS.get(marker)
                         if status_label:

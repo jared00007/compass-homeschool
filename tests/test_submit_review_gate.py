@@ -396,6 +396,38 @@ def test_a_bounced_writing_activity_with_no_feedback_still_gets_a_warning(
     assert any(t.label == "Your response" for t in at.text_area)
 
 
+def test_a_sent_back_lesson_names_the_flagged_piece_on_home(monkeypatch, tmp_path):
+    """Home's red sent-back card names the specific activity that needs work, so
+    he knows what he's opening the lesson to fix rather than hunting for it."""
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    payload = {
+        "title": "Two Short Answers", "overview": "",
+        "activities": [
+            {"title": "Analyze the Compact", "kind": "writing", "minutes": 15,
+             "instructions": "x", "requires_written_response": True,
+             "video": {"found": False, "title": "", "url": "", "channel": "", "why": ""}},
+        ],
+        "materials": [], "subject_credits": [], "branches": [],
+    }
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="Two Short Answers", payload=payload,
+    )
+    db.save_writing_response(lesson_id, 0, "A first draft.")
+    db.set_writing_review(lesson_id, 0, config.WRITING_NEEDS_REVISION, "Add a quote.")
+    db.submit_lesson(lesson_id)
+    db.send_lesson_back(lesson_id)
+    auth.set_pin(db, "1234")
+    db.close()
+
+    at = _open(monkeypatch, db_path, HOME_PATH, as_parent=False)
+    blob = "\n".join(m.value for m in at.markdown)
+    assert "Sent back" in blob
+    assert "Analyze the Compact" in blob
+
+
 def test_a_bounced_piece_needs_a_reply_before_it_can_go_back_in(monkeypatch, tmp_path):
     """The redo reply gate: a piece a parent sent back can't be resubmitted on a
     silent click -- he has to say, in a few words, what he's changing, and that
