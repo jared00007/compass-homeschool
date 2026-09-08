@@ -370,3 +370,20 @@ def test_dismissing_a_branch_keeps_its_children(db, student):
     remaining = {n["topic"] for n in db.unexplored_web_nodes(student["id"], "science")}
     assert remaining == {"child branch"}, "a grandchild topic is still a good lesson"
     assert db.get_web_node(child)["parent_id"] is None
+
+
+def test_every_science_area_starts_a_fresh_thread(db, student):
+    """Reported: "what if I want to choose a whole new area of science like life
+    sciences or bio ... just a different path." Each SCIENCE_AREAS option is a
+    fresh-thread seed, so picking one jumps the spiderweb into that discipline."""
+    from compass.agents.science_agent import SCIENCE_AREAS
+
+    assert len(SCIENCE_AREAS) >= 3
+    # An open branch from the old path is sitting in the web...
+    db.add_web_node(student["id"], "science", "glacial till and soil formation", depth=1)
+    for label, seed in SCIENCE_AREAS:
+        assert label and seed, label
+        proposal = get_agent("science").propose_topic(ctx_for(db, student, seed_topic=seed))
+        # ...but the picked area wins: it starts on the seed, not the old branch.
+        assert proposal.topic == seed
+        assert proposal.metadata.get("seed") is True

@@ -38,6 +38,39 @@ is drawn from, so a vague branch costs you later.
 """
 
 
+# Broad 8th-grade science strands a parent can jump the spiderweb into, to
+# deliberately change course -- reported: "what if I want to choose a whole new
+# area of science like life sciences or bio ... just a different path." Each is
+# phrased as a fresh-thread seed, so picking one starts that discipline instead
+# of continuing whatever web the recent lessons built. (label, seed_topic).
+SCIENCE_AREAS: tuple[tuple[str, str], ...] = (
+    ("Life science & biology",
+     "Start a fresh 8th-grade life-science thread: living things, cells, and how "
+     "organisms are built and work. Pick a strong first lesson that opens up biology."),
+    ("Human body & health",
+     "Start a fresh 8th-grade thread on the human body: pick one major body system "
+     "and how it works, opening up anatomy and health."),
+    ("Chemistry & matter",
+     "Start a fresh 8th-grade chemistry thread on matter: atoms, elements, and how "
+     "substances react and change."),
+    ("Physics, forces & energy",
+     "Start a fresh 8th-grade physics thread: forces, motion, and energy -- pick a "
+     "strong hands-on first lesson."),
+    ("Earth science & geology",
+     "Start a fresh 8th-grade earth-science thread: rocks, plate tectonics, and the "
+     "systems that shape the planet."),
+    ("Weather & climate",
+     "Start a fresh 8th-grade thread on weather and climate: the atmosphere, what "
+     "drives weather, and how climate works."),
+    ("Space & astronomy",
+     "Start a fresh 8th-grade astronomy thread: the solar system, stars, and how we "
+     "know what's out there."),
+    ("Ecology & environment",
+     "Start a fresh 8th-grade ecology thread: ecosystems, energy flow, biomes, and "
+     "how living things depend on each other."),
+)
+
+
 def _prompt(ctx: StudentContext, proposal: TopicProposal) -> str:
     return build_standard_prompt(ctx, proposal, "science")
 

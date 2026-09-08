@@ -641,6 +641,23 @@ def render_subject_plan_panel(
             minutes = st.number_input(
                 "Minutes / day", min_value=15, max_value=240, value=75, step=15, key=f"{k}_minutes"
             )
+        # Science can jump to a whole new discipline -- a "different path" into
+        # life science, chemistry, etc. -- reported directly. Picking one seeds a
+        # fresh thread in that area; the lessons after it follow its own branches.
+        area_seed = ""
+        if agent_key == "science":
+            from compass.agents.science_agent import SCIENCE_AREAS
+
+            _KEEP = "— continue the current path —"
+            area_choice = st.selectbox(
+                "Jump to a new area of science (optional)",
+                [_KEEP, *[a[0] for a in SCIENCE_AREAS]],
+                help="Switch the whole path -- e.g. move into life science or chemistry. "
+                "It starts a fresh thread in that area, and later lessons branch off "
+                "from there.",
+                key=f"{k}_area",
+            )
+            area_seed = dict(SCIENCE_AREAS).get(area_choice, "")
         pool = db.unexplored_web_nodes(student["id"], agent_key, location or None)
         thread_label = "Which thread to pull" if agent_key == "science" else "Which thread to follow"
         thread_options = [(0, "Let the agent choose the next branch")] + [
@@ -653,14 +670,17 @@ def render_subject_plan_panel(
             help="Open branches proposed by earlier lessons.",
             key=f"{k}_thread",
         )
-        seed_topic = st.text_input(
-            "Or start something new entirely (optional)",
+        specific_seed = st.text_input(
+            "Or a specific topic to start (optional)",
             placeholder=(
                 "e.g. why nurse logs grow hemlocks and not spruce" if agent_key == "science"
                 else "e.g. the 1855 Walla Walla Treaty Council"
             ),
             key=f"{k}_seed",
         )
+        # A typed topic is the most specific, so it wins; then a picked area; a
+        # thread pick rides on node_id below.
+        seed_topic = specific_seed.strip() or area_seed
         parent_note = st.text_input("Note for this lesson (optional)", key=f"{k}_note")
         ctx = context_for(
             db, student, location=location, minutes=minutes, parent_note=parent_note,
