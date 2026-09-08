@@ -2790,6 +2790,7 @@ from compass.ui.lifeskill_cards import (  # noqa: E402,F401
     _LIFE_SKILL_CARD_CSS,
     render_student_life_skills,
     render_life_skill_catalog_manager,
+    render_life_skill_review_card,
     render_coding_module_cards,
     render_coding_module_catalog_manager,
     _CHOICE_STATUS_FLOW,

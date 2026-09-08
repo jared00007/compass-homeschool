@@ -42,6 +42,7 @@ from compass.ui import (
     render_board_move_notice,
     render_earned_rewards,
     render_lesson_review,
+    render_life_skill_review_card,
     render_report_card,
     render_story_move_control,
     render_subject_plan_panel,
@@ -627,20 +628,13 @@ if mc_view == "review":
                     label="Review them in Big Projects",
                     icon="🏗️",
                 )
-        # Life skills he's marked done wait on your approval too -- surfaced here
-        # so "needs review" isn't buried on the Life Skills page, then linked out
-        # to the Master list where the Approve / Send-back controls live (same
-        # link-out shape as project steps just above).
+        # Life skills he's marked done are approved right here, inline -- the
+        # same Approve / Send-back shape a turned-in lesson gets, so grading a
+        # life skill isn't a hop out to another page (reported: standardize it).
         if submitted_skills:
-            with st.container(border=True):
-                st.markdown(f"**🛠️ {len(submitted_skills)} life skill(s) turned in**")
-                for skill in submitted_skills:
-                    st.markdown(f"- {md(skill['title'])} — *{md(skill['category'])}*")
-                st.page_link(
-                    "pages/6_Life_Skills.py",
-                    label="Approve them under Life Skills → Master list",
-                    icon="🛠️",
-                )
+            st.markdown("**🛠️ Life skills turned in**")
+            for skill in submitted_skills:
+                render_life_skill_review_card(db, skill)
 
     if overdue:
         st.divider()

@@ -835,12 +835,11 @@ def test_submitted_project_steps_show_as_needs_review(monkeypatch, tmp_path):
     assert "Pick your toy and your theme" in markdowns
 
 
-def test_submitted_life_skills_show_as_needs_review(monkeypatch, tmp_path):
-    """A life skill he's marked done waits on your approval in the review queue,
-    with a link out to the Life Skills master list -- so "needs review" for a
-    life skill isn't buried on its own page (reported: "where does the parent
-    approval for life skill completion go? i would think into mission control,
-    review... but i dont see it")."""
+def test_submitted_life_skills_are_approved_inline_in_the_review_queue(monkeypatch, tmp_path):
+    """A life skill he's marked done waits on approval right in the review
+    queue, graded inline with the same Approve / Send-back a lesson gets -- no
+    hop out to another page (reported: "where does the parent approval for life
+    skill completion go... i dont see it" and "want to make this standardized")."""
     db_path = tmp_path / "review.db"
     db = Database(db_path)
     student = db.ensure_default_student()
@@ -850,6 +849,15 @@ def test_submitted_life_skills_show_as_needs_review(monkeypatch, tmp_path):
 
     at, review_tab = _open_review_tab(monkeypatch, db_path)
     assert _review_label(at) == "✅ Review (1)"
-    markdowns = " ".join(_md(review_tab))
-    assert "life skill(s) turned in" in markdowns
-    assert "Change a tire" in markdowns
+    assert "Change a tire" in " ".join(_md(review_tab))
+
+    # Approve it right here -- no navigating away.
+    [b for b in at.button if b.label == "✅ Approve"][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db2 = Database(db_path)
+    row = next(s for s in db2.list_life_skills(student["id"]) if s["id"] == skill_id)
+    occ = [a for a in db2.list_activities(student["id"]) if a["credits"].get("occupational_education")]
+    db2.close()
+    assert row["completed_on"]  # approved
+    assert len(occ) == 1  # and the hours logged, from the inline Approve

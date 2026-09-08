@@ -248,6 +248,23 @@ def _render_life_skill_review_controls(db: Database, skill: dict[str, Any]) -> N
         _ui.st.caption(f"↩️ Sent back — you asked: {md(skill['feedback'])}")
 
 
+def render_life_skill_review_card(db: Database, skill: dict[str, Any]) -> None:
+    """One submitted life skill in a parent's review queue: the skill he did,
+    enough detail to judge it, and the Approve / Send-back controls inline --
+    so a turned-in life skill is graded in the same place and the same way as a
+    turned-in lesson, no hop out to another page. Shared by Mission Control's
+    review queue and reusing the same controls the master list uses, so the two
+    can never drift apart."""
+    with _ui.st.container(border=True):
+        icon = LIFE_SKILL_CATEGORY_ICONS.get(skill["category"], LIFE_SKILL_DEFAULT_ICON)
+        _ui.st.markdown(f"**{icon} {md(skill['title'])}** — *{md(skill['category'])}*")
+        if skill.get("description"):
+            _ui.st.caption(md(skill["description"]))
+        if skill.get("materials"):
+            _ui.st.caption(f"Needed: {md(skill['materials'])}")
+        _render_life_skill_review_controls(db, skill)
+
+
 def render_life_skill_catalog_manager(db: Database, skills: list[dict[str, Any]]) -> None:
     """The pace control: every catalog skill, active or not, one row each,
     title and status collapsed by default -- open a row for the full mission,
