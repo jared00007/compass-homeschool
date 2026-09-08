@@ -28,7 +28,6 @@ from compass.ui import (
     render_xp_reward_editor,
     render_today_checklist,
     render_travel_passport,
-    render_writing_feedback_reply_form,
     render_xp_level,
     _writing_rework_summary,
 )
@@ -234,6 +233,7 @@ if not is_parent():
             "📤": "waiting on a parent",
             "↩️": "sent back",
             "⬜": "not turned in yet",
+            "📣": "a note from your parent to read",
         }
         # Big Project steps a parent assigned to a day (on the Board) belong on
         # his main list too, not just buried on the Board tab -- reported: "the
@@ -397,26 +397,12 @@ if not is_parent():
                     )
                 st.caption("📬 waiting on you to read  \n✅ read today")
 
-        # Notes your parent left when they *approved* a piece of writing. An
-        # approved lesson counts as done and drops off every subject page, so a
-        # note riding on one would be lost the moment it's accepted -- this is
-        # what guarantees he still sees it. Shown and acknowledged inline (not a
-        # link out) precisely because there's no page a completed lesson still
-        # lives on to send him to.
-        writing_notes = db.unread_writing_feedback(student["id"])
-        if writing_notes:
-            with st.container(border=True):
-                render_card_heading(f"✍️ Notes on your writing ({len(writing_notes)})")
-                for note in writing_notes:
-                    st.markdown(
-                        f"**{md(note['activity_title'])}** — from *{md(note['lesson_title'])}*"
-                    )
-                    # A short reply in his own words clears it, not a one-tap --
-                    # same gate as his subject page and the Travel Journal.
-                    render_writing_feedback_reply_form(
-                        db, note["lesson_id"], note["activity_index"], note["note"],
-                        key_prefix="home",
-                    )
+        # Notes a parent left when *approving* a piece of writing no longer show
+        # here -- feedback lives in the lesson, on the subject page, under the
+        # activity it's about (see _render_pending_writing_notes). The subject's
+        # own roster row above keeps pointing him there (a 📣 marker) until he's
+        # read and replied to the note, so nothing is lost by moving it off his
+        # main board.
 
         # Words to Review, Reading, and Life Skills used to be a three-tile row
         # here; they're now folded into the header card beside the streak/KPIs

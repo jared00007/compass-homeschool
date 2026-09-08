@@ -411,6 +411,39 @@ def _current_review(db_path, lesson_id, index=0):
     return review
 
 
+def test_an_approval_note_on_a_finished_lesson_lives_on_the_subject_page(
+    monkeypatch, tmp_path
+):
+    """A note on an approved piece stays in the lesson on the subject page --
+    not on his Home board -- and the finished lesson keeps showing it there
+    until he reads and replies (reported: "the feedback should be in the
+    lesson... should sit under that lesson for student to see")."""
+    db_path, lesson_id = _seed_page_db(tmp_path)
+    database = Database(db_path)
+    database.set_writing_review(
+        lesson_id, 0, config.WRITING_APPROVED, approval_note="Tighten your intro."
+    )
+    database.set_lesson_status(lesson_id, "completed")  # approved -> done
+    database.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    blob = (
+        "\n".join(m.value for m in at.markdown)
+        + "\n".join(s.value for s in at.success)
+    )
+    assert "A note from your parent" in blob
+    assert "Activity #1" in blob  # numbered, under the activity it's about
+
+    reply = [t for t in at.text_input if "one thing" in (t.label or "").lower()][0]
+    reply.set_value("I'll open with my strongest point instead.").run()
+    [b for b in at.button if b.label == "✅ I read this"][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    review = _current_review(db_path, lesson_id)
+    assert review["approval_read_at"] is not None
+    assert "strongest point" in review["approval_reply"]
+
+
 def test_the_parent_vocab_tab_shows_what_he_did_in_the_words_game_today(
     monkeypatch, tmp_path
 ):

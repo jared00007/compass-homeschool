@@ -279,6 +279,43 @@ def test_today_subject_status_ignores_a_lesson_completed_on_an_earlier_day():
     assert marker == ""
 
 
+def test_today_subject_status_points_to_an_unread_note_on_a_finished_lesson():
+    """A finished lesson still carrying an approval note he hasn't read and
+    replied to keeps the subject on the roster (📣) so he's sent to the lesson
+    to read it -- even though it was approved on an earlier day."""
+    lesson = {
+        "id": 1, "agent": "math", "status": "completed",
+        "metadata": {
+            "student_done_on": "2026-08-05",  # earlier day: not "completed today"
+            "writing_review": {"0": {
+                "status": "approved",
+                "approval_feedback": "Tighten the intro next time.",
+                "approval_read_at": None,
+            }},
+        },
+    }
+    result, marker = today_subject_status([lesson], "2026-08-11")
+    assert result["id"] == 1
+    assert marker == "\U0001F4E3"  # 📣
+
+
+def test_today_subject_status_drops_a_finished_lesson_once_its_note_is_read():
+    lesson = {
+        "id": 1, "agent": "math", "status": "completed",
+        "metadata": {
+            "student_done_on": "2026-08-05",
+            "writing_review": {"0": {
+                "status": "approved",
+                "approval_feedback": "Tighten the intro.",
+                "approval_read_at": "2026-08-06T09:00:00",
+            }},
+        },
+    }
+    result, marker = today_subject_status([lesson], "2026-08-11")
+    assert result is None
+    assert marker == ""
+
+
 def test_today_subject_status_is_empty_when_nothing_is_set_up_for_this_subject():
     lesson, marker = today_subject_status([], "2026-08-11")
     assert lesson is None

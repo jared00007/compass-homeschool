@@ -468,4 +468,26 @@ def today_subject_status(
     if completed_today:
         return completed_today[0], "✅"
 
+    # A finished lesson that still carries a note he hasn't read and replied to
+    # keeps the subject on the roster as a pointer -- the note itself lives in
+    # the lesson on the subject page, this just makes sure he's sent there
+    # rather than the subject going quiet with an unread note left behind.
+    note_pending = next(
+        (l for l in lessons if l["status"] == "completed" and _has_unread_approval_note(l)),
+        None,
+    )
+    if note_pending is not None:
+        return note_pending, "\U0001F4E3"  # 📣
+
     return None, ""
+
+
+def _has_unread_approval_note(lesson: dict[str, Any]) -> bool:
+    """Whether any writing piece in this lesson was approved with a note he
+    hasn't yet read and replied to -- the signal that keeps an otherwise-done
+    lesson visible until he's actually seen his parent's note."""
+    reviews = (lesson.get("metadata") or {}).get("writing_review") or {}
+    return any(
+        rv.get("approval_feedback") and not rv.get("approval_read_at")
+        for rv in reviews.values()
+    )

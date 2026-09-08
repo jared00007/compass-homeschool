@@ -1421,6 +1421,48 @@ def _maybe_auto_submit_lesson(db: Database, lesson_id: int) -> bool:
     return True
 
 
+def _render_pending_writing_notes(
+    db: Database,
+    student: dict[str, Any],
+    lessons: list[dict[str, Any]],
+    agent_key: str,
+) -> None:
+    """Notes his parent left on approved writing, kept in the lesson on the
+    subject page until he reads and replies to each. An approved lesson is
+    'completed' and normally leaves this page; while it still carries an
+    unacknowledged note it surfaces here instead -- the note shown under the
+    numbered activity it belongs to, with the same typed-reply gate the rest of
+    the app uses. Once he replies, the note clears and the lesson drops off like
+    any finished one. Replaces the old Home 'Notes on your writing' card so
+    feedback lives with the lesson, not on his main board."""
+    for lesson in lessons:
+        if lesson["status"] != "completed":
+            continue
+        reviews = (lesson.get("metadata") or {}).get("writing_review") or {}
+        activities = lesson["payload"].get("activities") or []
+        unread = [
+            (int(index_str), review)
+            for index_str, review in reviews.items()
+            if review.get("approval_feedback") and not review.get("approval_read_at")
+        ]
+        if not unread:
+            continue
+        lesson_title = lesson["payload"].get("title", lesson["title"])
+        with st.container(border=True):
+            st.markdown(f"📣 **A note from your parent on {md(lesson_title)}**")
+            for index, review in sorted(unread):
+                title = (
+                    activities[index].get("title", "Activity")
+                    if index < len(activities)
+                    else "Activity"
+                )
+                st.success(f"✅ Activity #{index + 1} — {md(title)} — approved.")
+                render_writing_feedback_reply_form(
+                    db, lesson["id"], index, review["approval_feedback"],
+                    key_prefix=f"subject_{agent_key}",
+                )
+
+
 def student_lesson_view(
     db: Database,
     student: dict[str, Any],
@@ -1461,6 +1503,13 @@ def student_lesson_view(
     """
     lessons = db.list_lessons(student["id"], agent=agent_key, limit=10)
     icon = SUBJECT_ICONS.get(agent_key, "📘")
+
+    # A note his parent left when approving a piece of writing lives here, in
+    # the lesson, under the numbered activity it's about -- not on his Home
+    # board. An approved lesson counts as done and would normally drop off this
+    # page, but one carrying a note he hasn't read and replied to stays put at
+    # the top until he does, then closes out like any finished lesson.
+    _render_pending_writing_notes(db, student, lessons, agent_key)
 
     pending = next(
         (l for l in lessons if l["status"] in ("submitted", "needs_revision")), None
