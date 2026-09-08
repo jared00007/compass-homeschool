@@ -70,6 +70,8 @@ div[class*="st-key-comic_panel_"] {
 .comic-pill--discussion { background: var(--c-pill-discussion-bg); color: var(--c-good); }
 .comic-pill--instruction { background: var(--c-pill-instruction-bg); color: var(--c-pill-instruction-fg); }
 .comic-pill--neutral { background: var(--c-panel); color: var(--c-dim); border: 1px solid var(--c-border); }
+.comic-pill--rework { background: var(--c-pill-writing-bg); color: var(--c-warn); border: 1.5px solid var(--c-warn); margin-left: .4rem; }
+.comic-pill--note { background: var(--c-pill-reading-bg); color: var(--c-alt); border: 1.5px solid var(--c-alt); margin-left: .4rem; }
 .comic-progress-dots { display: flex; gap: .4rem; margin: .1rem 0 1.1rem; }
 .comic-progress-dots span {
   width: 26px; height: 8px; border-radius: 999px; background: var(--c-border);
@@ -142,6 +144,59 @@ def _comic_phase_pill_html(activity: dict[str, Any]) -> str:
         f'<span class="comic-kind-icon">{icon}</span>'
         f'<span class="comic-pill comic-pill--{variant}">{label}</span>'
     )
+
+
+def _comic_review_flag_html(
+    index: int, metadata: dict[str, Any] | None, *, parent: bool
+) -> str:
+    """A loud pill on an activity's own header, on his side, when the parent has
+    flagged that specific piece -- ↩️ for a redo, 💬 for an approval note he
+    hasn't opened yet. A math lesson can come back with several written answers
+    and only one or two actually needing work; without this he had to open each
+    card to find out which ("its hard for him to know which actual activity has
+    feedback/rework required"). Returns "" when there's nothing to flag or on
+    the parent's side, where the review controls themselves already show it."""
+    if parent:
+        return ""
+    review = ((metadata or {}).get("writing_review") or {}).get(str(index)) or {}
+    status = review.get("status")
+    if status == config.WRITING_NEEDS_REVISION:
+        return '<span class="comic-pill comic-pill--rework">↩️ Needs another look</span>'
+    if (
+        status == config.WRITING_APPROVED
+        and review.get("approval_feedback")
+        and not review.get("approval_read_at")
+    ):
+        return '<span class="comic-pill comic-pill--note">💬 A note to read</span>'
+    return ""
+
+
+def _writing_rework_summary(
+    activities: list[dict[str, Any]], metadata: dict[str, Any] | None
+) -> list[dict[str, Any]]:
+    """The specific activities the parent sent back for another look, each with
+    the latest note on it -- so the red banner at the top of a sent-back lesson
+    can name exactly which pieces need work rather than a blanket "check your
+    work below." Reads the per-activity writing_review entries in order; newest
+    note wins (feedback_history is oldest-first). Each item: number (1-based),
+    title, note (may be "")."""
+    reviews = (metadata or {}).get("writing_review") or {}
+    flagged: list[dict[str, Any]] = []
+    for index, activity in enumerate(activities):
+        review = reviews.get(str(index)) or {}
+        if review.get("status") != config.WRITING_NEEDS_REVISION:
+            continue
+        history = _feedback_history(
+            review, history_key="feedback_history", single_key="feedback"
+        )
+        flagged.append(
+            {
+                "number": index + 1,
+                "title": activity.get("title") or "Activity",
+                "note": history[-1] if history else "",
+            }
+        )
+    return flagged
 
 
 def _comic_progress_dots_html(
@@ -589,7 +644,8 @@ def _render_activity_comic_panel(
         _ui.st.markdown(f'<div class="comic-issue-tag">No. {index + 1}</div>', unsafe_allow_html=True)
         _ui.st.markdown(
             f"##### {md(activity.get('title', 'Activity'))}  \n"
-            f"{_comic_phase_pill_html(activity)}",
+            f"{_comic_phase_pill_html(activity)}"
+            f"{_comic_review_flag_html(index, metadata, parent=parent)}",
             unsafe_allow_html=True,
         )
         if collapsed:

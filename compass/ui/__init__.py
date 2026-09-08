@@ -1481,6 +1481,14 @@ def student_lesson_view(
             # sent it back"). The most recent note (history is oldest-first) is
             # the one that matters, so it's shown big; any earlier notes sit
             # under it for context.
+            # Which specific pieces were flagged (a lesson can have several
+            # written answers and only one or two sent back). Named right here
+            # so he doesn't have to open every card to find the one that needs
+            # work; each is also badged "↩️ Needs another look" on its own card
+            # further down.
+            flagged = _writing_rework_summary(
+                pending["payload"].get("activities") or [], pending_metadata
+            )
             if history:
                 st.error(
                     f"↩️ **Your parent sent this back.** Here's what to fix:\n\n"
@@ -1490,10 +1498,24 @@ def student_lesson_view(
                     with st.expander("Earlier notes on this lesson"):
                         for note in history[:-1]:
                             st.markdown(f"- {md(note)}")
+            elif flagged:
+                st.error(
+                    "↩️ **Your parent sent this back** — some of your written "
+                    "answers need another look. They're listed right below, and "
+                    "each one is marked ↩️ further down where you fix it."
+                )
             else:
                 st.error(
                     "↩️ **Your parent sent this back.** Check your work below "
                     "and turn it in again."
+                )
+            if flagged:
+                lines = []
+                for item in flagged:
+                    head = f"↩️ **No. {item['number']} — {md(item['title'])}**"
+                    lines.append(f"{head}: {md(item['note'])}" if item["note"] else head)
+                st.warning(
+                    "**These pieces need another look:**\n\n" + "\n\n".join(lines)
                 )
         render_lesson(
             pending["payload"],
@@ -2609,6 +2631,8 @@ from compass.ui.comic import (  # noqa: E402,F401
     _PHASE_PILL_VARIANT,
     activity_phase,
     _comic_phase_pill_html,
+    _comic_review_flag_html,
+    _writing_rework_summary,
     _comic_progress_dots_html,
     _render_reading_check,
     _feedback_history,
