@@ -2506,7 +2506,30 @@ class Database:
             "WHERE id = ?",
             (box, next_review, 1 if correct else 0, 0 if correct else 1, vocab_id),
         )
+        # A per-answer row so a parent can see what he actually did in the words
+        # game today -- which words, and whether he got each one -- rather than
+        # only the cumulative counters, which never say "today." Word is stored
+        # inline so the record survives a later edit or deletion of the word.
+        self.conn.execute(
+            "INSERT INTO vocab_review_attempts "
+            "(student_id, vocab_id, word, correct, reviewed_on) VALUES (?, ?, ?, ?, ?)",
+            (row["student_id"], vocab_id, row["word"], 1 if correct else 0,
+             date.today().isoformat()),
+        )
         self.conn.commit()
+
+    def vocab_attempts_on(self, student_id: int, entry_date: str) -> list[dict[str, Any]]:
+        """Every word he answered in the words game on `entry_date`, oldest
+        first -- the parent-facing "what did he actually do today" behind the
+        one-per-day practiced flag. Each row carries the word and whether he got
+        it (an already-seen word answered twice in a sitting shows both tries)."""
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM vocab_review_attempts "
+                "WHERE student_id = ? AND reviewed_on = ? ORDER BY id ASC",
+                (student_id, entry_date),
+            )
+        )
 
     # -- lessons --------------------------------------------------------------
 

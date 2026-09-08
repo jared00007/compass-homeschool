@@ -18,6 +18,7 @@ from compass.ui import (
     page_setup,
     render_past_lessons,
     render_subject_week_tab,
+    render_vocab_activity_for_parent,
     render_vocab_quiz,
     student_lesson_view,
 )
@@ -174,6 +175,11 @@ with books_tab:
 # --- vocabulary --------------------------------------------------------------
 
 with vocab_tab:
+    # What he actually did in the words game today, up top -- the thing a
+    # parent can't otherwise see from the deck's cumulative box counts.
+    with st.container(border=True):
+        render_vocab_activity_for_parent(db, student)
+
     st.subheader("Spaced repetition")
     st.caption(
         "Leitner boxes: a word he gets right moves up a box and comes back later; a "

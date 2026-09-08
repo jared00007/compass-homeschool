@@ -2731,6 +2731,7 @@ from compass.ui.vocab import (  # noqa: E402,F401
     VOCAB_QUIZ_MIN_DEFINED_WORDS,
     _render_vocab_done_button,
     render_vocab_quiz,
+    render_vocab_activity_for_parent,
 )
 
 from compass.ui.firstday import (  # noqa: E402,F401

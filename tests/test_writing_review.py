@@ -409,3 +409,29 @@ def _current_review(db_path, lesson_id, index=0):
     review = database.get_lesson(lesson_id)["metadata"]["writing_review"][str(index)]
     database.close()
     return review
+
+
+def test_the_parent_vocab_tab_shows_what_he_did_in_the_words_game_today(
+    monkeypatch, tmp_path
+):
+    """Reported: "i also dont see any parent insight into what he actually did
+    for that today." The parent Vocabulary tab now names the words he answered
+    today and how he scored each -- not just the deck's cumulative box counts."""
+    db_path = tmp_path / "v.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    database.add_vocabulary(s["id"], "ZEBRAWORDXYZ", "a striped animal")
+    wid = database.list_vocabulary(s["id"])[0]["id"]
+    database.record_vocabulary_review(wid, correct=False)
+    database.record_vocabulary_review(wid, correct=True)  # missed then got it
+    database.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=True)
+    blob = (
+        "\n".join(m.value for m in at.markdown)
+        + "\n".join(c.value for c in at.caption)
+    )
+    assert "What he did in the words game today" in blob
+    assert "ZEBRAWORDXYZ" in blob
+    assert "gave **2** answer(s)" in blob  # two tries on the one word
+    assert "1 right" in blob and "1 missed" in blob

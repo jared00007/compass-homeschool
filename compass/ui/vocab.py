@@ -38,6 +38,45 @@ def _render_vocab_done_button(db: Database, student: dict[str, Any], today: str)
         _ui.st.rerun()
 
 
+def render_vocab_activity_for_parent(
+    db: Database, student: dict[str, Any], *, day: str | None = None
+) -> None:
+    """A parent's window into the words game: exactly which words he answered
+    today and how he did on each -- not just the cumulative box counts, which
+    never say what happened *today* (reported: "i also dont see any parent
+    insight into what he actually did for that today"). Reads the per-answer
+    log; the marks are his real picks, so a word he got wrong then right in the
+    same sitting shows both. Meant for the parent Vocabulary tab."""
+    day = day or _ui.date.today().isoformat()
+    attempts = db.vocab_attempts_on(student["id"], day)
+    _ui.st.markdown("**👀 What he did in the words game today**")
+    if not attempts:
+        if db.vocab_reviewed_on(student["id"], day):
+            _ui.st.caption(
+                "He marked words done for today but didn't answer any — nothing "
+                "was due, or he cleared the game before a word came up."
+            )
+        else:
+            _ui.st.caption("He hasn't played the words game yet today.")
+        return
+
+    total = len(attempts)
+    correct = sum(1 for a in attempts if a["correct"])
+    _ui.st.caption(
+        f"He gave **{total}** answer(s) in the words game today — ✅ {correct} right, "
+        f"❌ {total - correct} missed."
+    )
+    # Collapse to one line per word, in the order he first met it, with a mark
+    # per try -- so a word he missed then got shows "❌✅" rather than twice.
+    by_word: dict[str, list[bool]] = {}
+    for attempt in attempts:
+        by_word.setdefault(attempt["word"], []).append(bool(attempt["correct"]))
+    for word, results in by_word.items():
+        marks = "".join("✅" if r else "❌" for r in results)
+        tries = f" · {len(results)} tries" if len(results) > 1 else ""
+        _ui.st.markdown(f"{marks} **{md(word)}**{tries}")
+
+
 def render_vocab_quiz(db: Database, student: dict[str, Any]) -> None:
     """Vocabulary review: multiple choice, auto-graded. The word shows, four
     possible definitions follow -- the real one plus up to three decoys

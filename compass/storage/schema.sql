@@ -548,3 +548,20 @@ CREATE TABLE IF NOT EXISTS vocab_review_log (
     completed_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (student_id, entry_date)
 );
+
+-- One row per word he actually answered in the words game -- the parent-facing
+-- record of what he *did*, not just that he did something (vocab_review_log
+-- above is the one-per-day "he practiced" flag). `word` is denormalized so an
+-- attempt still reads correctly if the vocabulary row is later edited or
+-- deleted; the FK is SET NULL rather than CASCADE for the same reason.
+CREATE TABLE IF NOT EXISTS vocab_review_attempts (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id   INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    vocab_id     INTEGER REFERENCES vocabulary(id) ON DELETE SET NULL,
+    word         TEXT NOT NULL,
+    correct      INTEGER NOT NULL,
+    reviewed_on  TEXT NOT NULL,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_vocab_attempts_student_date
+    ON vocab_review_attempts (student_id, reviewed_on);

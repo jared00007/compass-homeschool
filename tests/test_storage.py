@@ -1001,6 +1001,47 @@ def test_adding_a_known_word_again_does_not_reset_progress(db, student):
     assert entries[0]["definition"] == "careful and sensible"
 
 
+def test_each_word_answer_is_logged_for_a_parent_to_see(db, student):
+    """The parent-facing record: every answer in the words game lands as its
+    own attempt row, carrying the word and whether he got it, on the day he
+    answered it."""
+    from datetime import date as _date
+
+    db.add_vocabulary(student["id"], "prudent", "careful")
+    db.add_vocabulary(student["id"], "candid", "frank")
+    prudent = next(w for w in db.list_vocabulary(student["id"]) if w["word"] == "prudent")
+    candid = next(w for w in db.list_vocabulary(student["id"]) if w["word"] == "candid")
+
+    db.record_vocabulary_review(prudent["id"], correct=False)
+    db.record_vocabulary_review(prudent["id"], correct=True)  # missed then got it
+    db.record_vocabulary_review(candid["id"], correct=True)
+
+    today = _date.today().isoformat()
+    attempts = db.vocab_attempts_on(student["id"], today)
+    assert [(a["word"], bool(a["correct"])) for a in attempts] == [
+        ("prudent", False),
+        ("prudent", True),
+        ("candid", True),
+    ]
+
+
+def test_a_deleted_word_keeps_its_logged_attempts(db, student):
+    """The attempt log denormalizes the word, so removing the vocabulary entry
+    never erases the history of what he practiced."""
+    from datetime import date as _date
+
+    db.add_vocabulary(student["id"], "prudent", "careful")
+    entry_id = db.list_vocabulary(student["id"])[0]["id"]
+    db.record_vocabulary_review(entry_id, correct=True)
+    db.conn.execute("DELETE FROM vocabulary WHERE id = ?", (entry_id,))
+    db.conn.commit()
+
+    attempts = db.vocab_attempts_on(student["id"], _date.today().isoformat())
+    assert len(attempts) == 1
+    assert attempts[0]["word"] == "prudent"
+    assert attempts[0]["vocab_id"] is None  # FK set null, row survives
+
+
 def test_life_skills_seed_only_once(db, student):
     first = db.seed_life_skills(student["id"])
     second = db.seed_life_skills(student["id"])
