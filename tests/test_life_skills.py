@@ -582,3 +582,202 @@ def test_backfill_skips_a_skill_that_already_logged_real_hours(db, student, skil
 def test_backfill_leaves_an_uncompleted_skill_alone(db, student, skill):
     db._backfill_life_skill_credits()  # skill is not completed
     assert not [a for a in db.list_activities(student["id"]) if a["credits"]]
+
+
+# --- the submit -> approve gate ---------------------------------------------------
+# Reported: "landon accidentally completed two he did not do but i cant figure
+# out how to uncheck them. these should also need parent approval upon
+# completion and can be sent back for more work."
+
+
+def _reload(db, student_id, skill_id):
+    return next(s for s in db.list_life_skills(student_id) if s["id"] == skill_id)
+
+
+def test_marking_done_submits_and_logs_nothing_until_approved(db, student, skill):
+    db.submit_life_skill(skill["id"])
+    row = _reload(db, student["id"], skill["id"])
+    assert row["status"] == config.LIFE_SKILL_SUBMITTED
+    assert not row["completed_on"]  # not earned yet
+    # Nothing counts toward Occupational Education until a parent approves.
+    assert not [a for a in db.list_activities(student["id"]) if a["credits"]]
+
+
+def test_approving_a_submitted_skill_earns_it_and_logs_hours(db, student, skill):
+    db.submit_life_skill(skill["id"])
+    db.complete_life_skill(skill["id"])  # the parent's Approve
+    row = _reload(db, student["id"], skill["id"])
+    assert row["status"] == config.LIFE_SKILL_APPROVED
+    assert row["completed_on"]
+    assert row["logged_activity_id"]  # the hours row is tracked for a clean undo
+    occ = [a for a in db.list_activities(student["id"]) if a["credits"].get("occupational_education")]
+    assert len(occ) == 1
+
+
+def test_sending_a_skill_back_records_feedback_and_no_hours(db, student, skill):
+    db.submit_life_skill(skill["id"])
+    db.send_life_skill_back(skill["id"], "Do the torque step again, in a star pattern.")
+    row = _reload(db, student["id"], skill["id"])
+    assert row["status"] == config.LIFE_SKILL_NEEDS_REVISION
+    assert row["feedback"] == "Do the torque step again, in a star pattern."
+    assert not row["completed_on"]
+    assert not [a for a in db.list_activities(student["id"]) if a["credits"]]
+
+
+def test_turning_it_in_again_clears_the_send_back_note(db, student, skill):
+    db.submit_life_skill(skill["id"])
+    db.send_life_skill_back(skill["id"], "Redo the torque step.")
+    db.submit_life_skill(skill["id"])  # he answers it
+    row = _reload(db, student["id"], skill["id"])
+    assert row["status"] == config.LIFE_SKILL_SUBMITTED
+    assert not row["feedback"]
+
+
+def test_undo_clears_the_badge_and_takes_back_the_hours(db, student, skill):
+    db.complete_life_skill(skill["id"])  # earned + hours
+    assert [a for a in db.list_activities(student["id"]) if a["credits"]]
+
+    db.reopen_life_skill(skill["id"])
+    row = _reload(db, student["id"], skill["id"])
+    assert not row["completed_on"]
+    assert row["status"] == config.LIFE_SKILL_ASSIGNED
+    # The hours approval logged are gone -- Compliance no longer overcounts.
+    assert not [a for a in db.list_activities(student["id"]) if a["credits"]]
+
+
+def test_undo_removes_hours_for_a_legacy_completion_with_no_tracked_row(db, student, skill):
+    """A skill finished before the gate existed has no logged_activity_id, but
+    undo still takes back its single life-skills hours row."""
+    db.set_life_skill_done(skill["id"], True)   # legacy stamp, no tracked id
+    db._backfill_life_skill_credits()           # the block of hours it earned
+    assert [a for a in db.list_activities(student["id"]) if a["credits"]]
+
+    db.reopen_life_skill(skill["id"])
+    assert not [a for a in db.list_activities(student["id"]) if a["credits"]]
+    assert not _reload(db, student["id"], skill["id"])["completed_on"]
+
+
+def test_undo_leaves_ambiguous_hours_alone(db, student, skill):
+    """Two separately logged blocks for the same skill can't be told apart
+    without a tracked id, so undo clears the badge but never guesses which hours
+    to strip -- a parent's real logged time is not swept away by an accident undo."""
+    for _ in range(2):
+        db.log_activity(
+            student_id=student["id"], title=skill["title"], tier=config.TIER_LIFE_SKILLS,
+            primary_subject="occupational_education", minutes=60,
+            subject_credits={"occupational_education": 60}, source="life_skills",
+        )
+    db.set_life_skill_done(skill["id"], True)
+
+    db.reopen_life_skill(skill["id"])
+    row = _reload(db, student["id"], skill["id"])
+    assert not row["completed_on"]  # badge cleared
+    # Both real blocks are still there -- untouched.
+    occ = [a for a in db.list_activities(student["id"]) if a["credits"].get("occupational_education")]
+    assert len(occ) == 2
+
+
+def test_an_old_completed_skill_migrates_to_approved(tmp_path):
+    """A family whose skills were finished before the status column existed:
+    the migration normalizes them to 'approved' so they don't reappear as
+    unstarted, and stay untouched by the new gate."""
+    db_path = tmp_path / "old.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    sid = database.add_life_skill(s["id"], "Change a tire", "Vehicle")
+    # Simulate a pre-gate completion by writing completed_on with the status
+    # left at the column default a fresh migration would leave it.
+    database.conn.execute(
+        "UPDATE life_skills SET completed_on = '2026-01-02', status = 'assigned' WHERE id = ?",
+        (sid,),
+    )
+    database.conn.commit()
+    database.close()
+
+    reopened = Database(db_path)  # triggers migrate() again
+    row = next(x for x in reopened.list_life_skills(s["id"]) if x["id"] == sid)
+    reopened.close()
+    assert row["status"] == config.LIFE_SKILL_APPROVED
+
+
+# --- the gate, end to end through the Life Skills page ----------------------------
+
+LIFE_SKILLS_PATH = str(REPO_ROOT / "pages" / "6_Life_Skills.py")
+
+
+def _open_life_skills(monkeypatch, db_path, *, as_parent):
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+    at = AppTest.from_file(HOME_PATH)
+    if as_parent:
+        at.session_state["parent_unlocked"] = True
+    at.run(timeout=30)
+    at.switch_page(LIFE_SKILLS_PATH)
+    at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+    return at
+
+
+def test_student_mark_done_submits_rather_than_completing(monkeypatch, tmp_path):
+    """His "Mark done" no longer counts the skill outright -- it turns it in for
+    a parent to approve, so an accidental tick never silently counts."""
+    db_path = tmp_path / "ls.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    skill_id = database.add_life_skill(s["id"], "Change a tire", "Vehicle")
+    database.close()
+
+    at = _open_life_skills(monkeypatch, db_path, as_parent=False)
+    [b for b in at.button if b.key == f"ls_done_{skill_id}"][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    row = next(x for x in database.list_life_skills(s["id"]) if x["id"] == skill_id)
+    database.close()
+    assert row["status"] == config.LIFE_SKILL_SUBMITTED
+    assert not row["completed_on"]
+
+
+def test_parent_master_list_approves_a_submitted_skill(monkeypatch, tmp_path):
+    db_path = tmp_path / "ls.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    skill_id = database.add_life_skill(s["id"], "Change a tire", "Vehicle")
+    database.submit_life_skill(skill_id)
+    database.close()
+
+    at = _open_life_skills(monkeypatch, db_path, as_parent=True)
+    [b for b in at.button if b.label == "✅ Approve"][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    row = next(x for x in database.list_life_skills(s["id"]) if x["id"] == skill_id)
+    occ = [a for a in database.list_activities(s["id"]) if a["credits"].get("occupational_education")]
+    database.close()
+    assert row["completed_on"]
+    assert row["status"] == config.LIFE_SKILL_APPROVED
+    assert len(occ) == 1  # approval logged the hours
+
+
+def test_parent_master_list_undo_unchecks_a_completed_skill(monkeypatch, tmp_path):
+    """The reported fix, through the UI: a parent can uncheck a skill that was
+    marked done, and the hours it logged come back off."""
+    db_path = tmp_path / "ls.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    skill_id = database.add_life_skill(s["id"], "Change a tire", "Vehicle")
+    database.complete_life_skill(skill_id)  # earned + hours logged
+    database.close()
+
+    at = _open_life_skills(monkeypatch, db_path, as_parent=True)
+    [b for b in at.button if b.key == f"ls_undo_{skill_id}"][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    row = next(x for x in database.list_life_skills(s["id"]) if x["id"] == skill_id)
+    credited = [a for a in database.list_activities(s["id"]) if a["credits"]]
+    database.close()
+    assert not row["completed_on"]
+    assert row["status"] == config.LIFE_SKILL_ASSIGNED
+    assert credited == []  # the accidental hours are gone

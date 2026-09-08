@@ -810,14 +810,20 @@ def test_the_story_and_materials_show_without_any_click(monkeypatch, db, student
     assert "pencil and paper" in page
 
 
-def test_checking_the_box_marks_the_skill_done(monkeypatch, db, student):
+def test_marking_done_turns_it_in_for_a_parent_rather_than_completing(monkeypatch, db, student):
+    """His "Mark done" is now a submission -- it waits on a parent to approve
+    rather than counting the skill (and logging hours) outright, so an accidental
+    tick can't slip through uncaught."""
+    from compass import config
+
     db.seed_life_skills(student["id"])
     skills = db.list_life_skills(student["id"])
     budget = next(s for s in skills if s["title"] == "Build and follow a monthly budget")
 
-    render_cards(monkeypatch, db, skills, checkbox_pressed=f"ls_done_{budget['id']}")
+    render_cards(monkeypatch, db, skills, button_pressed=f"ls_done_{budget['id']}")
     updated = next(s for s in db.list_life_skills(student["id"]) if s["id"] == budget["id"])
-    assert updated["completed_on"] is not None
+    assert updated["status"] == config.LIFE_SKILL_SUBMITTED
+    assert updated["completed_on"] is None  # not earned until a parent approves
 
 
 def test_an_earned_skill_shows_as_a_badge_with_no_mark_done_checkbox(monkeypatch, db, student):

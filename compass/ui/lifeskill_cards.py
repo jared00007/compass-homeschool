@@ -182,9 +182,70 @@ def render_student_life_skills(db: Database, skills: list[dict[str, Any]]) -> No
                     f'{html.escape(skill["materials"])}</div>',
                     unsafe_allow_html=True,
                 )
-            if _ui.st.checkbox("Mark done", value=False, key=f"ls_done_{skill['id']}"):
-                db.complete_life_skill(skill["id"])  # marks done + logs occ-ed hours
-                _ui.st.rerun()
+            status = skill.get("status") or config.LIFE_SKILL_ASSIGNED
+            if status == config.LIFE_SKILL_SUBMITTED:
+                # He's turned it in; it's a parent's call now. No badge, no
+                # hours yet -- those wait on approval -- but he can pull it back
+                # if he ticked it by mistake.
+                _ui.st.info("⏳ Turned in — waiting on your parent to check it off.")
+                if _ui.st.button(
+                    "↩️ Oops — I'm not done yet", key=f"ls_unsubmit_{skill['id']}"
+                ):
+                    # Nothing's been logged yet (approval is what logs), so this
+                    # just drops it back to 'assigned' -- reopen does exactly
+                    # that and removes no hours when there are none to remove.
+                    db.reopen_life_skill(skill["id"])
+                    _ui.st.rerun()
+            else:
+                if status == config.LIFE_SKILL_NEEDS_REVISION and skill.get("feedback"):
+                    _ui.st.warning(
+                        f"↩️ Your parent asked for another look: {md(skill['feedback'])}"
+                    )
+                elif status == config.LIFE_SKILL_NEEDS_REVISION:
+                    _ui.st.warning("↩️ Your parent sent this back — give it another go.")
+                label = (
+                    "Turn it in again" if status == config.LIFE_SKILL_NEEDS_REVISION
+                    else "Mark done"
+                )
+                if _ui.st.button(label, key=f"ls_done_{skill['id']}"):
+                    db.submit_life_skill(skill["id"])  # waits on a parent now
+                    _ui.st.rerun()
+
+
+def _render_life_skill_review_controls(db: Database, skill: dict[str, Any]) -> None:
+    """The parent's approve / send-back / undo for one life skill, inside its
+    Master-list row. Submitted -> approve it (logs the hours) or send it back
+    with a note; earned -> undo it, which clears the badge and removes the hours
+    approval logged (reported: "landon accidentally completed two he did not do
+    but i cant figure out how to uncheck them"). A still-assigned or sent-back
+    skill has nothing to act on here yet, so this stays quiet."""
+    skill_status = skill.get("status") or config.LIFE_SKILL_ASSIGNED
+    if skill_status == config.LIFE_SKILL_SUBMITTED:
+        _ui.st.info("⏳ He marked this done — approve it or send it back for more work.")
+        with _ui.st.form(f"ls_review_{skill['id']}"):
+            feedback = _ui.st.text_area(
+                "Feedback (shown to him if you send it back)",
+                key=f"ls_feedback_{skill['id']}",
+            )
+            approve_col, back_col = _ui.st.columns(2)
+            approve = approve_col.form_submit_button("✅ Approve", type="primary")
+            send_back = back_col.form_submit_button("↩️ Send back for more work")
+        if approve:
+            db.complete_life_skill(skill["id"])  # sets earned + logs occ-ed hours
+            _ui.st.rerun()
+        elif send_back:
+            db.send_life_skill_back(skill["id"], feedback)
+            _ui.st.rerun()
+    elif skill["completed_on"]:
+        _ui.st.caption(
+            "Marked done by mistake, or he needs to redo it? Undo clears the "
+            "badge and takes back the hours it logged."
+        )
+        if _ui.st.button("↩️ Mark not done (undo)", key=f"ls_undo_{skill['id']}"):
+            db.reopen_life_skill(skill["id"])
+            _ui.st.rerun()
+    elif skill_status == config.LIFE_SKILL_NEEDS_REVISION and skill.get("feedback"):
+        _ui.st.caption(f"↩️ Sent back — you asked: {md(skill['feedback'])}")
 
 
 def render_life_skill_catalog_manager(db: Database, skills: list[dict[str, Any]]) -> None:
@@ -212,15 +273,33 @@ def render_life_skill_catalog_manager(db: Database, skills: list[dict[str, Any]]
         by_category.setdefault(skill["category"], []).append(skill)
 
     unlocked = sum(1 for s in skills if s["active"])
+    waiting = [s for s in skills if (s.get("status") or "") == config.LIFE_SKILL_SUBMITTED]
     _ui.st.caption(f"{unlocked} / {len(skills)} unlocked")
+    if waiting:
+        # Approving is why a parent opens this page after he's worked -- so the
+        # skills waiting on that call are named up top, not left to be found by
+        # opening rows one by one.
+        _ui.st.warning(
+            f"⏳ **{len(waiting)} waiting on your approval:** "
+            + ", ".join(md(s["title"]) for s in waiting)
+        )
 
     for category, items in by_category.items():
         _ui.st.subheader(category)
         for skill in items:
-            status = "✅ earned" if skill["completed_on"] else ("🔓 unlocked" if skill["active"] else "🔒 locked")
+            skill_status = skill.get("status") or config.LIFE_SKILL_ASSIGNED
+            if skill["completed_on"]:
+                status = "✅ earned"
+            elif skill_status == config.LIFE_SKILL_SUBMITTED:
+                status = "⏳ waiting on you"
+            elif skill_status == config.LIFE_SKILL_NEEDS_REVISION:
+                status = "↩️ sent back"
+            else:
+                status = "🔓 unlocked" if skill["active"] else "🔒 locked"
             if skill["scheduled_for"] and not skill["completed_on"]:
                 status += f" · 📅 assigned {skill['scheduled_for']}"
             with _ui.st.expander(f"{skill['title']} — {status}"):
+                _render_life_skill_review_controls(db, skill)
                 columns = _ui.st.columns([5, 1])
                 if skill["description"]:
                     columns[0].markdown(f"**The mission:** {skill['description']}")

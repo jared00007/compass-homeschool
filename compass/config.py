@@ -408,6 +408,24 @@ WRITING_REVIEW_STATUSES = (
 )
 
 
+# --- Life-skill approval gate -------------------------------------------------
+# A life skill runs through the same submit -> approve loop his written work
+# does, so an accidental "done" tick can't count (or log hours) until a parent
+# signs off, and a parent can send one back or undo it. `completed_on` stays
+# the single "earned" signal everything else reads; these track where a skill
+# sits on the way there. See Database.submit_life_skill / approve_life_skill /
+# send_life_skill_back / reopen_life_skill.
+LIFE_SKILL_ASSIGNED = "assigned"
+LIFE_SKILL_SUBMITTED = "submitted"
+LIFE_SKILL_NEEDS_REVISION = "needs_revision"
+LIFE_SKILL_APPROVED = "approved"
+
+LIFE_SKILL_STATUSES = (
+    LIFE_SKILL_ASSIGNED, LIFE_SKILL_SUBMITTED,
+    LIFE_SKILL_NEEDS_REVISION, LIFE_SKILL_APPROVED,
+)
+
+
 # --- Lesson difficulty --------------------------------------------------------
 # Family-wide by default (the `lesson_difficulty` setting above), with a
 # per-generation override each subject's Plan tab offers on top of it -- see

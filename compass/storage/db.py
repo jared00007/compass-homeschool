@@ -1462,6 +1462,25 @@ class Database:
         self._ensure_column("life_skills", "materials", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("life_skills", "active", "INTEGER NOT NULL DEFAULT 1")
         self._ensure_column("life_skills", "scheduled_for", "TEXT")
+        # A submit -> approve gate on life skills, the same one lessons, travel
+        # entries and project steps carry: 'assigned' (his to do), 'submitted'
+        # (he marked it done, waiting on a parent), 'needs_revision' (a parent
+        # sent it back with `feedback`), 'approved' (a parent signed off --
+        # `completed_on` is set and the occ-ed hours are logged). Reported: a
+        # skill he ticked "done" by accident counted and logged hours with no
+        # way for a parent to undo it, and nothing asked a parent first.
+        # `completed_on` stays the single "earned" signal everything else reads
+        # (XP, Compliance, badges), set only on approval; `logged_activity_id`
+        # remembers the hours row that approval created so an undo can remove
+        # exactly it. An existing done skill (from before this gate) is
+        # normalized to 'approved' just below so it doesn't reappear as unstarted.
+        self._ensure_column("life_skills", "status", "TEXT NOT NULL DEFAULT 'assigned'")
+        self._ensure_column("life_skills", "feedback", "TEXT")
+        self._ensure_column("life_skills", "logged_activity_id", "INTEGER")
+        self.conn.execute(
+            "UPDATE life_skills SET status = 'approved' "
+            "WHERE completed_on IS NOT NULL AND completed_on != '' AND status = 'assigned'"
+        )
         self._ensure_column("project_steps", "min_days", "INTEGER NOT NULL DEFAULT 1")
         self._ensure_column("project_steps", "max_days", "INTEGER NOT NULL DEFAULT 1")
         self._ensure_column("big_projects", "shelved", "INTEGER NOT NULL DEFAULT 0")
@@ -4282,17 +4301,94 @@ class Database:
     def set_life_skill_done(
         self, skill_id: int, completed: bool, notes: str = ""
     ) -> None:
+        """The bare done/undone toggle. Keeps `status` in step with
+        `completed_on` (done -> 'approved', undone -> 'assigned') so the two
+        never disagree -- the parent "Log time" form, which stamps done through
+        here rather than through the submit gate, still leaves a coherent row."""
         self.conn.execute(
-            "UPDATE life_skills SET completed_on = ?, "
+            "UPDATE life_skills SET completed_on = ?, status = ?, "
             "notes = CASE WHEN ? != '' THEN ? ELSE notes END WHERE id = ?",
-            (date.today().isoformat() if completed else None, notes, notes, skill_id),
+            (
+                date.today().isoformat() if completed else None,
+                config.LIFE_SKILL_APPROVED if completed else config.LIFE_SKILL_ASSIGNED,
+                notes,
+                notes,
+                skill_id,
+            ),
+        )
+        self.conn.commit()
+
+    def submit_life_skill(self, skill_id: int) -> None:
+        """He marks a life skill done -- but as a *submission* now, not the
+        finished-and-counted event it used to be. Sets status to 'submitted'
+        (waiting on a parent) and logs no hours; nothing counts toward
+        Occupational Education, XP, or a badge until a parent approves it. This
+        is the fix for a skill he ticked done by accident silently counting,
+        with no way for a parent to catch it first. Clears any prior send-back
+        feedback -- he's answering it by turning the work in again."""
+        self.conn.execute(
+            "UPDATE life_skills SET status = ?, feedback = NULL WHERE id = ?",
+            (config.LIFE_SKILL_SUBMITTED, skill_id),
+        )
+        self.conn.commit()
+
+    def send_life_skill_back(self, skill_id: int, feedback: str = "") -> None:
+        """A parent sends a submitted life skill back for more work. Status ->
+        'needs_revision' with the note he'll see, and `completed_on` is left
+        clear (it was never set -- approval is the only thing that sets it), so
+        no hours and no badge. Mirrors send_lesson_back for written work."""
+        self.conn.execute(
+            "UPDATE life_skills SET status = ?, feedback = ?, completed_on = NULL "
+            "WHERE id = ?",
+            (config.LIFE_SKILL_NEEDS_REVISION, feedback, skill_id),
+        )
+        self.conn.commit()
+
+    def reopen_life_skill(self, skill_id: int) -> None:
+        """Undo a completion -- the parent 'uncheck' that was missing. Clears
+        `completed_on`, drops the skill back to 'assigned', and removes the
+        occ-ed hours that approval logged so an accidental "done" doesn't leave
+        Compliance overcounting (reported: "landon accidentally completed two he
+        did not do but i cant figure out how to uncheck them").
+
+        It removes exactly the activity row approval created when that's known
+        (`logged_activity_id`); for an older completion logged before this
+        column existed it falls back to the single life-skills activity that
+        matches this skill's title, and leaves the hours alone rather than
+        guess when more than one could match."""
+        row = self.conn.execute(
+            "SELECT * FROM life_skills WHERE id = ?", (skill_id,)
+        ).fetchone()
+        if row is None:
+            return
+        skill = dict(row)
+        logged_id = skill.get("logged_activity_id")
+        if logged_id:
+            self.delete_activity(int(logged_id))
+        elif skill.get("completed_on"):
+            # Legacy completion with no tracked hours row -- best-effort, and
+            # only when it's unambiguous, so a separately logged block of real
+            # hours for the same skill is never swept away by an undo.
+            matches = self.conn.execute(
+                "SELECT id FROM activities WHERE student_id = ? AND source = 'life_skills' "
+                "AND title = ?",
+                (skill["student_id"], skill["title"]),
+            ).fetchall()
+            if len(matches) == 1:
+                self.delete_activity(int(matches[0]["id"]))
+        self.conn.execute(
+            "UPDATE life_skills SET status = ?, completed_on = NULL, "
+            "feedback = NULL, logged_activity_id = NULL WHERE id = ?",
+            (config.LIFE_SKILL_ASSIGNED, skill_id),
         )
         self.conn.commit()
 
     def complete_life_skill(
         self, skill_id: int, *, minutes: int | None = None, notes: str = ""
     ) -> None:
-        """Mark a life skill done AND log its instructional time.
+        """Approve a life skill: mark it done, record the approval, AND log its
+        instructional time. This is a parent's sign-off -- the one thing that
+        sets `completed_on` and counts the skill.
 
         A life skill IS the app's occupational-education coverage, so finishing
         one should count toward that subject's hours, not just flip a checkbox.
@@ -4305,7 +4401,9 @@ class Database:
         re-clicking never double-counts, and the "Log time on a life skill" form
         -- which logs its own hours and then marks done -- keeps using the bare
         setter so it isn't double-charged either. `minutes` overrides the default
-        block (config.LIFE_SKILL_DEFAULT_MINUTES) when a real figure is known."""
+        block (config.LIFE_SKILL_DEFAULT_MINUTES) when a real figure is known.
+        The activity id it logs is stored on the skill so `reopen_life_skill`
+        can remove exactly those hours on an undo."""
         row = self.conn.execute(
             "SELECT * FROM life_skills WHERE id = ?", (skill_id,)
         ).fetchone()
@@ -4314,11 +4412,16 @@ class Database:
         skill = dict(row)
         already_done = bool(skill.get("completed_on"))
         self.set_life_skill_done(skill_id, True, notes)
+        self.conn.execute(
+            "UPDATE life_skills SET status = ? WHERE id = ?",
+            (config.LIFE_SKILL_APPROVED, skill_id),
+        )
+        self.conn.commit()
         if already_done:
             return
         subject = skill.get("credit_subject") or "occupational_education"
         logged = int(minutes) if minutes else config.LIFE_SKILL_DEFAULT_MINUTES
-        self.log_activity(
+        activity_id = self.log_activity(
             student_id=skill["student_id"],
             title=skill["title"],
             tier=config.TIER_LIFE_SKILLS,
@@ -4328,6 +4431,11 @@ class Database:
             description=notes or f"Completed the '{skill['title']}' life skill.",
             source="life_skills",
         )
+        self.conn.execute(
+            "UPDATE life_skills SET logged_activity_id = ? WHERE id = ?",
+            (activity_id, skill_id),
+        )
+        self.conn.commit()
 
     def set_life_skill_active(self, skill_id: int, active: bool) -> None:
         """Unlocks or hides a catalog skill from the student view. Never
