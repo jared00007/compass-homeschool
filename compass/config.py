@@ -147,11 +147,14 @@ XP_PER_LEVEL = 100
 # system of movie night, ice cream sundae party" idea, made concrete. The app
 # only surfaces what he's earned and what's next; the parent decides when to
 # actually deliver it. (threshold_xp, name, emoji), ascending by threshold.
+#
+# Kept deliberately short -- three milestones: a quick first win, a mid-goal,
+# and something to really climb toward. A parent tunes the whole list (names,
+# amounts, add or remove) in Mission Control's XP-rewards editor; this is only
+# the starting point, so simpler is better than a long ladder to manage.
 XP_REWARDS: tuple[tuple[int, str, str], ...] = (
     (150, "Pick a family movie night", "🎬"),
-    (300, "Ice cream sundae run", "🍨"),
-    (500, "Friend sleepover", "🛌"),
-    (750, "Ice cream sundae party", "🎉"),
+    (500, "Ice cream sundae party", "🍨"),
     (1000, "A day trip you choose", "🗺️"),
 )
 # Rank names by level (level 1 = index 0). The last one holds for every level

@@ -2490,9 +2490,10 @@ def render_xp_reward_editor(db: Database) -> None:
     XP card reads the same ladder, so a change here is what he sees next load."""
     ladder = xp_module.reward_ladder(db)
     st.caption(
-        "The milestones he unlocks as his XP climbs. Edit the numbers and names, "
-        "add or delete rows, then Save. The app tracks when he's earned one — you "
-        "decide when to actually make it happen."
+        f"**{len(ladder)} reward{'s' if len(ladder) != 1 else ''}** he unlocks as his "
+        "XP climbs. Edit the numbers and names, add or delete rows, then Save — a "
+        "short list of a few milestones he can actually reach beats a long one. The "
+        "app tracks when he's earned one; you decide when to actually make it happen."
     )
     rows = [{"XP needed": t, "Emoji": e, "Reward": n} for t, n, e in ladder]
     edited = st.data_editor(
