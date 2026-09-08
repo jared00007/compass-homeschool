@@ -377,6 +377,15 @@ def timeline(ctx: StudentContext) -> TopicProposal:
     least_covered = min(ERAS, key=lambda item: (covered[item[0]], ERAS.index(item)))
     era_key, era_label = least_covered
 
+    # A parent can jump straight to a chosen era instead of taking whatever's
+    # least-covered -- reported: "seems I'm stuck in a period and not many
+    # options." Overrides the pick and tags the lesson with that era so coverage
+    # stays honest.
+    picked_era = (ctx.inputs.get("era") or "").strip()
+    _era_labels = dict(ERAS)
+    if picked_era in _era_labels:
+        era_key, era_label = picked_era, _era_labels[picked_era]
+
     explored = ctx.db.explored_topics(ctx.student_id, agent_key)
     pool = ctx.db.unexplored_web_nodes(ctx.student_id, agent_key, location or None)
 
@@ -434,6 +443,9 @@ def timeline(ctx: StudentContext) -> TopicProposal:
     if seed:
         topic = seed
         rationale = "Parent or student supplied this topic."
+    elif picked_era:
+        topic = era_label
+        rationale = f"You chose to teach {era_label}."
     elif location:
         topic = f"{era_label} — or the history of {location}, if the location earns it"
         rationale = (

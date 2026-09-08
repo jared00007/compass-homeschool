@@ -387,3 +387,18 @@ def test_every_science_area_starts_a_fresh_thread(db, student):
         # ...but the picked area wins: it starts on the seed, not the old branch.
         assert proposal.topic == seed
         assert proposal.metadata.get("seed") is True
+
+
+def test_history_jumps_to_a_chosen_era(db, student):
+    """Reported: "seems I'm stuck in a period and not many options." Picking an
+    era teaches and tags that era, overriding the least-covered default and any
+    open branch."""
+    from compass.agents.strategies import ERAS
+
+    # An open branch from the old path is sitting in the web...
+    db.add_web_node(student["id"], "history", "the Whitman Mission", depth=1)
+    key, label = ERAS[6]  # a specific, non-default era
+    proposal = get_agent("history").propose_topic(ctx_for(db, student, era=key))
+    assert proposal.topic == label
+    assert proposal.metadata["era"] == key
+    assert proposal.metadata["era_label"] == label
