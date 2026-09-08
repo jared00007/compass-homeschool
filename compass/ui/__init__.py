@@ -45,6 +45,7 @@ from compass import (
     xp as xp_module,
     grades,
     gradebook,
+    reading,
     subjects,
     theme as theming,
     weekly,
@@ -2277,14 +2278,55 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
     else:
         _tile("🔤", "Words — all caught up ✅", tone="done")
 
-    # Reading -- his book and how far in he is, as a real progress bar.
+    # Reading -- his book, and today's page goal when a parent's set a daily
+    # rate. With a goal he gets a target ("read up to page 175 today") he can
+    # report against and green-check like the other tiles; without one it's the
+    # plain progress bar it always was.
     if book:
-        _tile("📖", f"Reading — {md(book['title'])}", tone="info")
-        if book.get("total_pages"):
-            st.progress(
-                min((book["current_page"] or 0) / book["total_pages"], 1.0),
-                text=f"page {book['current_page']} of {book['total_pages']}",
-            )
+        total = book.get("total_pages")
+        rate = book.get("pages_per_day") or 0
+        current = book.get("current_page") or 0
+        log_today = (
+            db.reading_log_on(student["id"], book["id"], today)
+            if (rate and total)
+            else None
+        )
+        start_page = log_today["start_page"] if log_today else current
+        target = reading.daily_reading_target(total, start_page, rate)
+        if target is not None:
+            if current >= target:
+                _tile(
+                    "📖", f"Reading — done for today ✅ (page {current} of {total})",
+                    tone="done",
+                )
+            else:
+                _tile(
+                    "📖",
+                    f"Reading — {md(book['title'])}: read up to page {target} today",
+                    tone="info",
+                )
+                st.progress(
+                    min(current / total, 1.0),
+                    text=f"page {current} of {total} — today's goal: page {target}",
+                )
+                if st.button(f"✅ I read up to page {target}", key="reading_hit_goal"):
+                    db.log_reading(student["id"], book["id"], target, today)
+                    st.rerun()
+                reported = st.number_input(
+                    "On a different page? Enter it and save:",
+                    min_value=0, max_value=int(total),
+                    value=int(current), key="reading_report_page",
+                )
+                if st.button("Save my page", key="reading_save_page"):
+                    db.log_reading(student["id"], book["id"], int(reported), today)
+                    st.rerun()
+        else:
+            _tile("📖", f"Reading — {md(book['title'])}", tone="info")
+            if total:
+                st.progress(
+                    min(current / total, 1.0),
+                    text=f"page {current} of {total}",
+                )
     else:
         _tile("📖", "Reading — no book set yet", tone="info")
 

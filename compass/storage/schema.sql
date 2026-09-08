@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS books (
     reading_level TEXT NOT NULL DEFAULT '',
     total_pages  INTEGER,
     current_page INTEGER NOT NULL DEFAULT 0,
+    pages_per_day INTEGER NOT NULL DEFAULT 0,  -- a daily reading target; 0 = none, just track progress
     status       TEXT NOT NULL DEFAULT 'reading'
                  CHECK (status IN ('reading', 'finished', 'abandoned', 'upcoming')),
     term         TEXT CHECK (term IN ('first_half', 'second_half')),
@@ -107,6 +108,20 @@ CREATE TABLE IF NOT EXISTS books (
     notes        TEXT NOT NULL DEFAULT '',
     ai_summary   TEXT NOT NULL DEFAULT '',  -- parent-drafted-with-AI blurb, shown to him
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- One row per day he read, per book -- the record behind the daily reading
+-- target. `start_page` is where he was when the day began (frozen so today's
+-- goal doesn't move as he reports progress); `end_page` is how far he got. The
+-- book's own `current_page` still holds his furthest point for everything else.
+CREATE TABLE IF NOT EXISTS reading_log (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id   INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    book_id      INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    entry_date   TEXT NOT NULL,
+    start_page   INTEGER NOT NULL,
+    end_page     INTEGER NOT NULL,
+    UNIQUE (student_id, book_id, entry_date)
 );
 
 -- Leitner-box spaced repetition. box 1 = review tomorrow, escalating to box 5.

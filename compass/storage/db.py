@@ -1474,6 +1474,11 @@ class Database:
         # remembers the hours row that approval created so an undo can remove
         # exactly it. An existing done skill (from before this gate) is
         # normalized to 'approved' just below so it doesn't reappear as unstarted.
+        # A daily reading target on a book (0 = none, the old behaviour: just
+        # track the page). Column-added here so an existing family's books gain
+        # it without a rebuild; the reading_log table itself is covered by the
+        # CREATE TABLE IF NOT EXISTS in schema.sql, which runs on every open.
+        self._ensure_column("books", "pages_per_day", "INTEGER NOT NULL DEFAULT 0")
         self._ensure_column("life_skills", "status", "TEXT NOT NULL DEFAULT 'assigned'")
         self._ensure_column("life_skills", "feedback", "TEXT")
         self._ensure_column("life_skills", "logged_activity_id", "INTEGER")
@@ -2439,6 +2444,7 @@ class Database:
             "reading_level",
             "total_pages",
             "current_page",
+            "pages_per_day",
             "status",
             "notes",
             "finished_on",
@@ -2452,6 +2458,45 @@ class Database:
         assignments = ", ".join(f"{k} = ?" for k in updates)
         self.conn.execute(
             f"UPDATE books SET {assignments} WHERE id = ?", (*updates.values(), book_id)
+        )
+        self.conn.commit()
+
+    def reading_log_on(
+        self, student_id: int, book_id: int, entry_date: str
+    ) -> dict[str, Any] | None:
+        """His reading row for one book on one day, or None if he hasn't logged
+        any pages for it yet that day -- what the Home tile reads to freeze
+        today's start page and tell whether he's hit the day's target."""
+        return _row(
+            self.conn.execute(
+                "SELECT * FROM reading_log WHERE student_id = ? AND book_id = ? "
+                "AND entry_date = ?",
+                (student_id, book_id, entry_date),
+            )
+        )
+
+    def log_reading(
+        self, student_id: int, book_id: int, page_reached: int, entry_date: str
+    ) -> None:
+        """Record the page he's reached in a book today and move the book's
+        `current_page` there. The day's `start_page` is set once, the first time
+        he logs that day (from wherever the book was), and preserved on later
+        saves the same day -- so today's target stays anchored to where he began
+        the day, not wherever he's since read to. No-op for an unknown book."""
+        book = _row(self.conn.execute("SELECT * FROM books WHERE id = ?", (book_id,)))
+        if book is None:
+            return
+        page_reached = max(0, int(page_reached))
+        existing = self.reading_log_on(student_id, book_id, entry_date)
+        start_page = existing["start_page"] if existing else int(book["current_page"] or 0)
+        self.conn.execute(
+            "INSERT INTO reading_log (student_id, book_id, entry_date, start_page, end_page) "
+            "VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(student_id, book_id, entry_date) DO UPDATE SET end_page = excluded.end_page",
+            (student_id, book_id, entry_date, start_page, page_reached),
+        )
+        self.conn.execute(
+            "UPDATE books SET current_page = ? WHERE id = ?", (page_reached, book_id)
         )
         self.conn.commit()
 

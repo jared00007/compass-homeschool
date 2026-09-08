@@ -161,6 +161,40 @@ with books_tab:
                 db.update_book(book["id"], status="reading")
                 st.rerun()
 
+            if book["status"] == "reading":
+                # Set his page and a daily reading goal here -- the goal drives
+                # the "read up to page N today" target on his Home reading tile.
+                with st.expander("📖 Reading plan — pages & a daily goal"):
+                    plan_cols = st.columns(3)
+                    total_in = plan_cols[0].number_input(
+                        "Total pages", min_value=0, max_value=10000,
+                        value=int(book["total_pages"] or 0), key=f"bk_total_{book['id']}",
+                    )
+                    current_in = plan_cols[1].number_input(
+                        "Current page", min_value=0, max_value=10000,
+                        value=int(book["current_page"] or 0), key=f"bk_cur_{book['id']}",
+                    )
+                    rate_in = plan_cols[2].number_input(
+                        "Pages per day", min_value=0, max_value=500,
+                        value=int(book.get("pages_per_day") or 0),
+                        help="His daily reading goal. 0 = no goal, just track the page.",
+                        key=f"bk_rate_{book['id']}",
+                    )
+                    if rate_in and total_in:
+                        st.caption(
+                            f"On page {int(current_in)}, he'll be asked to read up to "
+                            f"**page {min(int(current_in) + int(rate_in), int(total_in))}** "
+                            "today."
+                        )
+                    if st.button("Save reading plan", key=f"bk_save_{book['id']}"):
+                        db.update_book(
+                            book["id"],
+                            total_pages=int(total_in) or None,
+                            current_page=int(current_in),
+                            pages_per_day=int(rate_in),
+                        )
+                        st.rerun()
+
             if book["ai_summary"]:
                 st.caption(md(book["ai_summary"]))
             summary_label = "✨ Regenerate summary" if book["ai_summary"] else "✨ Draft a summary with AI"
