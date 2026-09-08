@@ -607,7 +607,13 @@ def test_parent_sees_the_submitted_response_and_can_approve(monkeypatch, tmp_pat
     assert lesson["metadata"]["writing_review"]["0"]["status"] == "approved"
 
 
-def test_parent_can_send_it_back_with_feedback(monkeypatch, tmp_path):
+def test_flagging_a_piece_records_its_note_without_sending_the_lesson_back_yet(
+    monkeypatch, tmp_path
+):
+    """Flagging one written answer for rework is a *marker*, not the send-back:
+    it records that piece's verdict and note but leaves the lesson turned in, so
+    a parent can rule on every piece before anything reaches him. The actual
+    send-back is one lesson-wide button, committed separately below."""
     db_path = tmp_path / "a.db"
     db = Database(db_path)
     student = db.ensure_default_student()
@@ -625,8 +631,8 @@ def test_parent_can_send_it_back_with_feedback(monkeypatch, tmp_path):
         t for t in at.text_area if "Feedback" in (t.label or "")
     ][0]
     feedback_box.set_value("Back this up with a quote from the text.").run()
-    bounce = [b for b in at.button if "Send back" in (b.label or "")][0]
-    bounce.click().run()
+    flag = [b for b in at.button if b.label == "🔁 Flag for rework"][0]
+    flag.click().run()
     assert not at.exception, [e.message for e in at.exception]
 
     db2 = Database(db_path)
@@ -635,8 +641,40 @@ def test_parent_can_send_it_back_with_feedback(monkeypatch, tmp_path):
     review = lesson["metadata"]["writing_review"]["0"]
     assert review["status"] == "needs_revision"
     assert review["feedback"] == "Back this up with a quote from the text."
-    # Bouncing one piece sends the whole lesson back too.
+    # Flagging alone does NOT send the lesson back -- it stays turned in until
+    # the one lesson-wide send-back is committed.
+    assert lesson["status"] == "submitted"
+
+
+def test_the_lesson_wide_send_back_commits_a_flagged_piece(monkeypatch, tmp_path):
+    """Once a piece is flagged, the single lesson-wide "Send back for revision"
+    is what actually reopens the lesson to him -- carrying the per-piece notes
+    already on record."""
+    db_path = tmp_path / "a.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="english", subject="english", topic="t",
+        title="Argue a Character's Choice", payload=_writing_payload(),
+    )
+    db.save_writing_response(lesson_id, 0, "Too thin an argument.")
+    # Already flagged for rework, lesson still turned in -- the state a parent is
+    # in after flagging every piece and before committing the send-back.
+    db.set_writing_review(lesson_id, 0, "needs_revision", "Back this up with a quote.")
+    db.set_lesson_status(lesson_id, "submitted")
+    db.close()
+
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
+    bounce = [b for b in at.button if b.label == "↩️ Send back for revision"][0]
+    bounce.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db2 = Database(db_path)
+    lesson = db2.get_lesson(lesson_id)
+    db2.close()
     assert lesson["status"] == "needs_revision"
+    # The per-piece note is still the one he'll see -- the send-back didn't wipe it.
+    assert lesson["metadata"]["writing_review"]["0"]["feedback"] == "Back this up with a quote."
 
 
 def test_a_bounced_response_shows_him_the_feedback_and_reopens_the_box(monkeypatch, tmp_path):

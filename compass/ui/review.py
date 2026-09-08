@@ -224,6 +224,23 @@ def _render_writing_review_controls(
                 "anything on its own."
             )
 
+    # While you're still reviewing (the lesson's turned in but not yet
+    # approved or sent back), a per-piece verdict is a *marker*, not a
+    # commit -- approving or flagging one piece leaves every other piece's
+    # controls right where they are, and nothing reaches him until the one
+    # lesson-wide decision at the bottom. This is the fix for the trap where
+    # bouncing the first of three written answers hid the forms for the other
+    # two ("all 3 have their own Send back... feel like this should almost be
+    # something designated on the whole lesson").
+    lesson_under_review = lesson["status"] == "submitted"
+
+    def _reopen_button(label: str) -> None:
+        if lesson_under_review and _ui.st.button(
+            label, key=f"{key_prefix}_reopen_writing_{lesson['id']}_{index}"
+        ):
+            db.set_writing_review(lesson["id"], index, config.WRITING_SUBMITTED)
+            _ui.st.rerun()
+
     if status == config.WRITING_APPROVED:
         approval_note = review.get("approval_feedback")
         if approval_note:
@@ -231,22 +248,30 @@ def _render_writing_review_controls(
             if review.get("approval_read_at"):
                 _ui.st.caption(f"👀 He read it — {review['approval_read_at']}")
             else:
-                _ui.st.caption("⏳ Waiting on him to read it and tick that he saw it.")
+                _ui.st.caption("⏳ Waiting on him to read it and reply that he saw it.")
         else:
             _ui.st.success("✅ Approved.")
+        _reopen_button("↩️ Undo — decide on this one again")
     elif status == config.WRITING_NEEDS_REVISION:
         history = _feedback_history(
             review, history_key="feedback_history", single_key="feedback"
         )
+        # "Flagged" until the lesson-wide send-back actually commits; only then
+        # is it truly "sent back." Keeping the wording honest matters: a parent
+        # mid-review shouldn't think he's already seen this.
+        lead = (
+            "🔁 Flagged for rework — goes back to him when you send the lesson back"
+            if lesson_under_review
+            else "↩️ Sent back for revision"
+        )
         if len(history) <= 1:
-            _ui.st.warning(
-                "↩️ Sent back for revision" + (f": {md(history[0])}" if history else ".")
-            )
+            _ui.st.warning(lead + (f": {md(history[0])}" if history else "."))
         else:
-            _ui.st.warning("↩️ Sent back for revision — every note you've given so far:")
+            _ui.st.warning(lead + " — every note you've given so far:")
             for note in history:
                 _ui.st.markdown(f"- {md(note)}")
-    elif status == config.WRITING_SUBMITTED and lesson["status"] == "submitted":
+        _reopen_button("↩️ Undo — decide on this one again")
+    elif status == config.WRITING_SUBMITTED and lesson_under_review:
         # If this is a *re*-review -- you sent it back once, he reworked it and
         # turned it in again -- the notes you gave last time are the whole
         # point of comparison, so surface them right above the buttons rather
@@ -273,26 +298,25 @@ def _render_writing_review_controls(
                 "Feedback for him",
                 key=f"{review_key}_feedback",
                 help=(
-                    "Send back → he has to revise before it counts. "
-                    "Approve → it counts as done, but he still has to read this "
-                    "note and tick that he saw it."
+                    "Flag for rework → he has to revise this before the lesson "
+                    "counts. Approve → this piece counts, but he still has to read "
+                    "your note and reply that he saw it. Nothing reaches him until "
+                    "you send the whole lesson back (or approve it) below."
                 ),
             )
             approve_col, bounce_col = _ui.st.columns(2)
             approve = approve_col.form_submit_button("✅ Approve", type="primary")
-            bounce = bounce_col.form_submit_button("↩️ Send back for revision")
+            bounce = bounce_col.form_submit_button("🔁 Flag for rework")
         if approve:
             db.set_writing_review(
                 lesson["id"], index, config.WRITING_APPROVED, approval_note=feedback
             )
             _ui.st.rerun()
         elif bounce:
+            # Record the verdict on this one piece and nothing more -- the whole
+            # lesson only goes back when you commit the single send-back at the
+            # bottom, so flagging one answer never hides the others' controls.
             db.set_writing_review(lesson["id"], index, config.WRITING_NEEDS_REVISION, feedback)
-            # Bouncing any one piece sends the whole lesson back to him --
-            # he needs to see it and act, not just this activity. No
-            # lesson-level feedback text: this activity already carries
-            # its own, right where he'll read it.
-            db.send_lesson_back(lesson["id"])
             _ui.st.rerun()
     elif status == config.WRITING_SUBMITTED:
         # Submitted at the activity level but the lesson as a whole
@@ -421,13 +445,51 @@ def _render_final_grade_decision(
     assessment: dict[str, Any],
     skill_id: Any,
     writing_all_approved: bool,
+    writing_flagged: list[tuple[int, str]] | None = None,
+    writing_undecided: bool = False,
 ) -> None:
     """The one lesson-wide call, at the very bottom of the review: mastery
     for a Math skill (a `skill_id`), the five-band verdict for every other
     graded subject. Only opens up once he's turned the lesson in AND every
     writing piece in it is individually approved -- never two "send it back"
     buttons live for the same lesson at once. Approving folds in logging the
-    hours in the same click; sending back reopens it to him."""
+    hours in the same click; sending back reopens it to him.
+
+    If instead you've flagged one or more written pieces for rework, this is
+    also where that single send-back is committed -- one button that carries
+    every per-piece note back to him at once, pre-empting any grading (you
+    don't grade a lesson you're bouncing)."""
+    # The flagged-writing send-back short-circuits everything below: you've
+    # decided at least one piece needs another look, so the whole lesson goes
+    # back rather than getting a grade. Held until no piece is still undecided,
+    # so you can't bounce a lesson you haven't finished reviewing.
+    writing_flagged = writing_flagged or []
+    if (
+        lesson["status"] == "submitted"
+        and writing_flagged
+        and not writing_undecided
+    ):
+        count = len(writing_flagged)
+        which = ", ".join(f"No. {number} ({title})" for number, title in writing_flagged)
+        _ui.st.warning(
+            f"🔁 You've flagged {count} written "
+            f"{'piece' if count == 1 else 'pieces'} for rework: {which}. "
+            "Sending the lesson back gives him your note on each one."
+        )
+        with _ui.st.form(f"{key_prefix}_sendback_{lesson['id']}"):
+            note = _ui.st.text_area(
+                "Add a note for the whole lesson? (optional — each flagged "
+                "piece already carries the note you gave it)"
+            )
+            send = _ui.st.form_submit_button(
+                "↩️ Send back for revision", type="primary"
+            )
+        if send:
+            db.send_lesson_back(lesson["id"], note)
+            _ui.st.success("Sent back — he'll see your note on each flagged piece.")
+            _ui.st.rerun()
+        return
+
     if skill_id:
         current = db.mastery_map(student["id"]).get(skill_id, {})
         quiz_result = metadata.get("quiz_result") or {}
@@ -778,17 +840,34 @@ def render_lesson_review(
                     f"**Counts as mastered when:** {md(assessment['mastery_criteria'])}"
                 )
 
-    # The lesson-wide decision waits for every writing piece to be approved
-    # first, so grading the whole lesson never collides with a per-activity
-    # approve/bounce still pending above.
+    # The one lesson-wide decision reads the per-piece verdicts marked above.
+    # Every writing piece approved -> the grade/approve flow opens. Any piece
+    # flagged for rework -> a single "send the lesson back" that carries all the
+    # per-piece notes at once. A piece still undecided -> neither, until you rule
+    # on it. This is what keeps flagging one of three answers from firing off a
+    # send-back (and hiding the other two) the moment you click it.
     writing_activities = [
         (index, activity)
         for index, activity in enumerate(activities)
         if _needs_written_response(activity)
     ]
-    writing_all_approved = all(
-        (review_map.get(str(index)) or {}).get("status") == config.WRITING_APPROVED
+    writing_statuses = {
+        index: (review_map.get(str(index)) or {}).get("status", config.WRITING_DRAFT)
         for index, _ in writing_activities
+    }
+    writing_all_approved = all(
+        status == config.WRITING_APPROVED for status in writing_statuses.values()
+    )
+    writing_flagged = [
+        (index + 1, md(activities[index].get("title", "Activity")))
+        for index, status in writing_statuses.items()
+        if status == config.WRITING_NEEDS_REVISION
+    ]
+    # Anything not yet approved or flagged is still awaiting your call -- a piece
+    # he's turned in (submitted) or, on old data, one still in draft.
+    writing_undecided = any(
+        status not in (config.WRITING_APPROVED, config.WRITING_NEEDS_REVISION)
+        for status in writing_statuses.values()
     )
     _render_final_grade_decision(
         db,
@@ -799,6 +878,8 @@ def render_lesson_review(
         assessment=assessment,
         skill_id=skill_id,
         writing_all_approved=writing_all_approved,
+        writing_flagged=writing_flagged,
+        writing_undecided=writing_undecided,
     )
 
 
