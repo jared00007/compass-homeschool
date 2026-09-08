@@ -833,3 +833,23 @@ def test_submitted_project_steps_show_as_needs_review(monkeypatch, tmp_path):
     markdowns = " ".join(_md(review_tab))
     assert "project step(s) turned in" in markdowns
     assert "Pick your toy and your theme" in markdowns
+
+
+def test_submitted_life_skills_show_as_needs_review(monkeypatch, tmp_path):
+    """A life skill he's marked done waits on your approval in the review queue,
+    with a link out to the Life Skills master list -- so "needs review" for a
+    life skill isn't buried on its own page (reported: "where does the parent
+    approval for life skill completion go? i would think into mission control,
+    review... but i dont see it")."""
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    skill_id = db.add_life_skill(student["id"], "Change a tire", "Vehicle")
+    db.submit_life_skill(skill_id)
+    db.close()
+
+    at, review_tab = _open_review_tab(monkeypatch, db_path)
+    assert _review_label(at) == "✅ Review (1)"
+    markdowns = " ".join(_md(review_tab))
+    assert "life skill(s) turned in" in markdowns
+    assert "Change a tire" in markdowns

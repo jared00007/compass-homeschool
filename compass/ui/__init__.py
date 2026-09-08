@@ -2238,8 +2238,13 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
         _tile("💬", "Check-In — say how you're doing", tone="todo")
         st.page_link("pages/8_Check_In.py", label="Open Check-In", icon="➡️")
 
-    # Words
-    if due_words:
+    # Words -- a green check once he's done for the day, whether he cleared every
+    # due word or hit "I'm done with words for today" in the game (his own
+    # signal), so the tile reflects "I finished," not just "nothing left due."
+    words_done_today = db.vocab_reviewed_on(student["id"], today)
+    if words_done_today:
+        _tile("🔤", "Words — done for today ✅", tone="done")
+    elif due_words:
         _tile("🔤", "words to review", tone="todo", big=len(due_words))
         st.page_link("pages/3_English.py", label="Review now", icon="➡️")
     else:
@@ -2256,12 +2261,26 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
     else:
         _tile("📖", "Reading — no book set yet", tone="info")
 
-    # Life Skills -- keep the "(N)" count in the label (Home surfaces it), big
-    # gold count when something's due, calm green when nothing is.
-    if due_skills:
-        _tile("🛠️", f"Life Skills ({len(due_skills)}) due", tone="todo", big=len(due_skills))
-        for skill in due_skills:
+    # Life Skills -- big gold count only for what he still has to do; ones he's
+    # marked done (submitted, waiting on a parent's approval) count as his part
+    # finished, so once all that's left is waiting on you the tile goes green
+    # rather than nagging him about work he's already handed in.
+    todo_skills = [
+        s for s in due_skills
+        if (s.get("status") or "") != config.LIFE_SKILL_SUBMITTED
+    ]
+    awaiting_skills = [
+        s for s in due_skills
+        if (s.get("status") or "") == config.LIFE_SKILL_SUBMITTED
+    ]
+    if todo_skills:
+        _tile("🛠️", f"Life Skills ({len(todo_skills)}) due", tone="todo", big=len(todo_skills))
+        for skill in todo_skills:
             st.page_link("pages/6_Life_Skills.py", label=md(skill["title"]), icon="➡️")
+        if awaiting_skills:
+            st.caption(f"✅ {len(awaiting_skills)} handed in, waiting on your parent")
+    elif awaiting_skills:
+        _tile("🛠️", "Life Skills — handed in, waiting on your parent ✅", tone="done")
     else:
         _tile("🛠️", "Life Skills (0) — nothing due ✅", tone="done")
     # +later, and the Student's Choice / Coding counts (both live on the

@@ -760,6 +760,49 @@ def test_parent_master_list_approves_a_submitted_skill(monkeypatch, tmp_path):
     assert len(occ) == 1  # approval logged the hours
 
 
+def test_submitted_life_skills_lists_only_ones_awaiting_approval(db, student):
+    a = db.add_life_skill(student["id"], "Change a tire", "Vehicle")
+    db.add_life_skill(student["id"], "Bake bread", "Cooking")  # stays assigned
+    db.submit_life_skill(a)
+    assert [s["id"] for s in db.submitted_life_skills(student["id"])] == [a]
+    db.complete_life_skill(a)  # approved -> no longer waiting
+    assert db.submitted_life_skills(student["id"]) == []
+
+
+def test_home_words_tile_greens_once_he_is_done_for_the_day(monkeypatch, tmp_path):
+    """The words tile shows a green check when he's marked words done for the
+    day, even if some were still technically due."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    database.add_vocabulary(s["id"], "prudent", "careful")  # a due word exists
+    database.mark_vocab_reviewed(s["id"], date.today().isoformat())
+    database.close()
+
+    at = _open_home(monkeypatch, db_path)
+    text = " ".join(m.value for m in at.markdown)
+    assert "Words — done for today" in text
+
+
+def test_home_life_skill_tile_greens_when_handed_in_for_approval(monkeypatch, tmp_path):
+    """A skill he's marked done reads as his part finished (green, waiting on a
+    parent) rather than still nagging him as due."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    skill_id = database.add_life_skill(s["id"], "Change a tire", "Vehicle")
+    database.schedule_life_skill(skill_id, date.today().isoformat())
+    database.submit_life_skill(skill_id)
+    database.close()
+
+    at = _open_home(monkeypatch, db_path)
+    text = " ".join(m.value for m in at.markdown)
+    assert "handed in, waiting on your parent" in text
+    assert "Life Skills (1) due" not in text  # not nagged as still to do
+
+
 def test_parent_master_list_undo_unchecks_a_completed_skill(monkeypatch, tmp_path):
     """The reported fix, through the UI: a parent can uncheck a skill that was
     marked done, and the hours it logged come back off."""

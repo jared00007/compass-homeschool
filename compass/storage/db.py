@@ -4566,6 +4566,19 @@ class Database:
             )
         )
 
+    def submitted_life_skills(self, student_id: int) -> list[dict[str, Any]]:
+        """Life skills he's marked done that are waiting on a parent's
+        approval -- the review queue's life-skill rows, the same shape
+        `submitted_project_steps` gives for steps. Any assigned day, since a
+        hand-in waits on you regardless of when it was scheduled."""
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM life_skills WHERE student_id = ? AND status = ? "
+                "ORDER BY scheduled_for, sort_order, id",
+                (student_id, config.LIFE_SKILL_SUBMITTED),
+            )
+        )
+
     def upcoming_life_skills(self, student_id: int, after: str) -> list[dict[str, Any]]:
         """Assigned skills not due yet -- scheduled strictly after `after`,
         still unlocked, not yet completed. Feeds a "N more assigned this

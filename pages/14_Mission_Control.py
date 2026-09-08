@@ -388,10 +388,12 @@ backlog_count = (
 # Project steps a student has submitted count here too, so the badge reflects
 # everything the review tab actually surfaces below.
 submitted_step_count = len(db.submitted_project_steps(student["id"]))
+submitted_skill_count = len(db.submitted_life_skills(student["id"]))
 needs_review_count = (
     sum(1 for l in to_review if _needs_attention(l, today_iso) or l["status"] == "needs_revision")
     + len(travel_to_review)
     + submitted_step_count
+    + submitted_skill_count
 )
 
 
@@ -584,9 +586,16 @@ if mc_view == "review":
     travel_sent_back = [t for t in travel_to_review if t["status"] == "needs_revision"]
 
     submitted_steps = db.submitted_project_steps(student["id"])
-    waiting_count = len(submitted_lessons) + len(travel_waiting) + len(submitted_steps)
+    submitted_skills = db.submitted_life_skills(student["id"])
+    waiting_count = (
+        len(submitted_lessons) + len(travel_waiting)
+        + len(submitted_steps) + len(submitted_skills)
+    )
     st.markdown(f"### ✅ Turned in — waiting on you ({waiting_count})")
-    if not submitted_lessons and not travel_waiting and not submitted_steps:
+    if (
+        not submitted_lessons and not travel_waiting
+        and not submitted_steps and not submitted_skills
+    ):
         st.success("Nothing turned in to grade right now.")
     else:
         st.caption(
@@ -617,6 +626,20 @@ if mc_view == "review":
                     "pages/7_Big_Projects.py",
                     label="Review them in Big Projects",
                     icon="🏗️",
+                )
+        # Life skills he's marked done wait on your approval too -- surfaced here
+        # so "needs review" isn't buried on the Life Skills page, then linked out
+        # to the Master list where the Approve / Send-back controls live (same
+        # link-out shape as project steps just above).
+        if submitted_skills:
+            with st.container(border=True):
+                st.markdown(f"**🛠️ {len(submitted_skills)} life skill(s) turned in**")
+                for skill in submitted_skills:
+                    st.markdown(f"- {md(skill['title'])} — *{md(skill['category'])}*")
+                st.page_link(
+                    "pages/6_Life_Skills.py",
+                    label="Approve them under Life Skills → Master list",
+                    icon="🛠️",
                 )
 
     if overdue:
