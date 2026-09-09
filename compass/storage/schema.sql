@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS books (
     total_pages  INTEGER,
     current_page INTEGER NOT NULL DEFAULT 0,
     pages_per_day INTEGER NOT NULL DEFAULT 0,  -- a daily reading target; 0 = none, just track progress
+    reading_days TEXT NOT NULL DEFAULT '',     -- which weekdays it's assigned; '' = every day, else CSV of 0(Mon)-6(Sun)
     status       TEXT NOT NULL DEFAULT 'reading'
                  CHECK (status IN ('reading', 'finished', 'abandoned', 'upcoming')),
     term         TEXT CHECK (term IN ('first_half', 'second_half')),

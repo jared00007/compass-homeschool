@@ -1479,6 +1479,7 @@ class Database:
         # it without a rebuild; the reading_log table itself is covered by the
         # CREATE TABLE IF NOT EXISTS in schema.sql, which runs on every open.
         self._ensure_column("books", "pages_per_day", "INTEGER NOT NULL DEFAULT 0")
+        self._ensure_column("books", "reading_days", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("life_skills", "status", "TEXT NOT NULL DEFAULT 'assigned'")
         self._ensure_column("life_skills", "feedback", "TEXT")
         self._ensure_column("life_skills", "logged_activity_id", "INTEGER")
@@ -2445,6 +2446,7 @@ class Database:
             "total_pages",
             "current_page",
             "pages_per_day",
+            "reading_days",
             "status",
             "notes",
             "finished_on",

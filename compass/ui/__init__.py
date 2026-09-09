@@ -2297,7 +2297,10 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
     # target shows here with a one-tap Done; take it off the board and this tile
     # disappears completely, same as any other unassigned story.
     rate = int((book or {}).get("pages_per_day") or 0)
-    if book and rate > 0:
+    reading_today = book and rate > 0 and reading.reading_active_on(
+        book.get("reading_days") or "", date.fromisoformat(today).weekday()
+    )
+    if reading_today:
         total = book.get("total_pages")
         current = book.get("current_page") or 0
         log_today = db.reading_log_on(student["id"], book["id"], today)

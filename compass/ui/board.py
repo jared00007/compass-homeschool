@@ -422,23 +422,58 @@ def render_reading_board_card(db: Database, student: dict[str, Any], *, can_edit
     pages-per-day goal) it shows here and drives his Due-today reading tile;
     the parent takes it off with one button and both disappear. On his own board
     it's read-only; the add/remove controls are the parent's (`can_edit`)."""
+    from compass import reading as _reading
+
     book = db.current_book(student["id"])
     rate = int((book or {}).get("pages_per_day") or 0)
     if book and rate > 0:
+        active = _reading.parse_reading_days(book.get("reading_days") or "")
         with _ui.st.container(border=True):
             columns = _ui.st.columns([4, 1]) if can_edit else [_ui.st.container()]
+            when = (
+                "every day"
+                if active is None
+                else ", ".join(
+                    _reading.WEEKDAY_LABELS[d] for d in sorted(active)
+                ) or "no days set"
+            )
             columns[0].markdown(
-                f"📖 **Every day — read {rate} pages** · {md(book['title'])}"
+                f"📖 **Read {rate} pages · {when}** · {md(book['title'])}"
             )
-            columns[0].caption(
-                "A standing daily assignment. It shows on his Due-today list every "
-                "day until you take it off the board."
-            )
-            if can_edit and columns[1].button(
-                "Remove", key="reading_board_remove", help="Stop the daily reading assignment."
-            ):
-                db.update_book(book["id"], pages_per_day=0)
-                _ui.st.rerun()
+            if can_edit:
+                columns[0].caption(
+                    "A standing daily assignment. Tick the days it's on; untick a "
+                    "day to skip reading then. It shows on his Due-today list on the "
+                    "days it's on until you Remove it."
+                )
+                # One checkbox per weekday -- tick the days reading is assigned.
+                day_cols = _ui.st.columns(7)
+                current = (
+                    active if active is not None else set(range(7))
+                )
+                picked: set[int] = set()
+                for index, label in enumerate(_reading.WEEKDAY_LABELS):
+                    if day_cols[index].checkbox(
+                        label, value=(index in current),
+                        key=f"reading_day_{book['id']}_{index}",
+                    ):
+                        picked.add(index)
+                if picked and picked != current:
+                    db.update_book(
+                        book["id"],
+                        reading_days=_reading.serialize_reading_days(picked),
+                    )
+                    _ui.st.rerun()
+                elif not picked:
+                    _ui.st.caption(
+                        "Pick at least one day — or **Remove** to stop reading entirely."
+                    )
+                if columns[1].button(
+                    "Remove", key="reading_board_remove",
+                    help="Stop the daily reading assignment.",
+                ):
+                    db.update_book(book["id"], pages_per_day=0)
+                    _ui.st.rerun()
     elif can_edit and book:
         with _ui.st.container(border=True):
             _ui.st.markdown("📖 **Daily reading** — not on the board")

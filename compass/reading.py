@@ -21,3 +21,39 @@ def daily_reading_target(
         return None
     start = max(0, int(day_start_page or 0))
     return min(start + int(pages_per_day), int(total_pages))
+
+
+# Which weekdays the standing reading card is assigned. Stored as a CSV of
+# Python weekday numbers (Monday=0 .. Sunday=6); an empty string means "every
+# day" (the default, and what an on-the-board book had before per-day control
+# existed).
+
+WEEKDAY_LABELS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+
+def parse_reading_days(reading_days: str | None) -> set[int] | None:
+    """The set of weekdays reading is assigned, or None for 'every day' (the
+    empty/unset default). Tolerant of junk -- a malformed entry is dropped."""
+    if not reading_days:
+        return None
+    days: set[int] = set()
+    for part in str(reading_days).split(","):
+        part = part.strip()
+        if part.isdigit() and 0 <= int(part) <= 6:
+            days.add(int(part))
+    return days
+
+
+def serialize_reading_days(days: set[int] | None) -> str:
+    """Store a weekday set as a sorted CSV; None or the full week collapses back
+    to '' ('every day') so the common case stays the simple default."""
+    if not days or set(days) == set(range(7)):
+        return ""
+    return ",".join(str(d) for d in sorted(days))
+
+
+def reading_active_on(reading_days: str | None, weekday: int) -> bool:
+    """Whether reading is assigned on a given weekday (Monday=0 .. Sunday=6).
+    Empty/unset means every day."""
+    days = parse_reading_days(reading_days)
+    return days is None or weekday in days

@@ -13,7 +13,12 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 from compass import auth, config
-from compass.reading import daily_reading_target
+from compass.reading import (
+    daily_reading_target,
+    parse_reading_days,
+    reading_active_on,
+    serialize_reading_days,
+)
 from compass.storage.db import Database
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -36,6 +41,29 @@ def test_no_target_without_a_rate_or_a_known_length():
     assert daily_reading_target(288, 150, 0) is None
     assert daily_reading_target(None, 150, 25) is None
     assert daily_reading_target(288, 150, None) is None
+
+
+# --- which weekdays reading is assigned -------------------------------------------
+
+
+def test_empty_reading_days_means_every_day():
+    assert parse_reading_days("") is None
+    assert reading_active_on("", 2) is True  # Wednesday
+    assert reading_active_on(None, 6) is True  # Sunday
+
+
+def test_specific_reading_days_gate_by_weekday():
+    mon_wed_fri = "0,2,4"
+    assert reading_active_on(mon_wed_fri, 0) is True   # Mon
+    assert reading_active_on(mon_wed_fri, 2) is True   # Wed
+    assert reading_active_on(mon_wed_fri, 1) is False  # Tue is off
+    assert reading_active_on(mon_wed_fri, 3) is False  # Thu is off
+
+
+def test_serialize_collapses_the_full_week_to_empty():
+    assert serialize_reading_days(set(range(7))) == ""  # every day -> the simple default
+    assert serialize_reading_days({0, 2, 4}) == "0,2,4"
+    assert serialize_reading_days(None) == ""
 
 
 # --- the reading log --------------------------------------------------------------
@@ -178,7 +206,7 @@ def _open_mc_board(monkeypatch, db_path):
 def test_reading_board_card_shows_and_remove_takes_it_off(monkeypatch, tmp_path):
     db_path, student_id, book_id = _seeded(tmp_path, current_page=150, pages_per_day=20)
     at = _open_mc_board(monkeypatch, db_path)
-    assert any("Every day — read 20 pages" in m.value for m in at.markdown)
+    assert any("Read 20 pages · every day" in m.value for m in at.markdown)
 
     [b for b in at.button if (b.key or "") == "reading_board_remove"][0].click().run()
     assert not at.exception, [e.message for e in at.exception]
@@ -200,12 +228,55 @@ def test_reading_board_card_add_turns_it_on(monkeypatch, tmp_path):
     assert book["pages_per_day"] == 20
 
 
+def test_reading_board_card_weekday_toggle_saves(monkeypatch, tmp_path):
+    db_path, student_id, book_id = _seeded(tmp_path, current_page=150, pages_per_day=20)
+    at = _open_mc_board(monkeypatch, db_path)
+    # Starts every day (all ticked); untick Tuesday (weekday index 1).
+    at.checkbox(key=f"reading_day_{book_id}_1").set_value(False).run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    book = next(b for b in database.list_books(student_id) if b["id"] == book_id)
+    database.close()
+    active = parse_reading_days(book["reading_days"])
+    assert active is not None
+    assert 1 not in active and 0 in active and 2 in active  # only Tuesday dropped
+
+
+def test_home_reading_tile_hidden_on_an_off_day(monkeypatch, tmp_path):
+    """With today turned off in the weekday pattern, no reading tile shows on
+    his Due-today list."""
+    today_wd = date.today().weekday()
+    days = ",".join(str(d) for d in range(7) if d != today_wd)  # every day but today
+    db_path, _, book_id = _seeded(tmp_path, current_page=150, pages_per_day=20)
+    database = Database(db_path)
+    database.update_book(book_id, reading_days=days)
+    database.close()
+
+    at = _open_home(monkeypatch, db_path)
+    text = " ".join(m.value for m in at.markdown)
+    assert "read up to page" not in text
+    assert "Reading —" not in text
+
+
+def test_home_reading_tile_shows_on_an_on_day(monkeypatch, tmp_path):
+    today_wd = date.today().weekday()
+    db_path, _, book_id = _seeded(tmp_path, current_page=150, pages_per_day=20)
+    database = Database(db_path)
+    database.update_book(book_id, reading_days=str(today_wd))  # only today
+    database.close()
+
+    at = _open_home(monkeypatch, db_path)
+    text = " ".join(m.value for m in at.markdown)
+    assert "read up to page 170 today" in text
+
+
 def test_student_board_shows_the_reading_card_read_only(monkeypatch, tmp_path):
     db_path, _, _ = _seeded(tmp_path, current_page=150, pages_per_day=20)
     at = _open_home(monkeypatch, db_path)
     [b for b in at.button if "Board" in (b.label or "")][0].click().run()
     assert not at.exception, [e.message for e in at.exception]
-    assert any("Every day — read 20 pages" in m.value for m in at.markdown)
+    assert any("Read 20 pages · every day" in m.value for m in at.markdown)
     # No parent controls on his side.
     assert not any((b.key or "") == "reading_board_remove" for b in at.button)
 
