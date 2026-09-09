@@ -68,6 +68,55 @@ def _label_for(monkeypatch, *, active: bool, scheduled_for: str | None) -> str:
     return fake.popover_labels[0]
 
 
+class _AssignSt(_FakeSt):
+    """Drives the assign branch: the checkbox reads as ticked, the date picker
+    returns `picked`, and the "Assign to this day" button reports `click`."""
+
+    def __init__(self, *, picked, click: bool) -> None:
+        super().__init__()
+        self._picked = picked
+        self._click = click
+
+    def checkbox(self, *args, **kwargs):
+        return True  # "Assign to a specific day" is ticked
+
+    def date_input(self, *args, **kwargs):
+        return self._picked
+
+    def button(self, label, *args, **kwargs):
+        return self._click if "Assign to this day" in label else False
+
+
+def test_ticking_assign_without_the_button_does_not_schedule(monkeypatch):
+    """The reported bug: merely opening the picker (the box ticked, the date
+    defaulting to today) used to fire schedule() and jump the card to today.
+    Now nothing is written until the Assign button is clicked."""
+    import datetime as _dt
+
+    scheduled: list[str | None] = []
+    fake = _AssignSt(picked=_dt.date.today(), click=False)
+    monkeypatch.setattr(ui, "st", fake)
+    ui.render_story_move_control(
+        key="x", active=True, scheduled_for=None,
+        set_active=lambda a: None, schedule=lambda s: scheduled.append(s),
+    )
+    assert scheduled == []  # nothing scheduled just from opening the picker
+
+
+def test_clicking_assign_schedules_the_picked_day(monkeypatch):
+    import datetime as _dt
+
+    picked = _dt.date.today() + _dt.timedelta(days=5)
+    scheduled: list[str | None] = []
+    fake = _AssignSt(picked=picked, click=True)
+    monkeypatch.setattr(ui, "st", fake)
+    ui.render_story_move_control(
+        key="x", active=False, scheduled_for=None,
+        set_active=lambda a: None, schedule=lambda s: scheduled.append(s),
+    )
+    assert scheduled == [picked.isoformat()]  # the day the parent chose
+
+
 def test_a_backlogged_story_shows_backlog_even_with_a_leftover_date(monkeypatch):
     """The actual bug this guards: none of `set_active`/`send_to_backlog`'s
     real implementations clear `scheduled_for`/`planned_for` when a story

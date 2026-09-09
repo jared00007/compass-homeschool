@@ -436,6 +436,11 @@ def test_moving_a_story_to_a_different_week_shows_a_notice_not_just_a_vanish(
     date_widget = [d for d in board_tab.date_input if d.key == date_key][0]
     next_week_date = TARGET_MONDAY + timedelta(days=8)  # a Tuesday, the week after
     date_widget.set_value(next_week_date).run()
+    # The move commits on the explicit button, not on the date change alone.
+    [
+        b for b in _board_tab(at).button
+        if b.key == f"move_board_lesson_{lesson_id}_assign_btn"
+    ][0].click().run()
     assert not at.exception, [e.message for e in at.exception]
 
     board_tab = _board_tab(at)
@@ -539,6 +544,10 @@ def test_reactivating_a_lesson_from_the_board_does_not_clobber_its_picked_day(
     date_key = f"move_board_lesson_{lesson_id}_date_{TARGET_MONDAY.isoformat()}"
     date_widget = [d for d in board_tab.date_input if d.key == date_key][0]
     date_widget.set_value(picked_day).run()
+    [
+        b for b in _board_tab(at).button
+        if b.key == f"move_board_lesson_{lesson_id}_assign_btn"
+    ][0].click().run()
     assert not at.exception, [e.message for e in at.exception]
 
     # Send it back to the backlog, then take it out again with the

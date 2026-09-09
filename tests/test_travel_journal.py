@@ -880,6 +880,11 @@ def test_the_move_control_can_reschedule_an_assigned_trip_to_a_different_day(
     assert date_widget, "the move control's date picker must still be offered"
     target_day = original_day + timedelta(days=9)  # some day next week
     date_widget[0].set_value(target_day).run()
+    # The move commits on the explicit "Assign to this day" button.
+    [
+        b for b in _journal_tab(at).button
+        if b.key == f"move_travel_{entry_id}_assign_btn"
+    ][0].click().run()
     assert not at.exception, [e.message for e in at.exception]
 
     database = Database(db_path)

@@ -119,11 +119,21 @@ def render_story_move_control(
                 value=_ui.date.fromisoformat(scheduled_for) if scheduled_for else _ui.date.today(),
                 key=f"move_{key}_date_{scheduled_for}",
             )
-            if picked.isoformat() != scheduled_for:
+            # The move happens only when you click this button -- never the
+            # instant the picker opens. It used to reschedule on any picked date
+            # that differed from the stored one, but for a story with no day yet
+            # the picker *defaults to today*, so merely ticking "Assign to a
+            # specific day" fired schedule(today) and jumped the card to the
+            # current day before you could pick the day you actually wanted
+            # (reported directly). Now you open the picker, choose any day, and
+            # confirm here.
+            if _ui.st.button(
+                "📌 Assign to this day", key=f"move_{key}_assign_btn", type="primary"
+            ):
                 problem = validate_schedule(picked.isoformat()) if validate_schedule else None
                 if problem:
                     _ui.st.error(problem)
-                else:
+                elif picked.isoformat() != scheduled_for:
                     schedule(picked.isoformat())
                     _ui.st.rerun()
         elif scheduled_for:

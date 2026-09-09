@@ -157,9 +157,9 @@ def test_send_to_backlog_is_not_offered_on_an_active_step_only_date_assignment_i
     and the "Send to backlog" button read as the only offered action when
     what a parent actually wants is just to move it to a different day.
     `show_backlog_toggle=False` on this call site drops the button
-    entirely; assigning a day is still the one and only action, and it
-    still works exactly as before (the date_input's own on-change already
-    reschedules with no separate confirm step)."""
+    entirely; assigning a day is still the one and only action -- you open
+    the picker, choose a day, and confirm with "Assign to this day" (ticking
+    the box alone no longer jumps it to today)."""
     db_path = tmp_path / "projects.db"
     db = Database(db_path)
     student = db.ensure_default_student()
@@ -179,15 +179,26 @@ def test_send_to_backlog_is_not_offered_on_an_active_step_only_date_assignment_i
     assert checkbox, "the date checkbox must still be offered on an active step"
     checkbox[0].set_value(True).run()
     assert not at.exception, [e.message for e in at.exception]
-    # Checking the box on its own already assigns today's date (the same
-    # behavior every other move control has) -- the date_input's own key
-    # folds in whatever's now current, so it moves too.
+
+    # Ticking the box just opens the picker -- it must NOT assign today on its
+    # own (the reported bug). Nothing is scheduled until "Assign to this day".
+    step = next(
+        s for s in Database(db_path).list_project_steps(project_id) if s["id"] == step_id
+    )
+    assert step["scheduled_for"] is None, "ticking the box alone must not jump it to today"
 
     date_widget = [
         d for d in at.date_input if d.key and d.key.startswith(f"move_step_{step_id}_date_")
     ][0]
     target_day = date.today() + timedelta(days=9)  # some day next week
     date_widget.set_value(target_day).run()
+    # Still not moved -- the picker changed, but it's the button that commits.
+    step = next(
+        s for s in Database(db_path).list_project_steps(project_id) if s["id"] == step_id
+    )
+    assert step["scheduled_for"] is None
+
+    [b for b in at.button if b.key == f"move_step_{step_id}_assign_btn"][0].click().run()
     assert not at.exception, [e.message for e in at.exception]
 
     db = Database(db_path)
