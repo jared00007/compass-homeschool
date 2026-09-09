@@ -18,6 +18,7 @@ from compass.storage.db import Database
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HOME_PATH = str(REPO_ROOT / "Home.py")
+MISSION_CONTROL_PATH = str(REPO_ROOT / "pages" / "14_Mission_Control.py")
 
 
 # --- the pure target maths --------------------------------------------------------
@@ -144,3 +145,28 @@ def test_home_reading_report_button_logs_and_advances(monkeypatch, tmp_path):
     book = next(b for b in database.list_books(student_id) if b["id"] == book_id)
     database.close()
     assert book["current_page"] == 175
+
+
+def test_pages_per_day_is_settable_from_the_plan_panel(monkeypatch, tmp_path):
+    """The reading goal is set where a parent already sets the current page --
+    Mission Control -> Plan a lesson -> English -- not only on the buried Books
+    tab (reported: "i dont see reading plan anywhere")."""
+    db_path, student_id, book_id = _seeded(tmp_path, current_page=150, pages_per_day=0)
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+    at = AppTest.from_file(HOME_PATH)
+    at.session_state["parent_unlocked"] = True
+    at.run(timeout=30)
+    at.switch_page(MISSION_CONTROL_PATH)
+    at.run(timeout=30)
+    [b for b in at.button if (b.key or "") == "mc_viewbtn_plan"][0].click().run()
+    [b for b in at.button if (b.key or "") == "plan_subjectbtn_english"][0].click().run()
+
+    rate = [n for n in at.number_input if "Pages per day" in (n.label or "")][0]
+    rate.set_value(25).run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    book = next(b for b in database.list_books(student_id) if b["id"] == book_id)
+    database.close()
+    assert book["pages_per_day"] == 25

@@ -729,7 +729,8 @@ def render_subject_plan_panel(
                 "Minutes / day", min_value=15, max_value=180, value=60, step=5, key=f"{k}_minutes"
             )
         if book:
-            page = st.number_input(
+            page_cols = st.columns(2)
+            page = page_cols[0].number_input(
                 "Current page", min_value=0, max_value=int(book["total_pages"] or 5000),
                 value=int(book["current_page"] or 0),
                 help="The agent will not reference anything past this page.",
@@ -738,6 +739,19 @@ def render_subject_plan_panel(
             if page != book["current_page"]:
                 db.update_book(book["id"], current_page=int(page))
                 book["current_page"] = int(page)
+            rate = page_cols[1].number_input(
+                "Pages per day (reading goal)", min_value=0, max_value=500,
+                value=int(book.get("pages_per_day") or 0),
+                help=(
+                    "His daily reading target on Home ('read up to page N today'). "
+                    "0 = no goal, just track the page. Also editable on the "
+                    "English → Books tab."
+                ),
+                key=f"{k}_rate",
+            )
+            if rate != (book.get("pages_per_day") or 0):
+                db.update_book(book["id"], pages_per_day=int(rate))
+                book["pages_per_day"] = int(rate)
         seed_topic = st.text_input(
             "Or point this lesson at something specific (optional)",
             placeholder="e.g. the courtroom scene in chapter 12" if book else "e.g. writing a thank-you note",
