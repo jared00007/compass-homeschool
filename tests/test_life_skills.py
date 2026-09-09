@@ -293,11 +293,21 @@ def test_scheduling_a_locked_skill_in_the_master_list_keeps_it_unlocked(monkeypa
     assign.set_value(True).run()
     assert not at.exception, [e.message for e in at.exception]
 
+    # Ticking the box only opens the picker now -- it must not schedule today on
+    # its own. The scheduling (and the unlock it triggers) happens on the button.
+    unscheduled = next(
+        r for r in Database(db_path).list_life_skills(s["id"]) if r["id"] == skill_id
+    )
+    assert unscheduled["scheduled_for"] is None
+
+    [b for b in at.button if (b.key or "") == f"ls_assign_btn_{skill_id}"][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
     database = Database(db_path)
     skill = next(row for row in database.list_life_skills(s["id"]) if row["id"] == skill_id)
     database.close()
     assert skill["scheduled_for"] is not None
-    assert skill["active"] == 1
+    assert skill["active"] == 1  # scheduling still keeps it unlocked
 
 
 def test_the_move_control_never_shows_in_the_students_checklist(monkeypatch, tmp_path):

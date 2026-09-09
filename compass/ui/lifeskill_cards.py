@@ -357,9 +357,19 @@ def render_life_skill_catalog_manager(db: Database, skills: list[dict[str, Any]]
                         else _ui.date.today(),
                         key=f"ls_assign_date_{skill['id']}",
                     )
-                    if picked.isoformat() != skill["scheduled_for"]:
-                        db.schedule_life_skill(skill["id"], picked.isoformat())
-                        _ui.st.rerun()
+                    # Only writes on the explicit button -- ticking the box just
+                    # opens the picker. It used to schedule on any date that
+                    # differed from the stored one, and the picker defaults to
+                    # today, so merely ticking "Assign this to a specific day"
+                    # jumped it to today before you could pick the day you wanted
+                    # (reported -- same bug the board move control had).
+                    if columns[0].button(
+                        "📌 Assign to this day",
+                        key=f"ls_assign_btn_{skill['id']}", type="primary",
+                    ):
+                        if picked.isoformat() != skill["scheduled_for"]:
+                            db.schedule_life_skill(skill["id"], picked.isoformat())
+                            _ui.st.rerun()
                 elif skill["scheduled_for"]:
                     db.schedule_life_skill(skill["id"], None)
                     _ui.st.rerun()
@@ -496,9 +506,16 @@ def render_coding_module_catalog_manager(db: Database, modules: list[dict[str, A
                         else _ui.date.today(),
                         key=f"coding_assign_date_{module['id']}",
                     )
-                    if picked.isoformat() != module["scheduled_for"]:
-                        db.schedule_coding_module(module["id"], picked.isoformat())
-                        _ui.st.rerun()
+                    # Explicit confirm -- ticking the box just opens the picker,
+                    # it must not schedule today on its own (same fix the life
+                    # skill and board move controls got).
+                    if columns[0].button(
+                        "📌 Assign to this day",
+                        key=f"coding_assign_btn_{module['id']}", type="primary",
+                    ):
+                        if picked.isoformat() != module["scheduled_for"]:
+                            db.schedule_coding_module(module["id"], picked.isoformat())
+                            _ui.st.rerun()
                 elif module["scheduled_for"]:
                     db.schedule_coding_module(module["id"], None)
                     _ui.st.rerun()
