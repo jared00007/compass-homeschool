@@ -1480,6 +1480,12 @@ class Database:
         # CREATE TABLE IF NOT EXISTS in schema.sql, which runs on every open.
         self._ensure_column("books", "pages_per_day", "INTEGER NOT NULL DEFAULT 0")
         self._ensure_column("books", "reading_days", "TEXT NOT NULL DEFAULT ''")
+        # A message can optionally reference a lesson (and an activity in it) --
+        # added here for a DB whose `messages` table was created before these.
+        # Plain INTEGER on the ALTER path (the FK lives in schema.sql for fresh
+        # tables); a dangling lesson_id is handled defensively where it's read.
+        self._ensure_column("messages", "lesson_id", "INTEGER")
+        self._ensure_column("messages", "activity_index", "INTEGER")
         self._ensure_column("life_skills", "status", "TEXT NOT NULL DEFAULT 'assigned'")
         self._ensure_column("life_skills", "feedback", "TEXT")
         self._ensure_column("life_skills", "logged_activity_id", "INTEGER")
@@ -2801,15 +2807,25 @@ class Database:
 
     _MESSAGE_SENDERS = ("parent", "student")
 
-    def send_message(self, student_id: int, sender: str, body: str) -> None:
+    def send_message(
+        self,
+        student_id: int,
+        sender: str,
+        body: str,
+        lesson_id: int | None = None,
+        activity_index: int | None = None,
+    ) -> None:
         """Add one message to the student's thread. `sender` is 'parent' or
-        'student'; a blank body is ignored."""
+        'student'; a blank body is ignored. `lesson_id` (and, within it,
+        `activity_index`) optionally tag the message to a specific lesson or
+        activity, so it can render a 'Re: <lesson> · Activity N' jump."""
         body = (body or "").strip()
         if not body or sender not in self._MESSAGE_SENDERS:
             return
         self.conn.execute(
-            "INSERT INTO messages (student_id, sender, body) VALUES (?, ?, ?)",
-            (student_id, sender, body),
+            "INSERT INTO messages (student_id, sender, body, lesson_id, activity_index) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (student_id, sender, body, lesson_id, activity_index),
         )
         self.conn.commit()
 

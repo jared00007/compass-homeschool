@@ -141,3 +141,62 @@ def test_the_parent_sends_from_mission_control(monkeypatch, tmp_path):
     thread = database.list_messages(sid)
     database.close()
     assert [(m["sender"], m["body"]) for m in thread] == [("parent", "Proud of you!")]
+
+
+# --- tagging a message to a lesson / activity -------------------------------------
+
+
+def test_a_message_can_reference_a_lesson_and_activity(db, student):
+    lid = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="Order of Operations",
+        payload={"title": "Order of Operations", "activities": [
+            {"title": "Warm up"}, {"title": "Solve for x"},
+        ]},
+    )
+    db.send_message(student["id"], "parent", "Look at this one", lesson_id=lid, activity_index=1)
+    msg = db.list_messages(student["id"])[0]
+    assert msg["lesson_id"] == lid
+    assert msg["activity_index"] == 1
+
+
+def test_the_tagged_reference_renders_on_the_students_home(monkeypatch, tmp_path):
+    db_path, sid = _seed(tmp_path)
+    database = Database(db_path)
+    lid = database.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t",
+        title="Order of Operations",
+        payload={"title": "Order of Operations", "activities": [
+            {"title": "Warm up"}, {"title": "Solve for x"},
+        ]},
+    )
+    database.send_message(
+        sid, "parent", "Redo this part", lesson_id=lid, activity_index=1
+    )
+    database.close()
+
+    at = _open(monkeypatch, db_path, HOME_PATH, as_parent=False)
+    # The reference renders as a page_link labelled with the lesson + activity.
+    ref_labels = [pl.label for pl in at.get("page_link")]
+    assert any(
+        "Order of Operations" in label and "Activity 2: Solve for x" in label
+        for label in ref_labels
+    )
+
+
+def test_a_message_tagging_a_deleted_lesson_degrades_gracefully(monkeypatch, tmp_path):
+    """If the referenced lesson is later deleted, the message still shows -- the
+    reference just drops off rather than erroring."""
+    db_path, sid = _seed(tmp_path)
+    database = Database(db_path)
+    lid = database.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t",
+        title="Gone", payload={"title": "Gone", "activities": []},
+    )
+    database.send_message(sid, "parent", "About that lesson", lesson_id=lid)
+    database.delete_lesson(lid)
+    database.close()
+
+    at = _open(monkeypatch, db_path, HOME_PATH, as_parent=False)
+    assert not at.exception, [e.message for e in at.exception]
+    assert "About that lesson" in "\n".join(m.value for m in at.markdown)

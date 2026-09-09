@@ -587,11 +587,13 @@ CREATE INDEX IF NOT EXISTS idx_vocab_attempts_student_date
 -- party read it (NULL = still unread for the recipient). The whole "chat" is
 -- this table plus compass.ui.render_message_thread.
 CREATE TABLE IF NOT EXISTS messages (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-    sender      TEXT NOT NULL CHECK (sender IN ('parent', 'student')),
-    body        TEXT NOT NULL,
-    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    read_at     TEXT
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id     INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    sender         TEXT NOT NULL CHECK (sender IN ('parent', 'student')),
+    body           TEXT NOT NULL,
+    lesson_id      INTEGER REFERENCES lessons(id) ON DELETE SET NULL,  -- optional: the lesson this message is about
+    activity_index INTEGER,                                            -- optional: an activity within that lesson
+    created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    read_at        TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_messages_student ON messages (student_id, id);

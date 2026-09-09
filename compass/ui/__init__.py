@@ -1513,11 +1513,47 @@ def render_message_thread(db: Database, student: dict[str, Any], *, sender: str)
             if mine and message.get("read_at"):
                 line += "  ·  ✓ read"
             st.markdown(line)
+            # A tagged lesson/activity, if this message references one: shown
+            # under it with a jump link to that subject's page.
+            if message.get("lesson_id"):
+                ref = _message_reference(db, message)
+                if ref:
+                    ref_label, ref_page = ref
+                    if ref_page:
+                        st.page_link(ref_page, label=f"📎 Re: {ref_label}", icon="↗️")
+                    else:
+                        st.caption(f"📎 Re: {ref_label}")
 
         if unread:
             if st.button("👍 Got it", key=f"msg_gotit_{sender}"):
                 db.mark_messages_read(student["id"], sender)
                 st.rerun()
+
+        # Optional: tag the message to a specific lesson (and an activity in it).
+        # Outside the send form so picking a lesson can refresh the activity list.
+        recent_lessons = [
+            l for l in db.list_lessons(student["id"], limit=25)
+            if (l.get("agent") or "") in _MESSAGE_TAG_PAGES
+        ]
+        tagged_lesson = st.selectbox(
+            "📎 Tag a lesson (optional)",
+            [None] + recent_lessons,
+            format_func=lambda l: "— none —" if l is None else _message_lesson_label(l),
+            key=f"msg_lesson_{sender}",
+        )
+        tagged_activity_index = None
+        if tagged_lesson is not None:
+            activities = (tagged_lesson.get("payload") or {}).get("activities") or []
+            if activities:
+                choice = st.selectbox(
+                    "…and an activity? (optional)",
+                    [None] + list(range(len(activities))),
+                    format_func=lambda i: "Whole lesson"
+                    if i is None
+                    else f"Activity {i + 1}: {md(activities[i].get('title', 'Activity'))}",
+                    key=f"msg_activity_{sender}",
+                )
+                tagged_activity_index = choice
 
         recipient = student_name if viewer_is_parent else "your parent"
         with st.form(f"msg_form_{sender}", clear_on_submit=True):
@@ -1527,8 +1563,52 @@ def render_message_thread(db: Database, student: dict[str, Any], *, sender: str)
             )
             sent = st.form_submit_button("Send", type="primary")
         if sent and body.strip():
-            db.send_message(student["id"], sender, body)
+            db.send_message(
+                student["id"], sender, body,
+                lesson_id=tagged_lesson["id"] if tagged_lesson else None,
+                activity_index=tagged_activity_index,
+            )
+            # Reset the tag pickers so the next message starts clean.
+            for tag_key in (f"msg_lesson_{sender}", f"msg_activity_{sender}"):
+                st.session_state.pop(tag_key, None)
             st.rerun()
+
+
+_MESSAGE_TAG_PAGES = {
+    "math": "pages/1_Math.py",
+    "science": "pages/2_Science.py",
+    "english": "pages/3_English.py",
+    "history": "pages/4_History.py",
+}
+
+
+def _message_lesson_label(lesson: dict[str, Any]) -> str:
+    """A short 'Subject — Title' label for the message lesson picker."""
+    title = (lesson.get("payload") or {}).get("title") or lesson.get("title") or "a lesson"
+    subject = subjects.label(lesson.get("subject") or lesson.get("agent") or "")
+    return f"{subject} — {md(title)}"
+
+
+def _message_reference(
+    db: Database, message: dict[str, Any]
+) -> tuple[str, str | None] | None:
+    """The (label, subject-page) a tagged message points at, or None if the
+    lesson it referenced has since been deleted. The label reads 'Subject —
+    Title[ · Activity N: ...]'; the page is the subject page to jump to, or None
+    for a subject with no dedicated page."""
+    lesson = db.get_lesson(message["lesson_id"])
+    if not lesson:
+        return None
+    label = _message_lesson_label(lesson)
+    index = message.get("activity_index")
+    if index is not None:
+        activities = (lesson.get("payload") or {}).get("activities") or []
+        if 0 <= index < len(activities):
+            act_title = activities[index].get("title") or "Activity"
+            label += f" · Activity {index + 1}: {md(act_title)}"
+        else:
+            label += f" · Activity {index + 1}"
+    return label, _MESSAGE_TAG_PAGES.get(lesson.get("agent") or "")
 
 
 def _render_pending_writing_notes(
