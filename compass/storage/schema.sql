@@ -581,3 +581,17 @@ CREATE TABLE IF NOT EXISTS vocab_review_attempts (
 );
 CREATE INDEX IF NOT EXISTS idx_vocab_attempts_student_date
     ON vocab_review_attempts (student_id, reviewed_on);
+
+-- A simple two-way message thread between the parent and the student, one
+-- thread per student. `sender` says who wrote it; `read_at` is when the OTHER
+-- party read it (NULL = still unread for the recipient). The whole "chat" is
+-- this table plus compass.ui.render_message_thread.
+CREATE TABLE IF NOT EXISTS messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    sender      TEXT NOT NULL CHECK (sender IN ('parent', 'student')),
+    body        TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    read_at     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_messages_student ON messages (student_id, id);

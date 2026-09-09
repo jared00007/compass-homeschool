@@ -2797,6 +2797,56 @@ class Database:
         self.conn.execute("DELETE FROM lessons WHERE id = ?", (lesson_id,))
         self.conn.commit()
 
+    # -- messages (the parent <-> student chat thread) ------------------------
+
+    _MESSAGE_SENDERS = ("parent", "student")
+
+    def send_message(self, student_id: int, sender: str, body: str) -> None:
+        """Add one message to the student's thread. `sender` is 'parent' or
+        'student'; a blank body is ignored."""
+        body = (body or "").strip()
+        if not body or sender not in self._MESSAGE_SENDERS:
+            return
+        self.conn.execute(
+            "INSERT INTO messages (student_id, sender, body) VALUES (?, ?, ?)",
+            (student_id, sender, body),
+        )
+        self.conn.commit()
+
+    def list_messages(self, student_id: int, limit: int = 100) -> list[dict[str, Any]]:
+        """The thread, oldest message first -- the last `limit` messages."""
+        rows = _rows(
+            self.conn.execute(
+                "SELECT * FROM messages WHERE student_id = ? ORDER BY id DESC LIMIT ?",
+                (student_id, limit),
+            )
+        )
+        return list(reversed(rows))
+
+    def unread_message_count(self, student_id: int, recipient: str) -> int:
+        """How many messages `recipient` ('parent' or 'student') hasn't read --
+        i.e. messages the *other* side sent that have no read stamp yet."""
+        other = "student" if recipient == "parent" else "parent"
+        row = _row(
+            self.conn.execute(
+                "SELECT COUNT(*) AS n FROM messages "
+                "WHERE student_id = ? AND sender = ? AND read_at IS NULL",
+                (student_id, other),
+            )
+        )
+        return int(row["n"]) if row else 0
+
+    def mark_messages_read(self, student_id: int, recipient: str) -> None:
+        """Stamp every message `recipient` hasn't read yet as read now, so the
+        sender gets a read receipt and the unread badge clears."""
+        other = "student" if recipient == "parent" else "parent"
+        self.conn.execute(
+            "UPDATE messages SET read_at = ? "
+            "WHERE student_id = ? AND sender = ? AND read_at IS NULL",
+            (datetime.now().isoformat(timespec="seconds"), student_id, other),
+        )
+        self.conn.commit()
+
     def reschedule_lesson(self, lesson_id: int, new_planned_for: str) -> None:
         """Moves an already-generated, still-`planned` lesson to a new day --
         the release valve for Activity Log's Backlog section (see

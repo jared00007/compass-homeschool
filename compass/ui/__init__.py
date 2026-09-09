@@ -1481,6 +1481,56 @@ def render_lesson_resources(
                         st.caption("Add a title, a link, or a note first.")
 
 
+def render_message_thread(db: Database, student: dict[str, Any], *, sender: str) -> None:
+    """The parent <-> student chat, one thread per student. `sender` is who's
+    looking ('parent' or 'student'); the same widget serves both sides. It's an
+    expander that auto-opens with a count when there's something unread -- the
+    in-app 'notification' -- shows the thread with read receipts on your own
+    messages, a one-tap 'Got it' to clear what's new, and a box to reply."""
+    viewer_is_parent = sender == "parent"
+    student_name = student.get("name") or "your student"
+    unread = db.unread_message_count(student["id"], sender)
+    messages = db.list_messages(student["id"])
+
+    title = f"💬 Messages — {unread} new" if unread else "💬 Messages"
+    with st.expander(title, expanded=bool(unread)):
+        if not messages:
+            st.caption(
+                "No messages yet — send the first one below."
+                if viewer_is_parent
+                else "No messages yet."
+            )
+        for message in messages:
+            mine = message["sender"] == sender
+            if mine:
+                who = "You"
+            else:
+                who = student_name if viewer_is_parent else "Your parent"
+            stamp = message["created_at"]
+            when = stamp[5:16] if len(stamp) >= 16 else stamp  # MM-DD HH:MM
+            is_new = (not mine) and not message.get("read_at")
+            line = f"{'🔵 ' if is_new else ''}**{who}** · {when} — {md(message['body'])}"
+            if mine and message.get("read_at"):
+                line += "  ·  ✓ read"
+            st.markdown(line)
+
+        if unread:
+            if st.button("👍 Got it", key=f"msg_gotit_{sender}"):
+                db.mark_messages_read(student["id"], sender)
+                st.rerun()
+
+        recipient = student_name if viewer_is_parent else "your parent"
+        with st.form(f"msg_form_{sender}", clear_on_submit=True):
+            body = st.text_input(
+                f"Message {recipient}", key=f"msg_input_{sender}",
+                placeholder="Type a message…",
+            )
+            sent = st.form_submit_button("Send", type="primary")
+        if sent and body.strip():
+            db.send_message(student["id"], sender, body)
+            st.rerun()
+
+
 def _render_pending_writing_notes(
     db: Database,
     student: dict[str, Any],

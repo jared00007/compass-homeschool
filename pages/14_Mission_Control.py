@@ -41,6 +41,7 @@ from compass.ui import (
     render_board_days,
     render_board_move_notice,
     render_reading_board_card,
+    render_message_thread,
     render_earned_rewards,
     render_lesson_review,
     render_life_skill_review_card,
@@ -562,6 +563,10 @@ if mc_view == "review":
     pulse[0].metric("Hours this week", f"{report.total_hours:g}")
     pulse[1].metric("Days of instruction", report.instructional_days)
     pulse[2].metric("Activities logged", report.activity_count)
+
+    # Chat with him -- auto-opens with a count when he's replied, so a message
+    # waiting on you isn't missed. His side is the top of his own Home.
+    render_message_thread(db, student, sender="parent")
     st.divider()
 
     # Reward alert: which rewards he's earned but not yet been handed --

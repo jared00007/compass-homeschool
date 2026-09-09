@@ -23,6 +23,7 @@ from compass.ui import (
     render_daily_due,
     render_declaration_banner,
     render_first_day_celebration,
+    render_message_thread,
     render_progress_panel,
     render_report_card,
     render_xp_reward_editor,
@@ -198,6 +199,10 @@ if not is_parent():
         # by hairlines -- the same information, laid out to use the width a
         # desktop actually has instead of one narrow scrolling column.
         today = date.today().isoformat()
+
+        # Messages from his parent, right at the top -- auto-opens with a count
+        # when there's something new, so it's the first thing he sees.
+        render_message_thread(db, student, sender="student")
 
         # Morning Routine and Check-In no longer get their own cards here --
         # they're folded into the "Due today" list in the header card as tight
