@@ -3146,6 +3146,48 @@ class Database:
             )
             self.conn.commit()
 
+    def add_lesson_resource(
+        self, lesson_id: int, label: str, url: str = "", note: str = ""
+    ) -> None:
+        """Attach a parent-added resource to a lesson -- a link (a video, an
+        article) or a plain note. Stored in the lesson's metadata under
+        `parent_resources` (a list of {label, url, note}), so it rides alongside
+        the AI-generated payload without touching it and shows in the lesson for
+        him. A row with nothing in any field is ignored."""
+        label, url, note = label.strip(), url.strip(), note.strip()
+        if not (label or url or note):
+            return
+        with self._lock:
+            lesson = self.get_lesson(lesson_id)
+            if lesson is None:
+                return
+            metadata = lesson["metadata"]
+            resources = metadata.get("parent_resources") or []
+            resources.append({"label": label, "url": url, "note": note})
+            metadata["parent_resources"] = resources
+            self.conn.execute(
+                "UPDATE lessons SET metadata = ? WHERE id = ?",
+                (json.dumps(metadata), lesson_id),
+            )
+            self.conn.commit()
+
+    def remove_lesson_resource(self, lesson_id: int, index: int) -> None:
+        """Drop one parent-added resource by its position in the list."""
+        with self._lock:
+            lesson = self.get_lesson(lesson_id)
+            if lesson is None:
+                return
+            metadata = lesson["metadata"]
+            resources = metadata.get("parent_resources") or []
+            if 0 <= index < len(resources):
+                resources.pop(index)
+                metadata["parent_resources"] = resources
+                self.conn.execute(
+                    "UPDATE lessons SET metadata = ? WHERE id = ?",
+                    (json.dumps(metadata), lesson_id),
+                )
+                self.conn.commit()
+
     def set_activity_checklist(
         self, lesson_id: int, activity_index: int, checked: list[bool]
     ) -> None:

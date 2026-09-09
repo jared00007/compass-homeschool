@@ -889,4 +889,8 @@ def render_lesson_review(
         writing_undecided=writing_undecided,
     )
 
+    # Your own links/resources for this lesson (a video you found, an article,
+    # a note) -- added here, shown to him in the lesson.
+    _ui.render_lesson_resources(db, lesson["id"], metadata, parent=True)
+
 

@@ -1427,6 +1427,60 @@ def _maybe_auto_submit_lesson(db: Database, lesson_id: int) -> bool:
     return True
 
 
+def render_lesson_resources(
+    db: Database,
+    lesson_id: int,
+    metadata: dict[str, Any] | None,
+    *,
+    parent: bool,
+) -> None:
+    """Parent-added resources on a lesson -- your own links (a video, an
+    article) or notes, on top of what the agent generated. Shows the list to
+    everyone; on the parent side it also carries the add/remove controls. On his
+    side it's read-only, and it renders nothing at all when there's nothing to
+    show, so it stays invisible until you actually attach something."""
+    resources = (metadata or {}).get("parent_resources") or []
+    if not resources and not parent:
+        return
+    with st.container(border=True):
+        st.markdown("**📎 Extra resources from your parent**")
+        if not resources and parent:
+            st.caption("Add a helpful video, article, or note for this lesson below.")
+        for index, resource in enumerate(resources):
+            label = resource.get("label") or resource.get("url") or "Resource"
+            url = (resource.get("url") or "").strip()
+            note = resource.get("note") or ""
+            row = st.columns([9, 1]) if parent else [st.container()]
+            if url:
+                href = url if url.startswith(("http://", "https://")) else f"https://{url}"
+                line = f"🔗 [{md(label)}]({href})"
+            else:
+                line = f"📝 **{md(label)}**"
+            if note:
+                line += f" — {md(note)}"
+            row[0].markdown(line)
+            if parent and row[1].button(
+                "✕", key=f"rmres_{lesson_id}_{index}", help="Remove this resource"
+            ):
+                db.remove_lesson_resource(lesson_id, index)
+                st.rerun()
+
+        if parent:
+            with st.expander("➕ Add a link or resource"):
+                label = st.text_input("Title", key=f"addres_label_{lesson_id}")
+                url = st.text_input(
+                    "Link (optional)", key=f"addres_url_{lesson_id}",
+                    placeholder="https://…",
+                )
+                note = st.text_input("Note (optional)", key=f"addres_note_{lesson_id}")
+                if st.button("Add", key=f"addres_btn_{lesson_id}", type="primary"):
+                    if label.strip() or url.strip() or note.strip():
+                        db.add_lesson_resource(lesson_id, label, url, note)
+                        st.rerun()
+                    else:
+                        st.caption("Add a title, a link, or a note first.")
+
+
 def _render_pending_writing_notes(
     db: Database,
     student: dict[str, Any],
@@ -1595,6 +1649,7 @@ def student_lesson_view(
             pending["payload"].get("quiz") or [],
             agent=agent_key,
         )
+        render_lesson_resources(db, pending["id"], pending_metadata, parent=False)
         if pending["status"] == "needs_revision":
             ready, why_not = _lesson_ready_to_submit(pending)
             if st.button(
@@ -1661,6 +1716,7 @@ def student_lesson_view(
             current["payload"].get("quiz") or [],
             agent=agent_key,
         )
+        render_lesson_resources(db, current["id"], current_metadata, parent=False)
         ready, why_not = _lesson_ready_to_submit(current)
         if st.button(
             "📬 Turn it in for review",
