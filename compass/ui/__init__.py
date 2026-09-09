@@ -2292,60 +2292,48 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
     else:
         _tile("🔤", "Words — all caught up ✅", tone="done")
 
-    # Reading -- his book, and today's page goal when a parent's set a daily
-    # rate. With a goal he gets a target ("read up to page 175 today") he can
-    # report against and green-check like the other tiles; without one it's the
-    # plain progress bar it always was.
-    if book:
+    # Reading -- driven entirely by the standing "daily reading" board card.
+    # When the current book has a pages-per-day goal (it's on the board), today's
+    # target shows here with a one-tap Done; take it off the board and this tile
+    # disappears completely, same as any other unassigned story.
+    rate = int((book or {}).get("pages_per_day") or 0)
+    if book and rate > 0:
         total = book.get("total_pages")
-        rate = book.get("pages_per_day") or 0
         current = book.get("current_page") or 0
-        log_today = (
-            db.reading_log_on(student["id"], book["id"], today)
-            if (rate and total)
-            else None
-        )
+        log_today = db.reading_log_on(student["id"], book["id"], today)
         start_page = log_today["start_page"] if log_today else current
         target = reading.daily_reading_target(total, start_page, rate)
-        if target is not None:
-            if current >= target:
-                _tile(
-                    "📖", f"Reading — done for today ✅ (page {current} of {total})",
-                    tone="done",
-                )
-            else:
-                # Kept to one line: the target on the left, a "Done" on the
-                # right -- like Check-In's inline action. The "didn't finish"
-                # path (log a partial page) sits collapsed underneath so it's
-                # there when he needs it without cluttering the daily view.
-                tile_col, done_col = st.columns([4, 1])
-                with tile_col:
-                    _tile(
-                        "📖",
-                        f"Reading — {md(book['title'])}: read up to page {target} today",
-                        tone="info",
-                    )
-                with done_col:
-                    if st.button("✅ Done", key="reading_hit_goal", width="stretch"):
-                        db.log_reading(student["id"], book["id"], target, today)
-                        st.rerun()
-                with st.expander("Didn't finish? Log the page you stopped on"):
-                    reported = st.number_input(
-                        "Page reached", min_value=0, max_value=int(total),
-                        value=int(current), key="reading_report_page",
-                    )
-                    if st.button("Save", key="reading_save_page"):
-                        db.log_reading(student["id"], book["id"], int(reported), today)
-                        st.rerun()
+        goal_page = target if target is not None else start_page + rate
+        of_total = f" of {total}" if total else ""
+        if current >= goal_page:
+            _tile(
+                "📖", f"Reading — done for today ✅ (page {current}{of_total})",
+                tone="done",
+            )
         else:
-            _tile("📖", f"Reading — {md(book['title'])}", tone="info")
-            if total:
-                st.progress(
-                    min(current / total, 1.0),
-                    text=f"page {current} of {total}",
+            # One line: the target on the left, a "Done" on the right -- like
+            # Check-In's inline action. The "didn't finish" path (log a partial
+            # page) sits collapsed underneath, there when he needs it.
+            tile_col, done_col = st.columns([4, 1])
+            with tile_col:
+                _tile(
+                    "📖",
+                    f"Reading — {md(book['title'])}: read up to page {goal_page} today",
+                    tone="info",
                 )
-    else:
-        _tile("📖", "Reading — no book set yet", tone="info")
+            with done_col:
+                if st.button("✅ Done", key="reading_hit_goal", width="stretch"):
+                    db.log_reading(student["id"], book["id"], goal_page, today)
+                    st.rerun()
+            with st.expander("Didn't finish? Log the page you stopped on"):
+                reported = st.number_input(
+                    "Page reached", min_value=0,
+                    max_value=int(total) if total else 100000,
+                    value=int(current), key="reading_report_page",
+                )
+                if st.button("Save", key="reading_save_page"):
+                    db.log_reading(student["id"], book["id"], int(reported), today)
+                    st.rerun()
 
     # Life Skills -- big gold count only for what he still has to do; ones he's
     # marked done (submitted, waiting on a parent's approval) count as his part
@@ -2851,6 +2839,7 @@ from compass.ui.board import (  # noqa: E402,F401
     _BOARD_MOVE_NOTICE_KEY,
     _board_schedule,
     render_board_move_notice,
+    render_reading_board_card,
     _SERIES_DAY_PREFIX_RE,
     series_day_title,
     render_board_card,

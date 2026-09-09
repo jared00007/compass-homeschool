@@ -40,6 +40,7 @@ from compass.ui import (
     render_board_backlog,
     render_board_days,
     render_board_move_notice,
+    render_reading_board_card,
     render_earned_rewards,
     render_lesson_review,
     render_life_skill_review_card,
@@ -504,6 +505,10 @@ if mc_view == "board":
         f"{board_days[0].strftime('%b %-d')} – {board_days[-1].strftime('%b %-d, %Y')}"
     )
     render_board_move_notice()
+
+    # The standing daily-reading card -- add or remove the everyday reading
+    # assignment here; removing it also clears his Due-today reading tile.
+    render_reading_board_card(db, student, can_edit=True)
 
     board = weekly.board_for_week(db, student, board_week_start)
     today_iso_for_board = date.today().isoformat()

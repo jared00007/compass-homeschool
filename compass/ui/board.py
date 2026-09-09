@@ -415,6 +415,47 @@ def render_board_move_notice() -> None:
         _ui.st.info(notice)
 
 
+def render_reading_board_card(db: Database, student: dict[str, Any], *, can_edit: bool) -> None:
+    """The standing "every day" reading card that sits at the top of the board.
+    Unlike the day-by-day stories it isn't pinned to a weekday -- it's a daily
+    placeholder that's simply on or off: while it's on (the current book has a
+    pages-per-day goal) it shows here and drives his Due-today reading tile;
+    the parent takes it off with one button and both disappear. On his own board
+    it's read-only; the add/remove controls are the parent's (`can_edit`)."""
+    book = db.current_book(student["id"])
+    rate = int((book or {}).get("pages_per_day") or 0)
+    if book and rate > 0:
+        with _ui.st.container(border=True):
+            columns = _ui.st.columns([4, 1]) if can_edit else [_ui.st.container()]
+            columns[0].markdown(
+                f"📖 **Every day — read {rate} pages** · {md(book['title'])}"
+            )
+            columns[0].caption(
+                "A standing daily assignment. It shows on his Due-today list every "
+                "day until you take it off the board."
+            )
+            if can_edit and columns[1].button(
+                "Remove", key="reading_board_remove", help="Stop the daily reading assignment."
+            ):
+                db.update_book(book["id"], pages_per_day=0)
+                _ui.st.rerun()
+    elif can_edit and book:
+        with _ui.st.container(border=True):
+            _ui.st.markdown("📖 **Daily reading** — not on the board")
+            columns = _ui.st.columns([2, 1])
+            pages = columns[0].number_input(
+                "Pages per day", min_value=1, max_value=500, value=20,
+                key="reading_board_add_rate",
+            )
+            if columns[1].button("➕ Add to board", key="reading_board_add"):
+                db.update_book(book["id"], pages_per_day=int(pages))
+                _ui.st.rerun()
+    elif can_edit:
+        _ui.st.caption(
+            "📖 Add a book on **Courses → English → Books** to set up daily reading."
+        )
+
+
 _SERIES_DAY_PREFIX_RE = re.compile(
     r"^\s*Day\s+\d+\s*(?:of\s+\d+)?\s*[:.\-–—]?\s*", re.IGNORECASE
 )

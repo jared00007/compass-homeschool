@@ -114,14 +114,14 @@ def test_home_reading_tile_shows_todays_page_goal(monkeypatch, tmp_path):
     assert "read up to page 175 today" in text
 
 
-def test_home_reading_tile_has_no_goal_without_a_rate(monkeypatch, tmp_path):
-    """Rate 0 keeps the old behaviour -- just the book and a progress bar, no
-    target and no report controls."""
+def test_home_reading_tile_is_gone_when_not_on_the_board(monkeypatch, tmp_path):
+    """Rate 0 = the daily-reading card is off the board, so nothing about
+    reading shows on his Due-today list at all."""
     db_path, _, _ = _seeded(tmp_path, current_page=150, pages_per_day=0)
     at = _open_home(monkeypatch, db_path)
     text = " ".join(m.value for m in at.markdown)
     assert "read up to page" not in text
-    assert "Reading — Holes" in text
+    assert "Reading —" not in text
 
 
 def test_home_reading_tile_greens_once_the_goal_is_reached(monkeypatch, tmp_path):
@@ -160,6 +160,54 @@ def test_home_reading_partial_save_advances_to_the_reported_page(monkeypatch, tm
     book = next(b for b in database.list_books(student_id) if b["id"] == book_id)
     database.close()
     assert book["current_page"] == 162
+
+
+def _open_mc_board(monkeypatch, db_path):
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+    at = AppTest.from_file(HOME_PATH)
+    at.session_state["parent_unlocked"] = True
+    at.run(timeout=30)
+    at.switch_page(MISSION_CONTROL_PATH)
+    at.run(timeout=30)
+    [b for b in at.button if (b.key or "") == "mc_viewbtn_board"][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+    return at
+
+
+def test_reading_board_card_shows_and_remove_takes_it_off(monkeypatch, tmp_path):
+    db_path, student_id, book_id = _seeded(tmp_path, current_page=150, pages_per_day=20)
+    at = _open_mc_board(monkeypatch, db_path)
+    assert any("Every day — read 20 pages" in m.value for m in at.markdown)
+
+    [b for b in at.button if (b.key or "") == "reading_board_remove"][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+    database = Database(db_path)
+    book = next(b for b in database.list_books(student_id) if b["id"] == book_id)
+    database.close()
+    assert book["pages_per_day"] == 0  # off the board
+
+
+def test_reading_board_card_add_turns_it_on(monkeypatch, tmp_path):
+    db_path, student_id, book_id = _seeded(tmp_path, current_page=150, pages_per_day=0)
+    at = _open_mc_board(monkeypatch, db_path)
+    # Off the board: the add control is shown (defaulting to 20/day).
+    [b for b in at.button if (b.key or "") == "reading_board_add"][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+    database = Database(db_path)
+    book = next(b for b in database.list_books(student_id) if b["id"] == book_id)
+    database.close()
+    assert book["pages_per_day"] == 20
+
+
+def test_student_board_shows_the_reading_card_read_only(monkeypatch, tmp_path):
+    db_path, _, _ = _seeded(tmp_path, current_page=150, pages_per_day=20)
+    at = _open_home(monkeypatch, db_path)
+    [b for b in at.button if "Board" in (b.label or "")][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+    assert any("Every day — read 20 pages" in m.value for m in at.markdown)
+    # No parent controls on his side.
+    assert not any((b.key or "") == "reading_board_remove" for b in at.button)
 
 
 def test_pages_per_day_is_settable_from_the_plan_panel(monkeypatch, tmp_path):

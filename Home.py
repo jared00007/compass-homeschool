@@ -28,6 +28,7 @@ from compass.ui import (
     render_xp_reward_editor,
     render_today_checklist,
     render_travel_passport,
+    render_reading_board_card,
     render_xp_level,
     _writing_rework_summary,
 )
@@ -474,6 +475,11 @@ if not is_parent():
             f"{board_range[0].strftime('%b %-d')} – "
             f"{board_range[-1].strftime('%b %-d, %Y')} · {tail}"
         )
+        # The standing daily-reading card, read-only for him, shown once on the
+        # this-week view (it's the same every day, so it doesn't repeat under
+        # future weeks).
+        if offset == 0:
+            render_reading_board_card(db, student, can_edit=False)
         student_board = weekly.board_for_week(db, student, board_week_start)
         render_board_days(
             db, student, board_week_start, student_board,
