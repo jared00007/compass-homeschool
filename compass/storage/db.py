@@ -2501,6 +2501,22 @@ class Database:
             "UPDATE books SET current_page = ? WHERE id = ?", (page_reached, book_id)
         )
         self.conn.commit()
+        # His daily reading counts toward the hour floor: log a block of Reading
+        # time the FIRST time he logs any pages for this book today (existing is
+        # None), never again on later same-day saves -- so reporting a page twice
+        # doesn't double-credit the hours.
+        if existing is None:
+            self.log_activity(
+                student_id=student_id,
+                title=f"Reading — {book['title']}",
+                tier=config.TIER_CORE,
+                primary_subject="reading",
+                minutes=config.READING_DEFAULT_MINUTES,
+                subject_credits={"reading": config.READING_DEFAULT_MINUTES},
+                occurred_on=entry_date,
+                description=f"Independent reading of {book['title']}.",
+                source="reading",
+            )
 
     # -- vocabulary (Leitner spaced repetition) -------------------------------
 

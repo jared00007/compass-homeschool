@@ -112,6 +112,37 @@ def test_no_reading_log_row_until_he_reports(db, student):
     assert db.reading_log_on(student["id"], book_id, date.today().isoformat()) is None
 
 
+def test_reading_credits_reading_hours_once_per_day(db, student):
+    """His daily reading counts toward the hour floor -- a block of Reading time
+    the first time he logs pages that day, and only once no matter how many
+    times he updates the page."""
+    book_id = _book(db, student["id"], current_page=150, pages_per_day=25)
+    today = date.today().isoformat()
+
+    db.log_reading(student["id"], book_id, 165, today)
+    acts = [a for a in db.list_activities(student["id"]) if a["credits"].get("reading")]
+    assert len(acts) == 1
+    assert acts[0]["credits"]["reading"] == config.READING_DEFAULT_MINUTES
+    assert acts[0]["source"] == "reading"
+    assert acts[0]["occurred_on"] == today
+
+    db.log_reading(student["id"], book_id, 175, today)  # same day, updated page
+    acts = [a for a in db.list_activities(student["id"]) if a["credits"].get("reading")]
+    assert len(acts) == 1  # not double-credited
+
+
+def test_reading_credits_a_fresh_block_each_day(db, student):
+    from datetime import timedelta
+
+    book_id = _book(db, student["id"], current_page=150, pages_per_day=25)
+    day1 = date.today().isoformat()
+    day2 = (date.today() - timedelta(days=1)).isoformat()
+    db.log_reading(student["id"], book_id, 165, day1)
+    db.log_reading(student["id"], book_id, 180, day2)
+    acts = [a for a in db.list_activities(student["id"]) if a["credits"].get("reading")]
+    assert len(acts) == 2  # one block per day he read
+
+
 # --- the Home tile ----------------------------------------------------------------
 
 

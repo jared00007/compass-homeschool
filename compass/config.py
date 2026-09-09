@@ -131,6 +131,10 @@ XP_PER_LIFE_SKILL = 15
 # figure still uses the "Log time on a life skill" form; this is the sensible
 # fallback for the quick "mark complete" path.
 LIFE_SKILL_DEFAULT_MINUTES = 45
+# Instructional time credited toward the Reading subject the first time he logs
+# any reading for a book on a given day -- his daily reading counts toward the
+# hour floor like everything else, once per day rather than per page reported.
+READING_DEFAULT_MINUTES = 30
 XP_PER_CODING_MODULE = 15
 XP_PER_TRAVEL_ENTRY = 30
 XP_PER_CHOICE_TOPIC = 15
