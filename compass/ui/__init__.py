@@ -2468,7 +2468,7 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
     todo_steps = [s for s in due_steps if (s.get("status") or "planned") != "submitted"]
     awaiting_steps = [s for s in due_steps if (s.get("status") or "") == "submitted"]
     if todo_steps:
-        _tile("🏗️", f"Big Projects ({len(todo_steps)}) due", tone="todo", big=len(todo_steps))
+        _tile("🏗️", f"Big Projects ({len(todo_steps)}) due", tone="todo")
         for step in todo_steps:
             project_title = step.get("project_title") or "Big Project"
             st.page_link(
