@@ -437,10 +437,19 @@ def render_reading_board_card(db: Database, student: dict[str, Any], *, can_edit
                     _reading.WEEKDAY_LABELS[d] for d in sorted(active)
                 ) or "no days set"
             )
-            columns[0].markdown(
-                f"📖 **Read {rate} pages · {when}** · {md(book['title'])}"
-            )
             if can_edit:
+                columns[0].markdown(
+                    f"📖 **Daily reading · {when}** · {md(book['title'])}"
+                )
+                # Change the daily page count right here, any time -- saves the
+                # moment it changes, so his target updates on the next open.
+                new_rate = columns[0].number_input(
+                    "Pages per day", min_value=1, max_value=500, value=rate,
+                    key=f"reading_board_rate_{book['id']}",
+                )
+                if int(new_rate) != rate:
+                    db.update_book(book["id"], pages_per_day=int(new_rate))
+                    _ui.st.rerun()
                 columns[0].caption(
                     "A standing daily assignment. Tick the days it's on; untick a "
                     "day to skip reading then. It shows on his Due-today list on the "
@@ -474,6 +483,11 @@ def render_reading_board_card(db: Database, student: dict[str, Any], *, can_edit
                 ):
                     db.update_book(book["id"], pages_per_day=0)
                     _ui.st.rerun()
+            else:
+                # His board: read-only, the assignment stated plainly.
+                columns[0].markdown(
+                    f"📖 **Read {rate} pages · {when}** · {md(book['title'])}"
+                )
     elif can_edit and book:
         with _ui.st.container(border=True):
             _ui.st.markdown("📖 **Daily reading** — not on the board")

@@ -206,7 +206,9 @@ def _open_mc_board(monkeypatch, db_path):
 def test_reading_board_card_shows_and_remove_takes_it_off(monkeypatch, tmp_path):
     db_path, student_id, book_id = _seeded(tmp_path, current_page=150, pages_per_day=20)
     at = _open_mc_board(monkeypatch, db_path)
-    assert any("Read 20 pages · every day" in m.value for m in at.markdown)
+    assert any("Daily reading · every day" in m.value for m in at.markdown)
+    # The page count is an editable input, prefilled with the current rate.
+    assert at.number_input(key=f"reading_board_rate_{book_id}").value == 20
 
     [b for b in at.button if (b.key or "") == "reading_board_remove"][0].click().run()
     assert not at.exception, [e.message for e in at.exception]
@@ -214,6 +216,19 @@ def test_reading_board_card_shows_and_remove_takes_it_off(monkeypatch, tmp_path)
     book = next(b for b in database.list_books(student_id) if b["id"] == book_id)
     database.close()
     assert book["pages_per_day"] == 0  # off the board
+
+
+def test_reading_board_card_rate_is_editable_inline(monkeypatch, tmp_path):
+    """The page count can be changed right on the card, any time."""
+    db_path, student_id, book_id = _seeded(tmp_path, current_page=150, pages_per_day=20)
+    at = _open_mc_board(monkeypatch, db_path)
+    at.number_input(key=f"reading_board_rate_{book_id}").set_value(30).run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    book = next(b for b in database.list_books(student_id) if b["id"] == book_id)
+    database.close()
+    assert book["pages_per_day"] == 30
 
 
 def test_reading_board_card_add_turns_it_on(monkeypatch, tmp_path):
