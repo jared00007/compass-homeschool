@@ -135,16 +135,31 @@ def test_home_reading_tile_greens_once_the_goal_is_reached(monkeypatch, tmp_path
     assert "Reading — done for today ✅" in text
 
 
-def test_home_reading_report_button_logs_and_advances(monkeypatch, tmp_path):
+def test_home_reading_done_button_advances_to_the_goal(monkeypatch, tmp_path):
     db_path, student_id, book_id = _seeded(tmp_path, current_page=150, pages_per_day=25)
     at = _open_home(monkeypatch, db_path)
-    [b for b in at.button if "I read up to page 175" in (b.label or "")][0].click().run()
+    [b for b in at.button if (b.label or "") == "✅ Done"][0].click().run()
     assert not at.exception, [e.message for e in at.exception]
 
     database = Database(db_path)
     book = next(b for b in database.list_books(student_id) if b["id"] == book_id)
     database.close()
-    assert book["current_page"] == 175
+    assert book["current_page"] == 175  # tapping Done logs reaching today's goal
+
+
+def test_home_reading_partial_save_advances_to_the_reported_page(monkeypatch, tmp_path):
+    """The "didn't finish" path: he logs the page he stopped on, and the book
+    advances there (tomorrow's goal continues from it)."""
+    db_path, student_id, book_id = _seeded(tmp_path, current_page=150, pages_per_day=25)
+    at = _open_home(monkeypatch, db_path)
+    at.number_input(key="reading_report_page").set_value(162).run()
+    [b for b in at.button if (b.key or "") == "reading_save_page"][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    book = next(b for b in database.list_books(student_id) if b["id"] == book_id)
+    database.close()
+    assert book["current_page"] == 162
 
 
 def test_pages_per_day_is_settable_from_the_plan_panel(monkeypatch, tmp_path):

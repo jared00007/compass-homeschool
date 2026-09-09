@@ -2314,26 +2314,29 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
                     tone="done",
                 )
             else:
-                _tile(
-                    "📖",
-                    f"Reading — {md(book['title'])}: read up to page {target} today",
-                    tone="info",
-                )
-                st.progress(
-                    min(current / total, 1.0),
-                    text=f"page {current} of {total} — today's goal: page {target}",
-                )
-                if st.button(f"✅ I read up to page {target}", key="reading_hit_goal"):
-                    db.log_reading(student["id"], book["id"], target, today)
-                    st.rerun()
-                reported = st.number_input(
-                    "On a different page? Enter it and save:",
-                    min_value=0, max_value=int(total),
-                    value=int(current), key="reading_report_page",
-                )
-                if st.button("Save my page", key="reading_save_page"):
-                    db.log_reading(student["id"], book["id"], int(reported), today)
-                    st.rerun()
+                # Kept to one line: the target on the left, a "Done" on the
+                # right -- like Check-In's inline action. The "didn't finish"
+                # path (log a partial page) sits collapsed underneath so it's
+                # there when he needs it without cluttering the daily view.
+                tile_col, done_col = st.columns([4, 1])
+                with tile_col:
+                    _tile(
+                        "📖",
+                        f"Reading — {md(book['title'])}: read up to page {target} today",
+                        tone="info",
+                    )
+                with done_col:
+                    if st.button("✅ Done", key="reading_hit_goal", width="stretch"):
+                        db.log_reading(student["id"], book["id"], target, today)
+                        st.rerun()
+                with st.expander("Didn't finish? Log the page you stopped on"):
+                    reported = st.number_input(
+                        "Page reached", min_value=0, max_value=int(total),
+                        value=int(current), key="reading_report_page",
+                    )
+                    if st.button("Save", key="reading_save_page"):
+                        db.log_reading(student["id"], book["id"], int(reported), today)
+                        st.rerun()
         else:
             _tile("📖", f"Reading — {md(book['title'])}", tone="info")
             if total:
