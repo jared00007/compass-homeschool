@@ -74,6 +74,26 @@ st.progress(
     report.day_progress, text=f"Days — {report.instructional_days} of {report.day_target}"
 )
 
+# Year-end HOURS projection -- "keep this pace and you'll land here." Held back
+# for the first couple of weeks (same gate the days projection uses), since one
+# heavy first day extrapolates to a wild number.
+if pace["elapsed_days"] >= MIN_ELAPSED_DAYS_FOR_DAY_PACE_SIGNAL:
+    projected = pace["projected_hours"]
+    if pace["hours_on_track"]:
+        st.success(
+            f"📈 **On track for the hours.** At your current pace you'll log about "
+            f"**{projected:g} hours** by year end — at or above the "
+            f"{report.hour_target}-hour target."
+        )
+    else:
+        st.warning(
+            f"📉 **Behind on hours.** At your current pace you'll log about "
+            f"**{projected:g} hours** by year end — about "
+            f"{report.hour_target - projected:g} short of {report.hour_target}. "
+            "Nudge the daily average up, or backfill any taught-but-unlogged time in "
+            "Mission Control → Record."
+        )
+
 if report.hours_remaining and pace["remaining_days"] > 0:
     if pace["achievable"]:
         st.caption(

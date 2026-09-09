@@ -165,12 +165,22 @@ class ComplianceReport:
             round(self.instructional_days * total_days / elapsed, 1) if elapsed else 0.0
         )
 
+        # The same straight-line extrapolation applied to hours: keep logging at
+        # today's average and this is where the year lands. The headline metric
+        # only shows the *current* total, never where the pace is heading -- this
+        # is the "are we on track?" answer a parent actually wants.
+        projected_hours = (
+            round(self.total_hours * total_days / elapsed, 1) if elapsed else 0.0
+        )
+
         return {
             "elapsed_days": elapsed,
             "remaining_days": remaining_days,
             "expected_hours_by_now": expected_hours,
             "ahead_by": round(self.total_hours - expected_hours, 1),
             "hours_per_week_needed": needed,
+            "projected_hours": projected_hours,
+            "hours_on_track": projected_hours >= self.hour_target,
             # Past roughly a 40-hour week the "catch up" figure stops being a plan
             # and starts being arithmetic. Say so rather than printing a number
             # nobody can act on.

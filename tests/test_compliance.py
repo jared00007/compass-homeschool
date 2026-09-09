@@ -249,6 +249,39 @@ def test_pace_is_on_track_when_the_day_rate_clears_the_target(db, student):
     assert pace["days_on_track"]
 
 
+def test_pace_projects_year_end_hours_on_track_from_a_healthy_rate(db, student):
+    """The 'are we on track?' answer: today's logging rate extrapolated to the
+    end of the year."""
+    for day in range(1, 26):  # 25 days x 5 hours = 125 hours in the first 30
+        db.log_activity(
+            student_id=student["id"], title="Math", tier=config.TIER_CORE,
+            primary_subject="math", minutes=300, subject_credits={"math": 300},
+            occurred_on=f"2025-09-{day:02d}",
+        )
+    report = build_report(db, student["id"], "2025-09-01", "2026-08-31")
+    pace = report.pace(today=date(2025, 9, 30))
+
+    # 125 hours over 30 elapsed days, projected across the full 365-day year.
+    assert pace["projected_hours"] == pytest.approx(125 * 365 / 30, abs=0.5)
+    assert pace["projected_hours"] >= report.hour_target
+    assert pace["hours_on_track"]
+
+
+def test_pace_projects_an_hours_shortfall_from_a_light_rate(db, student):
+    for day in range(1, 16):  # 15 days x 1 hour = 15 hours in the first 30
+        db.log_activity(
+            student_id=student["id"], title="Math", tier=config.TIER_CORE,
+            primary_subject="math", minutes=60, subject_credits={"math": 60},
+            occurred_on=f"2025-09-{day:02d}",
+        )
+    report = build_report(db, student["id"], "2025-09-01", "2026-08-31")
+    pace = report.pace(today=date(2025, 9, 30))
+
+    assert pace["projected_hours"] == pytest.approx(15 * 365 / 30, abs=0.5)
+    assert pace["projected_hours"] < report.hour_target
+    assert not pace["hours_on_track"]
+
+
 def test_activities_outside_the_range_are_excluded(db, student):
     db.log_activity(
         student_id=student["id"],
