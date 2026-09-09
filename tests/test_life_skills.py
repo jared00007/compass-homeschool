@@ -437,7 +437,7 @@ def test_a_skill_assigned_for_later_shows_an_upcoming_hint_on_home(monkeypatch, 
 
     at = _open_home(monkeypatch, db_path)
     text = " ".join(c.value for c in at.caption)
-    assert "+1 later" in text
+    assert "+1 skill(s) later" in text
     # Not due yet -- shouldn't show as a direct "assigned since/today" link.
     labels = [pl.label for pl in at.get("page_link")]
     assert not any("Read a map" in label for label in labels)
@@ -770,6 +770,54 @@ def test_submitted_life_skills_lists_only_ones_awaiting_approval(db, student):
     assert [s["id"] for s in db.submitted_life_skills(student["id"])] == [a]
     db.complete_life_skill(a)  # approved -> no longer waiting
     assert db.submitted_life_skills(student["id"]) == []
+
+
+def test_home_due_today_shows_a_lesson_submission_count(monkeypatch, tmp_path):
+    """A compact 'N of M submitted' for today's core-subject lessons, where M
+    is however many are actually relevant today."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    today = date.today().isoformat()
+    # Math: turned in -> counts toward "submitted".
+    m = database.save_lesson(
+        student_id=s["id"], agent="math", subject="math", topic="t",
+        title="Math", payload={"title": "Math", "activities": []},
+        metadata={"planned_for": today},
+    )
+    database.submit_lesson(m)
+    # English: due today, not turned in yet.
+    database.save_lesson(
+        student_id=s["id"], agent="english", subject="english", topic="t",
+        title="Eng", payload={"title": "Eng", "activities": []},
+        metadata={"planned_for": today},
+    )
+    database.close()
+
+    at = _open_home(monkeypatch, db_path)
+    text = " ".join(m.value for m in at.markdown)
+    assert "Lessons — 1 of 2 submitted" in text
+
+
+def test_home_due_today_shows_a_scheduled_travel_entry(monkeypatch, tmp_path):
+    """A travel journal entry assigned for today shows in Due today, so anything
+    scheduled for a day is trackable there."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    entry_id = database.add_travel_entry(
+        s["id"], "Wyoming", date.today().isoformat(), title="Yellowstone", status="planned"
+    )
+    database.schedule_travel_entry(entry_id, date.today().isoformat())
+    database.close()
+
+    at = _open_home(monkeypatch, db_path)
+    text = " ".join(m.value for m in at.markdown)
+    assert "Travel journal (1) to write" in text
+    labels = [pl.label for pl in at.get("page_link")]
+    assert any("Yellowstone" in label for label in labels)
 
 
 def test_home_words_tile_greens_once_he_is_done_for_the_day(monkeypatch, tmp_path):

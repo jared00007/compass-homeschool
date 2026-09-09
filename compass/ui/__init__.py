@@ -2327,6 +2327,34 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
         _tile("💬", "Check-In — say how you're doing", tone="todo")
         st.page_link("pages/8_Check_In.py", label="Open Check-In", icon="➡️")
 
+    # Lessons -- a compact "N of M submitted" count of today's core-subject
+    # lessons (Math, Science, English, History -- max 4), so he can see his
+    # progress through the day's real work at a glance. M is however many are
+    # actually relevant today (the same per-subject roster the Lessons cards
+    # below use), so it shifts day to day; a lesson counts as done the moment
+    # he's turned it in (📤) or it's approved (✅ / 📣 a note to read). The full
+    # per-subject cards with links live further down the page.
+    lesson_markers = []
+    for lesson_agent in ("math", "science", "english", "history"):
+        agent_lessons = db.list_lessons(student["id"], agent=lesson_agent, limit=10)
+        lesson_row, marker = weekly.today_subject_status(agent_lessons, today)
+        if lesson_row is not None:
+            lesson_markers.append(marker)
+    total_lessons = len(lesson_markers)
+    if total_lessons:
+        submitted_lessons = sum(1 for m in lesson_markers if m in ("📤", "✅", "📣"))
+        if submitted_lessons >= total_lessons:
+            _tile(
+                "📚", f"Lessons — {submitted_lessons} of {total_lessons} in ✅",
+                tone="done",
+            )
+        else:
+            _tile(
+                "📚",
+                f"Lessons — {submitted_lessons} of {total_lessons} submitted",
+                tone="todo",
+            )
+
     # Words -- a green check once he's done for the day, whether he cleared every
     # due word or hit "I'm done with words for today" in the game (his own
     # signal), so the tile reflects "I finished," not just "nothing left due."
@@ -2410,15 +2438,45 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
         st.caption("Handed in — waiting on your parent to check it off.")
     else:
         _tile("🛠️", "Life Skills (0) — nothing due ✅", tone="done")
-    # +later, and the Student's Choice / Coding counts (both live on the
-    # same Life Skills page) ride as one compact caption at the bottom.
+
+    # Travel journal -- scheduled entries he needs to write. Unlike Life Skills
+    # it only appears when a trip is actually assigned for today (travel is
+    # occasional, so an everyday "nothing due" row would just be clutter). Same
+    # submitted-vs-todo split: a trip he's written and turned in reads as his
+    # part done, waiting on a parent.
+    due_trips = db.due_travel_entries(student["id"], today)
+    todo_trips = [t for t in due_trips if (t.get("status") or "planned") != "submitted"]
+    awaiting_trips = [t for t in due_trips if (t.get("status") or "") == "submitted"]
+    if todo_trips:
+        _tile("🧳", f"Travel journal ({len(todo_trips)}) to write", tone="todo", big=len(todo_trips))
+        for trip in todo_trips:
+            st.page_link(
+                "pages/9_Landons_Travels.py",
+                label=md(trip.get("title") or trip.get("state") or "Trip"),
+                icon="➡️",
+            )
+        if awaiting_trips:
+            st.caption(f"✅ {len(awaiting_trips)} handed in, waiting on your parent")
+    elif awaiting_trips:
+        _tile("🧳", "Travel journal — done for today ✅", tone="done")
+        st.caption("Handed in — waiting on your parent to check it off.")
+
+    # +later, plus the Student's Choice / Coding / Big-Project-step counts that
+    # each have their own scheduled-for-a-day items, all as one compact caption
+    # at the bottom -- so everything schedulable is represented in Due today.
+    due_steps = db.due_project_steps(student["id"], today)
+    later_trips = len(db.upcoming_travel_entries(student["id"], today))
     extra: list[str] = []
     if later_skills:
-        extra.append(f"+{later_skills} later")
+        extra.append(f"+{later_skills} skill(s) later")
+    if later_trips:
+        extra.append(f"🧳 +{later_trips} trip(s) later")
     if topics:
         extra.append(f"⭐ {len(topics)} Choice")
     if due_coding:
         extra.append(f"💻 {len(due_coding)} coding due")
+    if due_steps:
+        extra.append(f"🏗️ {len(due_steps)} project step(s) due")
     if extra:
         st.caption(" · ".join(extra))
 
