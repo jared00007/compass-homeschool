@@ -169,7 +169,9 @@ def test_retaking_the_quiz_times_the_second_attempt_independently(monkeypatch, t
     assert second_duration < first_duration
 
 
-def test_a_perfect_score_launches_balloons(monkeypatch, tmp_path):
+def test_a_perfect_score_no_longer_launches_balloons(monkeypatch, tmp_path):
+    """The balloon animation was removed app-wide by request -- even a perfect
+    quiz no longer sets it off."""
     calls = []
     monkeypatch.setattr(streamlit, "balloons", lambda: calls.append(1))
     db_path, student_id, lesson_id = _seed(tmp_path)
@@ -179,7 +181,7 @@ def test_a_perfect_score_launches_balloons(monkeypatch, tmp_path):
     at.radio(key=f"quiz_pick_{lesson_id}_0").set_value(right)
     at.button(key=f"FormSubmitter:quiz_form_{lesson_id}-Submit quiz").click().run()
 
-    assert calls
+    assert not calls
 
 
 def test_a_missed_question_does_not_launch_balloons(monkeypatch, tmp_path):

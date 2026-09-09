@@ -154,7 +154,6 @@ def render_vocab_quiz(db: Database, student: dict[str, Any]) -> None:
                 _ui.st.success(
                     f"🎉 All caught up! {reviewed} word(s) reviewed, best streak {best_streak}."
                 )
-                _ui.st.balloons()
             else:
                 _ui.st.success("Nothing due for review today.")
             _render_vocab_done_button(db, student, today)
@@ -207,7 +206,6 @@ def render_vocab_quiz(db: Database, student: dict[str, Any]) -> None:
                             _ui.st.session_state["vocab_streak"] = new_streak
                             _ui.st.session_state["vocab_best_streak"] = max(best_streak, new_streak)
                             if new_streak >= VOCAB_STREAK_ON_FIRE:
-                                _ui.st.balloons()
                                 _ui.st.toast(f"🚀 {new_streak} in a row — you're on fire!")
                             else:
                                 _ui.st.toast(

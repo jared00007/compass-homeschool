@@ -1331,13 +1331,14 @@ graded word's `next_review_on` moves into the future and it simply drops out of
 `due` on the next render, so `due[0]` is naturally the next card. Three metrics
 above the card (`🔥 Streak`, `✅ Reviewed`, `Left today`) turn it into a session with
 visible momentum rather than an open-ended list. A correct answer plays a toast
-picked from `VOCAB_STREAK_HYPE` ("Boom!", "Crushed it!", ...) below `VOCAB_STREAK_ON_FIRE`
-(5) and `st.balloons()` at or above it; a miss resets the streak (but not
-`vocab_best_streak` — a bad answer doesn't erase what he'd already earned this
-session) with a low-key "you'll get it next time" rather than anything that reads as
-scolding. Clearing the whole due list gets its own `st.balloons()` payoff screen
-instead of the same flat "Nothing due" message a session that never opened the page
-would see. None of this touches scoring or the Leitner schedule — `vocab_streak`,
+picked from `VOCAB_STREAK_HYPE` ("Boom!", "Crushed it!", ...), switching to an
+"on fire" toast at or above `VOCAB_STREAK_ON_FIRE` (5); a miss resets the streak
+(but not `vocab_best_streak` — a bad answer doesn't erase what he'd already earned
+this session) with a low-key "you'll get it next time" rather than anything that
+reads as scolding. Clearing the whole due list gets its own "All caught up!" payoff
+screen instead of the same flat "Nothing due" message a session that never opened the
+page would see. (The old `st.balloons()` confetti bursts were removed app-wide by
+request.) None of this touches scoring or the Leitner schedule — `vocab_streak`,
 `vocab_best_streak`, and `vocab_reviewed_count` are purely session-local, never
 written to the database.
 
@@ -2746,9 +2747,10 @@ assignment:
 - **A 🧠 Brain Break card** at the bottom: a riddle he guesses before tapping
   "Reveal the answer," the word of the day (with a "use it in a sentence"
   nudge), and a history flashback.
-- **Confetti** (`st.balloons()`) the first time each day he's cleared his part
-  of the day's lessons — every subject either approved or turned in — fired
-  once per day, session-gated.
+- **A "nice work" note** the first time each day he's cleared his part of the
+  day's lessons — every subject either approved or turned in — shown once per
+  day, session-gated. (This used to fire `st.balloons()` confetti; the balloon
+  animation was removed app-wide by request.)
 
 All the content rotates deterministically by date (same pattern as the fun
 fact): the same pick holds all day so it doesn't shuffle on a rerun, and

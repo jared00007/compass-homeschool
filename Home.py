@@ -412,7 +412,7 @@ if not is_parent():
 
         render_today_checklist(db, student)
 
-        # 🎉 A one-time confetti burst the first time he's cleared his part of
+        # 🎉 A one-time "nice work" the first time he's cleared his part of
         # today's lessons -- a little "make it fun" payoff. Fires once per day
         # (session-gated) and only when there's actually a roster to clear:
         # every subject's lesson is either approved (✅) or turned in and
@@ -423,7 +423,6 @@ if not is_parent():
         celebrated_key = f"day_cleared_{today}"
         if lessons_cleared and not st.session_state.get(celebrated_key):
             st.session_state[celebrated_key] = True
-            st.balloons()
             st.success("🎉 You cleared today's lessons — nice work!")
 
         # A collectible he fills in over the year -- shows only once he's got
