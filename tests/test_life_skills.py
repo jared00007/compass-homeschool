@@ -810,6 +810,25 @@ def test_home_due_today_shows_a_lesson_submission_count(monkeypatch, tmp_path):
     assert "Lessons — 1 of 2 submitted" in text
 
 
+def test_home_due_today_shows_a_scheduled_big_project_step(monkeypatch, tmp_path):
+    """A Big Project step assigned for today gets its own Due-today tile, in the
+    same format as the other items, with a link to Big Projects."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    pid = database.add_big_project(s["id"], "Stop-Motion Film")
+    step_id = database.add_project_step(pid, "Write the script", active=True)
+    database.schedule_project_step(step_id, date.today().isoformat())
+    database.close()
+
+    at = _open_home(monkeypatch, db_path)
+    text = " ".join(m.value for m in at.markdown)
+    assert "Big Projects (1) due" in text
+    labels = [pl.label for pl in at.get("page_link")]
+    assert any("Write the script" in label and "Stop-Motion Film" in label for label in labels)
+
+
 def test_home_due_today_shows_a_scheduled_travel_entry(monkeypatch, tmp_path):
     """A travel journal entry assigned for today shows in Due today, so anything
     scheduled for a day is trackable there."""

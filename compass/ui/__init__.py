@@ -2461,10 +2461,29 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
         _tile("🧳", "Travel journal — done for today ✅", tone="done")
         st.caption("Handed in — waiting on your parent to check it off.")
 
-    # +later, plus the Student's Choice / Coding / Big-Project-step counts that
-    # each have their own scheduled-for-a-day items, all as one compact caption
-    # at the bottom -- so everything schedulable is represented in Due today.
+    # Big Projects -- a project step assigned for today gets its own tile, the
+    # same shape as Life Skills and Travel (only when one's actually due, since
+    # a step isn't an everyday thing). Same submitted-vs-todo split.
     due_steps = db.due_project_steps(student["id"], today)
+    todo_steps = [s for s in due_steps if (s.get("status") or "planned") != "submitted"]
+    awaiting_steps = [s for s in due_steps if (s.get("status") or "") == "submitted"]
+    if todo_steps:
+        _tile("🏗️", f"Big Projects ({len(todo_steps)}) due", tone="todo", big=len(todo_steps))
+        for step in todo_steps:
+            project_title = step.get("project_title") or "Big Project"
+            st.page_link(
+                "pages/7_Big_Projects.py",
+                label=f"{md(step['title'])} — {md(project_title)}",
+                icon="➡️",
+            )
+        if awaiting_steps:
+            st.caption(f"✅ {len(awaiting_steps)} handed in, waiting on your parent")
+    elif awaiting_steps:
+        _tile("🏗️", "Big Projects — done for today ✅", tone="done")
+        st.caption("Handed in — waiting on your parent to check it off.")
+
+    # +later, plus the Student's Choice / Coding counts that each have their own
+    # scheduled-for-a-day items, as one compact caption at the bottom.
     later_trips = len(db.upcoming_travel_entries(student["id"], today))
     extra: list[str] = []
     if later_skills:
@@ -2475,8 +2494,6 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
         extra.append(f"⭐ {len(topics)} Choice")
     if due_coding:
         extra.append(f"💻 {len(due_coding)} coding due")
-    if due_steps:
-        extra.append(f"🏗️ {len(due_steps)} project step(s) due")
     if extra:
         st.caption(" · ".join(extra))
 
