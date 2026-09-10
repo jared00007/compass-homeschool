@@ -2560,22 +2560,20 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
                 )
             grid.append(("pair", _reading_done))
         else:
-            # Owns a Done button + a partial-page expander, so it spans the full
-            # width rather than sitting in a two-up cell (which would nest
-            # columns). The target sits left, a one-tap Done right -- like
-            # Check-In's inline action; "didn't finish" collapses underneath.
+            # A normal two-up cell like the rest: the target tile, then a
+            # full-width "Done" button stacked under it (same as the "Do it now"
+            # / "Review now" actions sit under their tiles) -- so it no longer
+            # spans the whole row with an awkward Done off to the side. The
+            # "didn't finish" partial-page log collapses underneath.
             def _reading_todo(goal: int = goal_page, cur: int = current, tot: Any = total) -> None:
-                tile_col, done_col = st.columns([4, 1])
-                with tile_col:
-                    _tile(
-                        "📖",
-                        f"Reading — {md(book['title'])}: read up to page {goal} today",
-                        tone="info",
-                    )
-                with done_col:
-                    if st.button("✅ Done", key="reading_hit_goal", width="stretch"):
-                        db.log_reading(student["id"], book["id"], goal, today)
-                        st.rerun()
+                _tile(
+                    "📖",
+                    f"Reading — {md(book['title'])}: read up to page {goal} today",
+                    tone="info",
+                )
+                if st.button("✅ Done", key="reading_hit_goal", width="stretch"):
+                    db.log_reading(student["id"], book["id"], goal, today)
+                    st.rerun()
                 with st.expander("Didn't finish? Log the page you stopped on"):
                     reported = st.number_input(
                         "Page reached", min_value=0,
@@ -2585,7 +2583,7 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
                     if st.button("Save", key="reading_save_page"):
                         db.log_reading(student["id"], book["id"], int(reported), today)
                         st.rerun()
-            grid.append(("wide", _reading_todo))
+            grid.append(("pair", _reading_todo))
 
     # Life Skills -- big gold count only for what he still has to do; ones he's
     # marked done (submitted, waiting on a parent's approval) count as his part
