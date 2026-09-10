@@ -37,10 +37,14 @@ class XPState:
 
 
 def _sent_back_count(metadata: dict[str, Any]) -> int:
-    """How many times one lesson has been sent back for a redo -- the length of
-    its feedback trail, falling back to the single legacy field for data saved
-    before the history list existed (same fallback rule ui._feedback_history
-    uses; inlined here to keep xp free of a UI import)."""
+    """How many times one lesson has been sent back for a redo -- every bounce,
+    counted. The authoritative source is `sent_back_on`, which gets one entry
+    per send-back whether or not a note was typed; older data (saved before that
+    timeline existed) falls back to the feedback trail, then the single legacy
+    field. Kept in step with the weekly strip, which counts the same stamps."""
+    stamps = metadata.get("sent_back_on")
+    if stamps:
+        return len(stamps)
     history = metadata.get("lesson_feedback_history")
     if history:
         return len(history)

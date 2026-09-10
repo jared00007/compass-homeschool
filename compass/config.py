@@ -139,11 +139,14 @@ XP_PER_CODING_MODULE = 15
 XP_PER_TRAVEL_ENTRY = 30
 XP_PER_MASTERED_SKILL = 10
 # The one thing that *costs* XP: every time a lesson is sent back for a redo.
-# Deliberately modest (a bit over a lesson's own worth split in half, well under
-# a full lesson) and floored so the total never drops below zero -- a real "read
-# the whole assignment the first time" consequence, not a punishment that erases
-# a good week. Counted per bounce, so a lesson sent back twice costs twice.
-XP_SENT_BACK_PENALTY = 10
+# Set to a full lesson's worth on purpose -- a bounce completely erases the +20
+# he got for finishing it, so a sent-back lesson is worth nothing until he nails
+# it. Requested directly as the accountability lever for a student who's
+# struggling: "each time a single lesson is sent back ... this is the only way."
+# Counted per bounce (so a lesson sent back twice costs twice) and the weekly/
+# lifetime totals are floored at zero, so a rough week resets rather than going
+# negative.
+XP_SENT_BACK_PENALTY = 20
 # Flat XP span per level -- level = total // XP_PER_LEVEL + 1. The lifetime
 # level/rank is the small identity line on his card; the week-by-week reward
 # loop below is the part that actually drives the day.

@@ -106,8 +106,13 @@ def test_a_brand_new_student_is_level_one_with_zero_xp(db, student):
 
 def test_sent_back_lessons_dock_xp(db, student):
     sid = student["id"]
-    # A finished lesson that was sent back twice: earns the lesson XP but loses
-    # two penalties (one per bounce).
+    # Three finished lessons (one of them sent back twice). Kept net-positive so
+    # the two penalties are visible rather than swallowed by the zero floor.
+    for i in range(2):
+        db.save_lesson(
+            student_id=sid, agent="math", subject="math", topic="t", title=f"Clean {i}",
+            payload={"activities": []}, metadata={"student_done_on": "2026-09-01"},
+        )
     db.save_lesson(
         student_id=sid, agent="english", subject="english", topic="t", title="Redo",
         payload={"activities": []},
@@ -116,9 +121,34 @@ def test_sent_back_lessons_dock_xp(db, student):
             "lesson_feedback_history": ["Fix intro", "Still needs work"],
         },
     )
-    expected = config.XP_PER_LESSON - 2 * config.XP_SENT_BACK_PENALTY
+    expected = 3 * config.XP_PER_LESSON - 2 * config.XP_SENT_BACK_PENALTY
     assert xp.total_xp(db, sid) == expected
     assert xp.sent_back_penalty(db, sid) == 2 * config.XP_SENT_BACK_PENALTY
+
+
+def test_every_bounce_counts_even_without_a_note(db, student):
+    """The `sent_back_on` timeline is one entry per send-back, note or not, so a
+    lesson bounced three times docks three penalties -- the accountability the
+    weekly strip and the lifetime total must agree on."""
+    sid = student["id"]
+    # Four finished lessons; one of them bounced three times, none of the bounces
+    # carrying a note. Net stays positive so the three penalties are visible.
+    for i in range(3):
+        db.save_lesson(
+            student_id=sid, agent="math", subject="math", topic="t", title=f"Clean {i}",
+            payload={"activities": []}, metadata={"student_done_on": "2026-09-01"},
+        )
+    db.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t", title="Redo",
+        payload={"activities": []},
+        metadata={
+            "student_done_on": "2026-09-01",
+            "sent_back_on": ["2026-09-01", "2026-09-01", "2026-09-02"],
+        },
+    )
+    expected = 4 * config.XP_PER_LESSON - 3 * config.XP_SENT_BACK_PENALTY
+    assert xp.total_xp(db, sid) == expected
+    assert xp.sent_back_penalty(db, sid) == 3 * config.XP_SENT_BACK_PENALTY
 
 
 def test_total_xp_never_goes_negative(db, student):
