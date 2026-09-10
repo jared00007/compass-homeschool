@@ -127,10 +127,13 @@ if not is_parent():
     # morning to morning.
     st.caption(f"{daily.greeting_of_the_day()} Work down the list, or jump around — up to you.")
 
-    # Two cards side by side. On the Today view: "Due today" on the LEFT (what he
-    # owes today, the first thing to grab him), and his Level card on the RIGHT
-    # with the progress KPIs at the bottom of it. Off the Today view there's
-    # nothing due to show, so the Level+progress card stands alone, full width.
+    # One full-width container on the Today view, stacked top to bottom: This
+    # Week (the weekly XP strip + how-it-works) leads, the progress KPIs sit
+    # under it, then Due today -- what he acts on this morning -- rounds it out.
+    # This replaced a two-column split where the weekly strip was crammed into a
+    # half-width column and its day cards ran off the edge, forcing a sideways
+    # scroll ("cant see them all without scrolling side to side"). Off the Today
+    # view there's nothing due to show, so it's just the Level+progress card.
     # Bordered containers opt into the same balance CSS (theme.py) that equalizes
     # a row of `st.container(border=True)` cards.
     today_iso = date.today().isoformat()
@@ -141,13 +144,10 @@ if not is_parent():
         render_progress_panel(db, student)
 
     if active_view == "today":
-        header_columns = st.columns(2)
-        with header_columns[0]:
-            with st.container(border=True, key="landon_card_today"):
-                render_daily_due(db, student, today_iso)
-        with header_columns[1]:
-            with st.container(border=True, key="landon_card_xp"):
-                _render_level_and_progress()
+        with st.container(border=True, key="landon_card_today"):
+            _render_level_and_progress()
+            st.divider()
+            render_daily_due(db, student, today_iso)
     else:
         with st.container(border=True, key="landon_card_xp"):
             _render_level_and_progress()

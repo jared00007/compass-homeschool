@@ -2365,6 +2365,33 @@ def _render_learner_kpis(db: Database, student: dict[str, Any], *, columns: int 
         )
 
 
+def _render_due_grid(items: list[tuple[str, Any]]) -> None:
+    """Lay the Due-today items out as a balanced two-up card grid. Each item is
+    a ("pair" | "wide", draw) tuple: "pair" items flow two-per-row into
+    st.columns(2); a "wide" item (one that owns interactive widgets of its own,
+    like the reading tile's Done button + partial-page expander) breaks the row
+    and spans the full width, both to give it room and to avoid nesting columns
+    inside a column. Order is always preserved."""
+    pending: list[Any] = []
+
+    def emit_pending() -> None:
+        for i in range(0, len(pending), 2):
+            pair = pending[i : i + 2]
+            cols = st.columns(2)
+            for col, draw in zip(cols, pair):
+                with col:
+                    draw()
+        pending.clear()
+
+    for kind, draw in items:
+        if kind == "wide":
+            emit_pending()
+            draw()
+        else:
+            pending.append(draw)
+    emit_pending()
+
+
 def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
     """The day's small recurring work -- his start-of-day routine and check-in,
     words to review, where his book is, and any life skills due -- rendered to
@@ -2437,25 +2464,38 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
         unsafe_allow_html=True,
     )
 
+    # Each item is drawn by a small closure collected here, then laid out as a
+    # balanced two-up card grid by _render_due_grid: "pair" tiles flow two per
+    # row, a "wide" item (one owning its own widgets, like reading's Done button)
+    # spans the full width. Same tiles, same strings, same functionality as the
+    # old single-column list -- just arranged to fill the now full-width card.
+    grid: list[tuple[str, Any]] = []
+
     # Start-of-day pair -- Morning Routine and Check-In, kept tight: a status
     # tile plus a single link out to the actual page, not the full widget
     # inline. They lead the list because they're what he does first each day.
-    if routine_done:
-        _tile("🧘", "Morning Routine — done for today ✅", tone="done")
-    else:
-        _tile("🧘", "Morning Routine — start your day", tone="todo")
-        st.page_link("pages/5_Morning_Routine.py", label="Do it now", icon="➡️")
+    def _morning_routine() -> None:
+        if routine_done:
+            _tile("🧘", "Morning Routine — done for today ✅", tone="done")
+        else:
+            _tile("🧘", "Morning Routine — start your day", tone="todo")
+            st.page_link("pages/5_Morning_Routine.py", label="Do it now", icon="➡️")
 
-    if checked_in:
-        # The follow-up "check in again" sits on the same row as the done
-        # status, right-aligned inside the tile, rather than on a line below.
-        _tile(
-            "💬", "Check-In — done for today ✅", tone="done",
-            link=("↩️ Check in again", "Check_In"),
-        )
-    else:
-        _tile("💬", "Check-In — say how you're doing", tone="todo")
-        st.page_link("pages/8_Check_In.py", label="Open Check-In", icon="➡️")
+    grid.append(("pair", _morning_routine))
+
+    def _check_in() -> None:
+        if checked_in:
+            # The follow-up "check in again" sits on the same row as the done
+            # status, right-aligned inside the tile, rather than on a line below.
+            _tile(
+                "💬", "Check-In — done for today ✅", tone="done",
+                link=("↩️ Check in again", "Check_In"),
+            )
+        else:
+            _tile("💬", "Check-In — say how you're doing", tone="todo")
+            st.page_link("pages/8_Check_In.py", label="Open Check-In", icon="➡️")
+
+    grid.append(("pair", _check_in))
 
     # Lessons -- a compact "N of M submitted" count of today's core-subject
     # lessons (Math, Science, English, History -- max 4), so he can see his
@@ -2473,29 +2513,30 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
     total_lessons = len(lesson_markers)
     if total_lessons:
         submitted_lessons = sum(1 for m in lesson_markers if m in ("📤", "✅", "📣"))
-        if submitted_lessons >= total_lessons:
-            _tile(
-                "📚", f"Lessons — {submitted_lessons} of {total_lessons} in ✅",
-                tone="done",
-            )
-        else:
-            _tile(
-                "📚",
-                f"Lessons — {submitted_lessons} of {total_lessons} submitted",
-                tone="todo",
-            )
+
+        def _lessons(submitted: int = submitted_lessons, total: int = total_lessons) -> None:
+            if submitted >= total:
+                _tile("📚", f"Lessons — {submitted} of {total} in ✅", tone="done")
+            else:
+                _tile("📚", f"Lessons — {submitted} of {total} submitted", tone="todo")
+
+        grid.append(("pair", _lessons))
 
     # Words -- a green check once he's done for the day, whether he cleared every
     # due word or hit "I'm done with words for today" in the game (his own
     # signal), so the tile reflects "I finished," not just "nothing left due."
     words_done_today = db.vocab_reviewed_on(student["id"], today)
-    if words_done_today:
-        _tile("🔤", "Words — done for today ✅", tone="done")
-    elif due_words:
-        _tile("🔤", "words to review", tone="todo", big=len(due_words))
-        st.page_link("pages/3_English.py", label="Review now", icon="➡️")
-    else:
-        _tile("🔤", "Words — all caught up ✅", tone="done")
+
+    def _words() -> None:
+        if words_done_today:
+            _tile("🔤", "Words — done for today ✅", tone="done")
+        elif due_words:
+            _tile("🔤", "words to review", tone="todo", big=len(due_words))
+            st.page_link("pages/3_English.py", label="Review now", icon="➡️")
+        else:
+            _tile("🔤", "Words — all caught up ✅", tone="done")
+
+    grid.append(("pair", _words))
 
     # Reading -- driven entirely by the standing "daily reading" board card.
     # When the current book has a pages-per-day goal (it's on the board), today's
@@ -2514,34 +2555,38 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
         goal_page = target if target is not None else start_page + rate
         of_total = f" of {total}" if total else ""
         if current >= goal_page:
-            _tile(
-                "📖", f"Reading — done for today ✅ (page {current}{of_total})",
-                tone="done",
-            )
-        else:
-            # One line: the target on the left, a "Done" on the right -- like
-            # Check-In's inline action. The "didn't finish" path (log a partial
-            # page) sits collapsed underneath, there when he needs it.
-            tile_col, done_col = st.columns([4, 1])
-            with tile_col:
+            def _reading_done(cur: int = current, oft: str = of_total) -> None:
                 _tile(
-                    "📖",
-                    f"Reading — {md(book['title'])}: read up to page {goal_page} today",
-                    tone="info",
+                    "📖", f"Reading — done for today ✅ (page {cur}{oft})", tone="done",
                 )
-            with done_col:
-                if st.button("✅ Done", key="reading_hit_goal", width="stretch"):
-                    db.log_reading(student["id"], book["id"], goal_page, today)
-                    st.rerun()
-            with st.expander("Didn't finish? Log the page you stopped on"):
-                reported = st.number_input(
-                    "Page reached", min_value=0,
-                    max_value=int(total) if total else 100000,
-                    value=int(current), key="reading_report_page",
-                )
-                if st.button("Save", key="reading_save_page"):
-                    db.log_reading(student["id"], book["id"], int(reported), today)
-                    st.rerun()
+            grid.append(("pair", _reading_done))
+        else:
+            # Owns a Done button + a partial-page expander, so it spans the full
+            # width rather than sitting in a two-up cell (which would nest
+            # columns). The target sits left, a one-tap Done right -- like
+            # Check-In's inline action; "didn't finish" collapses underneath.
+            def _reading_todo(goal: int = goal_page, cur: int = current, tot: Any = total) -> None:
+                tile_col, done_col = st.columns([4, 1])
+                with tile_col:
+                    _tile(
+                        "📖",
+                        f"Reading — {md(book['title'])}: read up to page {goal} today",
+                        tone="info",
+                    )
+                with done_col:
+                    if st.button("✅ Done", key="reading_hit_goal", width="stretch"):
+                        db.log_reading(student["id"], book["id"], goal, today)
+                        st.rerun()
+                with st.expander("Didn't finish? Log the page you stopped on"):
+                    reported = st.number_input(
+                        "Page reached", min_value=0,
+                        max_value=int(tot) if tot else 100000,
+                        value=int(cur), key="reading_report_page",
+                    )
+                    if st.button("Save", key="reading_save_page"):
+                        db.log_reading(student["id"], book["id"], int(reported), today)
+                        st.rerun()
+            grid.append(("wide", _reading_todo))
 
     # Life Skills -- big gold count only for what he still has to do; ones he's
     # marked done (submitted, waiting on a parent's approval) count as his part
@@ -2555,19 +2600,23 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
         s for s in due_skills
         if (s.get("status") or "") == config.LIFE_SKILL_SUBMITTED
     ]
-    if todo_skills:
-        _tile("🛠️", f"Life Skills ({len(todo_skills)}) due", tone="todo", big=len(todo_skills))
-        for skill in todo_skills:
-            st.page_link("pages/6_Life_Skills.py", label=md(skill["title"]), icon="➡️")
-        if awaiting_skills:
-            st.caption(f"✅ {len(awaiting_skills)} handed in, waiting on your parent")
-    elif awaiting_skills:
-        # He's done his part -- standard "done for today" like the other tiles;
-        # the parent-approval it's waiting on rides underneath as a note.
-        _tile("🛠️", "Life Skills — done for today ✅", tone="done")
-        st.caption("Handed in — waiting on your parent to check it off.")
-    else:
-        _tile("🛠️", "Life Skills (0) — nothing due ✅", tone="done")
+
+    def _life_skills() -> None:
+        if todo_skills:
+            _tile("🛠️", f"Life Skills ({len(todo_skills)}) due", tone="todo", big=len(todo_skills))
+            for skill in todo_skills:
+                st.page_link("pages/6_Life_Skills.py", label=md(skill["title"]), icon="➡️")
+            if awaiting_skills:
+                st.caption(f"✅ {len(awaiting_skills)} handed in, waiting on your parent")
+        elif awaiting_skills:
+            # He's done his part -- standard "done for today" like the other
+            # tiles; the parent-approval it's waiting on rides underneath.
+            _tile("🛠️", "Life Skills — done for today ✅", tone="done")
+            st.caption("Handed in — waiting on your parent to check it off.")
+        else:
+            _tile("🛠️", "Life Skills (0) — nothing due ✅", tone="done")
+
+    grid.append(("pair", _life_skills))
 
     # Travel journal -- scheduled entries he needs to write. Unlike Life Skills
     # it only appears when a trip is actually assigned for today (travel is
@@ -2577,19 +2626,23 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
     due_trips = db.due_travel_entries(student["id"], today)
     todo_trips = [t for t in due_trips if (t.get("status") or "planned") != "submitted"]
     awaiting_trips = [t for t in due_trips if (t.get("status") or "") == "submitted"]
-    if todo_trips:
-        _tile("🧳", f"Travel journal ({len(todo_trips)}) to write", tone="todo", big=len(todo_trips))
-        for trip in todo_trips:
-            st.page_link(
-                "pages/9_Landons_Travels.py",
-                label=md(trip.get("title") or trip.get("state") or "Trip"),
-                icon="➡️",
-            )
-        if awaiting_trips:
-            st.caption(f"✅ {len(awaiting_trips)} handed in, waiting on your parent")
-    elif awaiting_trips:
-        _tile("🧳", "Travel journal — done for today ✅", tone="done")
-        st.caption("Handed in — waiting on your parent to check it off.")
+    if todo_trips or awaiting_trips:
+        def _travel() -> None:
+            if todo_trips:
+                _tile("🧳", f"Travel journal ({len(todo_trips)}) to write", tone="todo", big=len(todo_trips))
+                for trip in todo_trips:
+                    st.page_link(
+                        "pages/9_Landons_Travels.py",
+                        label=md(trip.get("title") or trip.get("state") or "Trip"),
+                        icon="➡️",
+                    )
+                if awaiting_trips:
+                    st.caption(f"✅ {len(awaiting_trips)} handed in, waiting on your parent")
+            elif awaiting_trips:
+                _tile("🧳", "Travel journal — done for today ✅", tone="done")
+                st.caption("Handed in — waiting on your parent to check it off.")
+
+        grid.append(("pair", _travel))
 
     # Big Projects -- a project step assigned for today gets its own tile, the
     # same shape as Life Skills and Travel (only when one's actually due, since
@@ -2597,20 +2650,26 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
     due_steps = db.due_project_steps(student["id"], today)
     todo_steps = [s for s in due_steps if (s.get("status") or "planned") != "submitted"]
     awaiting_steps = [s for s in due_steps if (s.get("status") or "") == "submitted"]
-    if todo_steps:
-        _tile("🏗️", f"Big Projects ({len(todo_steps)}) due", tone="todo")
-        for step in todo_steps:
-            project_title = step.get("project_title") or "Big Project"
-            st.page_link(
-                "pages/7_Big_Projects.py",
-                label=f"{md(step['title'])} — {md(project_title)}",
-                icon="➡️",
-            )
-        if awaiting_steps:
-            st.caption(f"✅ {len(awaiting_steps)} handed in, waiting on your parent")
-    elif awaiting_steps:
-        _tile("🏗️", "Big Projects — done for today ✅", tone="done")
-        st.caption("Handed in — waiting on your parent to check it off.")
+    if todo_steps or awaiting_steps:
+        def _big_projects() -> None:
+            if todo_steps:
+                _tile("🏗️", f"Big Projects ({len(todo_steps)}) due", tone="todo")
+                for step in todo_steps:
+                    project_title = step.get("project_title") or "Big Project"
+                    st.page_link(
+                        "pages/7_Big_Projects.py",
+                        label=f"{md(step['title'])} — {md(project_title)}",
+                        icon="➡️",
+                    )
+                if awaiting_steps:
+                    st.caption(f"✅ {len(awaiting_steps)} handed in, waiting on your parent")
+            elif awaiting_steps:
+                _tile("🏗️", "Big Projects — done for today ✅", tone="done")
+                st.caption("Handed in — waiting on your parent to check it off.")
+
+        grid.append(("pair", _big_projects))
+
+    _render_due_grid(grid)
 
     # +later, plus the Student's Choice / Coding counts that each have their own
     # scheduled-for-a-day items, as one compact caption at the bottom.
@@ -2920,9 +2979,9 @@ def _xp_day_frame_html(day: "xp_module.DayRecord", color: str, text: str) -> str
         bg = "var(--c-panel)"
 
     return (
-        f'<div style="flex:0 0 122px;border:{border};border-radius:4px;background:{bg};'
+        f'<div style="flex:1 1 118px;min-width:106px;border:{border};border-radius:4px;background:{bg};'
         f'box-shadow:3px 3px 0 {_XP_INK};overflow:hidden;display:flex;flex-direction:column;'
-        f'min-height:146px;scroll-snap-align:start;">{ribbon}{inner}</div>'
+        f'min-height:146px;">{ribbon}{inner}</div>'
     )
 
 
@@ -2981,9 +3040,9 @@ def _weekly_xp_html(state: "xp_module.XPState", progress: "xp_module.WeeklyProgr
     # The reward payoff panel closes the strip.
     lock = ("✅ earned" if progress.reached else f"🔒 at {progress.goal}")
     payoff = (
-        f'<div style="flex:0 0 112px;border:2.5px solid {_XP_INK};border-radius:4px;'
+        f'<div style="flex:1 1 108px;min-width:100px;border:2.5px solid {_XP_INK};border-radius:4px;'
         f'background:var(--c-primary);box-shadow:3px 3px 0 {_XP_INK};overflow:hidden;'
-        f'display:flex;flex-direction:column;min-height:146px;scroll-snap-align:start;">'
+        f'display:flex;flex-direction:column;min-height:146px;">'
         f'<div style="font-family:var(--c-head);font-weight:800;font-size:13px;color:{_XP_INK};'
         f'background:#d99f00;padding:3px 8px;border-bottom:2.5px solid {_XP_INK};">GOAL</div>'
         f'<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;'
@@ -2993,12 +3052,11 @@ def _weekly_xp_html(state: "xp_module.XPState", progress: "xp_module.WeeklyProgr
         f'<span style="font-size:10px;font-weight:800;text-transform:uppercase;">{lock}</span></div></div>'
     )
 
+    # A wrapping row: the five day panels and the reward fill the full width and
+    # wrap to more rows on a narrow screen -- no sideways scroll on his phone.
     strip = (
-        '<div style="display:flex;gap:10px;overflow-x:auto;padding:4px 2px 10px;'
-        'scroll-snap-type:x mandatory;">'
+        '<div style="display:flex;flex-wrap:wrap;gap:10px;padding:4px 2px 6px;">'
         + frames + payoff + "</div>"
-        '<div style="font-size:10px;font-weight:800;color:var(--c-dim);text-transform:uppercase;'
-        'letter-spacing:.05em;text-align:right;margin-top:-4px;">swipe →</div>'
     )
 
     return f'<div style="color:var(--c-text);">{header}{meter}{cap}{strip}</div>'
