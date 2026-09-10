@@ -32,7 +32,7 @@ from __future__ import annotations
 import html
 import sqlite3
 import time
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import streamlit as st
@@ -2323,19 +2323,20 @@ def render_writing_feedback_reply_form(
 
 
 def render_progress_panel(db: Database, student: dict[str, Any], *, columns: int = 4) -> None:
-    """His progress numbers -- the "📈 Progress" heading and KPI tiles. Lives at
-    the bottom of the Level card on Home (moved out of the Due-today card so Due
-    today stands on its own)."""
-    st.markdown("**📈 Progress**")
+    """His all-time tally -- the "Work done so far" heading and KPI tiles. Lives
+    under the weekly strip on Home; the count of everything he's finished, which
+    the abstract weekly bar doesn't say plainly."""
+    st.markdown('<div style="font-size:16px; font-weight:900; margin:2px 0 9px;">'
+                '📈 Work done so far</div>', unsafe_allow_html=True)
     _render_learner_kpis(db, student, columns=columns)
 
 
 def _render_learner_kpis(db: Database, student: dict[str, Any], *, columns: int = 4) -> None:
-    """The compact KPI tiles -- finished lessons, passed quizzes, and the
-    subject he's put the most work into. Custom HTML grid rather than st.metric
-    so the tiles stay short instead of stacking tall. `columns` controls the
-    grid width: 4 for a single strip, 2 for a 2x2 block when the tiles sit in a
-    half-width column (the two-panel Today card)."""
+    """The KPI tiles -- finished lessons, passed quizzes, life skills, trips.
+    Custom HTML grid rather than st.metric so the tiles stay short instead of
+    stacking tall. They carry the same bold ink outline + hard shadow the weekly
+    day cards use, so every container on the Today card reads as one set.
+    `columns` controls the grid width: 4 for a single strip, 2 for a 2x2 block."""
     stats = xp_module.learner_stats(db, student["id"])
 
     tiles = [
@@ -2345,24 +2346,18 @@ def _render_learner_kpis(db: Database, student: dict[str, Any], *, columns: int 
         ("🧭", stats.trips_written, "trips written"),
     ]
     cells = "".join(
-        f'<div style="text-align:center; padding:8px 4px; background:var(--c-panel); '
-        f'border:1px solid rgba(36,28,18,.08); border-radius:8px;">'
-        f'<div style="font-size:19px; font-weight:800; line-height:1.1;">{icon} {value}</div>'
-        f'<div style="font-size:11px; color:var(--c-dim);">{label}</div>'
+        f'<div style="text-align:center; padding:12px 6px; background:var(--c-panel); '
+        f'border:2.5px solid {_XP_INK}; border-radius:4px; box-shadow:3px 3px 0 {_XP_INK};">'
+        f'<div style="font-size:26px; font-weight:900; line-height:1.05;">{icon} {value}</div>'
+        f'<div style="font-size:13px; font-weight:700; color:var(--c-dim); margin-top:2px;">{label}</div>'
         f"</div>"
         for icon, value, label in tiles
     )
     st.markdown(
         f'<div style="display:grid; grid-template-columns:repeat({columns},1fr); '
-        f'gap:6px; margin-top:8px;">{cells}</div>',
+        f'gap:9px; margin-top:8px;">{cells}</div>',
         unsafe_allow_html=True,
     )
-    if stats.heaviest_subject:
-        st.caption(
-            f"💪 Most work so far: **{md(stats.heaviest_subject.title())}** "
-            f"({stats.heaviest_subject_count} lesson"
-            f"{'s' if stats.heaviest_subject_count != 1 else ''})"
-        )
 
 
 def _render_due_grid(items: list[tuple[str, Any]]) -> None:
@@ -2449,9 +2444,13 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
                 f'font-weight:700; font-size:13px; color:{accent}; '
                 f'text-decoration:none;">{html.escape(link_label)}</a>'
             )
+        # Same bold ink outline + hard shadow the weekly day cards and KPI tiles
+        # carry, so every container on the Today card reads as one set; the tone
+        # colour stays as the fill plus a thicker accent stripe down the left.
         st.markdown(
-            f'<div style="display:flex; align-items:center; gap:4px; background:{bg}; '
-            f'border-left:5px solid {accent}; border-radius:8px; padding:10px 13px; '
+            f'<div style="display:flex; align-items:center; gap:6px; background:{bg}; '
+            f'border:2.5px solid {_XP_INK}; border-left:6px solid {accent}; '
+            f'border-radius:4px; box-shadow:3px 3px 0 {_XP_INK}; padding:11px 13px; '
             f'margin-bottom:6px;">'
             f'<span style="font-size:17px;">{icon}</span>{big_html}'
             f'<span style="font-weight:800; font-size:14px;">{label_html}</span>'
@@ -3032,6 +3031,13 @@ def _weekly_xp_html(state: "xp_module.XPState", progress: "xp_module.WeeklyProgr
             f'<span style="color:var(--c-bad);font-weight:800;">{progress.remaining} XP</span> '
             f'to {reward} — {"one more push!" if progress.close else "keep at it."}</div>'
         )
+    if progress.is_short_week:
+        # A holiday/short week -- say the goal was trimmed so a lighter bar
+        # doesn't read as falling behind.
+        cap += (
+            f'<div style="font-size:11.5px;font-weight:700;color:var(--c-dim);margin-top:3px;">'
+            f'🏖️ Short week — goal trimmed to {progress.school_days} days.</div>'
+        )
 
     frames = "".join(
         _xp_day_frame_html(day, colors[i], _XP_WEEKDAY_TEXT[i])
@@ -3167,37 +3173,95 @@ def render_earned_rewards(db: Database, student: dict[str, Any]) -> None:
 
 
 def render_xp_reward_editor(db: Database) -> None:
-    """Parent-only: set the weekly goal and the reward he's climbing toward --
-    reported: "parent also needs ability to edit, adjust ... xp rewards." The
-    student XP card reads these same settings, so a change here is what he sees
-    next load. The point values themselves (per lesson, per quiz, ...) stay in
-    config; this is the two knobs a parent actually turns."""
+    """Parent-only: set the weekly goal, pick this week's reward from a saved
+    library (or add your own), and flag a short/holiday week so the goal is
+    weighted to fewer days. The student XP card reads these same settings, so a
+    change here is what he sees next load. The point values themselves (per
+    lesson, per quiz, ...) stay in config; these are the knobs a parent turns."""
     goal = xp_module.weekly_goal(db)
     reward_name, reward_emoji = xp_module.weekly_reward(db)
+    this_monday = date.today() - timedelta(days=date.today().weekday())
+    school_days = xp_module.week_school_days(db, this_monday)
+
     st.caption(
-        "One reward a week. Set how much XP counts as a good week, and name what "
+        "One reward a week. Set how much XP counts as a good week, then pick what "
         "he earns for hitting it by Friday. Roughly a lesson is "
         f"+{config.XP_PER_LESSON} and a passed quiz +{config.XP_QUIZ_PASS_BONUS}, so "
         f"{goal} is about {max(1, goal // config.XP_PER_LESSON)} lessons' worth of work."
     )
     new_goal = st.number_input(
-        "Weekly XP goal", min_value=10, max_value=5000, value=int(goal), step=10,
-        key="xp_weekly_goal_input",
+        "Weekly XP goal (a full 5-day week)", min_value=10, max_value=5000,
+        value=int(goal), step=10, key="xp_weekly_goal_input",
     )
-    emoji_col, name_col = st.columns([1, 4])
-    new_emoji = emoji_col.text_input("Emoji", value=reward_emoji, key="xp_weekly_reward_emoji_input")
-    new_name = name_col.text_input("Reward", value=reward_name, key="xp_weekly_reward_name_input")
+
+    # This week's reward, chosen from the saved library. The current reward is
+    # always an option even if it isn't in the library, so nothing is lost.
+    library = xp_module.reward_library(db)
+    if not any(n.lower() == reward_name.lower() for n, _ in library):
+        library.insert(0, (reward_name, reward_emoji))
+    labels = [f"{e}  {n}" for n, e in library]
+    try:
+        current_index = next(
+            i for i, (n, _) in enumerate(library) if n.lower() == reward_name.lower()
+        )
+    except StopIteration:
+        current_index = 0
+    picked = st.selectbox(
+        "This week's reward", range(len(library)), index=current_index,
+        format_func=lambda i: labels[i], key="xp_weekly_reward_pick",
+    )
+    picked_name, picked_emoji = library[picked]
+
+    # Short / holiday week: weight the goal to fewer school days. Applies to THIS
+    # week only (keyed to its Monday); next Monday is back to a full five.
+    days_options = [5, 4, 3, 2, 1]
+    new_days = st.selectbox(
+        "School days this week (drop it for a holiday week)",
+        days_options, index=days_options.index(school_days),
+        format_func=lambda d: "5 — full week" if d == 5 else f"{d} days (short week)",
+        key="xp_week_days_input",
+    )
+    if new_days < 5:
+        st.caption(
+            f"🏖️ Holiday week: this week's goal is weighted to {new_days} days — "
+            f"**{xp_module.scaled_goal(int(new_goal), new_days)} XP** instead of {int(new_goal)}."
+        )
 
     save_col, reset_col = st.columns(2)
     if save_col.button("Save weekly reward", type="primary", key="save_xp_weekly"):
         xp_module.set_weekly_goal(db, int(new_goal))
-        xp_module.set_weekly_reward(db, new_name, new_emoji)
+        xp_module.set_weekly_reward(db, picked_name, picked_emoji)
+        xp_module.set_week_school_days(db, this_monday, int(new_days))
         st.success("Weekly reward saved.")
         st.rerun()
     if reset_col.button("Reset to default", key="reset_xp_weekly"):
         for setting in ("xp_weekly_goal", "xp_weekly_reward_name", "xp_weekly_reward_emoji"):
             db.set_setting(setting, "")
         st.rerun()
+
+    # Add your own reward to the library, with a saved emoji, so it's a dropdown
+    # choice next time instead of retyping.
+    with st.expander("➕ Add a reward to the library"):
+        add_emoji_col, add_name_col = st.columns([1, 4])
+        add_emoji = add_emoji_col.text_input("Emoji", value="🎁", key="xp_lib_add_emoji")
+        add_name = add_name_col.text_input("Reward name", key="xp_lib_add_name")
+        if st.button("Save to library", key="xp_lib_add_btn"):
+            if add_name.strip():
+                xp_module.add_reward_to_library(db, add_name, add_emoji)
+                st.success(f"Added {add_emoji} {md(add_name)} to the library.")
+                st.rerun()
+            else:
+                st.warning("Give the reward a name first.")
+        # Let a parent prune their own saved presets (the config seed stays).
+        saved_names = [n for n, _ in xp_module.reward_library(db)]
+        removable = [n for n in saved_names if n not in dict((x[0], x[1]) for x in config.XP_REWARD_LIBRARY)]
+        if removable:
+            to_remove = st.selectbox(
+                "Remove a saved reward", ["—"] + removable, key="xp_lib_remove_pick"
+            )
+            if st.button("Remove", key="xp_lib_remove_btn") and to_remove != "—":
+                xp_module.remove_reward_from_library(db, to_remove)
+                st.rerun()
 
 
 def render_declaration_banner(db: Database, student: dict[str, Any]) -> None:

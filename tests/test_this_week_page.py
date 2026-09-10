@@ -402,6 +402,38 @@ def test_the_parent_board_full_lesson_still_shows_the_answer_key(monkeypatch, tm
     assert f"board_pdf_{lesson_id}" in pdf_keys
 
 
+def test_parent_can_attach_a_resource_to_an_upcoming_board_lesson(monkeypatch, tmp_path):
+    """Prepping the night before: from the parent board's "View full lesson"
+    dialog, a parent can bundle a resource into a lesson he hasn't turned in yet
+    (reported: the review-page editor only reaches already-submitted lessons)."""
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="science", subject="science", topic="t",
+        title="Volcanoes",
+        payload={"title": "Volcanoes", "activities": []},
+        metadata={
+            "planned_for": TARGET_MONDAY.isoformat(),
+            "week_start": TARGET_MONDAY.isoformat(),
+        },
+    )
+    db.close()
+
+    at, _ = _open_board_tab(monkeypatch, db_path)
+    at.button(key=f"board_view_lesson_{lesson_id}").click().run()
+    assert not at.exception, [e.message for e in at.exception]
+    # The parent-side resource editor is wired into the preview dialog: its
+    # add-a-resource inputs and button are present for this exact lesson. (The
+    # add -> db.add_lesson_resource path itself is covered in test_lesson_resources;
+    # an st.dialog can't be driven across the reruns a full add would take here.)
+    input_keys = [t.key or "" for t in at.text_input]
+    button_keys = [b.key or "" for b in at.button]
+    assert f"addres_label_{lesson_id}" in input_keys
+    assert f"addres_url_{lesson_id}" in input_keys
+    assert f"addres_btn_{lesson_id}" in button_keys
+
+
 def test_moving_a_story_to_a_different_week_shows_a_notice_not_just_a_vanish(
     monkeypatch, tmp_path
 ):

@@ -166,6 +166,21 @@ XP_PER_LEVEL = 100
 XP_WEEKLY_GOAL = 400
 XP_WEEKLY_REWARD_NAME = "Family movie night"
 XP_WEEKLY_REWARD_EMOJI = "🎬"
+
+# A starter library of rewards a parent can pick from (and add their own to),
+# each with a saved emoji -- so naming this week's reward is a dropdown choice,
+# not retyping. (name, emoji). The parent's saved additions live in the
+# `xp_reward_library` setting; this is only the seed.
+XP_REWARD_LIBRARY: tuple[tuple[str, str], ...] = (
+    ("Family movie night", "🎬"),
+    ("Pick dinner one night", "🍕"),
+    ("Ice cream run", "🍨"),
+    ("Extra hour of screen time", "🎮"),
+    ("Friday sleep-in", "😴"),
+    ("A day trip you choose", "🗺️"),
+    ("$10 to spend", "💵"),
+    ("Skip one chore", "🧹"),
+)
 # Rank names by level (level 1 = index 0). The last one holds for every level
 # beyond the list, so it never runs out -- on the compass/explorer theme.
 XP_RANKS = (

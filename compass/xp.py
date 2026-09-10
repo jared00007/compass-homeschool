@@ -279,6 +279,11 @@ class WeeklyProgress:
     days: list[DayRecord]
     bonus_items: list[BonusItem] = field(default_factory=list)
     given: bool = False
+    school_days: int = 5      # 5 normally; fewer on a holiday/short week
+
+    @property
+    def is_short_week(self) -> bool:
+        return self.school_days < 5
 
     @property
     def core_xp(self) -> int:
@@ -394,6 +399,120 @@ def set_week_reward_given(db: Any, week_start: date | str, given: bool = True) -
     db.set_setting(_WEEKS_GIVEN_SETTING, json.dumps(sorted(current)))
 
 
+_REWARD_LIBRARY_SETTING = "xp_reward_library"
+
+
+def reward_library(db: Any) -> list[tuple[str, str]]:
+    """The reward presets a parent can pick from -- the config seed plus any
+    they've saved, de-duplicated by name (a saved edit wins over the seed of the
+    same name). Each is (name, emoji). Tolerant of a malformed stored value."""
+    library: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    raw = db.get_setting(_REWARD_LIBRARY_SETTING)
+    if raw:
+        try:
+            parsed = json.loads(raw)
+        except (ValueError, TypeError):
+            parsed = None
+        if isinstance(parsed, list):
+            for row in parsed:
+                try:
+                    name = str(row["name"]).strip()
+                    emoji = (str(row.get("emoji") or "").strip()) or "🎁"
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if name and name.lower() not in seen:
+                    library.append((name, emoji))
+                    seen.add(name.lower())
+    for name, emoji in config.XP_REWARD_LIBRARY:
+        if name.lower() not in seen:
+            library.append((name, emoji))
+            seen.add(name.lower())
+    return library
+
+
+def add_reward_to_library(db: Any, name: str, emoji: str) -> None:
+    """Save a new reward preset (or update the emoji of an existing one by name)
+    so it's reusable from the picker. A blank name is ignored."""
+    name = str(name or "").strip()
+    if not name:
+        return
+    emoji = (str(emoji or "").strip()) or "🎁"
+    saved = [
+        {"name": n, "emoji": e}
+        for n, e in reward_library(db)
+        if n.lower() != name.lower()
+    ]
+    saved.insert(0, {"name": name, "emoji": emoji})
+    db.set_setting(_REWARD_LIBRARY_SETTING, json.dumps(saved))
+
+
+def remove_reward_from_library(db: Any, name: str) -> None:
+    """Drop a reward preset by name. Only affects the parent's saved list; the
+    config seed always remains available."""
+    name = str(name or "").strip().lower()
+    saved = [
+        {"name": n, "emoji": e}
+        for n, e in reward_library(db)
+        if n.lower() != name
+    ]
+    db.set_setting(_REWARD_LIBRARY_SETTING, json.dumps(saved))
+
+
+_WEEK_DAYS_SETTING = "xp_week_days"
+
+
+def week_school_days(db: Any, week_start: date | str) -> int:
+    """How many school days a given week counts as -- 5 by default, fewer when a
+    parent has flagged it a short/holiday week. Keyed by the week's Monday
+    (ISO), stored as a JSON dict under `xp_week_days`, so a short week only
+    affects that week and next Monday starts fresh at 5."""
+    key = week_start.isoformat() if isinstance(week_start, date) else str(week_start)
+    raw = db.get_setting(_WEEK_DAYS_SETTING)
+    if raw:
+        try:
+            parsed = json.loads(raw)
+        except (ValueError, TypeError):
+            parsed = None
+        if isinstance(parsed, dict):
+            try:
+                days = int(parsed.get(key))
+            except (TypeError, ValueError):
+                days = 5
+            if 1 <= days <= 5:
+                return days
+    return 5
+
+
+def set_week_school_days(db: Any, week_start: date | str, days: int) -> None:
+    """Flag a week as short (a holiday week) by setting its school-day count.
+    Clamped to 1-5; setting 5 clears the override for that week."""
+    key = week_start.isoformat() if isinstance(week_start, date) else str(week_start)
+    try:
+        days = max(1, min(5, int(days)))
+    except (TypeError, ValueError):
+        days = 5
+    raw = db.get_setting(_WEEK_DAYS_SETTING)
+    try:
+        current = json.loads(raw) if raw else {}
+        if not isinstance(current, dict):
+            current = {}
+    except (ValueError, TypeError):
+        current = {}
+    if days == 5:
+        current.pop(key, None)
+    else:
+        current[key] = days
+    db.set_setting(_WEEK_DAYS_SETTING, json.dumps(current))
+
+
+def scaled_goal(base_goal: int, school_days: int) -> int:
+    """A full-week goal scaled down for a short week -- weighted to the number of
+    school days out of five, floored at 10 so it stays a real target. A 400 goal
+    on a 4-day holiday week becomes 320."""
+    return max(10, round(base_goal * school_days / 5))
+
+
 def bonus_options() -> list[BonusItem]:
     """The standing ways to earn extra credit -- shown in the Friday nudge so
     the point values there stay in step with what these actually award."""
@@ -496,12 +615,14 @@ def weekly_progress(
         )
 
     name, emoji = weekly_reward(db)
+    school_days = week_school_days(db, monday)
     return WeeklyProgress(
         week_start=monday,
-        goal=weekly_goal(db),
+        goal=scaled_goal(weekly_goal(db), school_days),
         reward_name=name,
         reward_emoji=emoji,
         days=days,
         bonus_items=bonus_items,
         given=monday.isoformat() in weeks_given(db),
+        school_days=school_days,
     )

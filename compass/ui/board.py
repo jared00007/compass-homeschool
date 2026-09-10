@@ -242,6 +242,15 @@ def _render_board_deep_link(
                 comic_layout=not parent,
                 comic_frame_title=f"📘 {item['title']}",
             )
+            # Parent resources, right here in the preview -- so prepping the
+            # night before, a parent can bundle a video/article/note into a
+            # lesson he hasn't started yet (reported: the review-page editor
+            # only reaches lessons he's already turned in). He sees them
+            # read-only on his own board.
+            if db is not None:
+                _ui.render_lesson_resources(
+                    db, item["id"], item.get("metadata") or {}, parent=parent
+                )
 
         if _ui.st.button("🔍 View full lesson", key=f"board_view_lesson_{item['id']}"):
             _show_full_lesson()

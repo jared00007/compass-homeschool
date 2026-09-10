@@ -340,6 +340,54 @@ def test_close_flag_triggers_within_the_margin(db, student):
     assert progress.remaining == 40
 
 
+def test_reward_library_seeds_from_config_and_takes_additions(db, student):
+    lib = xp.reward_library(db)
+    assert (config.XP_WEEKLY_REWARD_NAME, config.XP_WEEKLY_REWARD_EMOJI) in lib
+
+    xp.add_reward_to_library(db, "Laser tag", "🔫")
+    lib = xp.reward_library(db)
+    assert ("Laser tag", "🔫") in lib
+    # Added ones lead, and there are no dupes with the seed.
+    assert lib[0] == ("Laser tag", "🔫")
+    names = [n for n, _ in lib]
+    assert len(names) == len(set(n.lower() for n in names))
+
+    # Adding the same name again updates the emoji rather than duplicating.
+    xp.add_reward_to_library(db, "Laser tag", "🎯")
+    assert ("Laser tag", "🎯") in xp.reward_library(db)
+    assert sum(1 for n, _ in xp.reward_library(db) if n == "Laser tag") == 1
+
+    xp.remove_reward_from_library(db, "Laser tag")
+    assert "Laser tag" not in [n for n, _ in xp.reward_library(db)]
+
+
+def test_a_short_week_scales_the_goal_down(db, student):
+    assert xp.scaled_goal(400, 5) == 400
+    assert xp.scaled_goal(400, 4) == 320
+    assert xp.scaled_goal(400, 1) == 80
+    # Floored so it stays a real target.
+    assert xp.scaled_goal(10, 1) == 10
+
+    today = date(2026, 9, 10)
+    monday = date(2026, 9, 7)
+    xp.set_weekly_goal(db, 400)
+    # Default: full five-day week.
+    assert xp.weekly_progress(db, student["id"], today).goal == 400
+    assert xp.weekly_progress(db, student["id"], today).school_days == 5
+
+    # Flag it a 4-day holiday week -> goal weighted down, only for this week.
+    xp.set_week_school_days(db, monday, 4)
+    progress = xp.weekly_progress(db, student["id"], today)
+    assert progress.goal == 320
+    assert progress.school_days == 4
+    assert progress.is_short_week
+    # A different week is unaffected.
+    assert xp.week_school_days(db, date(2026, 9, 14)) == 5
+    # Setting it back to 5 clears the override.
+    xp.set_week_school_days(db, monday, 5)
+    assert xp.weekly_progress(db, student["id"], today).goal == 400
+
+
 def test_mission_control_shows_and_clears_the_weekly_reward(monkeypatch, tmp_path):
     """The parent needs to know when he's earned the week's reward. A goal of 0
     is 'reached' immediately, so Mission Control's review queue shows it with a
