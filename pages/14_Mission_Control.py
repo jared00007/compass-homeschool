@@ -574,6 +574,13 @@ if mc_view == "review":
     # Mission Control's review queue with the rest of what's waiting on a parent.
     render_earned_rewards(db, student)
 
+    # The weekly-reward settings sit right under the reward status, on the
+    # default Review view -- reported it was too buried under the Grades tab to
+    # find. This is the goal, the reward picker/library, and the holiday-week
+    # weighting.
+    with st.expander("🎁 Weekly reward — set the goal, reward & holiday weeks"):
+        render_xp_reward_editor(db)
+
     submitted_lessons = [l for l in to_review if l["status"] == "submitted"]
     submitted_lessons.sort(key=lambda l: (l.get("metadata") or {}).get("planned_for") or "")
     overdue = [
@@ -860,9 +867,3 @@ if mc_view == "grades":
         "subject's grade by hand if a number needs overriding."
     )
     render_report_card(db, student, for_parent=True)
-
-    # The weekly XP goal and reward he's climbing toward, editable here -- the
-    # student's own XP card is view-only, so this is where a parent sets the goal
-    # and names the reward.
-    with st.expander("🎁 Weekly reward"):
-        render_xp_reward_editor(db)
