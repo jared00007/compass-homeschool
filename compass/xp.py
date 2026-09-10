@@ -12,7 +12,8 @@ curve are all tunable knobs in config.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import date, timedelta
 from typing import Any
 
 from compass import config
@@ -33,24 +34,6 @@ class XPState:
         if self.level_span <= 0:
             return 0.0
         return self.into_level / self.level_span
-
-
-@dataclass(frozen=True)
-class Reward:
-    """One real-world reward: whether his XP has reached it (`unlocked`), and
-    whether the parent has actually handed it over yet (`given`)."""
-
-    threshold: int
-    name: str
-    emoji: str
-    unlocked: bool
-    given: bool = False
-
-    @property
-    def earned_unclaimed(self) -> bool:
-        """He's hit the threshold but the parent hasn't marked it given -- the
-        one state that needs the parent's attention."""
-        return self.unlocked and not self.given
 
 
 def _sent_back_count(metadata: dict[str, Any]) -> int:
@@ -74,126 +57,6 @@ def sent_back_penalty(db: Any, student_id: int) -> int:
     return config.XP_SENT_BACK_PENALTY * bounces
 
 
-_REWARD_LADDER_SETTING = "xp_rewards"
-
-
-def reward_ladder(db: Any) -> list[tuple[int, str, str]]:
-    """The reward milestones in force -- a parent's own edited list if they've
-    saved one (`xp_rewards` setting, JSON), otherwise the config defaults.
-    Tolerant of a malformed stored value: a bad row is dropped and, if nothing
-    survives, it falls back to the defaults rather than leaving him with no
-    rewards to climb toward (same defensiveness `grades.parse_weights` applies
-    to its own editable setting). Always returned ascending by threshold."""
-    raw = db.get_setting(_REWARD_LADDER_SETTING)
-    if raw:
-        try:
-            parsed = json.loads(raw)
-        except (ValueError, TypeError):
-            parsed = None
-        if isinstance(parsed, list):
-            ladder: list[tuple[int, str, str]] = []
-            for row in parsed:
-                try:
-                    threshold = int(row["threshold"])
-                    name = str(row["name"]).strip()
-                    emoji = (str(row.get("emoji") or "").strip()) or "🎁"
-                except (KeyError, TypeError, ValueError):
-                    continue
-                if name:
-                    ladder.append((threshold, name, emoji))
-            if ladder:
-                return sorted(ladder, key=lambda r: r[0])
-    return list(config.XP_REWARDS)
-
-
-def set_reward_ladder(db: Any, rows: list[dict[str, Any]]) -> None:
-    """Save a parent's edited reward list. Drops rows with no name, clamps a
-    missing/junk threshold to 0, defaults a blank emoji, and stores the result
-    sorted ascending. Saving an empty list clears back to the config defaults."""
-    cleaned: list[dict[str, Any]] = []
-    for row in rows:
-        name = str(row.get("name") or "").strip()
-        if not name:
-            continue
-        try:
-            threshold = max(0, int(row.get("threshold") or 0))
-        except (TypeError, ValueError):
-            threshold = 0
-        emoji = (str(row.get("emoji") or "").strip()) or "🎁"
-        cleaned.append({"threshold": threshold, "name": name, "emoji": emoji})
-    cleaned.sort(key=lambda r: r["threshold"])
-    db.set_setting(_REWARD_LADDER_SETTING, json.dumps(cleaned))
-
-
-_REWARD_GIVEN_SETTING = "xp_rewards_given"
-
-
-def given_thresholds(db: Any) -> set[int]:
-    """The reward thresholds the parent has already marked as handed over.
-    Stored as a JSON list of ints under `xp_rewards_given`; a malformed value
-    reads as 'nothing given' rather than raising."""
-    raw = db.get_setting(_REWARD_GIVEN_SETTING)
-    if not raw:
-        return set()
-    try:
-        parsed = json.loads(raw)
-    except (ValueError, TypeError):
-        return set()
-    if not isinstance(parsed, list):
-        return set()
-    out: set[int] = set()
-    for value in parsed:
-        try:
-            out.add(int(value))
-        except (TypeError, ValueError):
-            continue
-    return out
-
-
-def set_reward_given(db: Any, threshold: int, given: bool = True) -> None:
-    """Mark (or un-mark) one reward threshold as handed over by the parent."""
-    current = given_thresholds(db)
-    if given:
-        current.add(int(threshold))
-    else:
-        current.discard(int(threshold))
-    db.set_setting(_REWARD_GIVEN_SETTING, json.dumps(sorted(current)))
-
-
-def rewards_for_total(
-    total: int,
-    ladder: list[tuple[int, str, str]] | None = None,
-    given: set[int] | None = None,
-) -> list[Reward]:
-    """Every reward, each flagged `unlocked` if `total` has reached its
-    threshold and `given` if the parent has marked it handed over.
-    `ladder` defaults to the config rewards when not given (keeps this pure and
-    db-free for tests); callers with a db pass `reward_ladder(db)` so a parent's
-    edits are honored, plus `given_thresholds(db)` so the handed-over flag is
-    accurate."""
-    ladder = ladder if ladder is not None else list(config.XP_REWARDS)
-    given = given or set()
-    return [
-        Reward(
-            threshold=threshold,
-            name=name,
-            emoji=emoji,
-            unlocked=total >= threshold,
-            given=threshold in given,
-        )
-        for threshold, name, emoji in ladder
-    ]
-
-
-def next_reward(total: int, ladder: list[tuple[int, str, str]] | None = None) -> Reward | None:
-    """The lowest-threshold reward he hasn't reached yet, or None once every
-    reward is unlocked."""
-    for reward in rewards_for_total(total, ladder):
-        if not reward.unlocked:
-            return reward
-    return None
-
-
 def _rank_for_level(level: int) -> str:
     """The rank name for a level. The last name in the list holds for every
     level beyond it, so a long streak of progress never runs out of titles."""
@@ -208,8 +71,8 @@ def total_xp(db: Any, student_id: int) -> int:
 
     Lessons count off `student_done_on` (his "I did it," not a parent's later
     approval), with a bonus for a quiz he passed. Life skills, coding modules,
-    travel entries, and choice topics count once each once they're done, and
-    every mastered math skill adds a little. All point values live in config.
+    and travel entries count once each once they're done, and every mastered
+    math skill adds a little. All point values live in config.
     """
     total = 0
 
@@ -233,9 +96,6 @@ def total_xp(db: Any, student_id: int) -> int:
     )
     total += config.XP_PER_TRAVEL_ENTRY * sum(
         1 for t in db.list_travel_entries(student_id) if t.get("status") == "completed"
-    )
-    total += config.XP_PER_CHOICE_TOPIC * sum(
-        1 for c in db.list_choice_topics(student_id) if c.get("status") == "done"
     )
     total += config.XP_PER_MASTERED_SKILL * len(db.mastered_skills(student_id))
 
@@ -321,3 +181,323 @@ def compute(db: Any, student_id: int) -> XPState:
     """His current XP standing -- total, level, rank, and progress to the next
     level -- computed fresh from the database."""
     return state_for_total(total_xp(db, student_id))
+
+
+# ---------------------------------------------------------------------------
+# The weekly reward loop -- "a good week earns a reward by Friday."
+#
+# Everything above is his all-time standing (the small Level/rank line on the
+# card). Everything below is the week-by-week game: XP resets every Monday, and
+# what he finishes Mon-Fri climbs toward one reward. His *core* school work
+# (lessons, passed quizzes, mastered skills) fills the bar; life skills, coding,
+# and trips are extra credit that top him off if Friday comes up short. Same
+# design as the lifetime total -- computed live from his own completion signals,
+# nothing stored to drift, re-approving just recomputes.
+# ---------------------------------------------------------------------------
+
+WEEKDAY_LABELS = ("MON", "TUE", "WED", "THU", "FRI")
+
+# How near the goal counts as "so close" -- the threshold under which the
+# Friday extra-credit nudge appears. Deliberately a bit under two lessons'
+# worth: close enough that one more thing genuinely gets him there.
+WEEKLY_CLOSE_MARGIN = 60
+
+
+def week_bounds(today: date) -> tuple[date, date]:
+    """The Monday-Friday school week `today` falls in. Monday is the reset;
+    Friday is the finish line. The weekend is deliberately out of the window --
+    it's reward time, not school time -- so anything he finishes Sat/Sun doesn't
+    count toward the week (and next Monday starts him fresh)."""
+    monday = today - timedelta(days=today.weekday())
+    return monday, monday + timedelta(days=4)
+
+
+def _parse_iso(value: Any) -> date | None:
+    """A stored ISO date string -> a `date`, or None for anything unparseable
+    (missing, a datetime, junk). Only the leading YYYY-MM-DD is read, so a
+    full timestamp still lands on the right day."""
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except (ValueError, TypeError):
+        return None
+
+
+@dataclass(frozen=True)
+class DayRecord:
+    """One day of the strip -- what he finished and what it was worth."""
+
+    day: date
+    label: str            # MON..FRI
+    short_date: str       # "9/8"
+    lessons: int
+    quizzes: int
+    skills: int
+    redos: int            # lessons sent back this day -- the one thing that docks
+    is_today: bool
+    is_future: bool
+
+    @property
+    def xp(self) -> int:
+        """This day's net core XP. Can go negative on a rough day (a redo with
+        nothing finished) -- shown honestly per day; the week total is floored."""
+        return (
+            self.lessons * config.XP_PER_LESSON
+            + self.quizzes * config.XP_QUIZ_PASS_BONUS
+            + self.skills * config.XP_PER_MASTERED_SKILL
+            - self.redos * config.XP_SENT_BACK_PENALTY
+        )
+
+    @property
+    def has_activity(self) -> bool:
+        return bool(self.lessons or self.quizzes or self.skills or self.redos)
+
+
+@dataclass(frozen=True)
+class BonusItem:
+    """One line of extra credit -- earned this week, or an option still open."""
+
+    emoji: str
+    label: str
+    xp: int
+
+
+@dataclass(frozen=True)
+class WeeklyProgress:
+    """His standing for the current week -- everything the card needs to draw
+    the strip, the goal meter, the bonus line, and the reward state."""
+
+    week_start: date
+    goal: int
+    reward_name: str
+    reward_emoji: str
+    days: list[DayRecord]
+    bonus_items: list[BonusItem] = field(default_factory=list)
+    given: bool = False
+
+    @property
+    def core_xp(self) -> int:
+        """Bar-filling XP from school work, floored at zero."""
+        return max(0, sum(d.xp for d in self.days))
+
+    @property
+    def bonus_xp(self) -> int:
+        return sum(b.xp for b in self.bonus_items)
+
+    @property
+    def total(self) -> int:
+        return max(0, sum(d.xp for d in self.days) + self.bonus_xp)
+
+    @property
+    def reached(self) -> bool:
+        return self.total >= self.goal
+
+    @property
+    def remaining(self) -> int:
+        return max(0, self.goal - self.total)
+
+    @property
+    def fraction(self) -> float:
+        if self.goal <= 0:
+            return 1.0
+        return min(1.0, self.total / self.goal)
+
+    @property
+    def earned_unclaimed(self) -> bool:
+        """Hit the goal but the parent hasn't handed the reward over yet -- the
+        one state that needs a parent's attention."""
+        return self.reached and not self.given
+
+    @property
+    def close(self) -> bool:
+        """Short of the goal, but near enough that a bit of extra credit gets
+        him there -- when the Friday nudge is worth showing."""
+        return not self.reached and self.remaining <= WEEKLY_CLOSE_MARGIN
+
+
+_WEEKLY_GOAL_SETTING = "xp_weekly_goal"
+_WEEKLY_REWARD_NAME_SETTING = "xp_weekly_reward_name"
+_WEEKLY_REWARD_EMOJI_SETTING = "xp_weekly_reward_emoji"
+_WEEKS_GIVEN_SETTING = "xp_weeks_given"
+
+
+def weekly_goal(db: Any) -> int:
+    """The XP goal for a week -- a parent's saved number, else the config
+    default. A junk or non-positive stored value falls back to the default
+    rather than leaving him a goal he can't read or can't miss."""
+    raw = db.get_setting(_WEEKLY_GOAL_SETTING)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return config.XP_WEEKLY_GOAL
+    return value if value > 0 else config.XP_WEEKLY_GOAL
+
+
+def set_weekly_goal(db: Any, goal: int) -> None:
+    """Save the weekly XP goal. Clamped to at least 10 so it stays a real
+    target."""
+    try:
+        value = max(10, int(goal))
+    except (TypeError, ValueError):
+        value = config.XP_WEEKLY_GOAL
+    db.set_setting(_WEEKLY_GOAL_SETTING, str(value))
+
+
+def weekly_reward(db: Any) -> tuple[str, str]:
+    """The (name, emoji) of the reward he's climbing toward this week -- a
+    parent's saved pair, else the config default. A blank saved name falls back
+    to the default so the card never shows a nameless reward."""
+    name = (db.get_setting(_WEEKLY_REWARD_NAME_SETTING) or "").strip()
+    emoji = (db.get_setting(_WEEKLY_REWARD_EMOJI_SETTING) or "").strip()
+    return (
+        name or config.XP_WEEKLY_REWARD_NAME,
+        emoji or config.XP_WEEKLY_REWARD_EMOJI,
+    )
+
+
+def set_weekly_reward(db: Any, name: str, emoji: str) -> None:
+    """Save the weekly reward's name and emoji. A blank name clears back to the
+    config default; a blank emoji defaults to a gift box."""
+    db.set_setting(_WEEKLY_REWARD_NAME_SETTING, str(name or "").strip())
+    db.set_setting(_WEEKLY_REWARD_EMOJI_SETTING, (str(emoji or "").strip()) or "🎁")
+
+
+def weeks_given(db: Any) -> set[str]:
+    """The week-start dates (ISO Mondays) whose reward the parent has marked
+    handed over. Stored as a JSON list under `xp_weeks_given`; a malformed value
+    reads as 'nothing given' rather than raising."""
+    raw = db.get_setting(_WEEKS_GIVEN_SETTING)
+    if not raw:
+        return set()
+    try:
+        parsed = json.loads(raw)
+    except (ValueError, TypeError):
+        return set()
+    if not isinstance(parsed, list):
+        return set()
+    return {str(v) for v in parsed}
+
+
+def set_week_reward_given(db: Any, week_start: date | str, given: bool = True) -> None:
+    """Mark (or un-mark) one week's reward as handed over, keyed by its Monday."""
+    key = week_start.isoformat() if isinstance(week_start, date) else str(week_start)
+    current = weeks_given(db)
+    if given:
+        current.add(key)
+    else:
+        current.discard(key)
+    db.set_setting(_WEEKS_GIVEN_SETTING, json.dumps(sorted(current)))
+
+
+def bonus_options() -> list[BonusItem]:
+    """The standing ways to earn extra credit -- shown in the Friday nudge so
+    the point values there stay in step with what these actually award."""
+    return [
+        BonusItem("🛠️", "Life skill", config.XP_PER_LIFE_SKILL),
+        BonusItem("💻", "Coding module", config.XP_PER_CODING_MODULE),
+        BonusItem("🧭", "Trip write-up", config.XP_PER_TRAVEL_ENTRY),
+    ]
+
+
+def weekly_progress(
+    db: Any, student_id: int, today: date | None = None
+) -> WeeklyProgress:
+    """His standing for the Monday-Friday week that `today` falls in, built live
+    from the same completion signals the lifetime total uses -- so the weekly
+    strip and the all-time bar can never disagree about what he finished."""
+    today = today or date.today()
+    monday, friday = week_bounds(today)
+
+    def in_week(d: date | None) -> bool:
+        return d is not None and monday <= d <= friday
+
+    # Per-day core tallies, keyed by weekday index 0-4 (Mon-Fri).
+    lessons = [0] * 5
+    quizzes = [0] * 5
+    skills = [0] * 5
+    redos = [0] * 5
+
+    for lesson in db.list_lessons(student_id, limit=500):
+        metadata = lesson.get("metadata") or {}
+        done = _parse_iso(metadata.get("student_done_on"))
+        if in_week(done):
+            lessons[done.weekday()] += 1
+        quiz = metadata.get("quiz_result") or {}
+        if quiz.get("passed"):
+            # Prefer the quiz's own graded date; fall back to the lesson's
+            # completion date for older results saved before graded_on existed.
+            when = _parse_iso(quiz.get("graded_on")) or done
+            if in_week(when):
+                quizzes[when.weekday()] += 1
+        for stamp in metadata.get("sent_back_on") or []:
+            when = _parse_iso(stamp)
+            if in_week(when):
+                redos[when.weekday()] += 1
+
+    for stamp in db.mastered_skill_dates(student_id):
+        when = _parse_iso(stamp)
+        if in_week(when):
+            skills[when.weekday()] += 1
+
+    days: list[DayRecord] = []
+    for i in range(5):
+        d = monday + timedelta(days=i)
+        days.append(
+            DayRecord(
+                day=d,
+                label=WEEKDAY_LABELS[i],
+                short_date=f"{d.month}/{d.day}",
+                lessons=lessons[i],
+                quizzes=quizzes[i],
+                skills=skills[i],
+                redos=redos[i],
+                is_today=(d == today),
+                is_future=(d > today),
+            )
+        )
+
+    # Extra credit finished this week -- life skills, coding, trips.
+    life_done = sum(
+        1
+        for s in db.list_life_skills(student_id)
+        if in_week(_parse_iso(s.get("completed_on")))
+    )
+    coding_done = sum(
+        1
+        for m in db.list_coding_modules(student_id)
+        if in_week(_parse_iso(m.get("completed_on")))
+    )
+    trips_done = sum(
+        1
+        for t in db.list_travel_entries(student_id)
+        if t.get("status") == "completed" and in_week(_parse_iso(t.get("visited_on")))
+    )
+
+    bonus_items: list[BonusItem] = []
+    if life_done:
+        bonus_items.append(
+            BonusItem("🛠️", f"{life_done} life skill{'s' if life_done != 1 else ''}",
+                      life_done * config.XP_PER_LIFE_SKILL)
+        )
+    if coding_done:
+        bonus_items.append(
+            BonusItem("💻", f"{coding_done} coding module{'s' if coding_done != 1 else ''}",
+                      coding_done * config.XP_PER_CODING_MODULE)
+        )
+    if trips_done:
+        bonus_items.append(
+            BonusItem("🧭", f"{trips_done} trip write-up{'s' if trips_done != 1 else ''}",
+                      trips_done * config.XP_PER_TRAVEL_ENTRY)
+        )
+
+    name, emoji = weekly_reward(db)
+    return WeeklyProgress(
+        week_start=monday,
+        goal=weekly_goal(db),
+        reward_name=name,
+        reward_emoji=emoji,
+        days=days,
+        bonus_items=bonus_items,
+        given=monday.isoformat() in weeks_given(db),
+    )

@@ -143,103 +143,201 @@ def test_legacy_single_feedback_field_counts_as_one_bounce(db, student):
     assert xp.total_xp(db, sid) == config.XP_PER_LESSON - config.XP_SENT_BACK_PENALTY
 
 
-def test_rewards_unlock_by_cumulative_xp():
-    first_threshold = config.XP_REWARDS[0][0]
-    # Just under the first threshold: nothing unlocked, and it's the next target.
-    below = xp.rewards_for_total(first_threshold - 1)
-    assert not any(r.unlocked for r in below)
-    assert xp.next_reward(first_threshold - 1).threshold == first_threshold
+# --- the weekly reward loop ------------------------------------------------------
 
-    # Exactly at the first threshold: it unlocks.
-    at = xp.rewards_for_total(first_threshold)
-    assert at[0].unlocked
-    assert xp.next_reward(first_threshold).threshold == config.XP_REWARDS[1][0]
-
-    # Past every threshold: all unlocked, no next reward.
-    top = config.XP_REWARDS[-1][0] + 1
-    assert all(r.unlocked for r in xp.rewards_for_total(top))
-    assert xp.next_reward(top) is None
+from datetime import date, timedelta
 
 
-def test_a_reward_is_earned_unclaimed_until_the_parent_marks_it_given(db, student):
-    """The state the parent needs to see: he's crossed the threshold but hasn't
-    been handed the reward yet."""
-    first = config.XP_REWARDS[0][0]
-    # Earned by XP, but no 'given' recorded -> earned_unclaimed.
-    rewards = xp.rewards_for_total(first, list(config.XP_REWARDS), xp.given_thresholds(db))
-    assert rewards[0].earned_unclaimed
-    assert not rewards[0].given
+def _monday_of(iso: str) -> date:
+    d = date.fromisoformat(iso)
+    return d - timedelta(days=d.weekday())
 
-    # Parent marks it given -> no longer needs attention, flagged given.
-    xp.set_reward_given(db, first, True)
-    rewards = xp.rewards_for_total(first, list(config.XP_REWARDS), xp.given_thresholds(db))
-    assert rewards[0].given
-    assert not rewards[0].earned_unclaimed
+
+def test_week_bounds_are_monday_through_friday():
+    # A Thursday.
+    monday, friday = xp.week_bounds(date(2026, 9, 10))
+    assert monday == date(2026, 9, 7)   # the Monday
+    assert friday == date(2026, 9, 11)  # the Friday
+    # A Sunday still belongs to the week that just ended.
+    monday, friday = xp.week_bounds(date(2026, 9, 13))
+    assert monday == date(2026, 9, 7)
+
+
+def test_weekly_progress_counts_only_this_weeks_core_work(db, student):
+    sid = student["id"]
+    today = date(2026, 9, 10)  # Thursday
+    this_mon = "2026-09-07"    # Monday of that week
+    last_week = "2026-08-31"   # a Monday a week earlier
+
+    # Two lessons finished this week, one with a passed quiz; one finished last
+    # week (must NOT count this week).
+    db.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t", title="A",
+        payload={"activities": []},
+        metadata={"student_done_on": this_mon, "quiz_result": {"passed": True, "graded_on": this_mon}},
+    )
+    db.save_lesson(
+        student_id=sid, agent="science", subject="science", topic="t", title="B",
+        payload={"activities": []}, metadata={"student_done_on": "2026-09-08"},
+    )
+    db.save_lesson(
+        student_id=sid, agent="history", subject="history", topic="t", title="Old",
+        payload={"activities": []}, metadata={"student_done_on": last_week},
+    )
+
+    progress = xp.weekly_progress(db, sid, today)
+    # Two lessons + one quiz this week; last week's lesson excluded.
+    assert progress.core_xp == 2 * config.XP_PER_LESSON + config.XP_QUIZ_PASS_BONUS
+    assert progress.total == progress.core_xp
+    # Monday's panel holds the lesson + quiz; Tuesday's holds the second lesson.
+    mon, tue = progress.days[0], progress.days[1]
+    assert (mon.lessons, mon.quizzes) == (1, 1)
+    assert mon.xp == config.XP_PER_LESSON + config.XP_QUIZ_PASS_BONUS
+    assert tue.lessons == 1
+    assert progress.goal == config.XP_WEEKLY_GOAL
+
+
+def test_weekly_redo_docks_xp_on_the_day_it_happened(db, student):
+    sid = student["id"]
+    today = date(2026, 9, 10)
+    db.save_lesson(
+        student_id=sid, agent="english", subject="english", topic="t", title="Redo",
+        payload={"activities": []},
+        metadata={"student_done_on": "2026-09-07", "sent_back_on": ["2026-09-09"]},  # Wed
+    )
+    progress = xp.weekly_progress(db, sid, today)
+    wed = progress.days[2]
+    assert wed.redos == 1
+    assert wed.xp == -config.XP_SENT_BACK_PENALTY
+    # Net for the week: one lesson (Mon) minus one redo (Wed).
+    assert progress.core_xp == config.XP_PER_LESSON - config.XP_SENT_BACK_PENALTY
+
+
+def test_send_lesson_back_stamps_the_date_for_the_weekly_strip(db, student):
+    sid = student["id"]
+    lid = db.save_lesson(
+        student_id=sid, agent="english", subject="english", topic="t", title="X",
+        payload={"activities": []}, metadata={"student_done_on": "2026-09-07"},
+    )
+    db.send_lesson_back(lid, "fix it")
+    lesson = db.get_lesson(lid)
+    stamps = lesson["metadata"].get("sent_back_on")
+    assert stamps and len(stamps) == 1  # dated, so the redo can land on its day
+
+
+def test_extra_credit_counts_as_bonus_toward_the_goal(db, student):
+    sid = student["id"]
+    today = date(2026, 9, 10)  # Thursday
+    # A life skill completed this week -> bonus XP toward the same goal. Its
+    # completion date is stamped to a weekday inside the window so the test is
+    # deterministic regardless of the real day it runs.
+    skill_id = db.add_life_skill(sid, "Laundry")
+    db.set_life_skill_done(skill_id, True)
+    db.conn.execute(
+        "UPDATE life_skills SET completed_on = ? WHERE id = ?", ("2026-09-08", skill_id)
+    )
+    db.conn.commit()
+
+    progress = xp.weekly_progress(db, sid, today)
+    assert progress.bonus_xp == config.XP_PER_LIFE_SKILL
+    assert progress.total == config.XP_PER_LIFE_SKILL
+    assert any("life skill" in b.label for b in progress.bonus_items)
+    assert progress.week_start == date(2026, 9, 7)
+
+
+def test_weekly_goal_and_reward_are_editable(db, student):
+    # Defaults out of the box.
+    assert xp.weekly_goal(db) == config.XP_WEEKLY_GOAL
+    assert xp.weekly_reward(db) == (config.XP_WEEKLY_REWARD_NAME, config.XP_WEEKLY_REWARD_EMOJI)
+
+    xp.set_weekly_goal(db, 250)
+    xp.set_weekly_reward(db, "Pizza night", "🍕")
+    assert xp.weekly_goal(db) == 250
+    assert xp.weekly_reward(db) == ("Pizza night", "🍕")
+
+    # A junk / non-positive goal falls back to the default rather than breaking.
+    db.set_setting("xp_weekly_goal", "not a number")
+    assert xp.weekly_goal(db) == config.XP_WEEKLY_GOAL
+    # A blank name falls back to the config default reward name.
+    xp.set_weekly_reward(db, "  ", "🎁")
+    assert xp.weekly_reward(db)[0] == config.XP_WEEKLY_REWARD_NAME
+
+
+def test_reward_is_earned_unclaimed_until_the_parent_marks_the_week_given(db, student):
+    sid = student["id"]
+    today = date(2026, 9, 10)
+    monday = _monday_of("2026-09-10")
+    xp.set_weekly_goal(db, 20)
+    # One lesson (+20) hits the goal exactly.
+    db.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t", title="A",
+        payload={"activities": []}, metadata={"student_done_on": "2026-09-07"},
+    )
+    progress = xp.weekly_progress(db, sid, today)
+    assert progress.reached
+    assert progress.earned_unclaimed
+    assert not progress.given
+
+    # Parent hands it over for that week.
+    xp.set_week_reward_given(db, monday, True)
+    progress = xp.weekly_progress(db, sid, today)
+    assert progress.given
+    assert not progress.earned_unclaimed
 
     # Un-give restores it.
-    xp.set_reward_given(db, first, False)
-    assert first not in xp.given_thresholds(db)
+    xp.set_week_reward_given(db, monday, False)
+    assert monday.isoformat() not in xp.weeks_given(db)
 
 
-def test_given_thresholds_survive_a_malformed_setting(db, student):
-    db.set_setting("xp_rewards_given", "not json at all")
-    assert xp.given_thresholds(db) == set()
+def test_weeks_given_survive_a_malformed_setting(db, student):
+    db.set_setting("xp_weeks_given", "not json at all")
+    assert xp.weeks_given(db) == set()
 
 
-def test_reward_ladder_defaults_to_config(db, student):
-    # No stored setting -> the config defaults, as tuples ascending by threshold.
-    ladder = xp.reward_ladder(db)
-    assert ladder == list(config.XP_REWARDS)
+def test_close_flag_triggers_within_the_margin(db, student):
+    sid = student["id"]
+    today = date(2026, 9, 10)
+    xp.set_weekly_goal(db, 100)
+    # 60 XP of work: 3 lessons -> 40 short, which is within the close margin.
+    for day in ("2026-09-07", "2026-09-08", "2026-09-09"):
+        db.save_lesson(
+            student_id=sid, agent="math", subject="math", topic="t", title=day,
+            payload={"activities": []}, metadata={"student_done_on": day},
+        )
+    progress = xp.weekly_progress(db, sid, today)
+    assert not progress.reached
+    assert progress.close  # 40 <= WEEKLY_CLOSE_MARGIN
+    assert progress.remaining == 40
 
 
-def test_parent_can_edit_and_reset_the_reward_ladder(db, student):
-    xp.set_reward_ladder(db, [
-        {"threshold": 500, "name": "Concert tickets", "emoji": "🎫"},
-        {"threshold": 100, "name": "Pizza night", "emoji": "🍕"},
-        {"threshold": 0, "name": "  ", "emoji": "🎁"},  # blank name -> dropped
-    ])
-    ladder = xp.reward_ladder(db)
-    # Sorted ascending, blank dropped.
-    assert ladder == [(100, "Pizza night", "🍕"), (500, "Concert tickets", "🎫")]
-    # And the student-facing helpers honor it.
-    assert xp.next_reward(0, ladder).name == "Pizza night"
-    assert [r.name for r in xp.rewards_for_total(200, ladder) if r.unlocked] == ["Pizza night"]
-
-    # Clearing the setting falls back to config defaults.
-    db.set_setting("xp_rewards", "")
-    assert xp.reward_ladder(db) == list(config.XP_REWARDS)
-
-
-def test_reward_ladder_tolerates_a_junk_setting(db, student):
-    db.set_setting("xp_rewards", "not json at all")
-    assert xp.reward_ladder(db) == list(config.XP_REWARDS)
-    # A list with only junk rows also falls back rather than leaving no rewards.
-    import json
-    db.set_setting("xp_rewards", json.dumps([{"nope": 1}]))
-    assert xp.reward_ladder(db) == list(config.XP_REWARDS)
-
-
-def test_mission_control_shows_and_clears_an_earned_reward(monkeypatch, tmp_path):
-    """The parent needs to know when he's earned one. A zero-threshold reward is
-    'earned' at 0 XP, so Mission Control's review queue shows it with a 'Mark as
-    given' button; clicking it records the reward as given."""
+def test_mission_control_shows_and_clears_the_weekly_reward(monkeypatch, tmp_path):
+    """The parent needs to know when he's earned the week's reward. A goal of 0
+    is 'reached' immediately, so Mission Control's review queue shows it with a
+    'Mark as given' button; clicking it records the week as given."""
     db_path = tmp_path / "reward.db"
     database = Database(db_path)
-    database.ensure_default_student()
+    sid = database.ensure_default_student()["id"]
     auth.set_pin(database, "1234")
-    xp.set_reward_ladder(database, [{"threshold": 0, "name": "Movie night", "emoji": "🎬"}])
+    # A tiny goal so any state reads as reached; give him one lesson finished on
+    # the current week's Monday, so it's in-window whatever day the test runs.
+    database.set_setting("xp_weekly_goal", "10")
+    this_monday = date.today() - timedelta(days=date.today().weekday())
+    database.save_lesson(
+        student_id=sid, agent="math", subject="math", topic="t", title="A",
+        payload={"activities": []},
+        metadata={"student_done_on": this_monday.isoformat()},
+    )
     database.close()
 
     at = _open_mission_control(monkeypatch, db_path)
     body = " ".join(m.value for m in at.markdown)
-    assert "earned 1 reward" in body
-    assert "Movie night" in body
-    give = [b for b in at.button if (b.key or "") == "reward_given_0"][0]
+    assert "time to deliver" in body
+    give = [b for b in at.button if (b.key or "") == "reward_given_week"][0]
     give.click().run()
     assert not at.exception, [e.message for e in at.exception]
 
     database = Database(db_path)
-    assert 0 in xp.given_thresholds(database)
+    assert xp.weeks_given(database)  # the week is recorded as given
     database.close()
 
 

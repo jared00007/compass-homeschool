@@ -137,7 +137,6 @@ LIFE_SKILL_DEFAULT_MINUTES = 45
 READING_DEFAULT_MINUTES = 30
 XP_PER_CODING_MODULE = 15
 XP_PER_TRAVEL_ENTRY = 30
-XP_PER_CHOICE_TOPIC = 15
 XP_PER_MASTERED_SKILL = 10
 # The one thing that *costs* XP: every time a lesson is sent back for a redo.
 # Deliberately modest (a bit over a lesson's own worth split in half, well under
@@ -145,22 +144,25 @@ XP_PER_MASTERED_SKILL = 10
 # the whole assignment the first time" consequence, not a punishment that erases
 # a good week. Counted per bounce, so a lesson sent back twice costs twice.
 XP_SENT_BACK_PENALTY = 10
-# Flat XP span per level -- level = total // XP_PER_LEVEL + 1.
+# Flat XP span per level -- level = total // XP_PER_LEVEL + 1. The lifetime
+# level/rank is the small identity line on his card; the week-by-week reward
+# loop below is the part that actually drives the day.
 XP_PER_LEVEL = 100
-# Real-world rewards he unlocks at cumulative-XP milestones -- the "reward
-# system of movie night, ice cream sundae party" idea, made concrete. The app
-# only surfaces what he's earned and what's next; the parent decides when to
-# actually deliver it. (threshold_xp, name, emoji), ascending by threshold.
+
+# The weekly reward loop. XP resets every Monday, and everything he finishes
+# Mon-Fri climbs toward ONE reward by Friday -- "a good week earns a reward."
+# The bar is filled by his core school work (lessons, quizzes, mastered skills);
+# life skills, coding, and trips are extra credit that top him off if Friday
+# comes up short. All tunable: a parent sets the goal and names the reward in
+# Mission Control, and the app tracks whether he hit it and whether it's been
+# handed over -- the parent still decides when to actually make it happen.
 #
-# Kept deliberately short -- three milestones: a quick first win, a mid-goal,
-# and something to really climb toward. A parent tunes the whole list (names,
-# amounts, add or remove) in Mission Control's XP-rewards editor; this is only
-# the starting point, so simpler is better than a long ladder to manage.
-XP_REWARDS: tuple[tuple[int, str, str], ...] = (
-    (150, "Pick a family movie night", "🎬"),
-    (500, "Ice cream sundae party", "🍨"),
-    (1000, "A day trip you choose", "🗺️"),
-)
+# 400 is a genuinely good week for a ~4-lessons-a-day schedule (roughly 18-20
+# lessons plus a few passed quizzes), so it means something without being out
+# of reach. A round, obvious number he can do the mental math on.
+XP_WEEKLY_GOAL = 400
+XP_WEEKLY_REWARD_NAME = "Family movie night"
+XP_WEEKLY_REWARD_EMOJI = "🎬"
 # Rank names by level (level 1 = index 0). The last one holds for every level
 # beyond the list, so it never runs out -- on the compass/explorer theme.
 XP_RANKS = (

@@ -2252,6 +2252,23 @@ class Database:
             )
         }
 
+    def mastered_skill_dates(self, student_id: int) -> list[str]:
+        """The `assessed_on` date of every mastered skill (skipping any with no
+        date recorded) -- what the weekly XP strip needs to place a mastered
+        skill on the day it happened, rather than just counting them all as
+        `mastered_skills` does."""
+        return [
+            r["assessed_on"]
+            for r in _rows(
+                self.conn.execute(
+                    "SELECT assessed_on FROM skill_mastery "
+                    "WHERE student_id = ? AND status = 'mastered' "
+                    "AND assessed_on IS NOT NULL",
+                    (student_id,),
+                )
+            )
+        ]
+
     def set_mastery(
         self,
         student_id: int,
@@ -3035,6 +3052,13 @@ class Database:
                 history.append(feedback)
                 metadata["lesson_feedback_history"] = history
                 metadata["lesson_feedback"] = feedback
+            # Date every bounce (feedback or not), so the weekly XP strip can
+            # dock the redo on the day it actually happened. Kept separate from
+            # `lesson_feedback_history` -- that's the note trail (only lesson-
+            # level notes), this is the timeline of every send-back.
+            stamps = list(metadata.get("sent_back_on") or [])
+            stamps.append(date.today().isoformat())
+            metadata["sent_back_on"] = stamps
             self.conn.execute(
                 "UPDATE lessons SET metadata = ?, status = 'needs_revision' WHERE id = ?",
                 (json.dumps(metadata), lesson_id),

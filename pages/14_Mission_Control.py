@@ -861,7 +861,8 @@ if mc_view == "grades":
     )
     render_report_card(db, student, for_parent=True)
 
-    # The XP reward ladder he's climbing toward, editable here -- the student's
-    # own XP card is view-only, so this is where a parent tunes what he unlocks.
-    with st.expander("🎁 XP rewards he can unlock"):
+    # The weekly XP goal and reward he's climbing toward, editable here -- the
+    # student's own XP card is view-only, so this is where a parent sets the goal
+    # and names the reward.
+    with st.expander("🎁 Weekly reward"):
         render_xp_reward_editor(db)

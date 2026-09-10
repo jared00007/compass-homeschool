@@ -2845,180 +2845,300 @@ def render_travel_passport(db: Database, student: dict[str, Any]) -> None:
             st.caption("Your passport's ready — your first stamp is one trip away.")
 
 
-def render_xp_level(db: Database, student: dict[str, Any]) -> None:
-    """His level bar -- everything he finishes turned into visible progress.
-    A rank, a level number, and a fill toward the next level, computed live
-    (see compass.xp) so it climbs the moment he finishes something. Student
-    view only; pure motivation, not a grade."""
-    state = xp_module.compute(db, student["id"])
-    render_card_heading(f"🧭 Level {state.level} — {state.title}")
-    st.progress(
-        state.fraction,
-        text=f"{state.total} XP · {state.to_next} to Level {state.level + 1}",
+# The Mon-Fri day colors for the weekly XP strip -- the same five the Home
+# week grid and the first-day cover use (theme.PRINTED_COMIC_WEEKDAY_COLORS), so
+# a day reads the same color everywhere. Gold (Tuesday) takes ink text; the rest
+# take white, for legible ribbons.
+_XP_WEEKDAY_TEXT = ("#fff", "#241C12", "#fff", "#fff", "#fff")
+_XP_INK = "#241C12"
+
+
+def _xp_day_frame_html(day: "xp_module.DayRecord", color: str, text: str) -> str:
+    """One comic panel in the weekly strip -- a colored day ribbon over the
+    day's haul and its +XP stamp. Future days and an untouched today read as a
+    blank panel 'waiting to be drawn.'"""
+    ribbon = (
+        f'<div style="font-family:var(--c-head);font-weight:800;font-size:14px;'
+        f'letter-spacing:.04em;color:{text};background:{color};padding:3px 8px;'
+        f'display:flex;justify-content:space-between;align-items:center;'
+        f'border-bottom:2.5px solid {_XP_INK};">'
+        f'<span>{day.label}</span>'
+        f'<span style="font-size:10px;opacity:.9;">'
+        f'{"TODAY" if day.is_today else html.escape(day.short_date)}</span></div>'
     )
 
-    # The next real-world reward he's climbing toward, plus what he's already
-    # unlocked -- the "movie night / sundae party" idea made concrete. Parent
-    # delivers it (and can edit the whole list -- see render_xp_reward_editor);
-    # the app just tracks the milestones.
-    ladder = xp_module.reward_ladder(db)
-    given = xp_module.given_thresholds(db)
-    rewards = xp_module.rewards_for_total(state.total, ladder, given)
-    upcoming = xp_module.next_reward(state.total, ladder)
-    if upcoming is not None:
-        to_go = upcoming.threshold - state.total
-        st.caption(
-            f"🎁 Next reward: {upcoming.emoji} **{md(upcoming.name)}** — {to_go} XP to go"
+    if day.is_future or (day.is_today and not day.has_activity):
+        inner = (
+            '<div style="flex:1;display:flex;flex-direction:column;align-items:center;'
+            'justify-content:center;text-align:center;gap:4px;padding:8px;">'
+            + (
+                '<span style="font-size:26px;">✏️</span>'
+                '<b style="font-size:11px;line-height:1.1;">Your turn —<br>draw this one</b>'
+                if day.is_today
+                else '<span style="font-size:12px;color:var(--c-dim);font-weight:700;">— up next —</span>'
+            )
+            + "</div>"
         )
+        border = f"2.5px dashed {_XP_INK}"
+        bg = ("repeating-linear-gradient(135deg,var(--c-panel) 0 8px,"
+              "rgba(36,28,18,.06) 8px 16px)")
     else:
-        st.caption("🏆 You've earned every reward — legend.")
-    # Earned-but-not-given reads as a win he can act on ("go ask!"), not a dim,
-    # disabled-looking line -- reported: "it says unlocked, but its greyed out."
-    # Given ones are the quiet, already-happened list.
-    to_claim = [r for r in rewards if r.earned_unclaimed]
-    claimed = [r for r in rewards if r.given]
-    if to_claim:
-        line = " · ".join(f"{r.emoji} {md(r.name)}" for r in to_claim)
-        st.success(f"🎉 Earned — go ask a parent to claim: {line}")
-    if claimed:
-        st.caption("✅ Already got: " + " · ".join(f"{r.emoji} {md(r.name)}" for r in claimed))
+        chips = []
+        if day.lessons:
+            chips.append(_xp_chip(f"✅ {day.lessons} lesson{'s' if day.lessons != 1 else ''}", "#fdeeb8"))
+        if day.quizzes:
+            chips.append(_xp_chip(f"🧠 {day.quizzes} quiz{'zes' if day.quizzes != 1 else ''}", "#d8e4fb"))
+        if day.skills:
+            chips.append(_xp_chip(f"📐 {day.skills} skill{'s' if day.skills != 1 else ''}", "#d5eddd"))
+        if day.redos:
+            chips.append(_xp_chip(
+                f"↩️ redo −{day.redos * config.XP_SENT_BACK_PENALTY}",
+                "#f7dcd9", fg="var(--c-bad)", border="var(--c-bad)"))
+        if not chips:
+            chips.append('<span style="font-size:12px;color:var(--c-dim);font-weight:700;">nothing yet</span>')
+        # The +XP stamp: red when a rough day went negative, dim at zero.
+        value = day.xp
+        if value < 0:
+            stamp_txt, stamp_bg = f"−{abs(value)}", "var(--c-bad)"
+        else:
+            stamp_txt, stamp_bg = f"+{value}", ("var(--c-primary)" if value else "rgba(36,28,18,.12)")
+        stamp = (
+            f'<div style="margin-top:auto;text-align:right;"><span style="font-family:var(--c-head);'
+            f'font-weight:800;color:{_XP_INK};background:{stamp_bg};border:2px solid {_XP_INK};'
+            f'padding:0 7px;border-radius:4px;box-shadow:2px 2px 0 {_XP_INK};display:inline-block;">'
+            f'{stamp_txt}</span></div>'
+        )
+        inner = (
+            '<div style="flex:1;display:flex;flex-direction:column;gap:5px;padding:8px;">'
+            '<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">'
+            + "".join(chips)
+            + "</div>"
+            + stamp
+            + "</div>"
+        )
+        border = f"2.5px solid {_XP_INK}"
+        bg = "var(--c-panel)"
 
-    # The one thing that costs XP -- shown only when it's actually happened, and
-    # kept factual rather than scolding.
-    penalty = xp_module.sent_back_penalty(db, student["id"])
-    if penalty:
-        st.caption(
-            f"↩️ −{penalty} XP from lessons sent back — nail it the first time to keep them."
+    return (
+        f'<div style="flex:0 0 122px;border:{border};border-radius:4px;background:{bg};'
+        f'box-shadow:3px 3px 0 {_XP_INK};overflow:hidden;display:flex;flex-direction:column;'
+        f'min-height:146px;scroll-snap-align:start;">{ribbon}{inner}</div>'
+    )
+
+
+def _xp_chip(label: str, bg: str, *, fg: str = _XP_INK, border: str | None = None) -> str:
+    border = border or _XP_INK
+    return (
+        f'<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;'
+        f'font-weight:800;border:2px solid {border};border-radius:20px;padding:0 7px;'
+        f'background:{bg};color:{fg};white-space:nowrap;">{html.escape(label)}</span>'
+    )
+
+
+def _weekly_xp_html(state: "xp_module.XPState", progress: "xp_module.WeeklyProgress") -> str:
+    """The card's visual centerpiece: the rank line, the goal meter, and the
+    Mon-Fri comic strip ending in the reward payoff panel."""
+    pct = round(progress.fraction * 100, 1)
+    reward = html.escape(progress.reward_name)
+    colors = theming.PRINTED_COMIC_WEEKDAY_COLORS
+
+    header = (
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px;">'
+        '<span style="font-family:var(--c-head);font-weight:800;font-size:21px;'
+        'letter-spacing:.03em;text-transform:uppercase;">🗓️ This Week</span>'
+        f'<span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;'
+        f'color:#fff;background:var(--c-border);padding:3px 9px;border-radius:20px;'
+        f'border:2px solid {_XP_INK};white-space:nowrap;">🧭 {html.escape(state.title)} · Lvl {state.level}</span>'
+        "</div>"
+    )
+
+    meter = (
+        '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:5px;">'
+        f'<span style="font-family:var(--c-head);font-weight:800;font-size:25px;line-height:.9;">'
+        f'{progress.total}<span style="font-size:14px;color:var(--c-dim);"> / {progress.goal} XP</span></span>'
+        f'<span style="font-size:12px;font-weight:800;color:var(--c-dim);">{progress.reward_emoji} Fri</span></div>'
+        f'<div style="height:19px;border:2.5px solid {_XP_INK};border-radius:20px;background:var(--c-panel);'
+        f'box-shadow:2px 2px 0 {_XP_INK};overflow:hidden;">'
+        f'<div style="height:100%;width:{pct}%;background:repeating-linear-gradient(45deg,'
+        f'var(--c-primary) 0 9px,#d99f00 9px 18px);'
+        + (f'border-right:2.5px solid {_XP_INK};' if 0 < pct < 100 else "")
+        + '"></div></div>'
+    )
+
+    if progress.reached:
+        cap = f'<div style="font-size:12.5px;font-weight:800;margin-top:7px;color:var(--c-good);">🎉 {reward} — unlocked!</div>'
+    else:
+        cap = (
+            f'<div style="font-size:12.5px;font-weight:700;margin-top:7px;">'
+            f'<span style="color:var(--c-bad);font-weight:800;">{progress.remaining} XP</span> '
+            f'to {reward} — {"one more push!" if progress.close else "keep at it."}</div>'
         )
 
-    # How the score actually works, spelled out for him -- reported directly:
-    # "we ned to tell landon how the xp works. assignments turned back to him
-    # hurt his score." Built from the same config knobs the scoring uses, so the
-    # numbers here can never drift from what he actually earns and loses.
-    with st.expander("ℹ️ How XP works"):
+    frames = "".join(
+        _xp_day_frame_html(day, colors[i], _XP_WEEKDAY_TEXT[i])
+        for i, day in enumerate(progress.days)
+    )
+    # The reward payoff panel closes the strip.
+    lock = ("✅ earned" if progress.reached else f"🔒 at {progress.goal}")
+    payoff = (
+        f'<div style="flex:0 0 112px;border:2.5px solid {_XP_INK};border-radius:4px;'
+        f'background:var(--c-primary);box-shadow:3px 3px 0 {_XP_INK};overflow:hidden;'
+        f'display:flex;flex-direction:column;min-height:146px;scroll-snap-align:start;">'
+        f'<div style="font-family:var(--c-head);font-weight:800;font-size:13px;color:{_XP_INK};'
+        f'background:#d99f00;padding:3px 8px;border-bottom:2.5px solid {_XP_INK};">GOAL</div>'
+        f'<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;'
+        f'text-align:center;gap:5px;padding:8px;color:{_XP_INK};">'
+        f'<span style="font-size:30px;line-height:1;">{progress.reward_emoji}</span>'
+        f'<b style="font-size:11.5px;line-height:1.1;">{reward}</b>'
+        f'<span style="font-size:10px;font-weight:800;text-transform:uppercase;">{lock}</span></div></div>'
+    )
+
+    strip = (
+        '<div style="display:flex;gap:10px;overflow-x:auto;padding:4px 2px 10px;'
+        'scroll-snap-type:x mandatory;">'
+        + frames + payoff + "</div>"
+        '<div style="font-size:10px;font-weight:800;color:var(--c-dim);text-transform:uppercase;'
+        'letter-spacing:.05em;text-align:right;margin-top:-4px;">swipe →</div>'
+    )
+
+    return f'<div style="color:var(--c-text);">{header}{meter}{cap}{strip}</div>'
+
+
+def render_xp_level(db: Database, student: dict[str, Any]) -> None:
+    """His weekly XP card -- everything he finishes Mon-Fri turned into a comic
+    strip climbing toward one reward by Friday. Core school work (lessons,
+    quizzes, mastered skills) fills the bar; life skills, coding, and trips are
+    the extra credit that tops him off if Friday's close. Computed live (see
+    compass.xp) so it moves the moment he finishes something, and resets every
+    Monday. Student view only; pure motivation, not a grade."""
+    state = xp_module.compute(db, student["id"])
+    progress = xp_module.weekly_progress(db, student["id"], date.today())
+
+    st.markdown(_weekly_xp_html(state, progress), unsafe_allow_html=True)
+
+    # Extra credit already banked this week -- the reserve that counts toward the
+    # same goal, shown as its own line so the bar stays about school work.
+    if progress.bonus_items:
+        line = " · ".join(f"{b.emoji} {md(b.label)} +{b.xp}" for b in progress.bonus_items)
+        st.caption(f"⚡ Bonus this week: {line}")
+
+    # The reward state. Earned reads as a win to act on; close reads as a nudge
+    # to grab one piece of extra credit; otherwise nothing extra is shown.
+    if progress.reached and not progress.given:
+        st.success(
+            f"🎉 {progress.reward_emoji} **{md(progress.reward_name)}** unlocked — "
+            "great week! Go ask a parent to make it happen."
+        )
+    elif progress.reached and progress.given:
+        st.caption(f"✅ {progress.reward_emoji} {md(progress.reward_name)} — claimed. Nice week.")
+    elif progress.close:
+        opts = " · ".join(f"{b.emoji} {md(b.label)} +{b.xp}" for b in xp_module.bonus_options())
+        st.info(
+            f"⚡ **{progress.remaining} XP from {md(progress.reward_name)}** — you crushed the "
+            f"school week. Finish one more to lock it in: {opts}."
+        )
+
+    # How the weekly score works, spelled out for him -- built from the same
+    # config knobs the scoring uses, so the numbers here can't drift from what he
+    # actually earns and loses.
+    with st.expander("ℹ️ How the week works"):
         st.markdown(
-            "**Earn XP for finishing stuff:**\n"
+            f"Everything you finish **Monday–Friday** fills the bar toward "
+            f"**{progress.goal} XP**. Hit it and {progress.reward_emoji} "
+            f"**{md(progress.reward_name)}** is yours for the weekend. It resets every Monday.\n\n"
+            "**Fills the bar (your school work):**\n"
             f"- ✅ Finish a lesson: **+{config.XP_PER_LESSON}**\n"
             f"- 🧠 Pass a quiz: **+{config.XP_QUIZ_PASS_BONUS}**\n"
-            f"- 📐 Master a math skill: **+{config.XP_PER_MASTERED_SKILL}**\n"
+            f"- 📐 Master a math skill: **+{config.XP_PER_MASTERED_SKILL}**\n\n"
+            "**Extra credit (tops you off if Friday's close):**\n"
             f"- 🛠️ Life skill or 💻 coding module: **+{config.XP_PER_LIFE_SKILL}** each\n"
-            f"- ⭐ A Student's Choice topic: **+{config.XP_PER_CHOICE_TOPIC}**\n"
             f"- 🧭 Write up a trip: **+{config.XP_PER_TRAVEL_ENTRY}**\n\n"
             "**The one thing that costs XP:**\n"
-            f"- ↩️ Every time a lesson gets **sent back** for a redo: "
-            f"**−{config.XP_SENT_BACK_PENALTY}** (each time). Read the whole "
-            "assignment and do every part the first time, and you never lose any.\n\n"
-            "Your XP fills the bar toward the next **level**, and hitting XP "
-            "milestones unlocks **rewards** — the next one's shown right above."
+            f"- ↩️ A lesson **sent back** for a redo: **−{config.XP_SENT_BACK_PENALTY}** (each time). "
+            "Read the whole assignment and do every part the first time, and you never lose any."
         )
 
 
 def render_earned_rewards(db: Database, student: dict[str, Any]) -> None:
-    """Parent-only: the reward alert the parent actually needs. Reported: "i
-    need to know as the parent when he hits one." His XP crossing a reward
-    threshold is computed live, but nothing told the parent -- so this surfaces
-    every reward he's **earned but not yet been given**, each with a button to
-    mark it handed over. Absent entirely when there's nothing to deliver, so it
-    reads as a notification, not another always-on panel."""
-    state = xp_module.compute(db, student["id"])
-    ladder = xp_module.reward_ladder(db)
-    given = xp_module.given_thresholds(db)
-    rewards = xp_module.rewards_for_total(state.total, ladder, given)
-    to_deliver = [r for r in rewards if r.earned_unclaimed]
-    already_given = [r for r in rewards if r.given]
-
+    """Parent-only: this week's reward alert. Reported: "i need to know as the
+    parent when he hits one." His weekly XP crossing the goal is computed live,
+    but nothing tells the parent -- so this surfaces the reward when he's
+    **earned it but not yet been handed it**, with a button to mark it given.
+    Reads as a notification when he's earned it, and a quiet one-line status the
+    rest of the time."""
+    progress = xp_module.weekly_progress(db, student["id"], date.today())
     name = student.get("name") or "He"
-    if to_deliver:
+
+    if progress.earned_unclaimed:
         with st.container(border=True, key="parent_earned_rewards"):
-            count = len(to_deliver)
             st.markdown(
-                f"### 🎁 {md(name)} earned {count} reward{'s' if count != 1 else ''} — time to deliver"
+                f"### {progress.reward_emoji} {md(name)} earned this week's reward — time to deliver"
             )
             st.caption(
-                "He hit the XP milestone for these. Hand it over in real life, "
-                "then mark it given so it clears from here and shows as claimed "
+                f"He hit {progress.total} / {progress.goal} XP this week. Hand it over in "
+                "real life, then mark it given so it clears from here and shows as claimed "
                 "on his screen."
             )
-            for reward in to_deliver:
-                cols = st.columns([4, 2])
-                cols[0].markdown(
-                    f"{reward.emoji} **{md(reward.name)}**  \n"
-                    f"<span style='color:var(--c-dim); font-size:12px;'>"
-                    f"earned at {reward.threshold} XP</span>",
-                    unsafe_allow_html=True,
-                )
-                if cols[1].button(
-                    "✅ Mark as given", key=f"reward_given_{reward.threshold}", width="stretch"
-                ):
-                    xp_module.set_reward_given(db, reward.threshold, True)
-                    st.rerun()
-
-    if already_given:
-        line = " · ".join(f"{r.emoji} {md(r.name)}" for r in already_given)
-        st.caption(f"✅ Already given: {line}")
-        # An undo, tucked away, in case one was marked by mistake.
-        with st.expander("Undo a 'given'"):
-            for reward in already_given:
-                if st.button(
-                    f"↩️ Un-give {reward.emoji} {md(reward.name)}",
-                    key=f"reward_ungive_{reward.threshold}",
-                ):
-                    xp_module.set_reward_given(db, reward.threshold, False)
-                    st.rerun()
-
-    if not to_deliver:
-        upcoming = xp_module.next_reward(state.total, ladder)
-        if upcoming is not None:
-            to_go = upcoming.threshold - state.total
-            st.caption(
-                f"🎯 Nothing to hand over right now — next up is "
-                f"{upcoming.emoji} **{md(upcoming.name)}** at {upcoming.threshold} XP "
-                f"({to_go} to go)."
+            cols = st.columns([4, 2])
+            cols[0].markdown(
+                f"{progress.reward_emoji} **{md(progress.reward_name)}**  \n"
+                f"<span style='color:var(--c-dim); font-size:12px;'>"
+                f"earned at {progress.goal} XP · week of {progress.week_start.strftime('%b %-d')}</span>",
+                unsafe_allow_html=True,
             )
+            if cols[1].button("✅ Mark as given", key="reward_given_week", width="stretch"):
+                xp_module.set_week_reward_given(db, progress.week_start, True)
+                st.rerun()
+    elif progress.reached and progress.given:
+        st.caption(
+            f"✅ This week's reward given: {progress.reward_emoji} {md(progress.reward_name)}."
+        )
+        with st.expander("Undo 'given'"):
+            if st.button(
+                f"↩️ Un-give {progress.reward_emoji} {md(progress.reward_name)}",
+                key="reward_ungive_week",
+            ):
+                xp_module.set_week_reward_given(db, progress.week_start, False)
+                st.rerun()
+    else:
+        st.caption(
+            f"🎯 This week: **{progress.total} / {progress.goal} XP** toward "
+            f"{progress.reward_emoji} {md(progress.reward_name)} — "
+            f"{progress.remaining} to go."
+        )
 
 
 def render_xp_reward_editor(db: Database) -> None:
-    """Parent-only: edit the ladder of XP rewards he unlocks -- reported
-    directly: "parent also needs ability to edit, adjust list of xp rewards."
-    A live table (add/remove rows) over `xp.reward_ladder`; Save writes the
-    `xp_rewards` setting, Reset clears back to the config defaults. The student
-    XP card reads the same ladder, so a change here is what he sees next load."""
-    ladder = xp_module.reward_ladder(db)
+    """Parent-only: set the weekly goal and the reward he's climbing toward --
+    reported: "parent also needs ability to edit, adjust ... xp rewards." The
+    student XP card reads these same settings, so a change here is what he sees
+    next load. The point values themselves (per lesson, per quiz, ...) stay in
+    config; this is the two knobs a parent actually turns."""
+    goal = xp_module.weekly_goal(db)
+    reward_name, reward_emoji = xp_module.weekly_reward(db)
     st.caption(
-        f"**{len(ladder)} reward{'s' if len(ladder) != 1 else ''}** he unlocks as his "
-        "XP climbs. Edit the numbers and names, add or delete rows, then Save — a "
-        "short list of a few milestones he can actually reach beats a long one. The "
-        "app tracks when he's earned one; you decide when to actually make it happen."
+        "One reward a week. Set how much XP counts as a good week, and name what "
+        "he earns for hitting it by Friday. Roughly a lesson is "
+        f"+{config.XP_PER_LESSON} and a passed quiz +{config.XP_QUIZ_PASS_BONUS}, so "
+        f"{goal} is about {max(1, goal // config.XP_PER_LESSON)} lessons' worth of work."
     )
-    rows = [{"XP needed": t, "Emoji": e, "Reward": n} for t, n, e in ladder]
-    edited = st.data_editor(
-        rows,
-        num_rows="dynamic",
-        hide_index=True,
-        key="xp_reward_editor",
-        column_config={
-            "XP needed": st.column_config.NumberColumn(min_value=0, step=10),
-            "Emoji": st.column_config.TextColumn(width="small"),
-            "Reward": st.column_config.TextColumn(width="large"),
-        },
+    new_goal = st.number_input(
+        "Weekly XP goal", min_value=10, max_value=5000, value=int(goal), step=10,
+        key="xp_weekly_goal_input",
     )
+    emoji_col, name_col = st.columns([1, 4])
+    new_emoji = emoji_col.text_input("Emoji", value=reward_emoji, key="xp_weekly_reward_emoji_input")
+    new_name = name_col.text_input("Reward", value=reward_name, key="xp_weekly_reward_name_input")
+
     save_col, reset_col = st.columns(2)
-    if save_col.button("Save rewards", type="primary", key="save_xp_rewards"):
-        xp_module.set_reward_ladder(
-            db,
-            [
-                {
-                    "threshold": row.get("XP needed"),
-                    "name": row.get("Reward"),
-                    "emoji": row.get("Emoji"),
-                }
-                for row in edited
-            ],
-        )
-        st.success("Rewards saved.")
+    if save_col.button("Save weekly reward", type="primary", key="save_xp_weekly"):
+        xp_module.set_weekly_goal(db, int(new_goal))
+        xp_module.set_weekly_reward(db, new_name, new_emoji)
+        st.success("Weekly reward saved.")
         st.rerun()
-    if reset_col.button("Reset to defaults", key="reset_xp_rewards"):
-        db.set_setting("xp_rewards", "")
+    if reset_col.button("Reset to default", key="reset_xp_weekly"):
+        for setting in ("xp_weekly_goal", "xp_weekly_reward_name", "xp_weekly_reward_emoji"):
+            db.set_setting(setting, "")
         st.rerun()
 
 

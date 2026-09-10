@@ -230,9 +230,10 @@ def test_today_shows_the_daily_delights(monkeypatch, tmp_path):
     assert "Fun fact" in text
     assert "Word of the day" in text
     assert "History flashback" in text
-    # His level bar renders. (The week-progress "X of Y lessons done" gauge was
-    # removed from the Today view -- reported "not needed".)
-    assert "Level 1" in text  # the XP level card heading
+    # His weekly XP card renders -- the comic strip + goal meter, with the small
+    # lifetime rank/level line in its header.
+    assert "This Week" in text
+    assert "Lvl 1" in text
 
 
 def test_travel_passport_shows_stamps_for_completed_trips(monkeypatch, tmp_path):
