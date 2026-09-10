@@ -3001,7 +3001,7 @@ def _weekly_xp_html(state: "xp_module.XPState", progress: "xp_module.WeeklyProgr
     header = (
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px;">'
         '<span style="font-family:var(--c-head);font-weight:800;font-size:21px;'
-        'letter-spacing:.03em;text-transform:uppercase;">🗓️ This Week</span>'
+        'letter-spacing:.03em;text-transform:uppercase;">🎯 This week\'s reward</span>'
         f'<span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;'
         f'color:#fff;background:var(--c-border);padding:3px 9px;border-radius:20px;'
         f'border:2px solid {_XP_INK};white-space:nowrap;">🧭 {html.escape(state.title)} · Lvl {state.level}</span>'

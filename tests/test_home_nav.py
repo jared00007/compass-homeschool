@@ -232,7 +232,7 @@ def test_today_shows_the_daily_delights(monkeypatch, tmp_path):
     assert "History flashback" in text
     # His weekly XP card renders -- the comic strip + goal meter, with the small
     # lifetime rank/level line in its header.
-    assert "This Week" in text
+    assert "This week's reward" in text
     assert "Lvl 1" in text
 
 
