@@ -3720,6 +3720,37 @@ class Database:
         self.conn.commit()
         return activity_id
 
+    def log_free_reading(
+        self, student_id: int, title: str, minutes: int, occurred_on: str | None = None
+    ) -> int:
+        """Credit independent free reading -- comics, novels, hobby books he
+        reads on his own time. Reading is reading; this counts it toward the
+        Reading hours on his own signal, no parent step. Returns the activity id."""
+        clean = (title or "").strip() or "a book"
+        return self.log_activity(
+            student_id=student_id,
+            title=f"Free reading — {clean}",
+            tier=config.TIER_CORE,
+            primary_subject="reading",
+            minutes=int(minutes),
+            subject_credits={"reading": int(minutes)},
+            occurred_on=occurred_on or date.today().isoformat(),
+            description="Independent free reading.",
+            source="free_reading",
+        )
+
+    def recent_free_reading(self, student_id: int, limit: int = 5) -> list[dict[str, Any]]:
+        """His recent free-reading entries -- the little 'what I've read' shelf.
+        Titles come back with the 'Free reading — ' prefix already stripped."""
+        rows = _rows(self.conn.execute(
+            "SELECT title, minutes, occurred_on FROM activities "
+            "WHERE student_id = ? AND source = 'free_reading' ORDER BY id DESC LIMIT ?",
+            (student_id, limit),
+        ))
+        for row in rows:
+            row["title"] = str(row["title"]).replace("Free reading — ", "", 1)
+        return rows
+
     def list_activities(
         self,
         student_id: int,

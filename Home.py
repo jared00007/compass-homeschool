@@ -21,6 +21,7 @@ from compass.ui import (
     render_brain_break,
     render_card_heading,
     render_daily_due,
+    render_free_reading,
     render_declaration_banner,
     render_first_day_celebration,
     render_message_thread,
@@ -148,6 +149,9 @@ if not is_parent():
             _render_level_and_progress()
             st.divider()
             render_daily_due(db, student, today_iso)
+        # His own free-reading logger -- comics/novels he reads on his own time
+        # count too, credited on his signal with no parent step.
+        render_free_reading(db, student)
     else:
         with st.container(border=True, key="landon_card_xp"):
             _render_level_and_progress()

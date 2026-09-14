@@ -3262,6 +3262,44 @@ def render_xp_reward_editor(db: Database) -> None:
                 st.rerun()
 
 
+def render_free_reading(db: Database, student: dict[str, Any]) -> None:
+    """His own free-reading logger -- comics, novels, hobby books he reads on his
+    own time. One quick entry credits Reading hours on his own signal (no parent
+    step), and a little shelf shows what he's logged lately. Student-facing."""
+    with st.container(border=True, key="landon_card_freeread"):
+        st.markdown(
+            '<div style="font-size:16px; font-weight:900; margin:2px 0 3px;">📚 Read something fun?</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "Comics, novels, anything you read on your own time — it all counts. "
+            "Log it and it adds to your reading hours."
+        )
+        with st.form("free_reading_form", clear_on_submit=True):
+            cols = st.columns([3, 1])
+            title = cols[0].text_input(
+                "What did you read?",
+                placeholder="e.g. Dog Man, a Calvin & Hobbes…",
+                key="free_reading_title",
+            )
+            minutes = cols[1].number_input(
+                "Minutes", min_value=5, max_value=240, value=30, step=5,
+                key="free_reading_minutes",
+            )
+            if st.form_submit_button("📖 Log my reading", type="primary", width="stretch"):
+                if title.strip():
+                    db.log_free_reading(student["id"], title, int(minutes))
+                    st.success(f"Logged {int(minutes)} min — nice reading! 📚")
+                    st.rerun()
+                else:
+                    st.caption("Type what you read first.")
+
+        recent = db.recent_free_reading(student["id"], limit=5)
+        if recent:
+            shelf = " · ".join(md(r["title"]) for r in recent)
+            st.caption(f"📖 Lately: {shelf}")
+
+
 def render_quick_log(db: Database, student: dict[str, Any]) -> None:
     """One-tap logging of real-life instruction -- the off-app hours that
     usually go uncounted (documentaries, field trips, travel/park days,

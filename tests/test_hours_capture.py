@@ -161,6 +161,65 @@ def test_quiz_backfill_credits_past_attempts_once(db, student):
     assert len(_activities(db, student["id"], "quiz")) == 1
 
 
+# --- Free reading ----------------------------------------------------------------
+
+
+def test_free_reading_credits_reading_time(db, student):
+    db.log_free_reading(student["id"], "Dog Man", 40)
+    rows = _activities(db, student["id"], "free_reading")
+    assert len(rows) == 1
+    assert rows[0]["minutes"] == 40
+    assert "Dog Man" in rows[0]["title"]
+    # Credits the Reading subject.
+    credits = db.conn.execute(
+        "SELECT subject FROM activity_subject_credits WHERE activity_id = "
+        "(SELECT id FROM activities WHERE source='free_reading')"
+    ).fetchall()
+    assert {c["subject"] for c in credits} == {"reading"}
+
+
+def test_recent_free_reading_strips_the_prefix(db, student):
+    db.log_free_reading(student["id"], "Calvin & Hobbes", 30)
+    recent = db.recent_free_reading(student["id"])
+    assert recent[0]["title"] == "Calvin & Hobbes"
+
+
+def test_the_free_reading_widget_logs_from_his_home(monkeypatch, tmp_path):
+    from compass import weekly
+
+    db_path = tmp_path / "fr.db"
+    database = Database(db_path)
+    student = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    # A lesson planned for this week, so his Home opens on the normal Today view
+    # rather than the once-a-year first-day-of-school celebration.
+    monday = weekly.week_start().isoformat()
+    database.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="Math", payload={"title": "Math", "activities": []},
+        metadata={"planned_for": monday, "week_start": monday},
+    )
+    database.close()
+
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+    at = AppTest.from_file(HOME_PATH)
+    at.run(timeout=30)  # student view (no parent unlock)
+    assert not at.exception, [e.message for e in at.exception]
+
+    at.text_input(key="free_reading_title").set_value("Bone vol. 1").run()
+    [b for b in at.button if (b.key or "") == "FormSubmitter:free_reading_form-📖 Log my reading"][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    rows = database.conn.execute(
+        "SELECT title, minutes FROM activities WHERE source='free_reading'"
+    ).fetchall()
+    database.close()
+    assert len(rows) == 1
+    assert "Bone vol. 1" in rows[0]["title"]
+
+
 # --- Quick-log panel, end to end -------------------------------------------------
 
 
