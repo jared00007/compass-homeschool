@@ -43,6 +43,7 @@ from compass.ui import (
     render_reading_board_card,
     render_message_thread,
     render_earned_rewards,
+    render_quick_log,
     render_lesson_review,
     render_life_skill_review_card,
     render_report_card,
@@ -564,6 +565,23 @@ if mc_view == "review":
     pulse[1].metric("Days of instruction", report.instructional_days)
     pulse[2].metric("Activities logged", report.activity_count)
 
+    # Weekly hours-gap nudge: surface under-logging here, early, instead of only
+    # on the Compliance page. The pace target comes from the full-year report so
+    # it matches that page's "hours/week to stay on track" figure exactly.
+    _year_report = build_report(db, student["id"])
+    _needed = _year_report.pace()["hours_per_week_needed"]
+    if report.total_hours >= _needed:
+        st.caption(
+            f"✅ {report.total_hours:g} hrs logged this week — at or above the "
+            f"~{_needed:g}/wk pace for 1,000. Nice."
+        )
+    else:
+        st.caption(
+            f"📊 {report.total_hours:g} hrs logged this week · aim ~{_needed:g}/wk to stay "
+            "on pace for 1,000. Real-life learning (documentaries, field trips, travel "
+            "days) counts — quick-log it in the **Record** tab."
+        )
+
     # Chat with him -- auto-opens with a count when he's replied, so a message
     # waiting on you isn't missed. His side is the top of his own Home.
     render_message_thread(db, student, sender="parent")
@@ -746,6 +764,9 @@ if mc_view == "record":
         "automatically; anything else can be logged by hand. Total minutes count "
         "toward the 1,000-hour floor."
     )
+
+    with st.container(border=True):
+        render_quick_log(db, student)
 
     with st.expander("➕ Log an activity by hand"):
         with st.form("manual_log", clear_on_submit=True):

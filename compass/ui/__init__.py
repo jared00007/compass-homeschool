@@ -3262,6 +3262,42 @@ def render_xp_reward_editor(db: Database) -> None:
                 st.rerun()
 
 
+def render_quick_log(db: Database, student: dict[str, Any]) -> None:
+    """One-tap logging of real-life instruction -- the off-app hours that
+    usually go uncounted (documentaries, field trips, travel/park days,
+    read-alouds, outdoor time) because the full "log by hand" form is too much
+    friction for a 30-minute activity. Each button logs its preset for today;
+    the manual form below still handles anything unusual."""
+    st.markdown("**⚡ Quick-log real-life learning**")
+    st.caption(
+        "One tap logs it for today — the everyday instruction that happens off "
+        "the app and usually never gets counted. Adjust the minutes in “Log by "
+        "hand” below if one ran long or short."
+    )
+    presets = config.QUICK_LOG_ACTIVITIES
+    for row_start in range(0, len(presets), 2):
+        cols = st.columns(2)
+        for offset, preset in enumerate(presets[row_start : row_start + 2]):
+            label, emoji, minutes, tier, subject = preset
+            idx = row_start + offset
+            if cols[offset].button(
+                f"{emoji} {md(label)} · +{minutes}m", key=f"quicklog_{idx}", width="stretch"
+            ):
+                db.log_activity(
+                    student_id=student["id"],
+                    title=label,
+                    tier=tier,
+                    primary_subject=subject,
+                    minutes=minutes,
+                    subject_credits={subject: minutes},
+                    occurred_on=date.today().isoformat(),
+                    description="Logged from Quick-log.",
+                    source="quick_log",
+                )
+                st.success(f"Logged {emoji} {md(label)} — {minutes} min for today.")
+                st.rerun()
+
+
 def render_declaration_banner(db: Database, student: dict[str, Any]) -> None:
     """Parent-only: filing paperwork with the district, not a lesson matter.
 

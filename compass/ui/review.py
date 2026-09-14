@@ -38,13 +38,17 @@ def _hours_inputs(payload: dict[str, Any], key_prefix: str) -> tuple[int, str, d
     columns = _ui.st.columns(2)
     with columns[0]:
         minutes = _ui.st.number_input(
-            "Total minutes",
+            "Total minutes (real time)",
             min_value=5,
             max_value=600,
             value=int(payload.get("estimated_minutes") or 60),
             step=5,
             key=f"{key_prefix}_minutes",
         )
+        # The number starts at the lesson's estimate, but real sit-time -- the
+        # reading, the back-and-forth, the writing -- usually runs longer.
+        # Logging the estimate is the single biggest way hours get under-counted.
+        _ui.st.caption("⏱️ Start-to-finish, including reading, discussion & writing — not just the estimate.")
     with columns[1]:
         where = _ui.st.text_input("Location", key=f"{key_prefix}_location")
     credits: dict[str, int] = {}

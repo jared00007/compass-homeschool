@@ -1584,6 +1584,12 @@ class Database:
             self._ensure_column(_est_table, "estimate_minutes", "INTEGER")
         self._backfill_big_project_step_content()
         self._backfill_big_project_catalog()
+        # Credit hours for work finished before Big Projects / coding logged any
+        # -- same one-time, idempotent top-up `_backfill_life_skill_credits` does
+        # for life skills. Runs after the catalog/content backfills so every
+        # completed row is present first.
+        self._backfill_project_step_credits()
+        self._backfill_coding_credits()
         self._backfill_declaration_url_default()
         for key, value in config.DEFAULT_SETTINGS.items():
             self.conn.execute(
@@ -2087,6 +2093,24 @@ class Database:
                 description=f"Completed the '{skill['title']}' life skill.",
                 source="life_skills",
             )
+
+    def _backfill_project_step_credits(self) -> None:
+        """Credit hours for every already-completed Big Project step that never
+        got them (before completion started logging). Idempotent -- the per-step
+        log guards on source+title, so a step with real hours is left alone."""
+        for row in self.conn.execute(
+            "SELECT id FROM project_steps "
+            "WHERE completed_on IS NOT NULL AND completed_on != ''"
+        ).fetchall():
+            self._log_project_step_hours(row["id"])
+
+    def _backfill_coding_credits(self) -> None:
+        """The coding-module counterpart to `_backfill_project_step_credits`."""
+        for row in self.conn.execute(
+            "SELECT id FROM coding_modules "
+            "WHERE completed_on IS NOT NULL AND completed_on != ''"
+        ).fetchall():
+            self._log_coding_module_hours(row["id"])
 
     def _backfill_life_skill_catalog(self) -> None:
         """Top up an already-seeded checklist with any catalog entries it's
@@ -4393,12 +4417,49 @@ class Database:
     def approve_project_step(self, step_id: int) -> None:
         """Approved -- the step is done. Sets `completed_on` (what the whole
         checklist, progress count, and choice-mode chain already read) and the
-        matching status in one action, same as approving a lesson or a trip."""
+        matching status in one action, same as approving a lesson or a trip --
+        and logs its instructional hours in the same act (a Big Project step used
+        to credit *nothing* toward the hour floor, reported as under-counting)."""
         self.conn.execute(
             "UPDATE project_steps SET status = 'completed', completed_on = ? WHERE id = ?",
             (date.today().isoformat(), step_id),
         )
         self.conn.commit()
+        self._log_project_step_hours(step_id)
+
+    def _log_project_step_hours(self, step_id: int) -> None:
+        """Credit a completed Big Project step's default block of instructional
+        time, once. Guarded on source+title so re-approving (or the migrate-time
+        backfill) never double-counts -- same idempotency `_backfill_life_skill_
+        credits` relies on."""
+        row = _row(self.conn.execute(
+            "SELECT ps.title AS title, ps.credit_subject AS credit_subject, "
+            "ps.completed_on AS completed_on, bp.student_id AS student_id "
+            "FROM project_steps ps JOIN big_projects bp ON bp.id = ps.project_id "
+            "WHERE ps.id = ?",
+            (step_id,),
+        ))
+        if row is None or not row["completed_on"]:
+            return
+        subject = row["credit_subject"] or "occupational_education"
+        already = self.conn.execute(
+            "SELECT 1 FROM activities WHERE student_id = ? AND source = 'big_projects' "
+            "AND title = ? LIMIT 1",
+            (row["student_id"], row["title"]),
+        ).fetchone()
+        if already:
+            return
+        self.log_activity(
+            student_id=row["student_id"],
+            title=row["title"],
+            tier=config.TIER_PROJECTS,
+            primary_subject=subject,
+            minutes=config.PROJECT_STEP_DEFAULT_MINUTES,
+            subject_credits={subject: config.PROJECT_STEP_DEFAULT_MINUTES},
+            occurred_on=row["completed_on"],
+            description=f"Completed the '{row['title']}' project step.",
+            source="big_projects",
+        )
 
     def set_project_step_active(self, step_id: int, active: bool) -> None:
         """Moves a step between Backlog and To Do -- the freedom to pick a
@@ -4864,6 +4925,39 @@ class Database:
             (date.today().isoformat() if completed else None, notes, notes, module_id),
         )
         self.conn.commit()
+        # A finished coding module is real Occupational-Education time; it used to
+        # credit nothing toward the hour floor. Log its default block on the
+        # not-done -> done transition, guarded so it never double-counts.
+        if completed:
+            self._log_coding_module_hours(module_id)
+
+    def _log_coding_module_hours(self, module_id: int) -> None:
+        row = _row(self.conn.execute(
+            "SELECT student_id, title, credit_subject, completed_on "
+            "FROM coding_modules WHERE id = ?",
+            (module_id,),
+        ))
+        if row is None or not row["completed_on"]:
+            return
+        subject = row["credit_subject"] or "occupational_education"
+        already = self.conn.execute(
+            "SELECT 1 FROM activities WHERE student_id = ? AND source = 'coding' "
+            "AND title = ? LIMIT 1",
+            (row["student_id"], row["title"]),
+        ).fetchone()
+        if already:
+            return
+        self.log_activity(
+            student_id=row["student_id"],
+            title=row["title"],
+            tier=config.TIER_CODING,
+            primary_subject=subject,
+            minutes=config.CODING_DEFAULT_MINUTES,
+            subject_credits={subject: config.CODING_DEFAULT_MINUTES},
+            occurred_on=row["completed_on"],
+            description=f"Completed the '{row['title']}' coding module.",
+            source="coding",
+        )
 
     def set_coding_module_active(self, module_id: int, active: bool) -> None:
         """Unlocks or hides a catalog module from the student view. Never

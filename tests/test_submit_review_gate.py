@@ -872,7 +872,7 @@ def test_approving_a_non_math_lesson_logs_hours_in_the_same_click(monkeypatch, t
     at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
     radio = [r for r in at.radio if r.label == "How'd it go?"][0]
     radio.set_value(config.ASSESSMENT_SOLID).run()
-    minutes = [n for n in at.number_input if n.label == "Total minutes"][0]
+    minutes = [n for n in at.number_input if n.label == "Total minutes (real time)"][0]
     minutes.set_value(45).run()
     approve = [b for b in at.button if "Approve" in (b.label or "")][0]
     approve.click().run()

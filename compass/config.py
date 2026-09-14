@@ -138,6 +138,13 @@ READING_DEFAULT_MINUTES = 30
 XP_PER_CODING_MODULE = 15
 XP_PER_TRAVEL_ENTRY = 30
 XP_PER_MASTERED_SKILL = 10
+
+# Default instructional minutes credited when a Big Project step or a coding
+# module is completed without hours logged by hand -- both are real, substantial
+# work that used to credit *nothing* toward the hour floor (reported: hours were
+# being under-counted). Same fallback role LIFE_SKILL_DEFAULT_MINUTES plays.
+PROJECT_STEP_DEFAULT_MINUTES = 60
+CODING_DEFAULT_MINUTES = 45
 # The one thing that *costs* XP: every time a lesson is sent back for a redo.
 # Set to a full lesson's worth on purpose -- a bounce completely erases the +20
 # he got for finishing it, so a sent-back lesson is worth nothing until he nails
@@ -317,6 +324,20 @@ TIER_CODING = "coding"  # Parent-defined checklist track, same shape as Life Ski
 TIERS = (
     TIER_CORE, TIER_FOLDED, TIER_CHOICE, TIER_LIFE_SKILLS, TIER_PROJECTS,
     TIER_WELLNESS, TIER_CODING,
+)
+
+# One-tap supplemental activities for the quick-log panel -- the real-life
+# instruction that happens off the app (documentaries, field trips, travel days,
+# read-alouds, outdoor time) and used to need the long "log by hand" form, so it
+# rarely got logged at all. (label, emoji, minutes, tier, primary_subject).
+QUICK_LOG_ACTIVITIES: tuple[tuple[str, str, int, str, str], ...] = (
+    ("Documentary / educational video", "📺", 45, TIER_CORE, "science"),
+    ("Field trip / museum", "🏛️", 120, TIER_CORE, "social_studies"),
+    ("Travel / national-park day", "🏞️", 180, TIER_CORE, "social_studies"),
+    ("Read-aloud / independent reading", "📖", 30, TIER_CORE, "reading"),
+    ("Outdoor time / PE", "⚽", 45, TIER_WELLNESS, "health"),
+    ("Real-life math (cooking, budgeting)", "🧮", 30, TIER_CORE, "math"),
+    ("Music / art", "🎨", 45, TIER_CORE, "art_and_music"),
 )
 
 TIER_LABELS = {
