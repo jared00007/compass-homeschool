@@ -122,6 +122,45 @@ def test_backfill_credits_work_finished_before_logging_existed(db, student):
     assert len(_activities(db, student["id"], "coding")) == 1
 
 
+# --- Quiz assessment time --------------------------------------------------------
+
+
+def test_taking_a_quiz_logs_assessment_time_once(db, student):
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="science", subject="science", topic="t",
+        title="Volcanoes", payload={"title": "Volcanoes", "activities": []},
+    )
+    db.record_quiz_result(lesson_id, student["id"], correct=4, total=5, passed=True)
+    rows = _activities(db, student["id"], "quiz")
+    assert len(rows) == 1
+    assert rows[0]["minutes"] == config.QUIZ_DEFAULT_MINUTES
+    assert rows[0]["tier"] == config.TIER_CORE
+
+    # A retake does not stack a second block of assessment time.
+    db.record_quiz_result(lesson_id, student["id"], correct=5, total=5, passed=True)
+    assert len(_activities(db, student["id"], "quiz")) == 1
+
+
+def test_quiz_backfill_credits_past_attempts_once(db, student):
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="Fractions", payload={"title": "Fractions", "activities": []},
+    )
+    # Simulate an old attempt with no assessment activity logged.
+    db.conn.execute(
+        "INSERT INTO quiz_attempts (lesson_id, student_id, correct, total, passed, "
+        "detail, duration_seconds, attempted_on) VALUES (?, ?, 3, 5, 0, '[]', NULL, '2026-09-01')",
+        (lesson_id, student["id"]),
+    )
+    db.conn.commit()
+    assert _activities(db, student["id"], "quiz") == []
+
+    db._backfill_quiz_credits()
+    assert len(_activities(db, student["id"], "quiz")) == 1
+    db._backfill_quiz_credits()  # idempotent
+    assert len(_activities(db, student["id"], "quiz")) == 1
+
+
 # --- Quick-log panel, end to end -------------------------------------------------
 
 

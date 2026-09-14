@@ -145,6 +145,10 @@ XP_PER_MASTERED_SKILL = 10
 # being under-counted). Same fallback role LIFE_SKILL_DEFAULT_MINUTES plays.
 PROJECT_STEP_DEFAULT_MINUTES = 60
 CODING_DEFAULT_MINUTES = 45
+# Assessment time credited the first time he takes a lesson's quiz -- a small,
+# separate block for the sit-down assessment, logged once per lesson (retakes
+# don't stack) so it captures time without double-counting the lesson itself.
+QUIZ_DEFAULT_MINUTES = 10
 # The one thing that *costs* XP: every time a lesson is sent back for a redo.
 # Set to a full lesson's worth on purpose -- a bounce completely erases the +20
 # he got for finishing it, so a sent-back lesson is worth nothing until he nails

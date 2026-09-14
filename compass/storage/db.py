@@ -1590,6 +1590,7 @@ class Database:
         # completed row is present first.
         self._backfill_project_step_credits()
         self._backfill_coding_credits()
+        self._backfill_quiz_credits()
         self._backfill_declaration_url_default()
         for key, value in config.DEFAULT_SETTINGS.items():
             self.conn.execute(
@@ -3156,6 +3157,50 @@ class Database:
         if skill_id:
             self._reconcile_math_mastery(student_id, skill_id, correct, total)
         self.conn.commit()
+        # Credit a small block of assessment time the first time he sits the
+        # quiz -- separate from the lesson's own logged hours, once per lesson so
+        # a retake never stacks.
+        self._log_quiz_hours(lesson_id, student_id, today)
+
+    def _log_quiz_hours(self, lesson_id: int, student_id: int, occurred_on: str) -> None:
+        row = _row(self.conn.execute(
+            "SELECT title, subject FROM lessons WHERE id = ?", (lesson_id,)
+        ))
+        if row is None:
+            return
+        title = f"{row['title']} — quiz"
+        already = self.conn.execute(
+            "SELECT 1 FROM activities WHERE student_id = ? AND source = 'quiz' "
+            "AND title = ? LIMIT 1",
+            (student_id, title),
+        ).fetchone()
+        if already:
+            return
+        subject = row["subject"] or "reading"
+        self.log_activity(
+            student_id=student_id,
+            title=title,
+            tier=config.TIER_CORE,
+            primary_subject=subject,
+            minutes=config.QUIZ_DEFAULT_MINUTES,
+            subject_credits={subject: config.QUIZ_DEFAULT_MINUTES},
+            occurred_on=occurred_on,
+            description="Quiz assessment.",
+            source="quiz",
+        )
+
+    def _backfill_quiz_credits(self) -> None:
+        """One-time credit for quizzes taken before assessment time was logged --
+        once per lesson (guarded in `_log_quiz_hours`), dated to the first
+        attempt. Same idempotent top-up pattern the other credit backfills use."""
+        rows = self.conn.execute(
+            "SELECT lesson_id, student_id, MIN(attempted_on) AS first_on "
+            "FROM quiz_attempts GROUP BY lesson_id, student_id"
+        ).fetchall()
+        for row in rows:
+            self._log_quiz_hours(
+                row["lesson_id"], row["student_id"], row["first_on"] or date.today().isoformat()
+            )
 
     def _reconcile_math_mastery(
         self, student_id: int, skill_id: str, correct: int, total: int
