@@ -149,6 +149,9 @@ CODING_DEFAULT_MINUTES = 45
 # separate block for the sit-down assessment, logged once per lesson (retakes
 # don't stack) so it captures time without double-counting the lesson itself.
 QUIZ_DEFAULT_MINUTES = 10
+# Default minutes a parent-added lesson resource (a video, an article) is worth
+# when he marks it watched/read -- editable per resource when the parent adds it.
+RESOURCE_DEFAULT_MINUTES = 20
 # The one thing that *costs* XP: every time a lesson is sent back for a redo.
 # Set to a full lesson's worth on purpose -- a bounce completely erases the +20
 # he got for finishing it, so a sent-back lesson is worth nothing until he nails

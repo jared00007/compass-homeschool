@@ -46,7 +46,8 @@ def test_a_resource_is_stored_on_the_lesson(db, student):
     db.add_lesson_resource(lid, "Crash Course: Commas", "https://youtu.be/abc", "watch first")
     resources = db.get_lesson(lid)["metadata"]["parent_resources"]
     assert resources == [
-        {"label": "Crash Course: Commas", "url": "https://youtu.be/abc", "note": "watch first"}
+        {"label": "Crash Course: Commas", "url": "https://youtu.be/abc",
+         "note": "watch first", "minutes": config.RESOURCE_DEFAULT_MINUTES}
     ]
 
 
@@ -72,6 +73,52 @@ def test_a_resource_can_be_removed(db, student):
     db.remove_lesson_resource(lid, 0)
     remaining = db.get_lesson(lid)["metadata"]["parent_resources"]
     assert [r["label"] for r in remaining] == ["Two"]
+
+
+def test_marking_a_resource_watched_logs_its_time(db, student):
+    lid = _lesson(db, student["id"])
+    db.add_lesson_resource(lid, "Crash Course", "https://youtu.be/abc", minutes=25)
+    db.complete_lesson_resource(lid, 0, student["id"])
+
+    resource = db.get_lesson(lid)["metadata"]["parent_resources"][0]
+    assert resource.get("completed_on")
+    acts = db.conn.execute(
+        "SELECT minutes FROM activities WHERE student_id=? AND source='resource'",
+        (student["id"],),
+    ).fetchall()
+    assert len(acts) == 1 and acts[0]["minutes"] == 25
+
+    # A second tap doesn't double-log.
+    db.complete_lesson_resource(lid, 0, student["id"])
+    acts = db.conn.execute(
+        "SELECT COUNT(*) c FROM activities WHERE source='resource'"
+    ).fetchone()
+    assert acts["c"] == 1
+
+
+def test_un_watching_a_resource_takes_the_time_back(db, student):
+    lid = _lesson(db, student["id"])
+    db.add_lesson_resource(lid, "Doc", "https://x.com", minutes=30)
+    db.complete_lesson_resource(lid, 0, student["id"])
+    db.uncomplete_lesson_resource(lid, 0)
+
+    resource = db.get_lesson(lid)["metadata"]["parent_resources"][0]
+    assert not resource.get("completed_on")
+    remaining = db.conn.execute(
+        "SELECT COUNT(*) c FROM activities WHERE source='resource'"
+    ).fetchone()["c"]
+    assert remaining == 0
+
+
+def test_removing_a_watched_resource_also_removes_its_time(db, student):
+    lid = _lesson(db, student["id"])
+    db.add_lesson_resource(lid, "Doc", "https://x.com", minutes=30)
+    db.complete_lesson_resource(lid, 0, student["id"])
+    db.remove_lesson_resource(lid, 0)
+    remaining = db.conn.execute(
+        "SELECT COUNT(*) c FROM activities WHERE source='resource'"
+    ).fetchone()["c"]
+    assert remaining == 0
 
 
 # --- the UI, end to end -----------------------------------------------------------
@@ -112,9 +159,27 @@ def test_the_student_sees_a_parent_resource_in_the_lesson(monkeypatch, tmp_path)
     )
     at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
     blob = "\n".join(m.value for m in at.markdown)
-    assert "Extra resources from your parent" in blob
+    assert "from your parent" in blob
     assert "Crash Course: Commas" in blob
     assert "https://youtu.be/abc" in blob
+
+
+def test_the_student_can_mark_a_resource_watched_and_it_logs_time(monkeypatch, tmp_path):
+    db_path, lid = _seed(
+        tmp_path, resources=[("Crash Course: Commas", "https://youtu.be/abc", "")]
+    )
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
+    watch = [b for b in at.button if (b.key or "").startswith(f"reswatch_{lid}_")]
+    assert watch, "his lesson should offer a Mark-watched button on the resource"
+    watch[0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    n = database.conn.execute(
+        "SELECT COUNT(*) c FROM activities WHERE source='resource'"
+    ).fetchone()["c"]
+    database.close()
+    assert n == 1
 
 
 def test_no_resources_block_for_the_student_when_there_are_none(monkeypatch, tmp_path):
@@ -139,4 +204,5 @@ def test_a_parent_adds_a_resource_from_the_review(monkeypatch, tmp_path):
     database = Database(db_path)
     resources = database.get_lesson(lid)["metadata"]["parent_resources"]
     database.close()
-    assert resources == [{"label": "A helpful video", "url": "https://youtu.be/xyz", "note": ""}]
+    assert resources == [{"label": "A helpful video", "url": "https://youtu.be/xyz",
+                          "note": "", "minutes": config.RESOURCE_DEFAULT_MINUTES}]

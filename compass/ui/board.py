@@ -249,7 +249,8 @@ def _render_board_deep_link(
             # read-only on his own board.
             if db is not None:
                 _ui.render_lesson_resources(
-                    db, item["id"], item.get("metadata") or {}, parent=parent
+                    db, item["id"], item.get("metadata") or {}, parent=parent,
+                    student=None if parent else student,
                 )
 
         if _ui.st.button("🔍 View full lesson", key=f"board_view_lesson_{item['id']}"):

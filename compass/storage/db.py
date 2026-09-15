@@ -3322,23 +3322,31 @@ class Database:
             self.conn.commit()
 
     def add_lesson_resource(
-        self, lesson_id: int, label: str, url: str = "", note: str = ""
+        self, lesson_id: int, label: str, url: str = "", note: str = "",
+        minutes: int | None = None,
     ) -> None:
         """Attach a parent-added resource to a lesson -- a link (a video, an
         article) or a plain note. Stored in the lesson's metadata under
-        `parent_resources` (a list of {label, url, note}), so it rides alongside
-        the AI-generated payload without touching it and shows in the lesson for
-        him. A row with nothing in any field is ignored."""
+        `parent_resources` (a list of {label, url, note, minutes}), so it rides
+        alongside the AI-generated payload without touching it and shows in the
+        lesson for him. `minutes` is what it credits when he marks it done. A row
+        with nothing in any field is ignored."""
         label, url, note = label.strip(), url.strip(), note.strip()
         if not (label or url or note):
             return
+        try:
+            minutes = int(minutes) if minutes else config.RESOURCE_DEFAULT_MINUTES
+        except (TypeError, ValueError):
+            minutes = config.RESOURCE_DEFAULT_MINUTES
         with self._lock:
             lesson = self.get_lesson(lesson_id)
             if lesson is None:
                 return
             metadata = lesson["metadata"]
             resources = metadata.get("parent_resources") or []
-            resources.append({"label": label, "url": url, "note": note})
+            resources.append(
+                {"label": label, "url": url, "note": note, "minutes": max(5, minutes)}
+            )
             metadata["parent_resources"] = resources
             self.conn.execute(
                 "UPDATE lessons SET metadata = ? WHERE id = ?",
@@ -3347,7 +3355,8 @@ class Database:
             self.conn.commit()
 
     def remove_lesson_resource(self, lesson_id: int, index: int) -> None:
-        """Drop one parent-added resource by its position in the list."""
+        """Drop one parent-added resource by its position in the list -- and its
+        logged time, if he'd already marked it done."""
         with self._lock:
             lesson = self.get_lesson(lesson_id)
             if lesson is None:
@@ -3355,6 +3364,11 @@ class Database:
             metadata = lesson["metadata"]
             resources = metadata.get("parent_resources") or []
             if 0 <= index < len(resources):
+                activity_id = resources[index].get("activity_id")
+                if activity_id:
+                    self.conn.execute(
+                        "DELETE FROM activities WHERE id = ?", (activity_id,)
+                    )
                 resources.pop(index)
                 metadata["parent_resources"] = resources
                 self.conn.execute(
@@ -3362,6 +3376,70 @@ class Database:
                     (json.dumps(metadata), lesson_id),
                 )
                 self.conn.commit()
+
+    def complete_lesson_resource(
+        self, lesson_id: int, index: int, student_id: int
+    ) -> None:
+        """He watched/read a parent resource: mark it done and log its minutes as
+        instructional time (credited to the lesson's subject). Guarded so a
+        second tap doesn't double-log. Stores the activity id on the resource so
+        undo (and removal) can take the time back."""
+        with self._lock:
+            lesson = self.get_lesson(lesson_id)
+            if lesson is None:
+                return
+            metadata = lesson["metadata"]
+            resources = metadata.get("parent_resources") or []
+            if not (0 <= index < len(resources)):
+                return
+            resource = resources[index]
+            if resource.get("completed_on"):
+                return
+            minutes = int(resource.get("minutes") or config.RESOURCE_DEFAULT_MINUTES)
+            subject = lesson.get("subject") or "reading"
+            label = resource.get("label") or resource.get("url") or "Resource"
+            activity_id = self.log_activity(
+                student_id=student_id,
+                title=f"Resource — {label}",
+                tier=config.TIER_CORE,
+                primary_subject=subject,
+                minutes=minutes,
+                subject_credits={subject: minutes},
+                occurred_on=date.today().isoformat(),
+                description=f"Parent resource for '{lesson.get('title', '')}'.",
+                source="resource",
+            )
+            resource["completed_on"] = date.today().isoformat()
+            resource["activity_id"] = activity_id
+            metadata["parent_resources"] = resources
+            self.conn.execute(
+                "UPDATE lessons SET metadata = ? WHERE id = ?",
+                (json.dumps(metadata), lesson_id),
+            )
+            self.conn.commit()
+
+    def uncomplete_lesson_resource(self, lesson_id: int, index: int) -> None:
+        """Undo 'marked done' on a resource -- clears the flag and deletes the
+        instructional time it logged."""
+        with self._lock:
+            lesson = self.get_lesson(lesson_id)
+            if lesson is None:
+                return
+            metadata = lesson["metadata"]
+            resources = metadata.get("parent_resources") or []
+            if not (0 <= index < len(resources)):
+                return
+            activity_id = resources[index].get("activity_id")
+            if activity_id:
+                self.conn.execute("DELETE FROM activities WHERE id = ?", (activity_id,))
+            resources[index].pop("completed_on", None)
+            resources[index].pop("activity_id", None)
+            metadata["parent_resources"] = resources
+            self.conn.execute(
+                "UPDATE lessons SET metadata = ? WHERE id = ?",
+                (json.dumps(metadata), lesson_id),
+            )
+            self.conn.commit()
 
     def set_activity_checklist(
         self, lesson_id: int, activity_index: int, checked: list[bool]

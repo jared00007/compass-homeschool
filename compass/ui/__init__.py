@@ -1433,33 +1433,82 @@ def render_lesson_resources(
     metadata: dict[str, Any] | None,
     *,
     parent: bool,
+    student: dict[str, Any] | None = None,
 ) -> None:
     """Parent-added resources on a lesson -- your own links (a video, an
-    article) or notes, on top of what the agent generated. Shows the list to
-    everyone; on the parent side it also carries the add/remove controls. On his
-    side it's read-only, and it renders nothing at all when there's nothing to
-    show, so it stays invisible until you actually attach something."""
+    article) or notes, on top of what the agent generated. Rendered as a bright
+    accent card meant to sit at the TOP of the lesson, not buried (reported: "its
+    buried at the bottom ... not going to work"). Each resource carries an
+    estimated time; on his side a one-tap "Mark watched" logs that time to the
+    lesson's subject (and undo takes it back). Parent side carries the add/remove
+    controls, with a per-resource minutes field. Renders nothing when there's
+    nothing to show and the viewer isn't the parent."""
     resources = (metadata or {}).get("parent_resources") or []
     if not resources and not parent:
         return
-    with st.container(border=True):
-        st.markdown("**📎 Extra resources from your parent**")
+
+    done = sum(1 for r in resources if r.get("completed_on"))
+    logged = sum(int(r.get("minutes") or 0) for r in resources if r.get("completed_on"))
+
+    with st.container(border=True, key=f"lesson_resources_{lesson_id}"):
+        head = "📎 Watch &amp; read these — from your parent"
+        st.markdown(
+            f'<div style="background:var(--c-primary); color:{_XP_INK}; '
+            f'border:2.5px solid {_XP_INK}; border-radius:4px; box-shadow:3px 3px 0 {_XP_INK}; '
+            f'padding:8px 12px; font-family:var(--c-head); font-weight:800; font-size:16px; '
+            f'letter-spacing:.02em; margin-bottom:10px;">{head}'
+            + (
+                f'<span style="float:right; font-size:12px; font-weight:800;">'
+                f'{done}/{len(resources)} done · {logged} min</span>'
+                if resources else ""
+            )
+            + "</div>",
+            unsafe_allow_html=True,
+        )
         if not resources and parent:
-            st.caption("Add a helpful video, article, or note for this lesson below.")
+            st.caption("Add a helpful video, article, or note for this lesson below — "
+                       "it shows up right here at the top of his lesson.")
+
         for index, resource in enumerate(resources):
             label = resource.get("label") or resource.get("url") or "Resource"
             url = (resource.get("url") or "").strip()
             note = resource.get("note") or ""
-            row = st.columns([9, 1]) if parent else [st.container()]
+            minutes = int(resource.get("minutes") or config.RESOURCE_DEFAULT_MINUTES)
+            is_done = bool(resource.get("completed_on"))
+
             if url:
                 href = url if url.startswith(("http://", "https://")) else f"https://{url}"
-                line = f"🔗 [{md(label)}]({href})"
+                line = f"🔗 **[{md(label)}]({href})**"
             else:
                 line = f"📝 **{md(label)}**"
+            line += f"  ·  ⏱️ {minutes} min"
             if note:
-                line += f" — {md(note)}"
-            row[0].markdown(line)
-            if parent and row[1].button(
+                line += f"  \n{md(note)}"
+            if is_done:
+                line = "✅ " + line
+
+            cols = st.columns([7, 3, 1]) if parent else st.columns([8, 3])
+            cols[0].markdown(line)
+
+            # His side: one-tap watch tracking that logs the time.
+            if not parent and student is not None:
+                if is_done:
+                    if cols[1].button(
+                        "↩️ Not yet", key=f"resundo_{lesson_id}_{index}", width="stretch"
+                    ):
+                        db.uncomplete_lesson_resource(lesson_id, index)
+                        st.rerun()
+                else:
+                    if cols[1].button(
+                        f"✅ Mark watched (+{minutes}m)",
+                        key=f"reswatch_{lesson_id}_{index}", type="primary", width="stretch",
+                    ):
+                        db.complete_lesson_resource(lesson_id, index, student["id"])
+                        st.rerun()
+            elif not parent:
+                cols[1].caption("✅ done" if is_done else "")
+
+            if parent and cols[2].button(
                 "✕", key=f"rmres_{lesson_id}_{index}", help="Remove this resource"
             ):
                 db.remove_lesson_resource(lesson_id, index)
@@ -1473,9 +1522,14 @@ def render_lesson_resources(
                     placeholder="https://…",
                 )
                 note = st.text_input("Note (optional)", key=f"addres_note_{lesson_id}")
+                minutes = st.number_input(
+                    "Minutes it's worth (credited when he marks it done)",
+                    min_value=5, max_value=240, value=config.RESOURCE_DEFAULT_MINUTES,
+                    step=5, key=f"addres_minutes_{lesson_id}",
+                )
                 if st.button("Add", key=f"addres_btn_{lesson_id}", type="primary"):
                     if label.strip() or url.strip() or note.strip():
-                        db.add_lesson_resource(lesson_id, label, url, note)
+                        db.add_lesson_resource(lesson_id, label, url, note, int(minutes))
                         st.rerun()
                     else:
                         st.caption("Add a title, a link, or a note first.")
@@ -1760,6 +1814,12 @@ def student_lesson_view(
                     "another look — scroll down to each one to fix it:**\n\n"
                     + "\n\n".join(lines)
                 )
+        # Parent resources ride at the TOP of the lesson, not the bottom, so he
+        # actually sees (and can knock out) them -- and each one he marks watched
+        # logs its time.
+        render_lesson_resources(
+            db, pending["id"], pending_metadata, parent=False, student=student
+        )
         render_lesson(
             pending["payload"],
             for_parent=False,
@@ -1779,7 +1839,6 @@ def student_lesson_view(
             pending["payload"].get("quiz") or [],
             agent=agent_key,
         )
-        render_lesson_resources(db, pending["id"], pending_metadata, parent=False)
         if pending["status"] == "needs_revision":
             ready, why_not = _lesson_ready_to_submit(pending)
             if st.button(
@@ -1827,6 +1886,9 @@ def student_lesson_view(
             part = int(current_metadata.get("series_index") or 0) + 1
             series_title = current_metadata.get("series_title") or "this topic"
             st.caption(f"📚 Part {part} of {series_total} — *{md(series_title)}*")
+        render_lesson_resources(
+            db, current["id"], current_metadata, parent=False, student=student
+        )
         render_lesson(
             current["payload"],
             for_parent=False,
@@ -1846,7 +1908,6 @@ def student_lesson_view(
             current["payload"].get("quiz") or [],
             agent=agent_key,
         )
-        render_lesson_resources(db, current["id"], current_metadata, parent=False)
         ready, why_not = _lesson_ready_to_submit(current)
         if st.button(
             "📬 Turn it in for review",
