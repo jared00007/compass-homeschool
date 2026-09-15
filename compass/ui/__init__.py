@@ -1359,7 +1359,7 @@ def render_quiz(
 
 
 def _done_lessons(db: Database, student_id: int, agent_key: str) -> list[dict[str, Any]]:
-    lessons = db.list_lessons(student_id, agent=agent_key, limit=10)
+    lessons = db.list_lessons(student_id, agent=agent_key, limit=500)
     return [l for l in lessons if l["status"] == "completed"]
 
 
@@ -1745,7 +1745,11 @@ def student_lesson_view(
     all -- an ordinary on-demand generation has no day attached) makes
     that same fact visible here, not just inferred from being on the page.
     """
-    lessons = db.list_lessons(student["id"], agent=agent_key, limit=10)
+    # Generous limit, not 10: with future weeks planned as a series a subject
+    # holds well over ten lessons, and the one due today can be older by
+    # creation than ten newer ones -- capping at 10 would drop it from his own
+    # subject page the same way it did from Due today.
+    lessons = db.list_lessons(student["id"], agent=agent_key, limit=500)
     icon = SUBJECT_ICONS.get(agent_key, "📘")
 
     # A note his parent left when approving a piece of writing lives here, in
@@ -2566,7 +2570,11 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
     # per-subject cards with links live further down the page.
     lesson_markers = []
     for lesson_agent in ("math", "science", "english", "history"):
-        agent_lessons = db.list_lessons(student["id"], agent=lesson_agent, limit=10)
+        # limit generous, not 10: a subject accumulates well past ten lessons
+        # once future weeks are planned as a series, and a lesson *assigned* to
+        # today but *created* earlier than ten newer ones would otherwise fall
+        # outside the window and vanish from Due today while still on the board.
+        agent_lessons = db.list_lessons(student["id"], agent=lesson_agent, limit=500)
         lesson_row, marker = weekly.today_subject_status(agent_lessons, today)
         if lesson_row is not None:
             lesson_markers.append(marker)

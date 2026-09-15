@@ -229,7 +229,10 @@ if not is_parent():
         }
         roster: list[tuple[dict, str, str, str]] = []
         for agent_key, (page_path, subject_label) in CORE_SUBJECT_PAGES.items():
-            agent_lessons = db.list_lessons(student["id"], agent=agent_key, limit=10)
+            # Generous limit, not 10: a subject with future weeks planned as a
+            # series holds more than ten lessons, and today's can be older by
+            # creation than ten newer ones (see today_subject_status callers).
+            agent_lessons = db.list_lessons(student["id"], agent=agent_key, limit=500)
             lesson, marker = weekly.today_subject_status(agent_lessons, today)
             if lesson is not None:
                 roster.append((lesson, marker, page_path, subject_label))

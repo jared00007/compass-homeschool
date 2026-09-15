@@ -810,6 +810,40 @@ def test_home_due_today_shows_a_lesson_submission_count(monkeypatch, tmp_path):
     assert "Lessons — 1 of 2 submitted" in text
 
 
+def test_home_due_today_finds_todays_lesson_past_the_old_ten_window(monkeypatch, tmp_path):
+    """Regression: a subject with many planned lessons (future weeks generated
+    as a series) pushed a lesson assigned to *today* past the old 10-lesson
+    lookup, so it vanished from Due today while still showing on the board
+    (reported directly, confirmed on a real science lesson at position 11)."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    today = date.today().isoformat()
+    # The science lesson due today -- saved FIRST, so it has the lowest id and
+    # sits last in the created_at/id-desc order the lookup walks.
+    database.save_lesson(
+        student_id=s["id"], agent="science", subject="science", topic="t",
+        title="Science today", payload={"title": "Science today", "activities": []},
+        metadata={"planned_for": today},
+    )
+    # A dozen newer science lessons planned for a future week -- enough to fill
+    # and overflow the old 10-lesson window and hide today's.
+    future = (date.today() + timedelta(days=7)).isoformat()
+    for i in range(12):
+        database.save_lesson(
+            student_id=s["id"], agent="science", subject="science", topic="t",
+            title=f"Future {i}", payload={"title": f"Future {i}", "activities": []},
+            metadata={"planned_for": future},
+        )
+    database.close()
+
+    at = _open_home(monkeypatch, db_path)
+    text = " ".join(m.value for m in at.markdown)
+    # Science is counted among today's lessons -- one subject due, none submitted.
+    assert "Lessons — 0 of 1 submitted" in text
+
+
 def test_home_due_today_shows_a_scheduled_big_project_step(monkeypatch, tmp_path):
     """A Big Project step assigned for today gets its own Due-today tile, in the
     same format as the other items, with a link to Big Projects."""
