@@ -774,20 +774,44 @@ with journal_tab:
                 word_count = len(story.split())
                 meets_requirement = word_count >= config.TRAVEL_JOURNAL_MIN_STORY_WORDS
                 entry_status = "submitted" if (story.strip() and meets_requirement) else "planned"
-                new_id = db.add_travel_entry(
-                    student["id"],
-                    state_choice,
-                    visited_on.isoformat(),
-                    title=title.strip(),
-                    story=story.strip(),
-                    park_key=park_choice.key if park_choice else None,
-                    favorite_moment=favorite_moment.strip(),
-                    would_return=would_return.strip(),
-                    status=entry_status,
-                    requirements=requirements.strip(),
+                # If he's writing a real trip up (not a parent adding a record,
+                # not a stub) and there's an open "pick a trip" assignment
+                # waiting, fill THAT assignment instead of spawning a separate
+                # entry -- otherwise his work is done but the assignment lingers
+                # as a phantom to-do on Home (reported: "he wrote it up not under
+                # the assigned box").
+                absorb_id = (
+                    db.open_travel_assignment_id(student["id"])
+                    if entry_status == "submitted" and assign_day is None and not is_parent()
+                    else None
                 )
-                if assign_day is not None:
-                    db.schedule_travel_entry(new_id, assign_day.isoformat())
+                if absorb_id is not None:
+                    db.update_travel_entry(
+                        absorb_id,
+                        state=state_choice,
+                        title=title.strip(),
+                        story=story.strip(),
+                        visited_on=visited_on.isoformat(),
+                        park_key=park_choice.key if park_choice else None,
+                        favorite_moment=favorite_moment.strip(),
+                        would_return=would_return.strip(),
+                    )
+                    db.submit_travel_entry(absorb_id)
+                else:
+                    new_id = db.add_travel_entry(
+                        student["id"],
+                        state_choice,
+                        visited_on.isoformat(),
+                        title=title.strip(),
+                        story=story.strip(),
+                        park_key=park_choice.key if park_choice else None,
+                        favorite_moment=favorite_moment.strip(),
+                        would_return=would_return.strip(),
+                        status=entry_status,
+                        requirements=requirements.strip(),
+                    )
+                    if assign_day is not None:
+                        db.schedule_travel_entry(new_id, assign_day.isoformat())
                 st.session_state["travel_entry_just_saved"] = True
                 if story.strip() and not meets_requirement:
                     st.session_state["travel_entry_needs_more_detail"] = (

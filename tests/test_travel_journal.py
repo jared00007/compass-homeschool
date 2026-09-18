@@ -172,6 +172,52 @@ def test_writing_a_real_entry_submits_it_not_completes_it(monkeypatch, tmp_path)
     assert entry["title"] == "Yellowstone trip"
 
 
+def test_open_travel_assignment_id_finds_an_unwritten_stub(tmp_path):
+    database = Database(tmp_path / "t.db")
+    s = database.ensure_default_student()
+    assert database.open_travel_assignment_id(s["id"]) is None
+    ids = database.assign_open_travel_entries(s["id"], 1, "2026-09-17")
+    assert database.open_travel_assignment_id(s["id"]) == ids[0]
+    # Once written up and submitted, it's no longer an open assignment.
+    database.update_travel_entry(ids[0], state="OR", title="Beach", story="a story")
+    database.submit_travel_entry(ids[0])
+    assert database.open_travel_assignment_id(s["id"]) is None
+    database.close()
+
+
+def test_a_write_up_fills_an_open_assignment_instead_of_a_second_entry(monkeypatch, tmp_path):
+    """Reported: he wrote a trip up outside the assigned box, so the assignment
+    lingered as a phantom to-do. A real write-up now fills the open assignment
+    rather than spawning a separate entry."""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    ids = database.assign_open_travel_entries(s["id"], 1, "2026-09-17")
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=False)
+    tab = _journal_tab(at)
+    [w for w in tab.selectbox if w.label == "State"][0].set_value("Wyoming")
+    [w for w in tab.text_input if w.label == "Title"][0].set_value("Yellowstone trip")
+    [w for w in tab.text_area if w.label == "The story"][0].set_value(
+        " ".join(["We", "watched", "Old", "Faithful", "erupt", "together"] * 12)
+    )
+    submit = [b for b in tab.button if b.label in ("Save this entry", "Assign this trip")][0]
+    submit.click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    entries = database.list_travel_entries(s["id"])
+    database.close()
+    # Exactly one entry -- the assignment, now written and submitted -- not a
+    # second orphan alongside a still-open assignment.
+    assert len(entries) == 1
+    assert entries[0]["id"] == ids[0]
+    assert entries[0]["status"] == "submitted"
+    assert entries[0]["title"] == "Yellowstone trip"
+
+
 def test_the_add_form_state_defaults_to_blank(monkeypatch, tmp_path):
     """No accidental 'Alabama' -- a parent has to actually pick a state, or
     leave it blank so he chooses the trip himself."""

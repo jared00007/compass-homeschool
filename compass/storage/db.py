@@ -4037,6 +4037,22 @@ class Database:
             ids.append(entry_id)
         return ids
 
+    def open_travel_assignment_id(self, student_id: int) -> int | None:
+        """The oldest open 'pick a trip' assignment still waiting to be written --
+        a scheduled, still-planned stub with no destination chosen yet (empty
+        state and title, the same signal the journal page uses). Used to route a
+        fresh write-up into an existing assignment instead of leaving that
+        assignment orphaned as a phantom to-do when he writes a trip up outside
+        the assigned box (reported)."""
+        row = self.conn.execute(
+            "SELECT id FROM travel_entries WHERE student_id = ? AND status = 'planned' "
+            "AND active = 1 AND scheduled_for IS NOT NULL "
+            "AND COALESCE(state, '') = '' AND COALESCE(title, '') = '' "
+            "ORDER BY scheduled_for, id LIMIT 1",
+            (student_id,),
+        ).fetchone()
+        return row["id"] if row else None
+
     def schedule_travel_entry(self, entry_id: int, scheduled_for: str | None) -> None:
         """Assigns (or clears, with `None`) the day a parent wants this
         trip written up by. Assigning a date also unlocks it (`active =
