@@ -280,6 +280,24 @@ class WeeklyProgress:
     bonus_items: list[BonusItem] = field(default_factory=list)
     given: bool = False
     school_days: int = 5      # 5 normally; fewer on a holiday/short week
+    # Landon's own reward pick for the week (he chooses Monday, a parent approves):
+    #   "unset"    -- he hasn't picked yet; the parent default stands as fallback
+    #   "pending"  -- he picked, waiting on a parent's approval
+    #   "approved" -- a parent signed off; this is the locked reward
+    #   "denied"   -- a parent bounced his custom pick (with a note); pick again
+    reward_status: str = "unset"
+    reward_source: str = ""    # "library" | "custom" | ""
+    reward_note: str = ""      # a parent's note when a pick was denied
+
+    @property
+    def reward_pending(self) -> bool:
+        return self.reward_status == "pending"
+
+    @property
+    def needs_reward_pick(self) -> bool:
+        """He should be shown the picker -- nothing chosen yet, or his last pick
+        was sent back."""
+        return self.reward_status in ("unset", "denied")
 
     @property
     def is_short_week(self) -> bool:
@@ -397,6 +415,70 @@ def set_week_reward_given(db: Any, week_start: date | str, given: bool = True) -
     else:
         current.discard(key)
     db.set_setting(_WEEKS_GIVEN_SETTING, json.dumps(sorted(current)))
+
+
+# --- Landon's own weekly reward pick (he chooses, a parent approves) --------------
+
+_WEEK_CHOICES_SETTING = "xp_week_choices"
+
+
+def _week_key(week_start: date | str) -> str:
+    return week_start.isoformat() if isinstance(week_start, date) else str(week_start)
+
+
+def _week_choices(db: Any) -> dict[str, Any]:
+    raw = db.get_setting(_WEEK_CHOICES_SETTING)
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (ValueError, TypeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def week_reward_choice(db: Any, week_start: date | str) -> dict[str, Any] | None:
+    """Landon's reward pick for one week (or None if he hasn't picked). A dict of
+    {status, source, name, emoji, note} -- status is pending/approved/denied."""
+    choice = _week_choices(db).get(_week_key(week_start))
+    return choice if isinstance(choice, dict) else None
+
+
+def set_week_reward_choice(
+    db: Any, week_start: date | str, name: str, emoji: str, source: str = "library"
+) -> None:
+    """Record his pick for the week, pending a parent's approval. Overwrites any
+    previous pick for that week (re-picking after a send-back, say)."""
+    choices = _week_choices(db)
+    choices[_week_key(week_start)] = {
+        "status": "pending",
+        "source": source if source in ("library", "custom") else "library",
+        "name": str(name or "").strip() or "Reward",
+        "emoji": (str(emoji or "").strip()) or "🎁",
+        "note": "",
+    }
+    db.set_setting(_WEEK_CHOICES_SETTING, json.dumps(choices))
+
+
+def approve_week_reward(db: Any, week_start: date | str) -> None:
+    """A parent signs off on his pick -- it becomes the locked reward."""
+    choices = _week_choices(db)
+    choice = choices.get(_week_key(week_start))
+    if isinstance(choice, dict):
+        choice["status"] = "approved"
+        choice["note"] = ""
+        db.set_setting(_WEEK_CHOICES_SETTING, json.dumps(choices))
+
+
+def deny_week_reward(db: Any, week_start: date | str, note: str = "") -> None:
+    """A parent bounces his pick back with an optional note -- no XP cost, he
+    just picks again. Kept as a 'denied' record so the note can be shown."""
+    choices = _week_choices(db)
+    choice = choices.get(_week_key(week_start))
+    if isinstance(choice, dict):
+        choice["status"] = "denied"
+        choice["note"] = str(note or "").strip()
+        db.set_setting(_WEEK_CHOICES_SETTING, json.dumps(choices))
 
 
 _REWARD_LIBRARY_SETTING = "xp_reward_library"
@@ -614,15 +696,32 @@ def weekly_progress(
                       trips_done * config.XP_PER_TRAVEL_ENTRY)
         )
 
-    name, emoji = weekly_reward(db)
+    # The reward: Landon's own pick once a parent approves it, his pending pick
+    # while it waits, or the parent default as the fallback until he picks.
+    default_name, default_emoji = weekly_reward(db)
+    choice = week_reward_choice(db, monday)
+    reward_status, reward_source, reward_note = "unset", "", ""
+    reward_name, reward_emoji = default_name, default_emoji
+    if choice and choice.get("status") == "approved":
+        reward_name, reward_emoji = choice["name"], choice["emoji"]
+        reward_status, reward_source = "approved", choice.get("source", "")
+    elif choice and choice.get("status") == "pending":
+        reward_name, reward_emoji = choice["name"], choice["emoji"]
+        reward_status, reward_source = "pending", choice.get("source", "")
+    elif choice and choice.get("status") == "denied":
+        reward_status, reward_note = "denied", choice.get("note", "")
+
     school_days = week_school_days(db, monday)
     return WeeklyProgress(
         week_start=monday,
         goal=scaled_goal(weekly_goal(db), school_days),
-        reward_name=name,
-        reward_emoji=emoji,
+        reward_name=reward_name,
+        reward_emoji=reward_emoji,
         days=days,
         bonus_items=bonus_items,
         given=monday.isoformat() in weeks_given(db),
         school_days=school_days,
+        reward_status=reward_status,
+        reward_source=reward_source,
+        reward_note=reward_note,
     )

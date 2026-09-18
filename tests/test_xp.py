@@ -8,7 +8,7 @@ import pytest
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
-from compass import auth, config, xp
+from compass import auth, config, weekly, xp
 from compass.storage.db import Database
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -386,6 +386,95 @@ def test_a_short_week_scales_the_goal_down(db, student):
     # Setting it back to 5 clears the override.
     xp.set_week_school_days(db, monday, 5)
     assert xp.weekly_progress(db, student["id"], today).goal == 400
+
+
+def test_landon_picks_a_reward_and_a_parent_approves(db, student):
+    today = date(2026, 9, 10)
+    monday = date(2026, 9, 7)
+    # Out of the box: nothing picked -> he should be shown the picker.
+    p = xp.weekly_progress(db, student["id"], today)
+    assert p.reward_status == "unset" and p.needs_reward_pick
+
+    xp.set_week_reward_choice(db, monday, "Movie night", "🎬", "library")
+    p = xp.weekly_progress(db, student["id"], today)
+    assert p.reward_pending and not p.needs_reward_pick
+    assert (p.reward_name, p.reward_emoji) == ("Movie night", "🎬")
+
+    xp.approve_week_reward(db, monday)
+    p = xp.weekly_progress(db, student["id"], today)
+    assert p.reward_status == "approved" and not p.reward_pending
+    assert (p.reward_name, p.reward_emoji) == ("Movie night", "🎬")
+
+
+def test_a_denied_pick_costs_no_points_and_he_repicks(db, student):
+    today = date(2026, 9, 10)
+    monday = date(2026, 9, 7)
+    xp.set_week_reward_choice(db, monday, "A real pony", "🐴", "custom")
+    xp.deny_week_reward(db, monday, "too big — pick something smaller")
+
+    p = xp.weekly_progress(db, student["id"], today)
+    assert p.reward_status == "denied" and p.needs_reward_pick
+    assert p.reward_note == "too big — pick something smaller"
+    # A denial is pure reward-selection: it never touches his XP.
+    assert p.total == 0
+
+    # He picks again -> pending, and the note clears.
+    xp.set_week_reward_choice(db, monday, "Movie night", "🎬", "library")
+    p = xp.weekly_progress(db, student["id"], today)
+    assert p.reward_pending and p.reward_note == ""
+
+
+def test_the_student_picks_a_reward_from_his_home(monkeypatch, tmp_path):
+    db_path = tmp_path / "pick.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    monday = weekly.week_start().isoformat()
+    database.save_lesson(
+        student_id=s["id"], agent="math", subject="math", topic="t", title="Math",
+        payload={"title": "Math", "activities": []},
+        metadata={"planned_for": monday, "week_start": monday},
+    )
+    database.close()
+
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+    at = AppTest.from_file(HOME_PATH)
+    at.run(timeout=30)  # student view
+    assert not at.exception, [e.message for e in at.exception]
+    # Pick the first library option and choose it.
+    at.radio(key="reward_pick_radio").set_value(0).run()
+    [b for b in at.button if (b.key or "") == "reward_pick_btn"][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    choice = xp.week_reward_choice(database, weekly.week_start())
+    database.close()
+    assert choice and choice["status"] == "pending"
+
+
+def test_the_parent_approves_a_pick_from_mission_control(monkeypatch, tmp_path):
+    db_path = tmp_path / "approve.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    monday = weekly.week_start()
+    xp.set_week_reward_choice(database, monday, "Arcade trip", "🕹️", "custom")
+    database.close()
+
+    at = _open_mission_control(monkeypatch, db_path)
+    body = " ".join(m.value for m in at.markdown)
+    assert "picked this week's reward" in body
+    [b for b in at.button if (b.key or "") == "reward_approve_btn"][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    choice = xp.week_reward_choice(database, monday)
+    # Approved, and the custom idea was saved to the library (checkbox default).
+    lib_names = [n for n, _ in xp.reward_library(database)]
+    database.close()
+    assert choice["status"] == "approved"
+    assert "Arcade trip" in lib_names
 
 
 def test_mission_control_shows_and_clears_the_weekly_reward(monkeypatch, tmp_path):

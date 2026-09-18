@@ -43,6 +43,7 @@ from compass.ui import (
     render_reading_board_card,
     render_message_thread,
     render_earned_rewards,
+    render_weekly_reward_approval,
     render_quick_log,
     render_lesson_review,
     render_life_skill_review_card,
@@ -591,6 +592,9 @@ if mc_view == "review":
     # reported: "i need to know as the parent when he hits one." Lives here in
     # Mission Control's review queue with the rest of what's waiting on a parent.
     render_earned_rewards(db, student)
+
+    # His weekly reward pick, waiting on a yes/no (absent unless one's pending).
+    render_weekly_reward_approval(db, student)
 
     # The weekly-reward settings sit right under the reward status, on the
     # default Review view -- reported it was too buried under the Grades tab to

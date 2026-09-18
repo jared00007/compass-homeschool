@@ -3110,8 +3110,15 @@ def _weekly_xp_html(state: "xp_module.XPState", progress: "xp_module.WeeklyProgr
         _xp_day_frame_html(day, colors[i], _XP_WEEKDAY_TEXT[i])
         for i, day in enumerate(progress.days)
     )
-    # The reward payoff panel closes the strip.
-    lock = ("✅ earned" if progress.reached else f"🔒 at {progress.goal}")
+    # The reward payoff panel closes the strip -- it also reflects his pick's
+    # state: a prompt to choose, his pick waiting on approval, or the locked one.
+    if progress.needs_reward_pick:
+        payoff_emoji, payoff_name, lock = "🎁", "Your pick?", "choose below ↓"
+    elif progress.reward_pending:
+        payoff_emoji, payoff_name, lock = progress.reward_emoji, reward, "⏳ pending"
+    else:
+        payoff_emoji, payoff_name = progress.reward_emoji, reward
+        lock = "✅ earned" if progress.reached else f"🔒 at {progress.goal}"
     payoff = (
         f'<div style="flex:1 1 108px;min-width:100px;border:2.5px solid {_XP_INK};border-radius:4px;'
         f'background:var(--c-primary);box-shadow:3px 3px 0 {_XP_INK};overflow:hidden;'
@@ -3120,8 +3127,8 @@ def _weekly_xp_html(state: "xp_module.XPState", progress: "xp_module.WeeklyProgr
         f'background:#d99f00;padding:3px 8px;border-bottom:2.5px solid {_XP_INK};">GOAL</div>'
         f'<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;'
         f'text-align:center;gap:5px;padding:8px;color:{_XP_INK};">'
-        f'<span style="font-size:30px;line-height:1;">{progress.reward_emoji}</span>'
-        f'<b style="font-size:11.5px;line-height:1.1;">{reward}</b>'
+        f'<span style="font-size:30px;line-height:1;">{payoff_emoji}</span>'
+        f'<b style="font-size:11.5px;line-height:1.1;">{payoff_name}</b>'
         f'<span style="font-size:10px;font-weight:800;text-transform:uppercase;">{lock}</span></div></div>'
     )
 
@@ -3146,6 +3153,16 @@ def render_xp_level(db: Database, student: dict[str, Any]) -> None:
     progress = xp_module.weekly_progress(db, student["id"], date.today())
 
     st.markdown(_weekly_xp_html(state, progress), unsafe_allow_html=True)
+
+    # His own reward pick: choose from a parent's library (or suggest one), then
+    # a parent approves. Pending waits on them; a send-back just lets him repick.
+    if progress.needs_reward_pick:
+        render_reward_picker(db, student, progress)
+    elif progress.reward_pending:
+        st.info(
+            f"🎁 You picked {progress.reward_emoji} **{md(progress.reward_name)}** — "
+            "waiting for a parent to say yes."
+        )
 
     # Extra credit already banked this week -- the reserve that counts toward the
     # same goal, shown as its own line so the bar stays about school work.
@@ -3188,6 +3205,101 @@ def render_xp_level(db: Database, student: dict[str, Any]) -> None:
             f"- ↩️ A lesson **sent back** for a redo: **−{config.XP_SENT_BACK_PENALTY}** (each time). "
             "Read the whole assignment and do every part the first time, and you never lose any."
         )
+
+
+def render_reward_picker(
+    db: Database, student: dict[str, Any], progress: "xp_module.WeeklyProgress"
+) -> None:
+    """His 'choose your weekly reward' panel -- pick one of the parent's library
+    options, or suggest his own, then a parent approves. Shown when he hasn't
+    picked yet this week, or his last pick was sent back."""
+    library = xp_module.reward_library(db)
+    with st.container(border=True, key="landon_card_rewardpick"):
+        st.markdown(
+            '<div style="font-size:16px; font-weight:900; margin:2px 0 3px;">'
+            '🎁 Choose your weekly reward</div>', unsafe_allow_html=True,
+        )
+        if progress.reward_status == "denied":
+            note = progress.reward_note
+            st.warning(
+                "Your last pick got sent back"
+                + (f" — “{md(note)}”" if note else "")
+                + ". Pick another, or suggest a different one."
+            )
+        st.caption(
+            "Pick what you're working toward this week. A parent says yes before "
+            "it's locked in."
+        )
+        labels = [f"{e}  {md(n)}" for n, e in library]
+        picked = st.radio(
+            "Options", range(len(library)), index=None,
+            format_func=lambda i: labels[i], key="reward_pick_radio",
+            label_visibility="collapsed",
+        )
+        if st.button(
+            "🎯 Choose this one", key="reward_pick_btn", type="primary",
+            width="stretch", disabled=picked is None,
+        ):
+            name, emoji = library[picked]
+            xp_module.set_week_reward_choice(db, progress.week_start, name, emoji, "library")
+            st.rerun()
+
+        with st.expander("✍️ …or suggest your own"):
+            with st.form("reward_custom_form", clear_on_submit=True):
+                emoji_col, name_col = st.columns([1, 4])
+                emoji = emoji_col.text_input("Emoji", value="🎁", key="reward_custom_emoji")
+                name = name_col.text_input(
+                    "Your reward idea", key="reward_custom_name",
+                    placeholder="e.g. a trip to the arcade",
+                )
+                if st.form_submit_button("Send my idea to a parent", type="primary"):
+                    if name.strip():
+                        xp_module.set_week_reward_choice(
+                            db, progress.week_start, name, emoji, "custom"
+                        )
+                        st.rerun()
+                    else:
+                        st.caption("Type an idea first.")
+
+
+def render_weekly_reward_approval(db: Database, student: dict[str, Any]) -> None:
+    """Parent-only: approve (or send back) Landon's weekly reward pick. Absent
+    unless a pick is actually waiting. A send-back costs him no XP -- it just
+    lets him choose again. Approving his own custom idea offers to save it to the
+    library for reuse."""
+    progress = xp_module.weekly_progress(db, student["id"], date.today())
+    if not progress.reward_pending:
+        return
+    name = student.get("name") or "He"
+    with st.container(border=True, key="parent_reward_approval"):
+        st.markdown(f"### 🎁 {md(name)} picked this week's reward — approve it?")
+        is_custom = progress.reward_source == "custom"
+        source = "his own idea" if is_custom else "your library"
+        st.markdown(
+            f"{progress.reward_emoji} **{md(progress.reward_name)}**  \n"
+            f"<span style='color:var(--c-dim); font-size:12px;'>from {source} · "
+            f"week of {progress.week_start.strftime('%b %-d')}</span>",
+            unsafe_allow_html=True,
+        )
+        save_it = False
+        if is_custom:
+            save_it = st.checkbox(
+                "➕ Also add this to your reward library", value=True,
+                key="reward_save_to_library",
+            )
+        cols = st.columns(2)
+        if cols[0].button("✅ Approve", key="reward_approve_btn", type="primary", width="stretch"):
+            xp_module.approve_week_reward(db, progress.week_start)
+            if is_custom and save_it:
+                xp_module.add_reward_to_library(db, progress.reward_name, progress.reward_emoji)
+            st.rerun()
+        with cols[1].expander("🔁 Send it back"):
+            with st.form("reward_deny_form", clear_on_submit=True):
+                note = st.text_input("A note for him (optional)", key="reward_deny_note")
+                st.caption("No XP lost — he just picks again.")
+                if st.form_submit_button("Send back", width="stretch"):
+                    xp_module.deny_week_reward(db, progress.week_start, note)
+                    st.rerun()
 
 
 def render_earned_rewards(db: Database, student: dict[str, Any]) -> None:
@@ -3274,9 +3386,10 @@ def render_xp_reward_editor(db: Database) -> None:
     except StopIteration:
         current_index = 0
     picked = st.selectbox(
-        "This week's reward", range(len(library)), index=current_index,
-        format_func=lambda i: labels[i], key="xp_weekly_reward_pick",
+        "Default reward (used if Landon doesn't pick one)", range(len(library)),
+        index=current_index, format_func=lambda i: labels[i], key="xp_weekly_reward_pick",
     )
+    st.caption("He picks his own from this library on his Home each week; this is the fallback.")
     picked_name, picked_emoji = library[picked]
 
     # Short / holiday week: weight the goal to fewer school days. Applies to THIS
