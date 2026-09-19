@@ -41,10 +41,21 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 ok "No uncommitted local changes"
 
-# --- pull ----------------------------------------------------------------
+# --- pull the latest TESTED code -----------------------------------------
+# Follows the `stable` branch, which CI advances only when the full test suite
+# passes (.github/workflows/ci.yml) -- so an update can never pull a red build
+# onto this machine. Falls back to the current branch if `stable` hasn't been
+# published yet, so this keeps working during the transition.
 
 BEFORE="$(git rev-parse HEAD)"
-git pull
+git fetch origin --quiet
+if git rev-parse --verify --quiet refs/remotes/origin/stable >/dev/null; then
+    git checkout -B stable origin/stable >/dev/null 2>&1
+    ok "On the latest tested build."
+else
+    warn "No tested 'stable' build published yet -- updating from the current branch."
+    git pull --ff-only --quiet
+fi
 AFTER="$(git rev-parse HEAD)"
 
 if [ "$BEFORE" = "$AFTER" ]; then

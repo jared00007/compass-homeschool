@@ -4,6 +4,9 @@ name: CI
 # needed -- the suite mocks the LLM, so nothing here touches the Anthropic API.
 on:
   push:
+    # `stable` is a deploy pointer advanced by this workflow -- don't re-test it.
+    branches-ignore:
+      - stable
   pull_request:
 
 # A newer push to the same branch cancels an in-flight run for it, so the queue
@@ -40,3 +43,18 @@ jobs:
 
       - name: Run the test suite
         run: python -m pytest -q
+
+  # "Deploy": advance the `stable` branch to this commit, but ONLY after the
+  # suite passed and ONLY on the main line. Your Mac's ./scripts/update.sh
+  # follows `stable`, so it can never pull a red build. Uses the built-in
+  # GITHUB_TOKEN -- no personal token to create or rotate.
+  publish-stable:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/claude/homeschool-app-build-mqobsu'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Advance the tested "stable" branch
+        run: git push --force origin HEAD:refs/heads/stable

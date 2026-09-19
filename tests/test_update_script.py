@@ -87,6 +87,27 @@ def test_pulls_new_commits_pushed_since_the_last_clone(repos):
     assert (local / "new_feature.txt").exists()
 
 
+def test_follows_the_stable_branch_when_it_is_published(repos):
+    """When CI has published a `stable` branch, update follows it (tested code
+    only) rather than the current branch."""
+    origin_side, local = repos
+    (origin_side / "tested.txt").write_text("shipped after CI passed\n")
+    _git(origin_side, "add", "-A")
+    _git(origin_side, "commit", "-q", "-m", "A tested change")
+    _git(origin_side, "push", "-q", "origin", "master")
+    # CI's publish step: advance stable to the tested commit.
+    _git(origin_side, "push", "-q", "origin", "master:stable")
+
+    result = run_update(local)
+    assert result.returncode == 0
+    assert "On the latest tested build" in result.stdout
+    assert (local / "tested.txt").exists()
+    branch = subprocess.run(
+        ["git", "branch", "--show-current"], cwd=local, capture_output=True, text=True
+    ).stdout.strip()
+    assert branch == "stable"
+
+
 def test_refuses_to_pull_over_uncommitted_local_changes(repos):
     origin_side, local = repos
     (origin_side / "new_feature.txt").write_text("a new feature\n")
