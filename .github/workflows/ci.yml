@@ -1,0 +1,42 @@
+name: CI
+
+# Run the full test suite on every push and pull request. No secrets are
+# needed -- the suite mocks the LLM, so nothing here touches the Anthropic API.
+on:
+  push:
+  pull_request:
+
+# A newer push to the same branch cancels an in-flight run for it, so the queue
+# never backs up on rapid pushes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Configure git identity
+        # A few tests (e.g. the update-script test) spin up scratch git repos and
+        # commit into them; a bare CI runner has no global identity set.
+        run: |
+          git config --global user.email "ci@example.com"
+          git config --global user.name "Compass CI"
+
+      - name: Run the test suite
+        run: python -m pytest -q
