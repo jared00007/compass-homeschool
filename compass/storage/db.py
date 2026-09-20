@@ -1599,6 +1599,7 @@ class Database:
         self.conn.commit()
         self._reconcile_stale_math_mastery()
         self._migrate_grade_weights_two_surface()
+        self._prune_retired_seed_rewards()
 
     def _migrate_grade_weights_two_surface(self) -> None:
         """One-time, flag-guarded: collapse any stored four-lane grade weights
@@ -1667,6 +1668,39 @@ class Database:
                 )
         self.conn.execute(
             "INSERT OR REPLACE INTO settings (key, value) VALUES ('_mastery_reconciled_v1', '1')"
+        )
+        self.conn.commit()
+
+    def _prune_retired_seed_rewards(self) -> None:
+        """One-time, flag-guarded: drop retired seed rewards
+        (config.XP_RETIRED_SEED_REWARDS) from a parent's saved reward library.
+        Needed because add_reward_to_library persists the merged seed+saved list,
+        so a seed reward can get baked into the saved setting -- and then removing
+        it from the config seed alone wouldn't clear it from an existing DB. Runs
+        once; a parent who later deliberately re-adds one of these by hand is left
+        alone. No-op on a fresh DB (nothing saved yet)."""
+        if self.get_setting("_pruned_retired_seed_rewards_v1"):
+            return
+        retired = {n.strip().lower() for n in config.XP_RETIRED_SEED_REWARDS}
+        raw = self.get_setting("xp_reward_library")  # xp._REWARD_LIBRARY_SETTING
+        if raw and retired:
+            try:
+                parsed = json.loads(raw)
+            except (ValueError, TypeError):
+                parsed = None
+            if isinstance(parsed, list):
+                kept = [
+                    row for row in parsed
+                    if not (
+                        isinstance(row, dict)
+                        and str(row.get("name", "")).strip().lower() in retired
+                    )
+                ]
+                if len(kept) != len(parsed):
+                    self.set_setting("xp_reward_library", json.dumps(kept))
+        self.conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) "
+            "VALUES ('_pruned_retired_seed_rewards_v1', '1')"
         )
         self.conn.commit()
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -359,6 +360,43 @@ def test_reward_library_seeds_from_config_and_takes_additions(db, student):
 
     xp.remove_reward_from_library(db, "Laser tag")
     assert "Laser tag" not in [n for n, _ in xp.reward_library(db)]
+
+
+def test_retired_seed_rewards_are_pruned_from_a_saved_library(tmp_path):
+    """Rewards pulled from the seed (config.XP_RETIRED_SEED_REWARDS) get stripped
+    from a parent's saved library by the one-time migration -- otherwise one that
+    add_reward_to_library had baked into the saved setting would linger even after
+    it's gone from the seed. A parent's own additions are untouched, and it runs
+    exactly once (a later deliberate re-add survives)."""
+    db_path = tmp_path / "retired.db"
+    database = Database(db_path)
+    try:
+        # Any retired name must actually be gone from the seed, or this is moot.
+        seed_names = {n for n, _ in config.XP_REWARD_LIBRARY}
+        assert seed_names.isdisjoint(config.XP_RETIRED_SEED_REWARDS)
+
+        # Simulate an older DB: a retired reward baked into the saved library
+        # alongside a genuine parent addition, and the prune not yet run.
+        retired = config.XP_RETIRED_SEED_REWARDS[0]
+        database.set_setting(
+            "xp_reward_library",
+            json.dumps([{"name": retired, "emoji": "🧹"}, {"name": "Laser tag", "emoji": "🎯"}]),
+        )
+        database.set_setting("_pruned_retired_seed_rewards_v1", "")
+
+        database._prune_retired_seed_rewards()
+
+        names = [n for n, _ in xp.reward_library(database)]
+        for gone in config.XP_RETIRED_SEED_REWARDS:
+            assert gone not in names
+        assert "Laser tag" in names  # a real addition is kept
+
+        # Runs once: a deliberate re-add afterward is left alone.
+        xp.add_reward_to_library(database, retired, "🧹")
+        database._prune_retired_seed_rewards()
+        assert retired in [n for n, _ in xp.reward_library(database)]
+    finally:
+        database.close()
 
 
 def test_a_short_week_scales_the_goal_down(db, student):

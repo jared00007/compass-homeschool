@@ -190,10 +190,17 @@ XP_REWARD_LIBRARY: tuple[tuple[str, str], ...] = (
     ("Pick dinner one night", "🍕"),
     ("Ice cream run", "🍨"),
     ("Extra hour of screen time", "🎮"),
-    ("Friday sleep-in", "😴"),
     ("A day trip you choose", "🗺️"),
     ("$10 to spend", "💵"),
-    ("Skip one chore", "🧹"),
+)
+# Retired seed rewards -- once shipped, then pulled. A one-time migration
+# (_prune_retired_seed_rewards) strips these from any parent's saved library so
+# removing them from the seed above actually clears them from an existing DB,
+# not just a fresh install. (add_reward_to_library persists the merged
+# seed+saved list, so retired seeds can otherwise linger in the saved setting.)
+XP_RETIRED_SEED_REWARDS: tuple[str, ...] = (
+    "Friday sleep-in",
+    "Skip one chore",
 )
 # Rank names by level (level 1 = index 0). The last one holds for every level
 # beyond the list, so it never runs out -- on the compass/explorer theme.
