@@ -22,6 +22,7 @@ from compass.ui import (
     render_card_heading,
     render_daily_due,
     render_free_reading,
+    render_rewind_review,
     render_declaration_banner,
     render_first_day_celebration,
     render_message_thread,
@@ -149,6 +150,9 @@ if not is_parent():
             _render_level_and_progress()
             st.divider()
             render_daily_due(db, student, today_iso)
+        # A cumulative "Rewind" review his parent built for him, if one's waiting
+        # -- a refresher plus a quiz over things he's already learned.
+        render_rewind_review(db, student, today_iso)
         # His own free-reading logger -- comics/novels he reads on his own time
         # count too, credited on his signal with no parent step.
         render_free_reading(db, student)

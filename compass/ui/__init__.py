@@ -57,6 +57,7 @@ from compass.agents import (
     LessonGenerationError,
     StudentContext,
 )
+from compass.agents import rewind
 from compass.agents.quiz import grade as grade_quiz, passed as quiz_passes, select_questions
 from compass.compliance import declaration_status
 from compass.morning_routines import MORNING_ROUTINES, routine_for_date
@@ -1419,6 +1420,12 @@ def _maybe_auto_submit_lesson(db: Database, lesson_id: int) -> bool:
     """
     lesson = db.get_lesson(lesson_id)
     if lesson is None or lesson["status"] not in ("planned", "needs_revision"):
+        return False
+    # A Rewind review isn't a parent-graded lesson -- it self-completes the
+    # moment its quiz is taken (render_rewind_review), so it must never be routed
+    # into the parent review queue. Auto-grading now; parent-approved grading is
+    # a deliberate v2.
+    if lesson.get("agent") == rewind.AGENT_KEY:
         return False
     ready, _ = _lesson_ready_to_submit(lesson)
     if not ready:
@@ -3480,6 +3487,183 @@ def render_free_reading(db: Database, student: dict[str, Any]) -> None:
         if recent:
             shelf = " · ".join(md(r["title"]) for r in recent)
             st.caption(f"📖 Lately: {shelf}")
+
+
+def _render_one_rewind_review(
+    db: Database, student: dict[str, Any], review: dict[str, Any]
+) -> None:
+    lesson_id = review["id"]
+    payload = review["payload"]
+    metadata = review["metadata"]
+    with st.container(border=True, key=f"landon_card_rewind_{lesson_id}"):
+        st.markdown(
+            '<div style="font-size:16px; font-weight:900; margin:2px 0 3px;">'
+            '🔁 Rewind — review time</div>',
+            unsafe_allow_html=True,
+        )
+        scope = ", ".join(metadata.get("subject_scope") or [])
+        if scope:
+            st.caption(f"A look back across {scope} — stuff you've already learned.")
+        intro = payload.get("intro")
+        if intro:
+            st.markdown(md(intro))
+
+        recap = payload.get("recap") or []
+        if recap:
+            by_subject: dict[str, list[dict[str, Any]]] = {}
+            for item in recap:
+                by_subject.setdefault(item.get("subject") or "Review", []).append(item)
+            with st.expander("📓 Quick refresher — jog your memory first", expanded=True):
+                for subject_name in by_subject:
+                    st.markdown(f"**{md(subject_name)}**")
+                    for item in by_subject[subject_name]:
+                        concept = md(item.get("concept") or "")
+                        refresher = md(item.get("refresher") or "")
+                        st.markdown(f"- **{concept}** — {refresher}" if concept else f"- {refresher}")
+
+        # Reuse the whole quiz engine (rotation, timer, anti-rushing, results).
+        # agent="rewind" isn't a graded agent, so it skips grade-banking and
+        # Math mastery -- this is a low-stakes recall check, not a graded lesson.
+        render_quiz(db, student, lesson_id, metadata, payload.get("quiz") or [], agent="rewind")
+
+        quiz_result = metadata.get("quiz_result") or {}
+        if quiz_result:
+            st.caption("✅ Done — nice job showing what you remember. Your parent can see how it went.")
+
+
+def render_rewind_review(db: Database, student: dict[str, Any], today: str) -> None:
+    """Student-facing: any Rewind review waiting for him, on Home. He reads the
+    refresher and takes the cumulative quiz; taking it auto-grades and completes
+    the review (no parent step in v1). A review completed earlier today stays
+    visible with its score for the rest of the day, then drops off."""
+    reviews = db.list_rewind_reviews(student["id"], include_completed=True)
+    to_show: list[dict[str, Any]] = []
+    for review in reviews:
+        quiz_result = (review.get("metadata") or {}).get("quiz_result") or {}
+        if review["status"] != "completed":
+            if quiz_result:
+                # Quiz taken -> auto-graded and done. Self-complete rather than
+                # routing to the parent review queue (parent grading is v2).
+                db.mark_student_done(review["id"])
+                db.set_lesson_status(review["id"], "completed")
+                review["status"] = "completed"
+            to_show.append(review)
+        elif quiz_result.get("graded_on") == today:
+            to_show.append(review)
+
+    for review in to_show:
+        _render_one_rewind_review(db, student, review)
+
+
+def _rewind_within_days(lesson: dict[str, Any], days: int, today: date) -> bool:
+    """Whether a completed lesson was finished within the last `days` -- the
+    'recent only' shortcut on the Rewind picker. Tolerant of a missing/garbled
+    date (older lessons never stamped done): those never fail the filter, they
+    just don't count as recent."""
+    stamp = lesson.get("reviewed_on")
+    if not stamp:
+        return False
+    try:
+        when = date.fromisoformat(str(stamp)[:10])
+    except (ValueError, TypeError):
+        return False
+    return (today - when).days <= days
+
+
+def render_rewind_generator(db: Database, student: dict[str, Any]) -> None:
+    """Parent-facing: pick from lessons Landon has already completed and generate
+    a cumulative 'Rewind' review -- a quick cross-subject refresher plus an
+    auto-graded quiz that lands in his 'ready for you' list. One on-demand model
+    call, regenerable any time, costed like every other generation."""
+    from compass.agents import api_available
+
+    completed = db.completed_lessons_for_review(student["id"])
+    st.caption(
+        "Pull concepts he's already learned back together into one cumulative "
+        "review — a quick refresher plus an auto-graded quiz across the subjects "
+        "you pick. Great for a periodic check that it's stuck. One AI generation "
+        "each time (shows on the Costs page)."
+    )
+
+    pending = db.list_rewind_reviews(student["id"], include_completed=False)
+    if pending:
+        names = ", ".join(md(p["title"]) for p in pending)
+        st.info(f"📬 Waiting for him on Home: {names}")
+
+    if not completed:
+        st.caption(
+            "No completed lessons to review yet — once he finishes some lessons "
+            "they'll show up here to pick from."
+        )
+        return
+
+    recent_only = st.checkbox(
+        "Only show the last 30 days", value=False, key="rewind_recent_only"
+    )
+    today = date.today()
+    if recent_only:
+        completed = [l for l in completed if _rewind_within_days(l, 30, today)]
+        if not completed:
+            st.caption("Nothing completed in the last 30 days — untick to see everything.")
+            return
+
+    # Group by subject so the parent picks per-subject, with a select-all each.
+    by_subject: dict[str, list[dict[str, Any]]] = {}
+    for lesson in completed:
+        by_subject.setdefault(subjects.label(lesson["agent"]), []).append(lesson)
+
+    selected_ids: list[int] = []
+    for label in sorted(by_subject):
+        group = by_subject[label]
+        all_key = f"rewind_all_{label}"
+        # "Select all <subject>" is authoritative: when it's on, the whole group
+        # is in and its lessons are shown as a ticked list rather than as
+        # individually-toggleable boxes. (Streamlit ignores a checkbox's `value`
+        # once its key exists, so a shared default can't drive both -- one owns
+        # the group, the other owns the individuals.) Untick it to pick lessons
+        # one at a time.
+        select_all = st.checkbox(
+            f"**{label}** — {len(group)} lesson{'s' if len(group) != 1 else ''}",
+            key=all_key,
+        )
+        for lesson in group:
+            when = lesson.get("reviewed_on") or ""
+            row = f"{md(lesson['title'])}" + (f"  ·  _{when}_" if when else "")
+            if select_all:
+                st.markdown(f"&nbsp;&nbsp;✓ {row}", unsafe_allow_html=True)
+                selected_ids.append(lesson["id"])
+            elif st.checkbox(row, key=f"rewind_pick_{lesson['id']}"):
+                selected_ids.append(lesson["id"])
+
+    by_id = {l["id"]: l for l in completed}
+    chosen = [by_id[i] for i in selected_ids if i in by_id]
+
+    api_ok, api_message = api_available()
+    if not api_ok:
+        st.caption(f"⚠️ Generation unavailable: {api_message}")
+
+    count = len(chosen)
+    label = (
+        f"🔁 Generate a Rewind review from {count} lesson{'s' if count != 1 else ''}"
+        if count
+        else "🔁 Generate a Rewind review — pick at least one above"
+    )
+    if st.button(
+        label, type="primary", key="rewind_generate_btn",
+        disabled=not api_ok or count == 0, width="stretch",
+    ):
+        with st.spinner("Pulling it all back together…"):
+            try:
+                rewind.generate_rewind_review(db, student, chosen)
+            except (LessonGenerationError, ValueError) as exc:
+                st.error(str(exc))
+            else:
+                st.success("Review created — it's waiting on his Home page. 🔁")
+                # Clear the picks so the next review starts fresh.
+                for key in list(st.session_state):
+                    if key.startswith("rewind_pick_") or key.startswith("rewind_all_"):
+                        del st.session_state[key]
+                st.rerun()
 
 
 def render_quick_log(db: Database, student: dict[str, Any]) -> None:

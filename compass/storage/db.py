@@ -15,7 +15,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Sequence
 
-from compass import config
+from compass import config, subjects
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
@@ -2865,6 +2865,67 @@ class Database:
             )
         )
 
+    # The four graded Tier 1 subjects a Rewind review draws its callbacks from
+    # -- mirrors gradebook.GRADED_AGENTS, kept as a literal here to avoid a
+    # module import cycle (gradebook reads the DB, not the other way round).
+    _REVIEWABLE_AGENTS = ("math", "science", "english", "history")
+
+    def completed_lessons_for_review(self, student_id: int) -> list[dict[str, Any]]:
+        """The already-finished lessons a parent can pull into a Rewind review --
+        every completed Tier 1 lesson (math/science/english/history), newest
+        first, with just the fields the picker and the review prompt need
+        (title, topic, objectives, when it was done). Deliberately light: it
+        reads the objectives out with SQL rather than deserializing each full
+        lesson payload, the same reasoning `lesson_usage_between` gives.
+
+        A generated Rewind review is itself a lesson, but under the `rewind`
+        agent, so it never shows up here as its own review material.
+        """
+        placeholders = ",".join("?" for _ in self._REVIEWABLE_AGENTS)
+        rows = _rows(
+            self.conn.execute(
+                f"""
+                SELECT
+                    id, agent, subject, topic, title,
+                    date(created_at) AS created_on,
+                    json_extract(metadata, '$.student_done_on') AS done_on,
+                    json_extract(payload, '$.learning_objectives') AS objectives
+                FROM lessons
+                WHERE student_id = ? AND status = 'completed'
+                  AND agent IN ({placeholders})
+                ORDER BY created_at DESC, id DESC
+                """,
+                (student_id, *self._REVIEWABLE_AGENTS),
+            )
+        )
+        for row in rows:
+            raw = row.pop("objectives", None)
+            try:
+                parsed = json.loads(raw) if raw else []
+            except (ValueError, TypeError):
+                parsed = []
+            row["learning_objectives"] = [str(o) for o in parsed] if isinstance(parsed, list) else []
+            # The date the picker shows: when he actually finished it, falling
+            # back to when it was generated for older lessons never stamped done.
+            row["reviewed_on"] = row.get("done_on") or row.get("created_on")
+        return rows
+
+    def list_rewind_reviews(
+        self, student_id: int, include_completed: bool = True
+    ) -> list[dict[str, Any]]:
+        """Rewind reviews generated for this student, newest first. With
+        `include_completed=False`, only the ones he hasn't finished yet -- what
+        Home surfaces as 'ready for you'."""
+        sql = "SELECT * FROM lessons WHERE student_id = ? AND agent = 'rewind'"
+        if not include_completed:
+            sql += " AND status != 'completed'"
+        sql += " ORDER BY created_at DESC, id DESC"
+        rows = _rows(self.conn.execute(sql, (student_id,)))
+        for row in rows:
+            row["payload"] = json.loads(row["payload"])
+            row["metadata"] = json.loads(row["metadata"])
+        return rows
+
     def set_lesson_status(self, lesson_id: int, status: str) -> None:
         if status not in ("planned", "submitted", "needs_revision", "completed", "skipped"):
             raise ValueError(f"invalid lesson status: {status}")
@@ -3198,7 +3259,7 @@ class Database:
 
     def _log_quiz_hours(self, lesson_id: int, student_id: int, occurred_on: str) -> None:
         row = _row(self.conn.execute(
-            "SELECT title, subject FROM lessons WHERE id = ?", (lesson_id,)
+            "SELECT title, subject, agent, metadata FROM lessons WHERE id = ?", (lesson_id,)
         ))
         if row is None:
             return
@@ -3210,6 +3271,43 @@ class Database:
         ).fetchone()
         if already:
             return
+
+        # A Rewind review's sit-time is a bigger, cross-subject block: credit it
+        # split across the real subjects it covered (never the placeholder
+        # "review" subject on the lesson row), so the hours land where the work
+        # actually was. Everything else is a single-subject lesson quiz.
+        if row["agent"] == "rewind":
+            try:
+                meta = json.loads(row["metadata"] or "{}")
+            except (ValueError, TypeError):
+                meta = {}
+            credit_subjects = [
+                s for s in (meta.get("credit_subjects") or []) if subjects.is_valid(s)
+            ]
+            minutes = config.REWIND_DEFAULT_MINUTES
+            if credit_subjects:
+                per = minutes // len(credit_subjects)
+                subject_credits = {s: per for s in credit_subjects}
+                # Hand any rounding remainder to the first subject so the split
+                # still sums to the full block.
+                subject_credits[credit_subjects[0]] += minutes - per * len(credit_subjects)
+                primary = credit_subjects[0]
+            else:
+                primary = "reading"
+                subject_credits = {primary: minutes}
+            self.log_activity(
+                student_id=student_id,
+                title=title,
+                tier=config.TIER_CORE,
+                primary_subject=primary,
+                minutes=minutes,
+                subject_credits=subject_credits,
+                occurred_on=occurred_on,
+                description="Cumulative review assessment.",
+                source="quiz",
+            )
+            return
+
         subject = row["subject"] or "reading"
         self.log_activity(
             student_id=student_id,

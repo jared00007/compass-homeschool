@@ -48,6 +48,7 @@ from compass.ui import (
     render_lesson_review,
     render_life_skill_review_card,
     render_report_card,
+    render_rewind_generator,
     render_story_move_control,
     render_subject_plan_panel,
     render_xp_reward_editor,
@@ -602,6 +603,11 @@ if mc_view == "review":
     # weighting.
     with st.expander("🎁 Weekly reward — set the goal, reward & holiday weeks"):
         render_xp_reward_editor(db)
+
+    # Rewind: pull already-completed lessons back into a cumulative recall review
+    # for him. On-demand, parent-triggered, lands in his "ready for you" on Home.
+    with st.expander("🔁 Rewind — build a review from finished lessons"):
+        render_rewind_generator(db, student)
 
     submitted_lessons = [l for l in to_review if l["status"] == "submitted"]
     submitted_lessons.sort(key=lambda l: (l.get("metadata") or {}).get("planned_for") or "")
