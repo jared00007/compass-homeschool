@@ -162,6 +162,12 @@ REWIND_QUIZ_POOL_MAX = 30
 # sit-down cumulative assessment, logged once (retakes don't stack), same shape
 # as QUIZ_DEFAULT_MINUTES for an ordinary lesson quiz.
 REWIND_DEFAULT_MINUTES = 20
+# Book study: a structured book report (his first -- a fixed, teachable template,
+# not an AI generation) plus an optional AI comprehension quiz over the book. The
+# report's per-section minute estimates are rough planning hints; the quiz pool
+# follows the same breadth reasoning as an ordinary lesson quiz.
+BOOK_QUIZ_POOL_MIN = 12
+BOOK_QUIZ_POOL_MAX = 24
 # The one thing that *costs* XP: every time a lesson is sent back for a redo.
 # Set to a full lesson's worth on purpose -- a bounce completely erases the +20
 # he got for finishing it, so a sent-back lesson is worth nothing until he nails

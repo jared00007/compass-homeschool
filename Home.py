@@ -20,6 +20,7 @@ from compass.ui import (
     render_board_days,
     render_brain_break,
     render_card_heading,
+    render_book_study,
     render_daily_due,
     render_free_reading,
     render_rewind_review,
@@ -153,6 +154,8 @@ if not is_parent():
         # A cumulative "Rewind" review his parent built for him, if one's waiting
         # -- a refresher plus a quiz over things he's already learned.
         render_rewind_review(db, student, today_iso)
+        # A book report and/or book quiz over what he's reading, if assigned.
+        render_book_study(db, student, today_iso)
         # His own free-reading logger -- comics/novels he reads on his own time
         # count too, credited on his signal with no parent step.
         render_free_reading(db, student)

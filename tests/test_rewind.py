@@ -250,8 +250,8 @@ def test_mission_control_can_generate_a_rewind_review(monkeypatch, tmp_path):
 
     at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
 
-    # Select all Math (authoritative), then generate (LLM mocked).
-    at.checkbox(key="rewind_all_Math").set_value(True).run()
+    # "Review everything" selects all completed lessons, then generate (LLM mocked).
+    at.checkbox(key="rewind_all").set_value(True).run()
     with patch("compass.agents.rewind.generate_lesson", return_value=a_rewind_payload()):
         at.button(key="rewind_generate_btn").click().run()
     assert not at.exception, [e.message for e in at.exception]
@@ -261,3 +261,27 @@ def test_mission_control_can_generate_a_rewind_review(monkeypatch, tmp_path):
     db2.close()
     assert len(reviews) == 1
     assert reviews[0]["agent"] == rewind.AGENT_KEY
+
+
+def test_mission_control_rewind_multiselect_picks_specific_lessons(monkeypatch, tmp_path):
+    db_path = tmp_path / "rewind.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    m = _seed_completed(db, student, "math", "math", "Slope", ["Find slope"])
+    _seed_completed(db, student, "science", "science", "Cells", ["Name organelles"])
+    db.close()
+
+    monkeypatch.setattr("compass.agents.api_available", lambda: (True, "Ready."))
+    at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
+
+    # Pick just the one Math lesson from its multiselect, then generate.
+    at.multiselect(key="rewind_ms_Math").set_value([m]).run()
+    with patch("compass.agents.rewind.generate_lesson", return_value=a_rewind_payload()):
+        at.button(key="rewind_generate_btn").click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db2 = Database(db_path)
+    reviews = db2.list_rewind_reviews(student["id"])
+    db2.close()
+    assert len(reviews) == 1
+    assert reviews[0]["metadata"]["source_lesson_ids"] == [m]

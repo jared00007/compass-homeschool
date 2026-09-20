@@ -10,7 +10,7 @@ from datetime import date
 
 import streamlit as st
 
-from compass.agents import LessonGenerationError, book_summary, get_agent
+from compass.agents import LessonGenerationError, book_study, book_summary, get_agent
 from compass.ui import (
     api_status_banner,
     is_parent,
@@ -205,6 +205,44 @@ with books_tab:
                         st.rerun()
                     except LessonGenerationError as exc:
                         st.error(str(exc))
+
+            # Book study: a structured report (his first -- a fixed, teachable
+            # scaffold, no AI) and an AI comprehension quiz, both over this book.
+            # Offered once he's actually into the book (reading or finished).
+            if book["status"] in ("reading", "finished"):
+                with st.expander("📖 Book study — report & quiz"):
+                    active_report = next(
+                        (
+                            l for l in db.list_lessons(
+                                student["id"], agent=book_study.AGENT_KEY_REPORT, limit=50
+                            )
+                            if (l.get("metadata") or {}).get("book_id") == book["id"]
+                            and l["status"] in ("planned", "needs_revision", "submitted")
+                        ),
+                        None,
+                    )
+                    st.caption(
+                        "A guided book report walks him through the structure section "
+                        "by section (it's free — a fixed template, not an AI generation). "
+                        "The quiz is an AI comprehension check he takes and auto-grades."
+                    )
+                    study_cols = st.columns(2)
+                    if active_report is not None:
+                        study_cols[0].success("✅ Report assigned — it's on his Home.")
+                    elif study_cols[0].button("📝 Assign book report", key=f"bookreport_{book['id']}"):
+                        book_study.build_book_report(db, student, book)
+                        st.toast("Book report assigned — it's on his Home. 📖")
+                        st.rerun()
+                    if study_cols[1].button(
+                        "📚 Generate book quiz", key=f"bookquiz_{book['id']}", disabled=not api_ok
+                    ):
+                        with st.spinner("Writing a comprehension quiz…"):
+                            try:
+                                book_study.generate_book_quiz(db, student, book)
+                                st.toast("Book quiz created — it's on his Home. 📚")
+                                st.rerun()
+                            except LessonGenerationError as exc:
+                                st.error(str(exc))
 
 # --- vocabulary --------------------------------------------------------------
 
