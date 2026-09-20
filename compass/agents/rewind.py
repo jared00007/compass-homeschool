@@ -37,11 +37,12 @@ _AGENT_CREDIT_SUBJECT = {
 }
 
 # What the parent's selection turns into: a short recap grouped by subject, then
-# a cumulative quiz. The quiz item shape is exactly the lesson quiz shape, so
-# `quiz.verify_quiz` and the existing quiz UI accept it unchanged.
+# a cumulative quiz. Shaped like an ordinary lesson (overview + a Learn-style
+# refresher + quiz) so it renders through the exact same lesson UI every other
+# lesson uses -- it IS a lesson, just a review one.
 REWIND_SCHEMA = _object(
     {
-        "intro": {
+        "overview": {
             "type": "string",
             "description": (
                 "One or two warm sentences to the student setting up this review -- "
@@ -50,32 +51,14 @@ REWIND_SCHEMA = _object(
                 "13-year-old, encouraging, not a parent-facing summary."
             ),
         },
-        "recap": {
-            "type": "array",
+        "refresher": {
+            "type": "string",
             "description": (
-                "A quick refresher -- ONE short callback per key concept being "
-                "reviewed, in his own reading level. Consolidate where two selected "
-                "lessons cover the same idea; don't pad to one-per-lesson. This is a "
-                "fast reminder to jog his memory before the quiz, not a re-teach."
-            ),
-            "items": _object(
-                {
-                    "subject": {
-                        "type": "string",
-                        "description": "Which subject this concept comes from (e.g. Math, Science).",
-                    },
-                    "concept": {
-                        "type": "string",
-                        "description": "The concept's name -- a few words, the thing being recalled.",
-                    },
-                    "refresher": {
-                        "type": "string",
-                        "description": (
-                            "One or two plain sentences reminding him what it is and how it "
-                            "works -- enough to jog the memory, not to teach it from scratch."
-                        ),
-                    },
-                }
+                "A quick refresher he reads before the quiz -- a short markdown recap "
+                "grouped by subject. Use a bold subject heading, then one bullet per key "
+                "concept (bold the concept name, then a sentence or two jogging his "
+                "memory of how it works). Consolidate overlapping ideas across lessons; "
+                "this is a memory jog, not a re-teach. Plain, at his reading level."
             ),
         },
         "quiz": {
@@ -124,13 +107,14 @@ encouraging, the way a good tutor warms up a review session. Never mention that 
 model wrote this, and never invent concepts that aren't in the material he's \
 actually covered.
 
-Produce two things:
-- `recap`: a quick refresher, one short callback per key concept, grouped by \
-subject. Consolidate overlapping ideas; keep each to a sentence or two. This is \
-a memory jog, not a re-teach.
+Produce three things:
+- `overview`: one or two encouraging sentences setting up the review.
+- `refresher`: a short markdown recap grouped by subject (a bold subject \
+heading, then one bullet per key concept -- bold the concept, then a sentence \
+jogging his memory). Consolidate overlapping ideas; a memory jog, not a re-teach.
 - `quiz`: a pool of {min}-{max} multiple-choice questions that MIX the subjects \
 and concepts together -- a genuine cumulative check. Cover every concept in the \
-recap across a range of difficulty. Each question must be answerable from the \
+refresher across a range of difficulty. Each question must be answerable from the \
 material below; exactly four choices, one correct.
 
 ## What {name} has already learned (the material to review)
@@ -187,8 +171,8 @@ def generate_rewind_review(
     payload = generate_lesson(
         system=system,
         user_prompt=(
-            "Build the review now. Return the intro, the recap, and the cumulative "
-            "quiz pool as structured fields only."
+            "Build the review now. Return the overview, the refresher, and the "
+            "cumulative quiz pool as structured fields only."
         ),
         schema=REWIND_SCHEMA,
         effort=config.DEFAULT_EFFORT,
@@ -201,6 +185,16 @@ def generate_rewind_review(
         {subjects.label(s.get("subject") or s.get("agent") or "") for s in selections}
     )
     scope = ", ".join(subject_labels) if subject_labels else "several subjects"
+
+    # Shape the model's output into the ordinary lesson payload so it renders
+    # through render_lesson + render_quiz exactly like every other lesson: the
+    # refresher becomes the "Learn" section, the quiz stays the quiz. Keep _usage
+    # for cost tracking.
+    payload["title"] = f"Rewind review — {scope}"
+    payload["overview"] = payload.get("overview") or ""
+    payload["learn"] = {"explanation": payload.pop("refresher", ""), "video": {"found": False}}
+    payload["learning_objectives"] = ["Show you still remember what you've learned across subjects"]
+    payload["activities"] = []
     # Real WA subject keys the review's assessment time should credit -- a
     # cumulative review spans several, so its sit-time is split across the ones it
     # actually covered rather than pinned to a made-up "review" subject. English

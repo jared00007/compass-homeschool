@@ -3490,128 +3490,95 @@ def render_free_reading(db: Database, student: dict[str, Any]) -> None:
             st.caption(f"📖 Lately: {shelf}")
 
 
-def _render_one_rewind_review(
-    db: Database, student: dict[str, Any], review: dict[str, Any]
+def _render_review_quiz_lesson(
+    db: Database, student: dict[str, Any], lesson: dict[str, Any], frame_title: str
 ) -> None:
-    lesson_id = review["id"]
-    payload = review["payload"]
-    metadata = review["metadata"]
-    with st.container(border=True, key=f"landon_card_rewind_{lesson_id}"):
-        st.markdown(
-            '<div style="font-size:16px; font-weight:900; margin:2px 0 3px;">'
-            '🔁 Rewind — review time</div>',
-            unsafe_allow_html=True,
-        )
-        scope = ", ".join(metadata.get("subject_scope") or [])
-        if scope:
-            st.caption(f"A look back across {scope} — stuff you've already learned.")
-        intro = payload.get("intro")
-        if intro:
-            st.markdown(md(intro))
+    """Render an auto-graded review lesson (a Rewind review or a book quiz) the
+    same way every other lesson renders: the comic lesson frame (title, overview,
+    the refresher as its Learn section) followed by the quiz. Not a graded agent,
+    so the quiz skips grade-banking and mastery -- it's a recall check."""
+    metadata = lesson.get("metadata") or {}
+    render_lesson(
+        lesson["payload"],
+        for_parent=False,
+        db=db,
+        lesson_id=lesson["id"],
+        metadata=metadata,
+        comic_layout=True,
+        comic_frame_title=frame_title,
+        student=student,
+    )
+    render_quiz(
+        db, student, lesson["id"], metadata,
+        lesson["payload"].get("quiz") or [], agent=lesson["agent"],
+    )
 
-        recap = payload.get("recap") or []
-        if recap:
-            by_subject: dict[str, list[dict[str, Any]]] = {}
-            for item in recap:
-                by_subject.setdefault(item.get("subject") or "Review", []).append(item)
-            with st.expander("📓 Quick refresher — jog your memory first", expanded=True):
-                for subject_name in by_subject:
-                    st.markdown(f"**{md(subject_name)}**")
-                    for item in by_subject[subject_name]:
-                        concept = md(item.get("concept") or "")
-                        refresher = md(item.get("refresher") or "")
-                        st.markdown(f"- **{concept}** — {refresher}" if concept else f"- {refresher}")
 
-        # Reuse the whole quiz engine (rotation, timer, anti-rushing, results).
-        # agent="rewind" isn't a graded agent, so it skips grade-banking and
-        # Math mastery -- this is a low-stakes recall check, not a graded lesson.
-        render_quiz(db, student, lesson_id, metadata, payload.get("quiz") or [], agent="rewind")
-
-        quiz_result = metadata.get("quiz_result") or {}
+def _self_complete_after_quiz(db: Database, lesson: dict[str, Any], today: str) -> bool:
+    """Shared 'ready for you' rule for the auto-graded review lessons (Rewind,
+    book quiz): show it while it's open; the moment its quiz is taken, mark it
+    complete (auto-graded, no parent step) but keep it visible with its score for
+    the rest of that day. Returns whether to render it now."""
+    quiz_result = (lesson.get("metadata") or {}).get("quiz_result") or {}
+    if lesson["status"] != "completed":
         if quiz_result:
-            st.caption("✅ Done — nice job showing what you remember. Your parent can see how it went.")
+            db.mark_student_done(lesson["id"])
+            db.set_lesson_status(lesson["id"], "completed")
+            lesson["status"] = "completed"
+        return True
+    return quiz_result.get("graded_on") == today
 
 
 def render_rewind_review(db: Database, student: dict[str, Any], today: str) -> None:
-    """Student-facing: any Rewind review waiting for him, on Home. He reads the
-    refresher and takes the cumulative quiz; taking it auto-grades and completes
-    the review (no parent step in v1). A review completed earlier today stays
-    visible with its score for the rest of the day, then drops off."""
-    reviews = db.list_rewind_reviews(student["id"], include_completed=True)
-    to_show: list[dict[str, Any]] = []
-    for review in reviews:
-        quiz_result = (review.get("metadata") or {}).get("quiz_result") or {}
-        if review["status"] != "completed":
-            if quiz_result:
-                # Quiz taken -> auto-graded and done. Self-complete rather than
-                # routing to the parent review queue (parent grading is v2).
-                db.mark_student_done(review["id"])
-                db.set_lesson_status(review["id"], "completed")
-                review["status"] = "completed"
-            to_show.append(review)
-        elif quiz_result.get("graded_on") == today:
-            to_show.append(review)
-
-    for review in to_show:
-        _render_one_rewind_review(db, student, review)
+    """Student-facing: any Rewind review waiting for him, on Home -- rendered as
+    an ordinary lesson (refresher + cumulative quiz). Taking the quiz auto-grades
+    and completes it (no parent step); a review taken earlier today stays visible
+    with its score for the rest of the day, then drops off."""
+    for review in db.list_rewind_reviews(student["id"], include_completed=True):
+        if _self_complete_after_quiz(db, review, today):
+            _render_review_quiz_lesson(db, student, review, "🔁 Rewind — Review Time")
 
 
 def _render_book_report_card(db: Database, student: dict[str, Any], report: dict[str, Any]) -> None:
+    """The book report as an ordinary writing lesson: the comic lesson frame with
+    its sections as writing boxes, plus the standard 'Turn it in for review'
+    button (the report is parent-graded, so it goes through the review queue)."""
     lesson_id = report["id"]
     metadata = report.get("metadata") or {}
-    with st.container(border=True, key=f"landon_card_bookreport_{lesson_id}"):
-        st.markdown(
-            '<div style="font-size:16px; font-weight:900; margin:2px 0 3px;">'
-            '📖 Book report</div>',
-            unsafe_allow_html=True,
-        )
-        if report["status"] == "submitted":
+    if report["status"] == "submitted":
+        with st.container(border=True, key=f"landon_card_bookreport_{lesson_id}"):
+            st.markdown("### 📖 Book report")
             st.info("📤 Turned in — your parent is reading it. Nice work finishing!")
-            return
-        if report["status"] == "needs_revision":
-            note = (metadata.get("lesson_feedback") or "").strip()
-            st.warning(
-                "Your parent sent this back for another look"
-                + (f" — “{md(note)}”" if note else "")
-                + ". Fix what they mentioned, then turn it in again."
-            )
-        st.caption(
-            "Work through it a section at a time — save each one, and it turns "
-            "itself in for your parent once every part is done."
+        return
+    if report["status"] == "needs_revision":
+        note = (metadata.get("lesson_feedback") or "").strip()
+        st.warning(
+            "Your parent sent your book report back for another look"
+            + (f" — “{md(note)}”" if note else "")
+            + ". Fix what they mentioned, then turn it in again."
         )
-        # The whole writing pipeline: each section is a writing box that saves to
-        # this lesson; finishing the last one auto-submits it for parent review.
-        render_lesson(
-            report["payload"],
-            for_parent=False,
-            db=db,
-            lesson_id=lesson_id,
-            metadata=metadata,
-            student=student,
-            comic_layout=False,
-        )
-
-
-def _render_book_quiz_card(db: Database, student: dict[str, Any], quiz_lesson: dict[str, Any]) -> None:
-    lesson_id = quiz_lesson["id"]
-    payload = quiz_lesson["payload"]
-    metadata = quiz_lesson["metadata"]
-    with st.container(border=True, key=f"landon_card_bookquiz_{lesson_id}"):
-        st.markdown(
-            '<div style="font-size:16px; font-weight:900; margin:2px 0 3px;">'
-            '📚 Book quiz</div>',
-            unsafe_allow_html=True,
-        )
-        book_title = md(quiz_lesson.get("title", "").replace("📚 Book quiz — ", ""))
-        if book_title:
-            st.caption(f"How well did you follow {book_title}?")
-        intro = payload.get("intro")
-        if intro:
-            st.markdown(md(intro))
-        # Auto-graded like Rewind: not a graded agent, no writing, self-completes.
-        render_quiz(db, student, lesson_id, metadata, payload.get("quiz") or [], agent="book_quiz")
-        if metadata.get("quiz_result"):
-            st.caption("✅ Done — your parent can see how it went.")
+    render_lesson(
+        report["payload"],
+        for_parent=False,
+        db=db,
+        lesson_id=lesson_id,
+        metadata=metadata,
+        comic_layout=True,
+        comic_frame_title="📖 Book Report",
+        student=student,
+    )
+    # Same explicit turn-in a subject-page lesson gets, so he has a clear action
+    # (it also auto-submits when the last section is saved -- whichever comes
+    # first). Disabled until every section has a written response.
+    ready, why_not = _lesson_ready_to_submit(report)
+    if st.button(
+        "📬 Turn in my book report", key=f"submit_bookreport_{lesson_id}",
+        type="primary", disabled=not ready, width="stretch",
+    ):
+        db.submit_lesson(lesson_id)
+        st.rerun()
+    if not ready:
+        st.caption(why_not)
 
 
 def render_book_study(db: Database, student: dict[str, Any], today: str) -> None:
@@ -3626,20 +3593,9 @@ def render_book_study(db: Database, student: dict[str, Any], today: str) -> None
     if active_report is not None:
         _render_book_report_card(db, student, active_report)
 
-    quizzes = db.list_lessons(student["id"], agent=book_study.AGENT_KEY_QUIZ, limit=50)
-    for quiz_lesson in quizzes:
-        quiz_result = (quiz_lesson.get("metadata") or {}).get("quiz_result") or {}
-        show = False
-        if quiz_lesson["status"] != "completed":
-            if quiz_result:
-                db.mark_student_done(quiz_lesson["id"])
-                db.set_lesson_status(quiz_lesson["id"], "completed")
-                quiz_lesson["status"] = "completed"
-            show = True
-        elif quiz_result.get("graded_on") == today:
-            show = True
-        if show:
-            _render_book_quiz_card(db, student, quiz_lesson)
+    for quiz_lesson in db.list_lessons(student["id"], agent=book_study.AGENT_KEY_QUIZ, limit=50):
+        if _self_complete_after_quiz(db, quiz_lesson, today):
+            _render_review_quiz_lesson(db, student, quiz_lesson, "📚 Book Quiz")
 
 
 def _rewind_option_label(lesson: dict[str, Any]) -> str:

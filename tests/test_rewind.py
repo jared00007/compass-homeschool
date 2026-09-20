@@ -53,11 +53,8 @@ def _seed_completed(db, student, agent, subject, title, objectives):
 
 def a_rewind_payload(n_questions=16, **overrides):
     payload = {
-        "intro": "Let's look back at what you've learned!",
-        "recap": [
-            {"subject": "Math", "concept": "Slope", "refresher": "Rise over run."},
-            {"subject": "Science", "concept": "Cells", "refresher": "The units of life."},
-        ],
+        "overview": "Let's look back at what you've learned!",
+        "refresher": "**Math**\n- **Slope**: rise over run\n\n**Science**\n- **Cells**: the units of life",
         "quiz": [
             {
                 "question": f"Question {i}?",

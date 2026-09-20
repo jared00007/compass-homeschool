@@ -178,11 +178,11 @@ def build_book_report(db: Any, student: dict[str, Any], book: dict[str, Any]) ->
 
 QUIZ_SCHEMA = _object(
     {
-        "intro": {
+        "overview": {
             "type": "string",
             "description": (
-                "One warm sentence to the student introducing this quiz -- that it checks "
-                "how well he followed the book. Written to a 13-year-old."
+                "One or two warm sentences to the student introducing this quiz -- that "
+                "it checks how well he followed the book. Written to a 13-year-old."
             ),
         },
         "quiz": {
@@ -252,12 +252,18 @@ def generate_book_quiz(db: Any, student: dict[str, Any], book: dict[str, Any]) -
     )
     payload = generate_lesson(
         system=system,
-        user_prompt="Write the comprehension quiz now. Return the intro and quiz pool only.",
+        user_prompt="Write the comprehension quiz now. Return the overview and quiz pool only.",
         schema=QUIZ_SCHEMA,
         effort=config.DEFAULT_EFFORT,
     )
     verify_quiz(payload)
     title = book.get("title") or "your book"
+    # Shape as an ordinary (quiz-only) lesson so it renders through the standard
+    # lesson UI. No learn/activities -- just the overview and the quiz.
+    payload["title"] = f"Book quiz — {title}"
+    payload["overview"] = payload.get("overview") or ""
+    payload["learning_objectives"] = [f"Show you understood {title}"]
+    payload["activities"] = []
     return db.save_lesson(
         student_id=student["id"],
         agent=AGENT_KEY_QUIZ,

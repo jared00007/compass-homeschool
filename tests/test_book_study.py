@@ -48,7 +48,7 @@ def book(db, student):
 
 def a_quiz_payload(n=14, **overrides):
     payload = {
-        "intro": "How well did you follow the story?",
+        "overview": "How well did you follow the story?",
         "quiz": [
             {
                 "question": f"Question {i}?",
@@ -150,8 +150,8 @@ def test_home_shows_a_book_report_card(monkeypatch, tmp_path):
     db.close()
 
     at = _open(monkeypatch, db_path, HOME_PATH, as_parent=False)
-    body = " ".join(m.value for m in at.markdown)
-    assert "Book report" in body
+    body = " ".join(m.value for m in at.markdown).lower()
+    assert "book report" in body
 
 
 def test_home_book_quiz_auto_completes_without_a_parent_step(monkeypatch, tmp_path):
