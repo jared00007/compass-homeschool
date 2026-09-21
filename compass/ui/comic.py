@@ -742,6 +742,32 @@ def _render_learn_section(lesson: dict[str, Any], *, parent: bool) -> None:
         _ui.st.markdown("### ✏️ Now you try")
 
 
+def _render_fun_extra(lesson: dict[str, Any]) -> None:
+    """An OPTIONAL, ungraded 'just for fun' activity -- shown only when the lesson
+    carries one (the parent opted in at generation). Never part of the submit
+    gate: he can do it or skip it, and it never blocks turning the lesson in."""
+    fun = lesson.get("fun_extra") or {}
+    title = (fun.get("title") or "").strip()
+    body = (fun.get("instructions") or "").strip()
+    if not title and not body:
+        return
+    inner = ""
+    if title:
+        inner += f'<div style="font-weight:800;margin-bottom:2px;">{html.escape(title)}</div>'
+    if body:
+        inner += (
+            f'<div style="font-size:14px;">{html.escape(body).replace(chr(10), "<br>")}</div>'
+        )
+    _ui.st.markdown(
+        '<div style="border:2px dashed var(--c-alt);border-radius:var(--c-radius);'
+        'background:var(--c-panel);padding:10px 14px;margin:12px 0 4px;">'
+        '<div style="font-weight:900;font-size:12px;text-transform:uppercase;'
+        'letter-spacing:.04em;color:var(--c-alt);margin-bottom:4px;">'
+        '🎉 Just for fun · optional · no grade</div>' + inner + "</div>",
+        unsafe_allow_html=True,
+    )
+
+
 def render_lesson(
     lesson: dict[str, Any],
     for_parent: bool | None = None,
@@ -826,6 +852,7 @@ def render_lesson(
                     key_prefix=key_prefix,
                     student=student,
                 )
+            _render_fun_extra(lesson)
     else:
         _ui.st.subheader(md(lesson.get("title", "Lesson")))
         if lesson.get("overview"):
@@ -859,6 +886,7 @@ def render_lesson(
                         metadata=metadata,
                         student=student,
                     )
+        _render_fun_extra(lesson)
 
     # Parent-only: the actual check now happens digitally, in Activity Log's
     # own review card (render_assessment_card), not here -- nothing for him

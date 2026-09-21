@@ -36,6 +36,19 @@ def build_standard_prompt(
             "Treat this as a constraint, not a suggestion.",
         ]
 
+    if ctx.inputs.get("include_fun_extra"):
+        lines += [
+            "",
+            "## Add an optional fun extra",
+            "The parent asked for a light, OPTIONAL fun activity this time. Fill "
+            "`fun_extra` with a quick, genuinely fun thing tied to today's topic -- a "
+            "game, a challenge, a 'try this at home,' a doodle or a would-you-rather. "
+            "It's ungraded, has no single right answer, takes about 5-10 minutes, and "
+            "he can skip it. Keep it light -- a break, not a third check.",
+        ]
+    else:
+        lines += ["", "Leave `fun_extra` empty (empty strings) -- none was requested."]
+
     lines += [
         "",
         f"Target length: about {ctx.minutes} minutes of instructional time.",

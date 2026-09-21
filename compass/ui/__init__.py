@@ -553,6 +553,58 @@ def difficulty_override_control(db: Database, key: str) -> str:
     )
 
 
+# Saved one-tap note snippets for the "Note for this lesson" field -- the common
+# ways a parent steers a single lesson, so they don't retype them each time.
+_NOTE_HINTS: tuple[tuple[str, str], ...] = (
+    ("🖐️ Make it hands-on", "Make one of the two checks hands-on — a model, a measurement, a build, or a sketch, not just writing."),
+    ("🌍 Real-world use", "Tie the lesson to a real situation he'd actually run into, and make one check use it."),
+    ("🐢 He struggled here", "He struggled with this last time — go slower, add an extra worked example, and keep the checks simple."),
+    ("🎮 Use his interests", "Lean on his interests for the examples and numbers wherever it genuinely fits."),
+    ("🔁 Light review", "Keep this a light review — reinforce what he already learned, don't introduce anything new."),
+    ("🚀 Push him", "He's got the basics — push the depth on this one and expect him to reason it out."),
+)
+
+_PLAN_TIPS_MD = """\
+**Set the knobs to the lesson — a science concept and a math skill aren't the same.**
+
+- **Minutes/day** is your pacing dial (it sizes how much gets written and what's
+  logged; it doesn't put a timer on his reading):
+  - Tight, procedural (a math skill, a grammar point): **30–40**
+  - Concept + reading + hands-on (science, history): **45–60**
+  - Real writing (an essay, a book report): **45–60**
+  - Quick review / one-off: **20–30**
+- **How many lessons?** Leave on **auto** for most — it sizes the topic itself.
+  Pick **1** for a review or a one-off; pick **3–5** for a big unit so it *builds
+  up over days* instead of cramming one bloated lesson.
+- **Difficulty**: *Ease in* for a rough week, *Standard* normally, *Push* when
+  he's got the basics. It changes how it's taught, never what he's graded on.
+- **Note for this lesson** is your steering wheel — tap a hint below or type your
+  own ("make check 2 a build", "he mixed up X last time").
+- **🎉 Fun activity** adds one light, optional, ungraded thing to break up the
+  work — your call per lesson.
+
+Every lesson comes out the same shape either way: **Learn → Worked example →
+two checks → quiz**, so he learns at his own pace, then does, then proves it.
+"""
+
+
+def _render_note_hints(note_key: str) -> None:
+    """One-tap chips that append a saved snippet to the lesson-note field
+    (`note_key`). The append happens in the button callback, before the note
+    widget is re-instantiated on the next run, so the text box picks it up."""
+    def _append(snippet: str) -> None:
+        existing = (st.session_state.get(note_key) or "").strip()
+        st.session_state[note_key] = f"{existing} {snippet}".strip() if existing else snippet
+
+    st.caption("Quick add to the note above:")
+    cols = st.columns(3)
+    for i, (label, snippet) in enumerate(_NOTE_HINTS):
+        cols[i % 3].button(
+            label, key=f"{note_key}_hint_{i}", on_click=_append, args=(snippet,),
+            use_container_width=True,
+        )
+
+
 def render_subject_plan_panel(
     db: Database, student: dict[str, Any], agent_key: str, *, api_ok: bool
 ) -> None:
@@ -768,6 +820,21 @@ def render_subject_plan_panel(
     else:
         st.error(f"Unknown subject: {agent_key}")
         return
+
+    # Shared across every subject: quick note hints, the optional fun toggle, and
+    # a tips panel. The hint chips append to this subject's own note field (keyed
+    # `{k}_note`, rendered above) via a callback, so on the next run the note box
+    # picks up the added text.
+    _render_note_hints(f"{k}_note")
+    include_fun = st.checkbox(
+        "🎉 Add a light, optional fun activity (ungraded — his call whether to do it)",
+        key=f"{k}_fun",
+        help="Adds one quick, playful, no-grade activity tied to the topic — a game, a "
+        "challenge, a 'try this at home.' Leave off for a straight-ahead lesson.",
+    )
+    ctx.inputs["include_fun_extra"] = include_fun
+    with st.expander("💡 Tips for a strong lesson"):
+        st.markdown(_PLAN_TIPS_MD)
 
     proposal = agent.propose_topic(ctx)
     render_proposal(agent, proposal)

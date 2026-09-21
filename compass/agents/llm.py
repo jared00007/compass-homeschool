@@ -278,6 +278,27 @@ LESSON_SCHEMA: dict[str, Any] = _object(
             ),
         },
         "estimated_minutes": {"type": "integer"},
+        "fun_extra": _object(
+            {
+                "title": {
+                    "type": "string",
+                    "description": (
+                        "Short title for an OPTIONAL, light, fun activity tied to today's "
+                        "topic. Empty string when none was requested (the default)."
+                    ),
+                },
+                "instructions": {
+                    "type": "string",
+                    "description": (
+                        "Written to the student: a quick, low-stakes, genuinely FUN thing "
+                        "connected to the lesson -- a game, a challenge, a 'try this at "
+                        "home,' a doodle, a would-you-rather. No grade, no single right "
+                        "answer, about 5-10 minutes, and he can skip it. It's a break, not "
+                        "a third graded check. Empty string when none was requested."
+                    ),
+                },
+            }
+        ),
         "parent_notes": {
             "type": "string",
             "description": "How to run this, what to watch for, common misconceptions.",

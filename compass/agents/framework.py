@@ -324,9 +324,10 @@ above grade level into content that belongs to a later year.
 
 ## Writing for a 13-year-old
 {student_name} reads `title`, `overview`, `learning_objectives`, `learn`, \
-`worked_example`, `activities`, `materials`, the video's `why`, and every `quiz` \
-question directly, on his own screen, exactly as you write them. Write all of \
-those for a 13-year-old — not for a parent, not for a curriculum committee:
+`worked_example`, `activities`, `materials`, `fun_extra` (when present), the \
+video's `why`, and every `quiz` question directly, on his own screen, exactly as \
+you write them. Write all of those for a 13-year-old — not for a parent, not for \
+a curriculum committee:
 
 - Short sentences, one idea each. If a sentence needs a comma to hold two \
 ideas, that's two sentences instead.
@@ -644,6 +645,9 @@ class LessonAgent:
                                           "channel": "", "why": ""}},
         )
         payload.setdefault("worked_example", {"problem": "", "steps": ""})
+        # Optional, ungraded "just for fun" activity -- present only when the
+        # parent asked for one this generation; empty (and unrendered) otherwise.
+        payload.setdefault("fun_extra", {"title": "", "instructions": ""})
         # Defensive, per activity, same as the other setdefaults above --
         # `video` is required by the schema, but every other optional-in-
         # practice field gets this same belt-and-suspenders treatment.
