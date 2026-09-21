@@ -228,6 +228,13 @@ you are not confident about a specific detail of this book, ask about it at a \
 level you ARE sure of (major characters, central conflict, overall outcome) \
 rather than inventing specifics.
 
+Spread the pool across the WHOLE book -- beginning, middle, and end -- and across \
+kinds of understanding: what happened (plot), who did it and why (characters), \
+where/when it mattered (setting), and what it means (theme, a character's \
+change). Not fifteen questions about chapter one. Before you finish, check that \
+every question is answerable by someone who genuinely read the book and that no \
+answer depends on a detail you're guessing at.
+
 ## The book
 - Title: {title}
 - Author: {author}

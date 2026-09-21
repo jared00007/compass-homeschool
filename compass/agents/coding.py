@@ -194,6 +194,20 @@ whole session; added together they must not exceed the total.
 ## Format
 Target roughly {minutes} minutes total. Match `estimated_minutes` to the sum of \
 your step minutes.
+
+## Before you finish — the bar every guide clears
+Re-read the guide as he will, sitting at the computer alone, and fix anything \
+that fails:
+- **Every technique a step uses is taught in `concepts` first** — he never hits \
+a step that needs something the guide never explained. It stands on its own.
+- **Each step is concrete and doable** — what to write and what he should see \
+happen, not just "now add the logic."
+- **Examples unblock, they don't solve** — a short real snippet of the \
+technique, never the whole answer pasted in.
+- **The gotchas are real** — the specific mistakes and what the error actually \
+looks like, not "debug carefully."
+- **It's the right language/tool** for this module, and the minutes and credits \
+are honest.
 """
 
 

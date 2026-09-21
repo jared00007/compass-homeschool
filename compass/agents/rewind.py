@@ -117,6 +117,13 @@ and concepts together -- a genuine cumulative check. Cover every concept in the 
 refresher across a range of difficulty. Each question must be answerable from the \
 material below; exactly four choices, one correct.
 
+Two rules that keep it fair:
+- **Every quiz question is answerable from a concept named in the refresher \
+above it.** Don't quiz a detail you didn't jog. If a question needs a fact, the \
+refresher reminds him of it first -- the refresher and the quiz are one piece.
+- **Only review what he actually learned** (the material below). Never invent a \
+concept, a number, or a definition that isn't in it.
+
 ## What {name} has already learned (the material to review)
 {material}
 """

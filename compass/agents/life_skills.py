@@ -197,6 +197,19 @@ five thin ones. An over-credited hour is a compliance problem, not a win.
 `overview`, `prep`, and `watch_for` are written to the parent.
 - Target roughly {minutes} minutes total. Match `estimated_minutes` to the sum of \
 your step minutes.
+
+## Before you finish — the bar every plan clears
+Re-read the plan as the parent will on Saturday morning and fix anything that \
+fails one of these:
+- **It's a real hands-on task, not a desk one**, and every step is concrete — a \
+real tool, a real amount, a real number — never "discuss" or "talk about."
+- **`prep` lists everything they need ready**, so nothing stops them halfway \
+through hunting for a thing.
+- **Real danger is flagged, and only where it's real** — not a warning bolted to \
+every step.
+- **Voices are right**: `what_he_does` reads to a capable 13-year-old; the parent \
+fields read to an adult.
+- **The minutes add up** and every credit is honestly earned, not padded.
 """
 
 
