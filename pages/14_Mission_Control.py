@@ -47,6 +47,7 @@ from compass.ui import (
     render_quick_log,
     render_lesson_review,
     render_life_skill_review_card,
+    render_day_target_editor,
     render_report_card,
     render_rewind_generator,
     render_story_move_control,
@@ -608,6 +609,10 @@ if mc_view == "review":
     # for him. On-demand, parent-triggered, lands in his "ready for you" on Home.
     with st.expander("🔁 Rewind — build a review from finished lessons"):
         render_rewind_generator(db, student)
+
+    # Daily rhythm: what counts as a full day, so "enough for today" kicks in.
+    with st.expander("🎯 Daily rhythm — what counts as a full day"):
+        render_day_target_editor(db)
 
     submitted_lessons = [l for l in to_review if l["status"] == "submitted"]
     submitted_lessons.sort(key=lambda l: (l.get("metadata") or {}).get("planned_for") or "")

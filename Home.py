@@ -22,6 +22,7 @@ from compass.ui import (
     render_card_heading,
     render_book_study,
     render_daily_due,
+    render_day_pacing,
     render_free_reading,
     render_rewind_review,
     render_declaration_banner,
@@ -147,6 +148,9 @@ if not is_parent():
         render_progress_panel(db, student)
 
     if active_view == "today":
+        # Pacing first: how much of a full, balanced day he's done -- and a clear
+        # "the rest is yours" once he's there, so it never reads as an endless grind.
+        render_day_pacing(db, student, today_iso)
         with st.container(border=True, key="landon_card_today"):
             _render_level_and_progress()
             st.divider()

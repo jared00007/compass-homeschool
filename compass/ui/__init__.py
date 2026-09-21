@@ -45,6 +45,7 @@ from compass import (
     xp as xp_module,
     grades,
     gradebook,
+    pacing,
     reading,
     subjects,
     theme as theming,
@@ -3227,6 +3228,69 @@ def _weekly_xp_html(state: "xp_module.XPState", progress: "xp_module.WeeklyProgr
     )
 
     return f'<div style="color:var(--c-text);">{header}{meter}{cap}{strip}</div>'
+
+
+def _pacing_nudge(plan: "pacing.DayPlan") -> str:
+    if plan.core_left and plan.enrichment_left:
+        return (
+            f"{plan.core_left} more lesson{'s' if plan.core_left != 1 else ''} and one "
+            "enrichment block (art, a project, some reading, a documentary) and you're done."
+        )
+    if plan.core_left:
+        return f"{plan.core_left} more lesson{'s' if plan.core_left != 1 else ''} to a full day."
+    return (
+        "One enrichment block — art, a project step, some reading, a workout, a "
+        "documentary — finishes the day."
+    )
+
+
+def render_day_pacing(db: Database, student: dict[str, Any], today: str) -> None:
+    """Student-facing: where he is against a full, balanced day (a couple of core
+    lessons plus one enrichment block). When he's cleared it, it says so plainly
+    and hands the rest of the day back to him -- a real day isn't an endless
+    lesson stack. Otherwise it's a quiet one-line goal, not a nag."""
+    plan = pacing.day_plan(db, student["id"], today)
+    if plan.core_target == 0 and plan.enrichment_target == 0:
+        return
+    if plan.is_full_day:
+        with st.container(border=True, key="landon_card_daydone"):
+            st.markdown(
+                f'<div style="font-size:16px;font-weight:900;">🎉 Full day — done!</div>'
+                f'<div style="font-size:13px;color:var(--c-dim);margin-top:2px;">'
+                f'{plan.core_done} lesson{"s" if plan.core_done != 1 else ""} + '
+                f'{plan.enrichment_done} enrichment. That\'s a real day\'s work — the rest '
+                "of it is yours. Do more if you want, but you've earned the break.</div>",
+                unsafe_allow_html=True,
+            )
+        return
+    st.caption(
+        f"🎯 **Today:** 📚 {plan.core_done}/{plan.core_target} lessons · "
+        f"✨ {plan.enrichment_done}/{plan.enrichment_target} enrichment — {_pacing_nudge(plan)}"
+    )
+
+
+def render_day_target_editor(db: Database) -> None:
+    """Parent-only: what counts as a full day for him. Once he clears it, Home
+    tells him the rest of the day is his -- so a real day isn't an endless stack
+    of lessons."""
+    st.caption(
+        "A full day is a couple of core lessons plus one enrichment block — once "
+        "he hits this, his Home says the rest of the day is his. Enrichment = art, "
+        "PE/movement, a documentary, a project step, a life skill, free reading…"
+    )
+    cols = st.columns(2)
+    core = cols[0].number_input(
+        "Core lessons for a full day", min_value=0, max_value=8,
+        value=pacing.day_target_core(db), key="day_target_core_in",
+    )
+    enrichment = cols[1].number_input(
+        "Enrichment blocks for a full day", min_value=0, max_value=8,
+        value=pacing.day_target_enrichment(db), key="day_target_enr_in",
+    )
+    if st.button("Save daily rhythm", key="save_day_target"):
+        pacing.set_day_target(db, int(core), int(enrichment))
+        st.success("Daily rhythm saved.")
+        st.rerun()
 
 
 def render_xp_level(db: Database, student: dict[str, Any]) -> None:

@@ -2910,6 +2910,56 @@ class Database:
             row["reviewed_on"] = row.get("done_on") or row.get("created_on")
         return rows
 
+    def core_lessons_done_on(self, student_id: int, day: str) -> int:
+        """How many core academic lessons (the four graded subjects) he marked
+        done on `day` -- his own 'did the work' signal (student_done_on), whether
+        or not a parent has reviewed it yet. The core half of the daily-pacing
+        'enough for today' count."""
+        placeholders = ",".join("?" for _ in self._REVIEWABLE_AGENTS)
+        row = self.conn.execute(
+            f"SELECT COUNT(*) AS n FROM lessons WHERE student_id = ? "
+            f"AND agent IN ({placeholders}) "
+            f"AND substr(json_extract(metadata, '$.student_done_on'), 1, 10) = ?",
+            (student_id, *self._REVIEWABLE_AGENTS, day),
+        ).fetchone()
+        return int(row["n"]) if row else 0
+
+    def enrichment_done_on(self, student_id: int, day: str) -> int:
+        """How many enrichment blocks he finished on `day` -- life skills, coding
+        modules, big-project steps, trips, free-reading sessions, and (once they
+        exist) art/music and movement activities. The 'a real day is more than
+        academics' half of the daily-pacing count. Each finished item counts once."""
+        n = 0
+        for table in ("life_skills", "coding_modules"):
+            row = self.conn.execute(
+                f"SELECT COUNT(*) AS n FROM {table} WHERE student_id = ? "
+                f"AND substr(completed_on, 1, 10) = ?",
+                (student_id, day),
+            ).fetchone()
+            n += int(row["n"]) if row else 0
+        # Project steps hang off big_projects for their student_id.
+        row = self.conn.execute(
+            "SELECT COUNT(*) AS n FROM project_steps ps "
+            "JOIN big_projects bp ON bp.id = ps.project_id "
+            "WHERE bp.student_id = ? AND substr(ps.completed_on, 1, 10) = ?",
+            (student_id, day),
+        ).fetchone()
+        n += int(row["n"]) if row else 0
+        # Trips completed that day, and free-reading sessions logged that day.
+        row = self.conn.execute(
+            "SELECT COUNT(*) AS n FROM travel_entries WHERE student_id = ? "
+            "AND status = 'completed' AND substr(visited_on, 1, 10) = ?",
+            (student_id, day),
+        ).fetchone()
+        n += int(row["n"]) if row else 0
+        row = self.conn.execute(
+            "SELECT COUNT(*) AS n FROM activities WHERE student_id = ? "
+            "AND source = 'free_reading' AND substr(occurred_on, 1, 10) = ?",
+            (student_id, day),
+        ).fetchone()
+        n += int(row["n"]) if row else 0
+        return n
+
     def list_rewind_reviews(
         self, student_id: int, include_completed: bool = True
     ) -> list[dict[str, Any]]:

@@ -178,6 +178,13 @@ SUBJECT_DEFAULT_MINUTES = {
     "history": 50,
     "english": 50,
 }
+# A "full school day" for the daily-pacing signal ("enough for today"): a couple
+# of core academic lessons plus one enrichment block (art, PE, a documentary, a
+# project step, free reading, a life skill...). Once he clears this, Home tells
+# him the rest of the day is his -- a real day isn't an endless lesson stack.
+# The parent can override both (settings `day_target_core` / `day_target_enrichment`).
+DAY_TARGET_CORE = 2
+DAY_TARGET_ENRICHMENT = 1
 # The one thing that *costs* XP: every time a lesson is sent back for a redo.
 # Set to a full lesson's worth on purpose -- a bounce completely erases the +20
 # he got for finishing it, so a sent-back lesson is worth nothing until he nails
