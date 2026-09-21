@@ -254,7 +254,7 @@ def _render_writing_review_controls(
                 if review.get("approval_reply"):
                     _ui.st.caption(f"💬 He said: {md(review['approval_reply'])}")
             else:
-                _ui.st.caption("⏳ Waiting on him to read it and reply that he saw it.")
+                _ui.st.caption("✔️ This one's approved and done — he'll get a nudge to read your note.")
         else:
             _ui.st.success("✅ Approved.")
         _reopen_button("↩️ Undo — decide on this one again")
@@ -310,9 +310,10 @@ def _render_writing_review_controls(
                 key=f"{review_key}_feedback",
                 help=(
                     "Flag for rework → he has to revise this before the lesson "
-                    "counts. Approve → this piece counts, but he still has to read "
-                    "your note and reply that he saw it. Nothing reaches him until "
-                    "you send the whole lesson back (or approve it) below."
+                    "counts. Approve → this piece is done; if you leave a note he'll "
+                    "get a nudge to read it, but it never blocks the piece from "
+                    "counting. Nothing reaches him until you send the whole lesson "
+                    "back (or approve it) below."
                 ),
             )
             approve_col, bounce_col = _ui.st.columns(2)

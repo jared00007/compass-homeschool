@@ -376,10 +376,12 @@ def test_a_revision_reply_is_a_noop_unless_the_piece_is_sent_back(db, student):
 # --- the gates, end to end on his English page -----------------------------------
 
 
-def test_an_approval_note_takes_a_typed_reply_not_a_one_tap(monkeypatch, tmp_path):
-    """Reported: "require him to do more than just i read it lol." The approved
-    piece's note is cleared by a real reply in his own words, and the old
-    one-tap button is gone."""
+def test_an_approval_note_is_cleared_by_a_one_tap_read(monkeypatch, tmp_path):
+    """Reported: "when i share feedback to landon but approve it, dont block the
+    item from being approved and done. that blocker should only remain for work
+    pushed back for redo." An *approved* piece is already done, so its note is a
+    one-tap acknowledgement -- "✅ I read this" clears it with or without a reply,
+    no minimum-words gate. (The word-count gate stays only on a *redo*.)"""
     db_path, lesson_id = _seed_page_db(tmp_path)
     database = Database(db_path)
     database.set_writing_review(
@@ -388,14 +390,24 @@ def test_an_approval_note_takes_a_typed_reply_not_a_one_tap(monkeypatch, tmp_pat
     database.close()
 
     at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
-    assert not any("Got it" in (b.label or "") for b in at.button)
 
-    reply = [t for t in at.text_input if "one thing" in (t.label or "").lower()][0]
-    reply.set_value("ok").run()  # too short -- doesn't clear it
+    # A bare tap -- no reply at all -- clears the approved note.
     [b for b in at.button if b.label == "✅ I read this"][0].click().run()
     review = _current_review(db_path, lesson_id)
-    assert review.get("approval_read_at") is None
+    assert review["approval_read_at"] is not None
 
+
+def test_an_approval_note_keeps_an_optional_reply(monkeypatch, tmp_path):
+    """The one-tap read is enough on an approved piece, but if he *does* type a
+    takeaway it's saved alongside so the parent can see it."""
+    db_path, lesson_id = _seed_page_db(tmp_path)
+    database = Database(db_path)
+    database.set_writing_review(
+        lesson_id, 0, config.WRITING_APPROVED, approval_note="Tighten your intro."
+    )
+    database.close()
+
+    at = _open(monkeypatch, db_path, ENGLISH_PATH, as_parent=False)
     reply = [t for t in at.text_input if "one thing" in (t.label or "").lower()][0]
     reply.set_value("I'll open with my strongest point instead.").run()
     [b for b in at.button if b.label == "✅ I read this"][0].click().run()

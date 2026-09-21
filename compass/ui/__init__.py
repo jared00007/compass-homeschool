@@ -2485,30 +2485,24 @@ def render_writing_feedback_reply_form(
     *,
     key_prefix: str,
 ) -> None:
-    """The acknowledgement gate on a parent's note about an *approved* piece of
-    writing -- the same reply-in-your-own-words the Travel Journal asks for,
-    replacing the old one-tap "I read this" (reported: "require him to do more
-    than just i read it lol"). Shared by his subject-page lesson view and Home's
-    "Notes on your writing" card, so `key_prefix` keeps their widgets apart. His
-    reply is stored next to the read stamp for a parent to see."""
+    """A parent's note on an *approved* piece of writing. The work is already
+    approved and done -- this only makes sure he actually sees the feedback, so
+    it's a one-tap acknowledgement (with an optional reply if he wants to note
+    what he'll take from it), never a block. The heavier reply-in-your-own-words
+    gate is reserved for work sent back for a *redo*, where engaging with the
+    note before reworking is the whole point. Shared by his subject-page lesson
+    view and Home's card, so `key_prefix` keeps their widgets apart; his reply
+    (if any) is stored next to the read stamp for a parent to see."""
     with st.form(f"{key_prefix}_writing_reply_{lesson_id}_{activity_index}"):
         st.caption(f"💬 Your parent's note: {md(note)}")
         reply = st.text_input(
-            "What's one thing you'll take from this? (in your own words)",
+            "One thing you'll take from this? (optional)",
             key=f"{key_prefix}_writing_reply_input_{lesson_id}_{activity_index}",
             placeholder="e.g. Next time I'll back up my point with an example",
         )
         if st.form_submit_button("✅ I read this"):
-            word_count = len(reply.split())
-            if word_count < config.WRITING_FEEDBACK_REPLY_MIN_WORDS:
-                st.warning(
-                    f"Say a little more — needs at least "
-                    f"{config.WRITING_FEEDBACK_REPLY_MIN_WORDS} words about something "
-                    f"specific ({word_count} so far)."
-                )
-            else:
-                db.mark_writing_feedback_read(lesson_id, activity_index, reply.strip())
-                st.rerun()
+            db.mark_writing_feedback_read(lesson_id, activity_index, reply.strip())
+            st.rerun()
 
 
 def render_progress_panel(db: Database, student: dict[str, Any], *, columns: int = 4) -> None:
