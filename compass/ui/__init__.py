@@ -607,6 +607,45 @@ def _render_note_hints(note_key: str) -> None:
         )
 
 
+def render_week_planner(db: Database, student: dict[str, Any]) -> None:
+    """Parent-facing: compose a balanced week from the backlog instead of hand-
+    stacking it. Spreads still-planned core lessons across Mon-Fri, capped at the
+    daily core target, subjects mixed. Only moves already-generated lessons."""
+    from compass import weekplan
+
+    today = date.today()
+    this_monday = today - timedelta(days=today.weekday())
+    cap = pacing.day_target_core(db)
+    pool = weekplan.backlog_core_lessons(db, student["id"])
+    st.caption(
+        f"Spread the backlog of core lessons across a week — at most **{cap} per day**, "
+        "subjects mixed so no day is all one thing. Enrichment surfaces on its own; "
+        "leftovers stay in the Backlog. This only moves lessons you've already generated."
+    )
+    if not pool:
+        st.caption("📭 No backlog lessons to place yet — generate a topic below first.")
+        return
+    which = st.radio(
+        "Which week?", ["This week", "Next week"], horizontal=True, key="weekplan_which"
+    )
+    target_monday = this_monday if which == "This week" else this_monday + timedelta(days=7)
+    st.caption(f"**{len(pool)}** core lesson{'s' if len(pool) != 1 else ''} in the backlog to place.")
+    if st.button(
+        f"🗓️ Balance {which.lower()} ({cap}/day)", type="primary",
+        key="weekplan_go", width="stretch", disabled=cap == 0,
+    ):
+        plan = weekplan.balance_week(db, student["id"], target_monday, cap)
+        tail = (
+            f" — {plan.left_in_backlog} left in the Backlog (the week filled up)."
+            if plan.left_in_backlog else "."
+        )
+        st.success(f"✅ Placed {plan.assigned} lesson{'s' if plan.assigned != 1 else ''} across the week{tail}")
+        for day_iso, titles in plan.days.items():
+            if titles:
+                dname = date.fromisoformat(day_iso).strftime("%a %-d")
+                st.caption(f"**{dname}:** " + " · ".join(md(t) for t in titles))
+
+
 def render_subject_plan_panel(
     db: Database, student: dict[str, Any], agent_key: str, *, api_ok: bool
 ) -> None:

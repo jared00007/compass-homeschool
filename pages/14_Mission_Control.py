@@ -53,6 +53,7 @@ from compass.ui import (
     render_rewind_generator,
     render_story_move_control,
     render_subject_plan_panel,
+    render_week_planner,
     render_xp_reward_editor,
     series_day_title,
 )
@@ -742,6 +743,10 @@ if mc_view == "review":
 # page used to carry, now consolidated here so planning lives in one place.
 
 if mc_view == "plan":
+    # Compose a balanced week from the backlog first, then generate more below.
+    with st.expander("🗓️ Balance the week — spread the backlog, capped per day"):
+        render_week_planner(db, student)
+
     st.markdown("### ✍️ Plan a lesson")
     st.caption(
         "Pick a subject, choose the topic, and generate the whole thing as a series of "
