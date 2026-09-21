@@ -88,7 +88,7 @@ def test_a_fun_extra_shows_on_his_lesson_when_present(monkeypatch, tmp_path):
 
     at = _open_math_as_student(monkeypatch, db_path)
     body = " ".join(m.value for m in at.markdown)
-    assert "Just for fun" in body
+    assert "Fun challenge" in body
     assert "scavenger hunt" in body.lower()
 
 
@@ -105,7 +105,7 @@ def test_no_fun_card_when_the_lesson_has_none(monkeypatch, tmp_path):
 
     at = _open_math_as_student(monkeypatch, db_path)
     body = " ".join(m.value for m in at.markdown)
-    assert "Just for fun" not in body
+    assert "Fun challenge" not in body
 
 
 def test_fun_extra_never_blocks_turning_the_lesson_in():

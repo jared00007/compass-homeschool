@@ -580,8 +580,9 @@ _PLAN_TIPS_MD = """\
   he's got the basics. It changes how it's taught, never what he's graded on.
 - **Note for this lesson** is your steering wheel — tap a hint below or type your
   own ("make check 2 a build", "he mixed up X last time").
-- **🎉 Fun activity** adds one light, optional, ungraded thing to break up the
-  work — your call per lesson.
+- **🎉 Fun challenge** adds one light, playful activity tied to the topic to
+  break up the work — your call whether to include it, but it reads to him as
+  part of the lesson, not a throwaway.
 
 Every lesson comes out the same shape either way: **Learn → Worked example →
 two checks → quiz**, so he learns at his own pace, then does, then proves it.
@@ -653,7 +654,9 @@ def render_subject_plan_panel(
             )
         with columns[1]:
             minutes = st.number_input(
-                "Minutes / day", min_value=15, max_value=180, value=60, step=5, key=f"{k}_minutes"
+                "Minutes / day", min_value=15, max_value=180,
+                value=config.SUBJECT_DEFAULT_MINUTES.get(agent_key, 60),
+                step=5, key=f"{k}_minutes",
             )
         parent_note = st.text_input(
             "Note for this lesson (optional)",
@@ -693,7 +696,9 @@ def render_subject_plan_panel(
             location = st.text_input(location_label, placeholder=placeholder, key=f"{k}_location")
         with columns[1]:
             minutes = st.number_input(
-                "Minutes / day", min_value=15, max_value=240, value=75, step=15, key=f"{k}_minutes"
+                "Minutes / day", min_value=15, max_value=240,
+                value=config.SUBJECT_DEFAULT_MINUTES.get(agent_key, 75),
+                step=15, key=f"{k}_minutes",
             )
         # Both emergent-path subjects get a first-class "change course" picker --
         # Science jumps to a new discipline, History to a new era. Reported:
@@ -779,7 +784,9 @@ def render_subject_plan_panel(
             )
         with columns[1]:
             minutes = st.number_input(
-                "Minutes / day", min_value=15, max_value=180, value=60, step=5, key=f"{k}_minutes"
+                "Minutes / day", min_value=15, max_value=180,
+                value=config.SUBJECT_DEFAULT_MINUTES.get(agent_key, 60),
+                step=5, key=f"{k}_minutes",
             )
         if book:
             page_cols = st.columns(2)
@@ -827,10 +834,11 @@ def render_subject_plan_panel(
     # picks up the added text.
     _render_note_hints(f"{k}_note")
     include_fun = st.checkbox(
-        "🎉 Add a light, optional fun activity (ungraded — his call whether to do it)",
+        "🎉 Add a fun challenge to this lesson",
         key=f"{k}_fun",
-        help="Adds one quick, playful, no-grade activity tied to the topic — a game, a "
-        "challenge, a 'try this at home.' Leave off for a straight-ahead lesson.",
+        help="Adds one quick, playful activity tied to the topic — a game, a challenge, "
+        "a 'try this at home.' It shows up as part of his lesson (not graded, but not "
+        "flagged to him as skippable). Leave off for a straight-ahead lesson.",
     )
     ctx.inputs["include_fun_extra"] = include_fun
     with st.expander("💡 Tips for a strong lesson"):

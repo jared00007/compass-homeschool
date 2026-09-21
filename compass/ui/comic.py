@@ -743,9 +743,12 @@ def _render_learn_section(lesson: dict[str, Any], *, parent: bool) -> None:
 
 
 def _render_fun_extra(lesson: dict[str, Any]) -> None:
-    """An OPTIONAL, ungraded 'just for fun' activity -- shown only when the lesson
-    carries one (the parent opted in at generation). Never part of the submit
-    gate: he can do it or skip it, and it never blocks turning the lesson in."""
+    """A light, fun activity that's part of the lesson -- shown only when the
+    lesson carries one (the parent added it at generation). Framed to him as
+    something to DO, not as skippable: 'optional' reads as 'ignore me,' which
+    defeats the point. Under the hood it's still ungraded and never part of the
+    submit gate, so it can't block him turning the lesson in -- but it isn't
+    advertised as throwaway."""
     fun = lesson.get("fun_extra") or {}
     title = (fun.get("title") or "").strip()
     body = (fun.get("instructions") or "").strip()
@@ -759,11 +762,11 @@ def _render_fun_extra(lesson: dict[str, Any]) -> None:
             f'<div style="font-size:14px;">{html.escape(body).replace(chr(10), "<br>")}</div>'
         )
     _ui.st.markdown(
-        '<div style="border:2px dashed var(--c-alt);border-radius:var(--c-radius);'
+        '<div style="border:2px solid var(--c-alt);border-radius:var(--c-radius);'
         'background:var(--c-panel);padding:10px 14px;margin:12px 0 4px;">'
         '<div style="font-weight:900;font-size:12px;text-transform:uppercase;'
         'letter-spacing:.04em;color:var(--c-alt);margin-bottom:4px;">'
-        '🎉 Just for fun · optional · no grade</div>' + inner + "</div>",
+        '🎉 Fun challenge</div>' + inner + "</div>",
         unsafe_allow_html=True,
     )
 

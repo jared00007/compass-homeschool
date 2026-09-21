@@ -168,6 +168,16 @@ REWIND_DEFAULT_MINUTES = 20
 # follows the same breadth reasoning as an ordinary lesson quiz.
 BOOK_QUIZ_POOL_MIN = 12
 BOOK_QUIZ_POOL_MAX = 24
+# Sensible per-subject default lesson lengths (minutes), so the Plan-a-lesson
+# form opens at the right size for the subject -- a tight, procedural math skill
+# isn't a reading-and-hands-on science lesson. The parent can still change it per
+# generation; anything not listed falls back to default_lesson_minutes (60).
+SUBJECT_DEFAULT_MINUTES = {
+    "math": 35,
+    "science": 55,
+    "history": 50,
+    "english": 50,
+}
 # The one thing that *costs* XP: every time a lesson is sent back for a redo.
 # Set to a full lesson's worth on purpose -- a bounce completely erases the +20
 # he got for finishing it, so a sent-back lesson is worth nothing until he nails
