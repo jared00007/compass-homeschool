@@ -47,6 +47,7 @@ from compass import (
     gradebook,
     pacing,
     reading,
+    recess,
     subjects,
     theme as theming,
     weekly,
@@ -3281,6 +3282,26 @@ def _pacing_nudge(plan: "pacing.DayPlan") -> str:
         "One enrichment block — art, a project step, some reading, a workout, a "
         "documentary — finishes the day."
     )
+
+
+def render_recess(db: Database, student: dict[str, Any], today: str) -> None:
+    """Student-facing: a quick, no-stakes break -- move, doodle, wonder, take a
+    silly side. Rotates daily, costs nothing, isn't tracked. Framed as 'you've
+    earned it' once he's cleared a full day, a gentle 'need a break?' before
+    that -- because half of a real school day isn't a lesson."""
+    plan = pacing.day_plan(db, student["id"], today)
+    try:
+        emoji, kind, prompt = recess.recess_of_the_day(date.fromisoformat(today[:10]))
+    except (ValueError, TypeError):
+        emoji, kind, prompt = recess.recess_of_the_day()
+    header = "🛝 Break time — you've earned it" if plan.is_full_day else "🛝 Need a break?"
+    with st.container(border=True, key="landon_card_recess"):
+        st.markdown(
+            f'<div style="font-size:16px;font-weight:900;margin:2px 0 3px;">{header}</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(f"{emoji} **{md(kind)}:** {md(prompt)}")
+        st.caption("Not homework — just a quick break. A new one shows up every day.")
 
 
 def render_day_pacing(db: Database, student: dict[str, Any], today: str) -> None:
