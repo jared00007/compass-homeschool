@@ -185,6 +185,13 @@ SUBJECT_DEFAULT_MINUTES = {
 # The parent can override both (settings `day_target_core` / `day_target_enrichment`).
 DAY_TARGET_CORE = 2
 DAY_TARGET_ENRICHMENT = 1
+# Light, AI-generated enrichment tracks -- the parts of a real year that aren't
+# the four academic cores. Each is a quick activity he just does (no grading),
+# credited to the WA subject it covers. Keyed by agent key.
+ENRICHMENT_TRACKS = {
+    "art_music": {"label": "Art & Music", "subject": "art_and_music", "emoji": "🎨", "minutes": 30},
+    "movement": {"label": "Movement & PE", "subject": "health", "emoji": "🏃", "minutes": 30},
+}
 # The one thing that *costs* XP: every time a lesson is sent back for a redo.
 # Set to a full lesson's worth on purpose -- a bounce completely erases the +20
 # he got for finishing it, so a sent-back lesson is worth nothing until he nails

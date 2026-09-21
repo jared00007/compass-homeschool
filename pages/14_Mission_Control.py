@@ -48,6 +48,7 @@ from compass.ui import (
     render_lesson_review,
     render_life_skill_review_card,
     render_day_target_editor,
+    render_enrichment_generator,
     render_report_card,
     render_rewind_generator,
     render_story_move_control,
@@ -613,6 +614,10 @@ if mc_view == "review":
     # Daily rhythm: what counts as a full day, so "enough for today" kicks in.
     with st.expander("🎯 Daily rhythm — what counts as a full day"):
         render_day_target_editor(db)
+
+    # Enrichment: light art/music + movement activities (the non-academic week).
+    with st.expander("🎨 Enrichment — art, music & movement activities"):
+        render_enrichment_generator(db, student)
 
     submitted_lessons = [l for l in to_review if l["status"] == "submitted"]
     submitted_lessons.sort(key=lambda l: (l.get("metadata") or {}).get("planned_for") or "")

@@ -23,6 +23,7 @@ from compass.ui import (
     render_book_study,
     render_daily_due,
     render_day_pacing,
+    render_enrichment_activities,
     render_free_reading,
     render_rewind_review,
     render_declaration_banner,
@@ -160,6 +161,8 @@ if not is_parent():
         render_rewind_review(db, student, today_iso)
         # A book report and/or book quiz over what he's reading, if assigned.
         render_book_study(db, student, today_iso)
+        # Light art/music + movement enrichment activities his parent set up.
+        render_enrichment_activities(db, student, today_iso)
         # His own free-reading logger -- comics/novels he reads on his own time
         # count too, credited on his signal with no parent step.
         render_free_reading(db, student)

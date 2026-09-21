@@ -3902,6 +3902,74 @@ def render_rewind_generator(db: Database, student: dict[str, Any]) -> None:
                 st.rerun()
 
 
+def _render_one_enrichment(
+    db: Database, student: dict[str, Any], activity: dict[str, Any], spec: dict[str, Any]
+) -> None:
+    payload = activity["payload"]
+    with st.container(border=True, key=f"landon_card_enrich_{activity['id']}"):
+        st.markdown(
+            f'<div style="font-size:16px;font-weight:900;margin:2px 0 3px;">'
+            f'{spec["emoji"]} {md(payload.get("title") or spec["label"])}</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(f"{spec['label']} · about {payload.get('estimated_minutes', spec['minutes'])} min")
+        if payload.get("overview"):
+            st.markdown(md(payload["overview"]))
+        if payload.get("what_to_do"):
+            st.markdown(md(payload["what_to_do"]))
+        materials = payload.get("materials") or []
+        if materials:
+            st.caption("You'll need: " + ", ".join(md(m) for m in materials))
+        if st.button("✅ I did it", key=f"enrich_done_{activity['id']}", type="primary"):
+            db.complete_enrichment_activity(activity["id"], student["id"])
+            st.toast("Nice — logged it! 🎉")
+            st.rerun()
+
+
+def render_enrichment_activities(db: Database, student: dict[str, Any], today: str) -> None:
+    """Student-facing: light art/music and movement activities his parent set up,
+    on Home. He does one and taps 'I did it' -- it logs the time to the subject it
+    covers and counts as a day's enrichment block."""
+    for track, spec in config.ENRICHMENT_TRACKS.items():
+        for activity in db.list_enrichment_activities(student["id"], track, include_done=False):
+            _render_one_enrichment(db, student, activity, spec)
+
+
+def render_enrichment_generator(db: Database, student: dict[str, Any]) -> None:
+    """Parent-facing: generate a light art/music or movement activity. The
+    non-academic parts of a real week -- one quick AI activity that lands on his
+    Home and counts as enrichment toward a full day."""
+    from compass.agents import api_available, enrichment
+
+    st.caption(
+        "The non-academic parts of a real week. One quick AI activity each — it lands "
+        "on his Home, he does it and taps 'I did it,' and it counts as a day's "
+        "enrichment (and toward Art/Music or Health on the compliance dashboard)."
+    )
+    api_ok, api_message = api_available()
+    if not api_ok:
+        st.caption(f"⚠️ Generation unavailable: {api_message}")
+    cols = st.columns(len(config.ENRICHMENT_TRACKS))
+    for i, (track, spec) in enumerate(config.ENRICHMENT_TRACKS.items()):
+        pending = len(db.list_enrichment_activities(student["id"], track, include_done=False))
+        with cols[i]:
+            st.markdown(f"**{spec['emoji']} {spec['label']}**")
+            if pending:
+                st.caption(f"📬 {pending} waiting on his Home")
+            if st.button(
+                "✨ Generate one", key=f"gen_enrich_{track}",
+                disabled=not api_ok, width="stretch",
+            ):
+                with st.spinner("Coming up with something…"):
+                    try:
+                        enrichment.generate_activity(db, student, track)
+                    except LessonGenerationError as exc:
+                        st.error(str(exc))
+                    else:
+                        st.toast(f"{spec['label']} activity ready — it's on his Home. {spec['emoji']}")
+                        st.rerun()
+
+
 def render_quick_log(db: Database, student: dict[str, Any]) -> None:
     """One-tap logging of real-life instruction -- the off-app hours that
     usually go uncounted (documentaries, field trips, travel/park days,

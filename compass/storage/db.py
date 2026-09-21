@@ -2952,9 +2952,12 @@ class Database:
             (student_id, day),
         ).fetchone()
         n += int(row["n"]) if row else 0
+        # Free reading, and the light art/music + movement enrichment activities
+        # -- each logs an activity under its own source when he marks it done.
         row = self.conn.execute(
             "SELECT COUNT(*) AS n FROM activities WHERE student_id = ? "
-            "AND source = 'free_reading' AND substr(occurred_on, 1, 10) = ?",
+            "AND source IN ('free_reading', 'art_music', 'movement') "
+            "AND substr(occurred_on, 1, 10) = ?",
             (student_id, day),
         ).fetchone()
         n += int(row["n"]) if row else 0
@@ -3998,6 +4001,61 @@ class Database:
             description="Independent free reading.",
             source="free_reading",
         )
+
+    def list_enrichment_activities(
+        self, student_id: int, track: str, include_done: bool = True
+    ) -> list[dict[str, Any]]:
+        """The light art/music or movement activities generated for him under
+        `track`, newest first. With include_done=False, only the ones he hasn't
+        finished yet -- what Home surfaces."""
+        sql = "SELECT * FROM lessons WHERE student_id = ? AND agent = ?"
+        if not include_done:
+            sql += " AND status != 'completed'"
+        sql += " ORDER BY created_at DESC, id DESC"
+        rows = _rows(self.conn.execute(sql, (student_id, track)))
+        for row in rows:
+            row["payload"] = json.loads(row["payload"])
+            row["metadata"] = json.loads(row["metadata"])
+        return rows
+
+    def complete_enrichment_activity(
+        self, lesson_id: int, student_id: int, occurred_on: str | None = None
+    ) -> None:
+        """He finished a light enrichment activity (art/music or movement): log
+        its time to the WA subject it covers, mark it done, and complete it. Logs
+        once per activity (guarded on the activity title+source), so re-opening it
+        never stacks hours. The logged `source` (the track key) is what the daily
+        enrichment count and the compliance dashboard read."""
+        lesson = self.get_lesson(lesson_id)
+        if lesson is None:
+            return
+        meta = lesson.get("metadata") or {}
+        track = meta.get("track") or lesson.get("agent") or "movement"
+        subject = meta.get("credit_subject") or "health"
+        if not subjects.is_valid(subject):
+            subject = "health"
+        spec = config.ENRICHMENT_TRACKS.get(track, {})
+        minutes = int((lesson.get("payload") or {}).get("estimated_minutes") or spec.get("minutes") or 30)
+        when = occurred_on or date.today().isoformat()
+        title = lesson.get("title") or spec.get("label") or "Enrichment"
+        already = self.conn.execute(
+            "SELECT 1 FROM activities WHERE student_id = ? AND source = ? AND title = ? LIMIT 1",
+            (student_id, track, title),
+        ).fetchone()
+        if not already:
+            self.log_activity(
+                student_id=student_id,
+                title=title,
+                tier=config.TIER_CORE,
+                primary_subject=subject,
+                minutes=minutes,
+                subject_credits={subject: minutes},
+                occurred_on=when,
+                description=f"{spec.get('label', 'Enrichment')} activity.",
+                source=track,
+            )
+        self.mark_student_done(lesson_id)
+        self.set_lesson_status(lesson_id, "completed")
 
     def recent_free_reading(self, student_id: int, limit: int = 5) -> list[dict[str, Any]]:
         """His recent free-reading entries -- the little 'what I've read' shelf.
