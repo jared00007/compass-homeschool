@@ -188,10 +188,16 @@ activities each time. One idea: taught once, modeled once, checked twice, \
 quizzed. Do not invent extra sections or split one idea across a crowded list \
 of activities.
 
-1. **Learn** (`learn`) — the teaching section. Explain today's ONE idea in plain \
-language {student_name} reads on his own: what it is, why it matters, and a \
-short worked example inside the prose if it helps. He is not graded here — teach \
-it well enough that the two checks below are fair.
+1. **Learn** (`learn`) — the teaching section, and the heart of the lesson. \
+Teach today's ONE idea so completely that {student_name} could do both checks \
+and pass the quiz from THIS section alone. In plain language he reads himself: \
+open with why it matters or where it shows up — a hook, not a cold definition — \
+then explain what it is, how it actually works, and walk a concrete example or \
+analogy pitched at his age. Name the mistake people usually make so he can dodge \
+it. A thin, definition-only Learn is the single most common way a lesson comes \
+out feeling hollow: if the checks or the quiz need a fact, a formula, a number, \
+or a step, TEACH it here first. He is not graded here — the whole job of this \
+section is to make the checks and quiz fair.
 
 2. **Worked example** (`worked_example`) — ONE problem of exactly the type the \
 two checks will ask, solved for him start to finish. Break it into small, \
@@ -236,6 +242,21 @@ themselves. **{student_name} NEVER sees `answer`.**
 That is the whole lesson and the whole grade: the two graded checks plus the \
 quiz. If a topic is too big to teach once and check twice, it is two lessons, \
 not one crowded one.
+
+**The lesson stands entirely on its own.** {student_name} can complete every \
+check and answer every quiz question using ONLY what this lesson hands him — the \
+Learn section, the worked example, and any data you put inside an activity. \
+Never assume prior knowledge you didn't just teach or restate, never lean on the \
+optional video, and never ask about a fact, number, or formula the lesson never \
+gave him. If a check needs it, the lesson supplies it. A lesson that quietly \
+depends on something offscreen is exactly the one that feels like it's missing \
+context.
+
+**`materials`** lists everything he needs to actually do the activities — \
+specific, and mostly already around the house. If an activity needs a ruler, a \
+timer, three coins, a sock, or a particular web page, name it here so he gathers \
+it once up front instead of discovering a missing piece halfway through. "A \
+notebook or the typing box on screen" counts; a vague "some materials" does not.
 
 ## A supplementary video for the Learn section, wherever a real one exists
 `learn.video` is ONE video for the lesson's core idea — not one per activity.
@@ -363,6 +384,31 @@ asked for — never stricter, never looser. Leave every field null/false when \
 `requires_written_response` is false, or you didn't ask for a specific count.
 - Target roughly {minutes} minutes total — the two checks plus reading time for \
 Learn and the worked example. Match `estimated_minutes` to that whole total.
+
+## Before you finish — the bar every lesson clears
+Re-read the whole lesson as {student_name} will, top to bottom, and fix anything \
+that fails one of these. This pass is the difference between a lesson that has it \
+all and one that feels like it's missing something — do not skip it.
+- **Learn fully teaches it.** Everything the two checks and the quiz test is \
+taught or given in Learn plus the worked example. If any check or question needs \
+a fact, formula, number, or step he wasn't handed, go back and teach it — don't \
+ship the gap.
+- **Every check names where to look and carries its own data.** No blank-box \
+"explain the reason" with no pointer back to the lesson and no numbers to work \
+from. A writing check says what a complete answer covers, not just a word count.
+- **The worked example matches the checks** — the same kind of task, different \
+specifics, solved all the way through, so it models the move without being the \
+answer.
+- **Materials are complete** — everything an activity actually needs is in the \
+list.
+- **Nothing offscreen is assumed** — it stands on its own; no reliance on the \
+video or on knowledge the lesson never gave him.
+- **No answer key leaks** — no `answer`, `parent_notes`, `subject_credits`, or \
+quiz `correct_index` shows up in anything he reads (Learn, worked example, \
+instructions, materials).
+- **It reads like it was written for a real 13-year-old** — a hook up front, \
+plain words, one idea per sentence, clear directions, and it's worth his time, \
+not busywork.
 """
 
 

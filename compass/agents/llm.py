@@ -77,9 +77,11 @@ LESSON_SCHEMA: dict[str, Any] = _object(
         "overview": {
             "type": "string",
             "description": (
-                "Two or three sentences setting up what this covers and why now. He "
-                "reads this himself, same as the activities -- see the system prompt's "
-                "writing-for-a-13-year-old rules, not a parent-facing summary."
+                "Two or three sentences that set the scene for him: what today covers, "
+                "how it connects to what he already knows or did (or where it's heading), "
+                "and why it's worth his time. A hook, not a table of contents. He reads "
+                "this himself -- see the system prompt's writing-for-a-13-year-old rules, "
+                "not a parent-facing summary."
             ),
         },
         "learning_objectives": {
@@ -92,12 +94,16 @@ LESSON_SCHEMA: dict[str, Any] = _object(
                 "explanation": {
                     "type": "string",
                     "description": (
-                        "The teaching section -- today's ONE idea explained in plain "
-                        "language he reads on his own: what it is, why it matters, and a "
-                        "short worked example inside the prose if it helps. He is not "
-                        "graded here; teach it well enough that the two checks below are "
-                        "fair. Write for a 13-year-old (see the writing rules), not a "
-                        "parent-facing summary."
+                        "The teaching section, and the heart of the lesson: teach today's "
+                        "ONE idea so completely he could do both checks and pass the quiz "
+                        "from this alone. Open with why it matters or where it shows up (a "
+                        "hook, not a cold definition), explain what it is and how it "
+                        "actually works, walk a concrete example or analogy at his age, and "
+                        "name the mistake people usually make. If a check or quiz question "
+                        "needs a fact, formula, number, or step, teach it HERE first -- a "
+                        "thin, definition-only explanation is the top way a lesson comes out "
+                        "hollow. He's not graded here. Write for a 13-year-old (see the "
+                        "writing rules), not a parent-facing summary."
                     ),
                 },
                 "video": _object(_VIDEO_PROPERTIES),
