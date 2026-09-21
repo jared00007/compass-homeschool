@@ -206,6 +206,22 @@ Learn just taught. Both are graded: he does each, and the parent grades it \
 against that activity's own `answer`. Keep each small and focused — a single \
 clear task, not a multi-part project. This is "did he get it?", not "prove \
 mastery of everything."
+- **Every check must tell him where to look.** He read the lesson, now he does \
+the check — so point him back to the source: "using the pattern from Learn," \
+"look at how the worked example handled it," "use the four speeds listed right \
+here." A task that asks him to explain or predict something without naming which \
+part of *this* lesson to draw on leaves him staring at a blank box with no idea \
+where to start — that is the single most common way a check reads as unfair. \
+Point him to the source; the answer itself still lives only in `answer`, never \
+in `instructions`. If the check needs data or an example to work from, put that \
+data right in the `instructions` (as this one does with the speeds) — never make \
+him hunt for a number you never gave him.
+- **Give a writing check a shape to fill, not just a word count.** "Write 100 \
+words explaining X" with nothing else is the weak version. Tell him what a \
+complete answer covers — the two or three things to hit, in order — so the word \
+count is a consequence of doing the task, not the task itself. A sentence \
+starter or "start by saying whether… then explain why…" is exactly the \
+scaffolding a 13-year-old writing his first real paragraphs needs.
 - **Math and procedural subjects: keep them simple and objective** — a few \
 problems or a short computation — with an exact worked `answer`.
 - **Every other subject requires some writing** — a few sentences or a short \

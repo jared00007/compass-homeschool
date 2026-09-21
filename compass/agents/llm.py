@@ -146,8 +146,14 @@ LESSON_SCHEMA: dict[str, Any] = _object(
                     "instructions": {
                         "type": "string",
                         "description": (
-                            "Written to the student in second person, specific enough to do "
-                            "without further explanation. A single clear task."
+                            "Written to the student in second person: a single clear task he "
+                            "can start without help. Point him to where in THIS lesson the "
+                            "material lives (the Learn section, the worked example, the data "
+                            "given right here) so he's never staring at a blank box wondering "
+                            "where to look, and include any numbers/data he needs inside the "
+                            "instructions themselves. For a writing task, name what a complete "
+                            "answer covers (the two or three things to hit), not just a word "
+                            "count. The answer itself goes in `answer`, never here."
                         ),
                     },
                     "requires_written_response": {
