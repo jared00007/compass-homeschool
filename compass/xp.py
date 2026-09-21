@@ -216,6 +216,23 @@ def week_bounds(today: date) -> tuple[date, date]:
     return monday, monday + timedelta(days=4)
 
 
+def reward_pick_week(today: date | None = None) -> date:
+    """The Monday of the week a NEW reward pick applies to.
+
+    During the school week (Mon-Fri) that's this week -- he's working toward it
+    now. On the weekend the Mon-Fri week is over and its reward is already
+    settled (earned or not, delivered on the weekend), so a fresh pick is for the
+    UPCOMING week, not the one that just finished. Keeping these separate is what
+    stops a weekend pick from overwriting the reward he just earned: the picker
+    writes here, never to `week_bounds(today)` once the week has closed.
+    """
+    today = today or date.today()
+    monday = today - timedelta(days=today.weekday())
+    if today.weekday() >= 5:  # Saturday or Sunday -> next week
+        return monday + timedelta(days=7)
+    return monday
+
+
 def _parse_iso(value: Any) -> date | None:
     """A stored ISO date string -> a `date`, or None for anything unparseable
     (missing, a datetime, junk). Only the leading YYYY-MM-DD is read, so a
@@ -448,9 +465,18 @@ def set_week_reward_choice(
     db: Any, week_start: date | str, name: str, emoji: str, source: str = "library"
 ) -> None:
     """Record his pick for the week, pending a parent's approval. Overwrites any
-    previous pick for that week (re-picking after a send-back, say)."""
+    previous pick for that week (re-picking after a send-back, say).
+
+    Refuses to touch a week whose reward has already been handed over
+    (`weeks_given`) -- a delivered reward is settled history, and letting a later
+    pick rewrite it is exactly the bug where a weekend pick erased an
+    already-earned reward.
+    """
+    key = _week_key(week_start)
+    if key in weeks_given(db):
+        return
     choices = _week_choices(db)
-    choices[_week_key(week_start)] = {
+    choices[key] = {
         "status": "pending",
         "source": source if source in ("library", "custom") else "library",
         "name": str(name or "").strip() or "Reward",

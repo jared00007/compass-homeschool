@@ -3120,9 +3120,13 @@ def _weekly_xp_html(state: "xp_module.XPState", progress: "xp_module.WeeklyProgr
     )
     # The reward payoff panel closes the strip -- it also reflects his pick's
     # state: a prompt to choose, his pick waiting on approval, or the locked one.
-    if progress.needs_reward_pick:
+    # The "choose below" / "pending" prompts only make sense while this week is
+    # still the one he's picking for; once it's over (the weekend), its reward is
+    # settled, so the panel just shows what it was, earned or not.
+    week_is_active = progress.week_start == xp_module.reward_pick_week()
+    if progress.needs_reward_pick and week_is_active:
         payoff_emoji, payoff_name, lock = "🎁", "Your pick?", "choose below ↓"
-    elif progress.reward_pending:
+    elif progress.reward_pending and week_is_active:
         payoff_emoji, payoff_name, lock = progress.reward_emoji, reward, "⏳ pending"
     else:
         payoff_emoji, payoff_name = progress.reward_emoji, reward
@@ -3163,13 +3167,31 @@ def render_xp_level(db: Database, student: dict[str, Any]) -> None:
     st.markdown(_weekly_xp_html(state, progress), unsafe_allow_html=True)
 
     # His own reward pick: choose from a parent's library (or suggest one), then
-    # a parent approves. Pending waits on them; a send-back just lets him repick.
-    if progress.needs_reward_pick:
-        render_reward_picker(db, student, progress)
-    elif progress.reward_pending:
+    # a parent approves. The pick is for the week that's still open -- this week
+    # Mon-Fri, or the upcoming week once the weekend's here -- so it never
+    # overwrites a reward he's already earned. The bar above still shows the
+    # current (Mon-Fri) week; only the picker looks ahead on weekends.
+    pick_week = xp_module.reward_pick_week()
+    for_next_week = pick_week != progress.week_start
+    pick_choice = xp_module.week_reward_choice(db, pick_week) or {}
+    pick_status = pick_choice.get("status", "unset")
+    when = "next week" if for_next_week else "this week"
+    if pick_status in ("unset", "denied"):
+        render_reward_picker(
+            db, student, pick_week,
+            denied_note=pick_choice.get("note", "") if pick_status == "denied" else "",
+            for_next_week=for_next_week,
+        )
+    elif pick_status == "pending":
         st.info(
-            f"🎁 You picked {progress.reward_emoji} **{md(progress.reward_name)}** — "
+            f"🎁 You picked {pick_choice.get('emoji', '🎁')} "
+            f"**{md(pick_choice.get('name', 'a reward'))}** for {when} — "
             "waiting for a parent to say yes."
+        )
+    elif pick_status == "approved" and for_next_week:
+        st.caption(
+            f"🎁 Next week's reward: {pick_choice.get('emoji', '🎁')} "
+            f"{md(pick_choice.get('name', 'a reward'))} — locked in."
         )
 
     # Extra credit already banked this week -- the reserve that counts toward the
@@ -3216,26 +3238,32 @@ def render_xp_level(db: Database, student: dict[str, Any]) -> None:
 
 
 def render_reward_picker(
-    db: Database, student: dict[str, Any], progress: "xp_module.WeeklyProgress"
+    db: Database,
+    student: dict[str, Any],
+    week_start: date,
+    *,
+    denied_note: str = "",
+    for_next_week: bool = False,
 ) -> None:
     """His 'choose your weekly reward' panel -- pick one of the parent's library
-    options, or suggest his own, then a parent approves. Shown when he hasn't
-    picked yet this week, or his last pick was sent back."""
+    options, or suggest his own, then a parent approves. The pick is recorded for
+    `week_start`: the current school week during the week, or the upcoming week
+    once this one's over (the weekend), so a weekend pick can never overwrite the
+    reward he just earned."""
     library = xp_module.reward_library(db)
+    which = "next week" if for_next_week else "this week"
     with st.container(border=True, key="landon_card_rewardpick"):
         st.markdown(
             '<div style="font-size:16px; font-weight:900; margin:2px 0 3px;">'
-            '🎁 Choose your weekly reward</div>', unsafe_allow_html=True,
+            f'🎁 Choose your reward for {which}</div>', unsafe_allow_html=True,
         )
-        if progress.reward_status == "denied":
-            note = progress.reward_note
+        if denied_note:
             st.warning(
-                "Your last pick got sent back"
-                + (f" — “{md(note)}”" if note else "")
-                + ". Pick another, or suggest a different one."
+                f"Your last pick got sent back — “{md(denied_note)}”. "
+                "Pick another, or suggest a different one."
             )
         st.caption(
-            "Pick what you're working toward this week. A parent says yes before "
+            f"Pick what you're working toward {which}. A parent says yes before "
             "it's locked in."
         )
         labels = [f"{e}  {md(n)}" for n, e in library]
@@ -3249,7 +3277,7 @@ def render_reward_picker(
             width="stretch", disabled=picked is None,
         ):
             name, emoji = library[picked]
-            xp_module.set_week_reward_choice(db, progress.week_start, name, emoji, "library")
+            xp_module.set_week_reward_choice(db, week_start, name, emoji, "library")
             st.rerun()
 
         with st.expander("✍️ …or suggest your own"):
@@ -3263,51 +3291,70 @@ def render_reward_picker(
                 if st.form_submit_button("Send my idea to a parent", type="primary"):
                     if name.strip():
                         xp_module.set_week_reward_choice(
-                            db, progress.week_start, name, emoji, "custom"
+                            db, week_start, name, emoji, "custom"
                         )
                         st.rerun()
                     else:
                         st.caption("Type an idea first.")
 
 
-def render_weekly_reward_approval(db: Database, student: dict[str, Any]) -> None:
-    """Parent-only: approve (or send back) Landon's weekly reward pick. Absent
-    unless a pick is actually waiting. A send-back costs him no XP -- it just
-    lets him choose again. Approving his own custom idea offers to save it to the
-    library for reuse."""
-    progress = xp_module.weekly_progress(db, student["id"], date.today())
-    if not progress.reward_pending:
-        return
+def _render_one_reward_approval(
+    db: Database, student: dict[str, Any], week_start: date, choice: dict[str, Any]
+) -> None:
     name = student.get("name") or "He"
-    with st.container(border=True, key="parent_reward_approval"):
-        st.markdown(f"### 🎁 {md(name)} picked this week's reward — approve it?")
-        is_custom = progress.reward_source == "custom"
+    key = week_start.isoformat()
+    with st.container(border=True, key=f"parent_reward_approval_{key}"):
+        st.markdown(f"### 🎁 {md(name)} picked a reward — approve it?")
+        is_custom = choice.get("source") == "custom"
         source = "his own idea" if is_custom else "your library"
         st.markdown(
-            f"{progress.reward_emoji} **{md(progress.reward_name)}**  \n"
+            f"{choice.get('emoji', '🎁')} **{md(choice.get('name', 'a reward'))}**  \n"
             f"<span style='color:var(--c-dim); font-size:12px;'>from {source} · "
-            f"week of {progress.week_start.strftime('%b %-d')}</span>",
+            f"week of {week_start.strftime('%b %-d')}</span>",
             unsafe_allow_html=True,
         )
         save_it = False
         if is_custom:
             save_it = st.checkbox(
                 "➕ Also add this to your reward library", value=True,
-                key="reward_save_to_library",
+                key=f"reward_save_to_library_{key}",
             )
         cols = st.columns(2)
-        if cols[0].button("✅ Approve", key="reward_approve_btn", type="primary", width="stretch"):
-            xp_module.approve_week_reward(db, progress.week_start)
+        if cols[0].button(
+            "✅ Approve", key=f"reward_approve_btn_{key}", type="primary", width="stretch"
+        ):
+            xp_module.approve_week_reward(db, week_start)
             if is_custom and save_it:
-                xp_module.add_reward_to_library(db, progress.reward_name, progress.reward_emoji)
+                xp_module.add_reward_to_library(db, choice.get("name", ""), choice.get("emoji", "🎁"))
             st.rerun()
         with cols[1].expander("🔁 Send it back"):
-            with st.form("reward_deny_form", clear_on_submit=True):
-                note = st.text_input("A note for him (optional)", key="reward_deny_note")
+            with st.form(f"reward_deny_form_{key}", clear_on_submit=True):
+                note = st.text_input("A note for him (optional)", key=f"reward_deny_note_{key}")
                 st.caption("No XP lost — he just picks again.")
                 if st.form_submit_button("Send back", width="stretch"):
-                    xp_module.deny_week_reward(db, progress.week_start, note)
+                    xp_module.deny_week_reward(db, week_start, note)
                     st.rerun()
+
+
+def render_weekly_reward_approval(db: Database, student: dict[str, Any]) -> None:
+    """Parent-only: approve (or send back) Landon's weekly reward pick. Absent
+    unless a pick is actually waiting. A send-back costs him no XP -- it just
+    lets him choose again. Approving his own custom idea offers to save it to the
+    library for reuse.
+
+    Checks both the current school week and the upcoming one (which is where a
+    pick lands over the weekend), so a pick made ahead of Monday still surfaces
+    for approval."""
+    today = date.today()
+    this_monday, _ = xp_module.week_bounds(today)
+    weeks = [this_monday]
+    pick_week = xp_module.reward_pick_week(today)
+    if pick_week != this_monday:
+        weeks.append(pick_week)
+    for week_start in weeks:
+        choice = xp_module.week_reward_choice(db, week_start)
+        if choice and choice.get("status") == "pending":
+            _render_one_reward_approval(db, student, week_start, choice)
 
 
 def render_earned_rewards(db: Database, student: dict[str, Any]) -> None:

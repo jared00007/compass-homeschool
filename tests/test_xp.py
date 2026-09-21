@@ -462,6 +462,48 @@ def test_a_denied_pick_costs_no_points_and_he_repicks(db, student):
     assert p.reward_pending and p.reward_note == ""
 
 
+def test_reward_pick_week_is_this_week_on_a_weekday_next_week_on_the_weekend():
+    # A weekday pick is for the current school week.
+    wednesday = date(2026, 9, 9)
+    assert xp.reward_pick_week(wednesday) == date(2026, 9, 7)  # that Monday
+    # Once the week is over (Sat/Sun), a fresh pick is for the UPCOMING week --
+    # never the one that just finished, so it can't overwrite an earned reward.
+    saturday = date(2026, 9, 12)
+    sunday = date(2026, 9, 13)
+    assert xp.reward_pick_week(saturday) == date(2026, 9, 14)  # next Monday
+    assert xp.reward_pick_week(sunday) == date(2026, 9, 14)
+
+
+def test_a_weekend_pick_does_not_touch_the_finished_weeks_reward(db, student):
+    """The reported bug: he earned a reward one week, then picked next week's over
+    the weekend, and it wiped the earned one. A weekend pick targets the upcoming
+    week, so the finished week's reward stays exactly as it was."""
+    finished_monday = date(2026, 9, 7)
+    xp.set_week_reward_choice(db, finished_monday, "Chipotle", "🌯", "custom")
+    xp.approve_week_reward(db, finished_monday)
+
+    # Over the weekend he picks for next week (reward_pick_week rolls forward).
+    saturday = date(2026, 9, 12)
+    next_monday = xp.reward_pick_week(saturday)
+    assert next_monday == date(2026, 9, 14)
+    xp.set_week_reward_choice(db, next_monday, "$10 to spend", "💵", "library")
+
+    finished = xp.week_reward_choice(db, finished_monday)
+    assert finished["name"] == "Chipotle" and finished["status"] == "approved"
+    assert xp.week_reward_choice(db, next_monday)["name"] == "$10 to spend"
+
+
+def test_a_delivered_weeks_reward_cannot_be_overwritten(db, student):
+    monday = date(2026, 9, 7)
+    xp.set_week_reward_choice(db, monday, "Chipotle", "🌯", "custom")
+    xp.approve_week_reward(db, monday)
+    xp.set_week_reward_given(db, monday, True)
+
+    # A later pick aimed at the same (delivered) week is refused, not applied.
+    xp.set_week_reward_choice(db, monday, "$10 to spend", "💵", "library")
+    assert xp.week_reward_choice(db, monday)["name"] == "Chipotle"
+
+
 def test_the_student_picks_a_reward_from_his_home(monkeypatch, tmp_path):
     db_path = tmp_path / "pick.db"
     database = Database(db_path)
@@ -486,7 +528,9 @@ def test_the_student_picks_a_reward_from_his_home(monkeypatch, tmp_path):
     assert not at.exception, [e.message for e in at.exception]
 
     database = Database(db_path)
-    choice = xp.week_reward_choice(database, weekly.week_start())
+    # The pick lands on the week that's still open -- this week during the week,
+    # the upcoming one on the weekend -- so read it back from there.
+    choice = xp.week_reward_choice(database, xp.reward_pick_week())
     database.close()
     assert choice and choice["status"] == "pending"
 
@@ -502,8 +546,8 @@ def test_the_parent_approves_a_pick_from_mission_control(monkeypatch, tmp_path):
 
     at = _open_mission_control(monkeypatch, db_path)
     body = " ".join(m.value for m in at.markdown)
-    assert "picked this week's reward" in body
-    [b for b in at.button if (b.key or "") == "reward_approve_btn"][0].click().run()
+    assert "picked a reward" in body
+    [b for b in at.button if (b.key or "").startswith("reward_approve_btn")][0].click().run()
     assert not at.exception, [e.message for e in at.exception]
 
     database = Database(db_path)
