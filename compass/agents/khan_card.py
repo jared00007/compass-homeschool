@@ -223,51 +223,30 @@ def build_khan_card_payload(
     # report already looks, and off the question the student sees.
     usage = quiz[0].pop("_usage", None) if quiz else None
 
-    activity = {
-        "title": "Do the Khan skill, then log your score",
-        "minutes": minutes,
-        "phase": "practice",
-        "instructions": (
-            f"Head to Khan Academy and work this all the way through:\n\n"
-            f"▶️ **[Open in Khan Academy]({url})**\n\n"
-            f"When you've finished it there, come back and tell me how it went — "
-            f"your mastery level or score, plus one thing that clicked or tripped "
-            f"you up. Then take the quiz below."
-        ),
-        "requires_written_response": True,
-        "writing_requirements": {
-            "min_words": None,
-            "max_words": None,
-            "min_sentences": None,
-            "requires_quote": False,
-        },
-        "answer": (
-            f"He should report a real Khan Academy result for '{unit}' — a mastery "
-            "level, a percent, or 'leveled up' — plus a quick reflection. Approve "
-            "once he's actually done the skill on Khan and logged a plausible "
-            "result; send it back if the box is empty or he clearly skipped it."
-        ),
-        "video": {"found": False, "title": "", "url": "", "channel": "", "why": ""},
-        "example": "",
-        "self_check": "",
-        "reading_check": [],
-        "checklist": [],
-    }
+    # The simplest possible card: the Khan link + the quiz, nothing to type. He
+    # opens the link, does the skill on Khan, takes the quiz, and turns it in;
+    # the quiz is what scores it. No graded activity, so the parent's review is
+    # one tap (see review._render_khan_review).
+    overview = (
+        f"Do this one on Khan Academy:\n\n"
+        f"▶️ **[Open in Khan Academy]({url})**\n\n"
+        f"Work the skill all the way through over there, then come back and take "
+        f"the quick quiz below to lock it in and turn it in."
+    )
+    if note.strip():
+        overview += f"\n\n**From your parent:** {note.strip()}"
 
     payload: dict[str, Any] = {
         "title": f"Khan Academy: {unit}",
         "topic": unit,
-        "overview": (
-            f"This one's on Khan Academy — do the skill there, tell me how it went, "
-            f"then take a quick quiz to lock it in."
-        ),
+        "overview": overview,
         "learning_objectives": [f"Work the Khan Academy skill: {unit}"],
         "learn": {
             "explanation": "",
             "video": {"found": False, "title": "", "url": "", "channel": "", "why": ""},
         },
         "worked_example": {"problem": "", "steps": ""},
-        "activities": [activity],
+        "activities": [],
         "materials": ["A device with Khan Academy open"],
         "subject_credits": [
             {
@@ -283,14 +262,12 @@ def build_khan_card_payload(
         "estimated_minutes": minutes,
         "fun_extra": {"title": "", "instructions": ""},
         "parent_notes": (
-            f"Manual Khan Academy card. He does '{unit}' on Khan (link in the "
-            f"activity), reports his score, and takes the quiz. Approve & log hours "
-            f"once he's done."
+            f"Khan Academy card. He does '{unit}' on Khan (link in the lesson), "
+            f"takes the quiz, and turns it in. The quiz scores it; approving is one "
+            f"tap to log the hours and file it."
         ),
         "branches": [],
     }
-    if note.strip():
-        payload["overview"] += f"\n\nFrom your parent: {note.strip()}"
     if usage:
         payload["_usage"] = usage
     return payload

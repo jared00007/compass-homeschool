@@ -861,3 +861,35 @@ def test_submitted_life_skills_are_approved_inline_in_the_review_queue(monkeypat
     db2.close()
     assert row["completed_on"]  # approved
     assert len(occ) == 1  # and the hours logged, from the inline Approve
+
+
+def test_a_khan_card_is_approved_in_one_tap(monkeypatch, tmp_path):
+    """A Khan card carries no hand-graded activity -- the quiz scored it -- so its
+    whole review is a single "Approve & log hours" that completes it and logs the
+    hours, with no per-activity grading step in the way."""
+    from compass.agents import khan_card
+
+    db_path = tmp_path / "khan_review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    quiz = [{"question": "q", "choices": ["a", "b", "c", "d"],
+             "correct_index": 1, "explanation": "e"}]
+    lid = khan_card.create_khan_card(
+        db, student, subject="math", unit="Exponents",
+        url="https://khan/x", minutes=35,
+        day_iso=date.today().isoformat(), quiz=quiz,
+    )
+    db.record_quiz_result(lid, student["id"], 4, 5, False)  # he took the quiz
+    db.submit_lesson(lid)                                    # ...and turned it in
+    db.close()
+
+    at, _ = _open_review_tab(monkeypatch, db_path)
+    approve = [b for b in at.button if (b.label or "") == "✅ Approve & log hours"]
+    assert approve, [b.label for b in at.button]
+    approve[0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db = Database(db_path)
+    lesson = db.get_lesson(lid)
+    db.close()
+    assert lesson["status"] == "completed"  # one tap -> approved, hours logged

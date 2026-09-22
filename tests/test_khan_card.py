@@ -36,16 +36,33 @@ _QUIZ = [
 # --- the pure payload builder --------------------------------------------------
 
 
-def test_payload_is_a_gradeable_link_card_with_the_quiz():
+def test_payload_is_a_link_plus_quiz_card():
+    """The simplest shape: the Khan link in the overview and the quiz -- no typed
+    step, nothing to hand-grade. The quiz is what scores it."""
     payload = khan_card.build_khan_card_payload(
         "math", "Multiplying & dividing powers",
         "https://www.khanacademy.org/x", 35, quiz=list(_QUIZ),
     )
-    assert len(ui._gradeable_activities(payload)) == 1
-    assert "khanacademy.org/x" in payload["activities"][0]["instructions"]
+    assert payload["activities"] == []
+    assert "Open in Khan Academy" in payload["overview"]
+    assert "khanacademy.org/x" in payload["overview"]
     assert payload["quiz"] == _QUIZ
     assert payload["learn"]["explanation"] == ""
-    assert payload["worked_example"]["steps"] == ""
+    # No answer key exists on the card at all now.
+    assert "answer" not in payload
+
+
+def test_khan_card_is_ready_to_submit_only_after_the_quiz():
+    """Landon's whole gate: take the quiz, turn it in. No writing to submit."""
+    payload = khan_card.build_khan_card_payload(
+        "math", "Exponents", "https://k/x", 35, quiz=list(_QUIZ),
+    )
+    lesson = {"payload": payload, "metadata": {}}
+    ready, _ = ui._lesson_ready_to_submit(lesson)
+    assert not ready  # quiz not taken yet
+    lesson["metadata"]["quiz_result"] = {"correct": 4, "total": 5}
+    ready, _ = ui._lesson_ready_to_submit(lesson)
+    assert ready
 
 
 def test_any_wa_subject_credits_itself():
@@ -119,7 +136,7 @@ def test_url_defaults_to_the_saved_khan_link(db, student):
     )
     link = db.get_lesson(lid)["metadata"]["resource_url"]
     assert link == "https://www.khanacademy.org/profile/me/courses"
-    assert link in db.get_lesson(lid)["payload"]["activities"][0]["instructions"]
+    assert link in db.get_lesson(lid)["payload"]["overview"]
 
     db.set_setting("khan_base_url", "https://www.khanacademy.org/math")
     lid2 = khan_card.create_khan_card(
@@ -183,7 +200,7 @@ def test_generate_khan_quiz_verifies_and_keeps_usage(student, monkeypatch):
     assert quiz[0]["_usage"] == {"input_tokens": 11, "output_tokens": 22}
 
 
-def test_created_card_renders_without_leaking_the_answer(db, student, monkeypatch):
+def test_created_card_renders_with_the_khan_link(db, student, monkeypatch):
     lesson_id = khan_card.create_khan_card(
         db, student, subject="math", unit="Exponent rules",
         url="https://khan/exp", minutes=35, day_iso=date.today().isoformat(),
@@ -214,4 +231,3 @@ def test_created_card_renders_without_leaking_the_answer(db, student, monkeypatc
     page = "\n".join(written)
     assert "Open in Khan Academy" in page
     assert "khan/exp" in page
-    assert "Approve once he's actually done" not in page

@@ -3970,9 +3970,9 @@ def render_khan_card_form(db: Database, student: dict[str, Any]) -> None:
 
     st.caption(
         "Paste a Khan course's units or exercises — one per line — and Compass "
-        "makes a card for each. Landon does each on Khan, logs his score, and takes "
-        "a quick auto-graded quiz; it counts as that subject's work and logs the "
-        "hours when you approve it."
+        "makes a card for each. Landon does each on Khan, takes a quick auto-graded "
+        "quiz, and turns it in; the quiz scores it, it counts as that subject's "
+        "work, and approving is one tap to log the hours."
     )
     api_ok, api_message = api_available()
 

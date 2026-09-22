@@ -447,6 +447,53 @@ def _render_activity_grade_picker(
         )
 
 
+def _render_khan_review(
+    db: Database, student: dict[str, Any], lesson: dict[str, Any], key_prefix: str
+) -> None:
+    """A Khan card's whole review: one tap. Khan carried the teaching and
+    practice and the auto-quiz already scored it, so there's nothing to
+    hand-grade -- approving just logs the hours and files it. Sending it back
+    reopens it to him."""
+    metadata = lesson.get("metadata") or {}
+
+    if lesson["status"] != "submitted":
+        if lesson["status"] == "completed":
+            _ui.st.success("✅ Approved and logged.")
+        else:
+            _ui.st.caption("⏳ Waiting on him to do it on Khan and take the quiz.")
+        return
+
+    quiz_result = metadata.get("quiz_result") or {}
+    if quiz_result.get("total"):
+        score = round(100 * quiz_result["correct"] / quiz_result["total"])
+        _ui.st.caption(
+            f"🅰️ Khan card — his quiz: **{score}%** "
+            f"({quiz_result['correct']}/{quiz_result['total']}). Approving logs the "
+            "hours and files it."
+        )
+    else:
+        _ui.st.caption("🅰️ Khan card — approving logs the hours and files it.")
+
+    with _ui.st.form(f"{key_prefix}_khan_{lesson['id']}"):
+        feedback = _ui.st.text_area("Feedback (shown to him only if you send it back)")
+        minutes, where, credits = _hours_inputs(
+            lesson["payload"], f"{key_prefix}_hrs_{lesson['id']}"
+        )
+        approve_col, bounce_col = _ui.st.columns(2)
+        approve = approve_col.form_submit_button("✅ Approve & log hours", type="primary")
+        bounce = bounce_col.form_submit_button("↩️ Send back")
+    if approve:
+        _log_hours_for_lesson(
+            db, student, lesson, minutes=minutes, location=where, credits=credits
+        )
+        _ui.st.success("Approved and logged.")
+        _ui.st.rerun()
+    elif bounce:
+        db.send_lesson_back(lesson["id"], feedback)
+        _ui.st.success("Sent back.")
+        _ui.st.rerun()
+
+
 def _render_final_grade_decision(
     db: Database,
     student: dict[str, Any],
@@ -500,6 +547,12 @@ def _render_final_grade_decision(
             db.send_lesson_back(lesson["id"], note)
             _ui.st.success("Sent back — he'll see your note on each flagged piece.")
             _ui.st.rerun()
+        return
+
+    # A Khan card: the quiz already scored it and there's nothing to hand-grade,
+    # so approving is one tap -- log the hours and file it.
+    if metadata.get("source") == "khan":
+        _render_khan_review(db, student, lesson, key_prefix)
         return
 
     if skill_id:

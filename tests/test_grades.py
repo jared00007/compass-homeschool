@@ -578,33 +578,24 @@ def test_override_can_grade_a_subject_with_no_computed_grade(db):
 
 def _khan_card(db, student, subject="math") -> int:
     """A Khan card as `create_khan_card` saves it: the single `khan` agent, the
-    real WA subject, and one gradeable activity."""
+    real WA subject, and no graded activity -- link + quiz only."""
     return db.save_lesson(
         student_id=student["id"], agent="khan", subject=subject, topic="Exponents",
         title="Khan Academy: Exponents",
-        payload={
-            "title": "Khan Academy: Exponents",
-            "activities": [
-                {"title": "Do the Khan skill, then log your score",
-                 "answer": "…", "requires_written_response": True},
-            ],
-        },
+        payload={"title": "Khan Academy: Exponents", "activities": []},
         metadata={"source": "khan"},
     )
 
 
-def test_a_khan_cards_scores_fold_into_its_subject_grade(db, student):
-    """The whole point: a Khan card's auto-quiz and approved-work verdict count
-    toward the subject's grade exactly like an AI-generated lesson."""
+def test_a_khan_cards_quiz_folds_into_its_subject_grade(db, student):
+    """The whole point: a Khan card's auto-quiz score counts toward the subject's
+    grade exactly like an AI-generated lesson's quiz."""
     lesson_id = _khan_card(db, student, subject="math")
     db.record_quiz_result(lesson_id, student["id"], 4, 5, False)  # 80
-    db.record_activity_grade(lesson_id, 0, config.ASSESSMENT_SOLID)  # 90
 
     result = gradebook.subject_grade(db, student["id"], "math")
     quiz = [c for c in result.components if c.key == "quizzes"][0]
-    assessment = [c for c in result.components if c.key == "assessment"][0]
     assert round(quiz.percent) == 80
-    assert assessment.percent == config.ASSESSMENT_VERDICT_SCORES[config.ASSESSMENT_SOLID]
     # And it shows in the drill-down, named as a Khan card.
     titles = [i.title for i in gradebook.graded_items(db, student["id"], "math")]
     assert any("Khan Academy" in t for t in titles)
