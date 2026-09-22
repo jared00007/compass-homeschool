@@ -211,6 +211,30 @@ def test_worked_steps_render_as_a_markdown_list_not_a_flattened_blob(monkeypatch
     assert "1. Add 7 to both sides.\n\n2. Now 4x = 20." in page
 
 
+def test_inline_numbered_run_is_split_into_a_list():
+    """A problem set the model wrote as one horizontal run ('1. … 2. … 3. …')
+    gets pulled back into one item per line, with the lead-in kept as its own
+    line -- so 'Now you try' renders stacked, not sideways."""
+    from compass.ui.comic import _split_inline_numbered
+
+    out = _split_inline_numbered(
+        "Do these on paper. 1. 4^3 · 4^6 2. x^9 ÷ x^4 3. 7y^5 · 3y^2"
+    )
+    assert out == "Do these on paper.\n1. 4^3 · 4^6\n2. x^9 ÷ x^4\n3. 7y^5 · 3y^2"
+
+
+def test_inline_split_leaves_ambiguous_runs_alone():
+    """The guard: only a clean 1..k run splits. A stray number mid-text -- a
+    decimal like '= 12.' or a lone marker -- must never trigger a bogus split,
+    so those strings come back untouched (None)."""
+    from compass.ui.comic import _split_inline_numbered
+
+    # '12.' makes the sequence 1, 2, 12, 3 -- not a tidy run, so: no split.
+    assert _split_inline_numbered("1. First. 2. Numbers: 6 · 2 = 12. 3. Done.") is None
+    # No numbered markers at all.
+    assert _split_inline_numbered("An exponent is just a counter, plain prose.") is None
+
+
 # --- student_lesson_view: his own "I'm done" signal, separate from `status` ---
 
 

@@ -7,6 +7,7 @@ package) go through `_ui`; everything else is a plain import.
 from __future__ import annotations
 
 import html
+import re
 from functools import partial
 from typing import Any
 
@@ -382,7 +383,7 @@ def _render_activity_body(
         with _ui.st.container(border=True):
             _ui.st.markdown("**📖 Here's how:**")
             _render_steps(example)
-    _ui.st.markdown(md(activity.get("instructions", "")))
+    _render_steps(activity.get("instructions", ""))
 
     if not parent and db is not None and lesson_id is not None:
         _render_reading_check(
@@ -691,18 +692,52 @@ def _render_activity_comic_panel(
                 _ui.st.rerun()
 
 
-def _render_steps(text: str) -> None:
-    """Render a multi-line `steps` / worked-example / `example` string as
-    STRUCTURED markdown instead of one flat run of <br>-joined text.
+# A numbered marker ("1.", "2)") sitting inside a line, at a word boundary --
+# used to rescue a problem set or worked steps the model wrote as one horizontal
+# run instead of one item per line.
+_INLINE_MARKER = re.compile(r"(?:(?<=\s)|^)(\d{1,2})[.)]\s")
 
-    Numbered lines ("1.", "2)", …) become a real indented ordered list -- a step
-    that wraps hangs under its number the way a worked solution should read --
-    and any lead-in or trailing prose stays its own paragraph. Every line is
-    blank-line-separated so Streamlit renders it as proper markdown (a single
-    loose ordered list keeps its 1, 2, 3 numbering) rather than collapsing the
-    newlines into one horizontal cluster of string, which is what the old
-    escape-and-newline->"<br>" approach produced."""
-    lines = [line.strip() for line in (text or "").split("\n") if line.strip()]
+
+def _split_inline_numbered(text: str) -> str | None:
+    """If `text` is one run with an inline numbered sequence (``1. … 2. … 3. …``),
+    return it split to one item per line so it renders as a list; else None.
+
+    Only fires on a CLEAN run: the markers must be 1, 2, 3, … with no gaps and no
+    repeats. That guard is what keeps a decimal or a stray number in the middle of
+    a step (``= 12.`` , a lone ``3.``) from triggering a bogus split -- if the
+    numbers aren't a tidy 1..k sequence, we leave the text exactly as it was."""
+    matches = list(_INLINE_MARKER.finditer(text))
+    numbers = [int(m.group(1)) for m in matches]
+    if len(numbers) < 2 or numbers != list(range(1, len(numbers) + 1)):
+        return None
+    starts = [m.start(1) for m in matches]
+    lead = text[: starts[0]].strip()
+    items = [
+        text[start : (starts[i + 1] if i + 1 < len(starts) else len(text))].strip()
+        for i, start in enumerate(starts)
+    ]
+    return "\n".join(([lead] if lead else []) + items)
+
+
+def _render_steps(text: str) -> None:
+    """Render a `steps` / worked-example / `example` / `instructions` string as
+    STRUCTURED markdown instead of one flat run of text.
+
+    Numbered lines ("1.", "2)", …) become a real indented ordered list -- an item
+    that wraps hangs under its number the way a worked solution or a problem set
+    should read -- and any lead-in or trailing prose stays its own paragraph.
+    Every line is blank-line-separated so Streamlit renders it as proper markdown
+    (a single loose ordered list keeps its 1, 2, 3 numbering) rather than
+    collapsing the newlines into one horizontal cluster of string. A run the model
+    wrote inline on one line is split back out first, when it's safe to."""
+    text = (text or "").strip()
+    if not text:
+        return
+    if "\n" not in text:
+        rescued = _split_inline_numbered(text)
+        if rescued:
+            text = rescued
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
     if not lines:
         return
     _ui.st.markdown("\n\n".join(md(line) for line in lines))
@@ -724,7 +759,7 @@ def _render_learn_section(lesson: dict[str, Any], *, parent: bool) -> None:
     if explanation:
         _ui.st.markdown("### 📗 Learn")
         with _ui.st.container(border=True):
-            _ui.st.markdown(md(explanation))
+            _render_steps(explanation)
             video = learn.get("video") or {}
             if video.get("found") and video.get("url"):
                 _ui.st.markdown(f"▶️ **[{md(video.get('title', 'Watch'))}]({video['url']})**")

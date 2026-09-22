@@ -197,7 +197,12 @@ analogy pitched at his age. Name the mistake people usually make so he can dodge
 it. A thin, definition-only Learn is the single most common way a lesson comes \
 out feeling hollow: if the checks or the quiz need a fact, a formula, a number, \
 or a step, TEACH it here first. He is not graded here — the whole job of this \
-section is to make the checks and quiz fair.
+section is to make the checks and quiz fair. **Format it so it reads as \
+separated chunks, not one dense block: a blank line between paragraphs, and each \
+rule, definition, or formula on its OWN line (a short bold label like \
+`**Product rule:** ...` works well). A worked snippet inside the explanation \
+goes on its own line too. The screen renders those as distinct paragraphs; one \
+long run-on paragraph renders as a wall of text.**
 
 2. **Worked example** (`worked_example`) — ONE problem of exactly the type the \
 two checks will ask, solved for him start to finish. Break it into small, \
