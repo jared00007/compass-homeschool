@@ -4097,9 +4097,16 @@ def _render_one_enrichment(
 def render_enrichment_activities(db: Database, student: dict[str, Any], today: str) -> None:
     """Student-facing: light art/music and movement activities his parent set up,
     on Home. He does one and taps 'I did it' -- it logs the time to the subject it
-    covers and counts as a day's enrichment block."""
+    covers and counts as a day's enrichment block.
+
+    Day-filtered exactly like the lesson roster: one scheduled for a *later* day
+    waits until that day instead of piling onto today (reported: art/music and
+    movement generated for other days all sat on his Today page). `due_lessons`
+    keeps today's, this week's overdue, and any never-dated one, and drops the
+    future-dated and backlogged ones."""
     for track, spec in config.ENRICHMENT_TRACKS.items():
-        for activity in db.list_enrichment_activities(student["id"], track, include_done=False):
+        activities = db.list_enrichment_activities(student["id"], track, include_done=False)
+        for activity in weekly.due_lessons(activities, today):
             _render_one_enrichment(db, student, activity, spec)
 
 

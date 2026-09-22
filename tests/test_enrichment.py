@@ -6,7 +6,7 @@ time to the WA subject it covers and counts as a day's enrichment block.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,9 +14,42 @@ import pytest
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
+import compass.ui as ui
 from compass import auth, config, pacing
 from compass.agents import enrichment
 from compass.storage.db import Database
+
+
+class _Rec:
+    """A minimal `st` stand-in that records the strings it would render."""
+
+    session_state: dict = {}
+
+    def __init__(self, written):
+        self._written = written
+
+    def __getattr__(self, _name):
+        def record(*args, **kwargs):
+            for arg in args:
+                if isinstance(arg, str):
+                    self._written.append(arg)
+            return self
+        return record
+
+    def __getitem__(self, _index):
+        return self
+
+    def __iter__(self):
+        return iter([self, self])
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def __bool__(self):
+        return False
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HOME_PATH = str(REPO_ROOT / "Home.py")
@@ -100,6 +133,28 @@ def test_an_enrichment_block_helps_make_a_full_day(db, student):
     art = _generate(db, student, "art_music")
     db.complete_enrichment_activity(art, student["id"])
     assert pacing.day_plan(db, student["id"], today).is_full_day is True
+
+
+def test_future_scheduled_enrichment_waits_and_does_not_pile_on_today(db, student, monkeypatch):
+    """Reported: art/music + movement generated and scheduled for other days all
+    sat on his Today page. Home now day-filters them like the lesson roster -- a
+    future one waits for its day, a today one still shows."""
+    today = date.today()
+    today_iso = today.isoformat()
+    tomorrow_iso = (today + timedelta(days=1)).isoformat()
+
+    a_today = _generate(db, student, "art_music", an_activity_payload(title="Today art"))
+    a_future = _generate(db, student, "movement", an_activity_payload(title="Future move"))
+    db.reschedule_lesson(a_today, today_iso)
+    db.reschedule_lesson(a_future, tomorrow_iso)
+
+    written: list[str] = []
+    monkeypatch.setattr(ui, "st", _Rec(written))
+    ui.render_enrichment_activities(db, student, today_iso)
+    page = "\n".join(written)
+
+    assert "Today art" in page
+    assert "Future move" not in page
 
 
 def _open(monkeypatch, db_path, page_path, *, as_parent):
