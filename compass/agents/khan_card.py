@@ -29,27 +29,39 @@ score, but "mastered this node" stays something the prerequisite graph decides.
 
 from __future__ import annotations
 
-from typing import Any
+import re
+from typing import Any, Callable
 
 from compass import config, subjects
-from compass.agents.llm import _object, generate_lesson
+from compass.agents.llm import LessonGenerationError, _object, generate_lesson
 from compass.agents.quiz import verify_quiz
 
-# The four core subject pages a Khan card can land on, keyed by the agent key
-# Home maps to each subject page -> the real WA subject key its hours credit.
-# Mirrors each agent's own `primary_subject` (English teaches, and credits,
-# reading), so a card's credit matches how that subject is counted everywhere
-# else. Only these four have a subject page + graded gradebook to slot into.
-AGENT_CREDIT_SUBJECT = {
-    "math": "math",
-    "science": "science",
-    "english": "reading",
-    "history": "history",
-}
+# Every Khan card is saved under this one agent, whatever WA subject it credits,
+# so they all share a single home (the Khan page) instead of being limited to the
+# four subjects that happen to have their own page. The card's `subject` carries
+# the real WA subject its hours credit.
+AGENT_KEY = "khan"
+
+# The WA subjects a Khan card can be assigned to, with friendly labels for the
+# picker -- all eleven, so Khan can cover music, health, spelling, anything, not
+# just the four core academics. Each value is a real subject key hours credit to.
+KHAN_SUBJECTS: tuple[tuple[str, str], ...] = (
+    ("math", "📐 Math"),
+    ("reading", "📖 Reading"),
+    ("writing", "✍️ Writing"),
+    ("science", "🔬 Science"),
+    ("history", "🏛️ History"),
+    ("social_studies", "🌎 Social Studies"),
+    ("art_and_music", "🎵 Art & Music"),
+    ("health", "🏃 Health & Fitness"),
+    ("spelling", "🔤 Spelling"),
+    ("language", "🗣️ Language"),
+    ("occupational_education", "🛠️ Occupational Ed"),
+)
 
 
-def is_supported_subject(agent_key: str) -> bool:
-    return agent_key in AGENT_CREDIT_SUBJECT
+def is_supported_subject(subject_key: str) -> bool:
+    return subjects.is_valid(subject_key)
 
 
 def khan_base_url(db: Any) -> str:
@@ -60,13 +72,28 @@ def khan_base_url(db: Any) -> str:
     ]
 
 
-def default_minutes(agent_key: str) -> int:
+def default_minutes(subject_key: str) -> int:
     """The form opens at the subject's usual lesson length (Math 35, etc.),
     falling back to the family default -- same source the Plan-a-lesson form uses,
     so a Khan card doesn't feel like a different size of thing."""
     return config.SUBJECT_DEFAULT_MINUTES.get(
-        agent_key, int(config.DEFAULT_SETTINGS["default_lesson_minutes"])
+        subject_key, int(config.DEFAULT_SETTINGS["default_lesson_minutes"])
     )
+
+
+_BULLET = re.compile(r"^\s*(?:[-*•·▪◦–—]|\d{1,3}[.)])\s+")
+
+
+def parse_units(text: str) -> list[str]:
+    """Split a pasted block into clean unit names -- one per line, blanks dropped,
+    and a leading bullet or number ('- ', '1. ', '• ') trimmed so a list copied
+    off a Khan course page comes in as tidy titles."""
+    units: list[str] = []
+    for line in (text or "").splitlines():
+        cleaned = _BULLET.sub("", line).strip()
+        if cleaned:
+            units.append(cleaned)
+    return units
 
 
 # Just the quiz -- the only thing a Khan card asks a model for. Same item shape
@@ -140,12 +167,12 @@ Write the questions at his reading level: short, plain, one idea each.
 
 
 def generate_khan_quiz(
-    student: dict[str, Any], agent_key: str, unit: str, *, note: str = ""
+    student: dict[str, Any], subject_key: str, unit: str, *, note: str = ""
 ) -> list[dict[str, Any]]:
     """Generate and verify a quiz pool for one Khan skill. The single model call
     a Khan card makes; returns the cleaned list of questions (never raises on a
     few malformed items -- those are dropped, same as any lesson quiz)."""
-    subject_label = subjects.label(AGENT_CREDIT_SUBJECT.get(agent_key, agent_key))
+    subject_label = subjects.label(subject_key)
     note_line = f"\nParent's note about this skill: {note.strip()}" if note.strip() else ""
     system = _QUIZ_SYSTEM.format(
         age=student.get("age") or 13,
@@ -176,7 +203,7 @@ def generate_khan_quiz(
 
 
 def build_khan_card_payload(
-    agent_key: str,
+    subject_key: str,
     unit: str,
     url: str,
     minutes: int,
@@ -187,7 +214,7 @@ def build_khan_card_payload(
     """The ordinary-lesson payload for a Khan card -- pure, no model call, so the
     shape is unit-testable on its own. Renders through render_lesson + render_quiz
     exactly like any other lesson."""
-    credit_subject = AGENT_CREDIT_SUBJECT.get(agent_key, agent_key)
+    credit_subject = subject_key
     subject_label = subjects.label(credit_subject)
     unit = unit.strip()
     url = url.strip()
@@ -273,7 +300,7 @@ def create_khan_card(
     db: Any,
     student: dict[str, Any],
     *,
-    agent_key: str,
+    subject: str,
     unit: str,
     url: str | None = None,
     minutes: int,
@@ -284,26 +311,24 @@ def create_khan_card(
 ) -> int:
     """Create one Khan card, schedule it, and return its lesson id.
 
+    `subject` is the WA subject the card's hours credit (any of `KHAN_SUBJECTS`).
     `url` defaults to the family's saved Khan link (`khan_base_url`), so the
     parent never re-pastes it per card. Generates the quiz from the unit name
     unless `quiz` is passed in (tests, or a parent who entered their own). Saved
-    under the subject's own agent key so it lives alongside that subject's
-    lessons everywhere. Scheduled to `day_iso` if given (via the normal
-    reschedule path, which sets planned_for + week_start); left in the backlog
-    otherwise, for the parent to place from the Board.
+    under the single `khan` agent so every Khan card shares one home (the Khan
+    page). Scheduled to `day_iso` if given (via the normal reschedule path, which
+    sets planned_for + week_start); left in the backlog otherwise.
     """
-    if not is_supported_subject(agent_key):
-        raise ValueError(f"Khan cards aren't supported for '{agent_key}'.")
+    if not is_supported_subject(subject):
+        raise ValueError(f"'{subject}' isn't a valid subject for a Khan card.")
     if not unit.strip():
         raise ValueError("Give the unit or exercise a name.")
     url = (url or "").strip() or khan_base_url(db)
 
     if quiz is None and generate_quiz:
-        quiz = generate_khan_quiz(student, agent_key, unit, note=note)
+        quiz = generate_khan_quiz(student, subject, unit, note=note)
 
-    payload = build_khan_card_payload(
-        agent_key, unit, url, minutes, quiz=quiz, note=note
-    )
+    payload = build_khan_card_payload(subject, unit, url, minutes, quiz=quiz, note=note)
     metadata: dict[str, Any] = {"source": "khan", "resource_url": url.strip()}
     if day_iso is None:
         # No day yet -> park it in the parent's Backlog to schedule from the
@@ -312,8 +337,8 @@ def create_khan_card(
 
     lesson_id = db.save_lesson(
         student_id=student["id"],
-        agent=agent_key,
-        subject=AGENT_CREDIT_SUBJECT.get(agent_key, agent_key),
+        agent=AGENT_KEY,
+        subject=subject,
         topic=unit.strip(),
         title=f"Khan Academy: {unit.strip()}",
         payload=payload,
@@ -324,3 +349,47 @@ def create_khan_card(
     if day_iso is not None:
         db.reschedule_lesson(lesson_id, day_iso)
     return lesson_id
+
+
+def create_khan_cards(
+    db: Any,
+    student: dict[str, Any],
+    *,
+    subject: str,
+    units: list[str],
+    minutes: int,
+    day_iso: str | None = None,
+    note: str = "",
+    generate_quiz: bool = True,
+    on_progress: Callable[[int, int, str | None], None] | None = None,
+) -> dict[str, list[Any]]:
+    """Create a card for each unit in a pasted list -- the bulk path.
+
+    Resilient: if a card's quiz generation fails (an API hiccup on one of many),
+    the card is still created *without* a quiz rather than aborting the whole
+    batch, and its name is collected in `quiz_failed` so the parent can retry it.
+    `on_progress(done, total, current_unit)` is called before each card so the UI
+    can show a progress bar. Returns {"created": [ids], "quiz_failed": [names]}.
+    """
+    result: dict[str, list[Any]] = {"created": [], "quiz_failed": []}
+    total = len(units)
+    for index, unit in enumerate(units):
+        if on_progress is not None:
+            on_progress(index, total, unit)
+        try:
+            lesson_id = create_khan_card(
+                db, student, subject=subject, unit=unit, minutes=minutes,
+                day_iso=day_iso, note=note, generate_quiz=generate_quiz,
+            )
+        except LessonGenerationError:
+            # The quiz call failed for this one -- add the card anyway, no quiz,
+            # so a single API hiccup doesn't sink the whole import.
+            lesson_id = create_khan_card(
+                db, student, subject=subject, unit=unit, minutes=minutes,
+                day_iso=day_iso, note=note, generate_quiz=False,
+            )
+            result["quiz_failed"].append(unit)
+        result["created"].append(lesson_id)
+    if on_progress is not None:
+        on_progress(total, total, None)
+    return result

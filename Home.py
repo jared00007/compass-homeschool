@@ -254,6 +254,15 @@ if not is_parent():
             if lesson is not None:
                 roster.append((lesson, marker, page_path, subject_label))
 
+        # Khan Academy cards (any subject) share one agent and one page, so they
+        # ride the same roster: today's due Khan card links to the Khan page.
+        khan_lessons = db.list_lessons(student["id"], agent="khan", limit=500)
+        khan_lesson, khan_marker = weekly.today_subject_status(khan_lessons, today)
+        if khan_lesson is not None:
+            roster.append(
+                (khan_lesson, khan_marker, "pages/18_Khan.py", "Khan Academy")
+            )
+
         # Each lesson gets its own bordered card -- the same white-box
         # treatment the Morning Routine and Check-In cards use -- with its
         # review-gate status spelled out on the card itself, rather than one

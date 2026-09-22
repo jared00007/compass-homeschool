@@ -749,8 +749,9 @@ if mc_view == "plan":
         render_week_planner(db, student)
 
     # Hand-enter Khan Academy units/exercises as cards -- no AI lesson, just the
-    # link + an auto-graded quiz. Khan carries the teaching; Compass logs it.
-    with st.expander("🅰️ Add a Khan Academy card — link a unit or exercise"):
+    # saved link + an auto-graded quiz per card. Khan carries the teaching;
+    # Compass logs it. Paste a whole course's units at once.
+    with st.expander("🅰️ Add Khan Academy cards — paste a course's units"):
         render_khan_card_form(db, student)
 
     st.markdown("### ✍️ Plan a lesson")

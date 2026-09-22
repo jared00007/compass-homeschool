@@ -2114,7 +2114,7 @@ def render_past_lessons(
 
 SUBJECT_ICONS = {
     "math": "📐", "science": "🔬", "english": "📖", "history": "🏛️",
-    "life_skills": "🛠️", "coding": "💻",
+    "life_skills": "🛠️", "coding": "💻", "khan": "🅰️",
 }
 
 # One icon per unified-board `kind` (see weekly.board_for_week) -- lessons
@@ -3959,21 +3959,20 @@ def render_rewind_generator(db: Database, student: dict[str, Any]) -> None:
 def render_khan_card_form(db: Database, student: dict[str, Any]) -> None:
     """Parent-facing: hand-enter a Khan Academy unit/exercise as a lesson card.
 
-    You pick the subject, paste the Khan link, and it lands on Landon's board
-    under that subject like any lesson -- Khan carries the teaching and practice,
-    Compass logs the hours and keeps one auto-graded quiz per card as the in-app
-    retention check. One small AI call per card (just the quiz); turn it off to
-    add a card with no quiz."""
+    You pick the subject and paste a whole list of units/exercises (one per
+    line) — Compass makes a card for each, all pointing at your saved Khan link.
+    Khan carries the teaching and practice; Compass logs the hours and keeps one
+    auto-graded quiz per card as the in-app retention check. One small AI call
+    per card (just the quiz); turn it off to add cards with no quiz."""
     from compass.agents import api_available, khan_card
 
-    _SUBJECTS = [("math", "📐 Math"), ("science", "🔬 Science"),
-                 ("english", "📖 English"), ("history", "🏛️ History")]
-    labels = {k: v for k, v in _SUBJECTS}
+    subject_labels = {k: v for k, v in khan_card.KHAN_SUBJECTS}
 
     st.caption(
-        "Enter a Khan Academy unit or exercise as a card for Landon. He does it on "
-        "Khan, logs his score, and takes a quick auto-graded quiz — it counts as "
-        "that subject's work and logs the hours when you approve it."
+        "Paste a Khan course's units or exercises — one per line — and Compass "
+        "makes a card for each. Landon does each on Khan, logs his score, and takes "
+        "a quick auto-graded quiz; it counts as that subject's work and logs the "
+        "hours when you approve it."
     )
     api_ok, api_message = api_available()
 
@@ -3991,18 +3990,23 @@ def render_khan_card_form(db: Database, student: dict[str, Any]) -> None:
             st.rerun()
 
     with st.form("khan_card_form", clear_on_submit=True):
-        agent_key = st.selectbox(
-            "Subject", options=[k for k, _ in _SUBJECTS],
-            format_func=lambda k: labels[k], key="khan_subject",
+        subject = st.selectbox(
+            "Subject", options=[k for k, _ in khan_card.KHAN_SUBJECTS],
+            format_func=lambda k: subject_labels[k], key="khan_subject",
         )
-        unit = st.text_input(
-            "Unit or exercise name",
-            key="khan_unit",
-            placeholder="e.g. Multiplying & dividing powers",
+        units_text = st.text_area(
+            "Units or exercises — one per line",
+            key="khan_units", height=150,
+            placeholder=(
+                "Multiplying & dividing powers\n"
+                "Powers of products & quotients\n"
+                "Negative exponents\n"
+                "…paste a whole course's units here"
+            ),
         )
         cols = st.columns(2)
         minutes = cols[0].number_input(
-            "Minutes", min_value=5, max_value=240,
+            "Minutes per card", min_value=5, max_value=240,
             value=config.SUBJECT_DEFAULT_MINUTES.get("math", 35), step=5,
             key="khan_minutes",
             help="Starting estimate for hours logged — you can adjust it when you approve.",
@@ -4010,40 +4014,59 @@ def render_khan_card_form(db: Database, student: dict[str, Any]) -> None:
         day = cols[1].date_input("Assign to day", value=date.today(), key="khan_day")
         to_backlog = st.checkbox(
             "Send to the Backlog instead of a day", key="khan_backlog",
-            help="Leave it unscheduled to place from the Board later.",
+            help="Leave unscheduled to place from the Board later. Best for a big list.",
         )
         note = st.text_input(
-            "Note for the quiz / for Landon (optional)", key="khan_note",
+            "Note for the quizzes / for Landon (optional)", key="khan_note",
             placeholder="e.g. focus on same-base problems",
         )
         make_quiz = st.checkbox(
-            "Auto-generate a quiz for this skill", value=True, key="khan_make_quiz",
-            help="One small AI call. Turn off to add the card now and enter your own quiz later.",
+            "Auto-generate a quiz for each card", value=True, key="khan_make_quiz",
+            help="One small AI call per card. Turn off to add the cards now and add quizzes later.",
         )
         if not api_ok:
-            st.caption(f"⚠️ Quiz generation unavailable: {api_message} — you can still add the card without a quiz.")
-        submitted = st.form_submit_button("➕ Add Khan card", type="primary", width="stretch")
+            st.caption(f"⚠️ Quiz generation unavailable: {api_message} — you can still add the cards without quizzes.")
+        submitted = st.form_submit_button("➕ Add Khan cards", type="primary", width="stretch")
 
     if not submitted:
         return
-    if not unit.strip():
-        st.error("Give the unit or exercise a name.")
+    units = khan_card.parse_units(units_text)
+    if not units:
+        st.error("Paste at least one unit or exercise (one per line).")
         return
     generate = bool(make_quiz and api_ok)
     day_iso = None if to_backlog else day.isoformat()
-    with st.spinner("Building the quiz…" if generate else "Adding the card…"):
-        try:
-            khan_card.create_khan_card(
-                db, student, agent_key=agent_key, unit=unit,
-                minutes=int(minutes), day_iso=day_iso, note=note,
-                generate_quiz=generate,
-            )
-        except (LessonGenerationError, ValueError) as exc:
-            st.error(str(exc))
-            return
+
+    progress = st.progress(0.0, text="Adding cards…")
+
+    def _on_progress(done: int, total: int, unit: str | None) -> None:
+        frac = done / total if total else 1.0
+        label = (
+            f"Building “{unit}” ({done + 1}/{total})…"
+            if unit is not None else "Finishing up…"
+        )
+        progress.progress(min(frac, 1.0), text=label)
+
+    try:
+        result = khan_card.create_khan_cards(
+            db, student, subject=subject, units=units, minutes=int(minutes),
+            day_iso=day_iso, note=note, generate_quiz=generate,
+            on_progress=_on_progress,
+        )
+    except ValueError as exc:
+        progress.empty()
+        st.error(str(exc))
+        return
+    progress.empty()
+
     where = "the Backlog" if to_backlog else day.strftime("%a %b %-d")
-    quiz_note = "with a quiz" if generate else "without a quiz"
-    st.success(f"Added “{md(unit.strip())}” ({quiz_note}) → {where}. ✅")
+    count = len(result["created"])
+    st.success(f"Added {count} card{'s' if count != 1 else ''} → {where}. ✅")
+    if result["quiz_failed"]:
+        st.warning(
+            "Couldn't generate a quiz for these (added without one — try again "
+            "later): " + ", ".join(md(u) for u in result["quiz_failed"])
+        )
     st.rerun()
 
 
