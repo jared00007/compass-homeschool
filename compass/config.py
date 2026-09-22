@@ -299,6 +299,13 @@ DEFAULT_SETTINGS: dict[str, str] = {
     # Score needed on the in-app quiz to count as a pass -- real, encouraging
     # feedback ("nice work") on its own, distinct from mastery below.
     "quiz_pass_percent": "80",
+    # Whether the weekly REWARD layer is shown to the student at all. "1" (on)
+    # by default. Turned off, the XP bar, points, streak and day strip all stay
+    # -- only the reward parts vanish: the picker, the reward name/payoff, the
+    # earned/pending messaging, and the parent's reward approval + earned alerts.
+    # For a kid who spirals over a reward he thinks he's lost, a parent can pull
+    # the reward and keep the game.
+    "rewards_enabled": "1",
     # Score needed on a Math quiz specifically for the skill to auto-record as
     # mastered -- deliberately a separate, stricter bar than quiz_pass_percent
     # above: an 80% still passes and feels good, but Math treats "mastered"

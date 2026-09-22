@@ -3178,17 +3178,26 @@ def _xp_chip(label: str, bg: str, *, fg: str = _XP_INK, border: str | None = Non
     )
 
 
-def _weekly_xp_html(state: "xp_module.XPState", progress: "xp_module.WeeklyProgress") -> str:
+def _weekly_xp_html(
+    state: "xp_module.XPState",
+    progress: "xp_module.WeeklyProgress",
+    *,
+    show_reward: bool = True,
+) -> str:
     """The card's visual centerpiece: the rank line, the goal meter, and the
-    Mon-Fri comic strip ending in the reward payoff panel."""
+    Mon-Fri comic strip. With `show_reward` it ends in the reward payoff panel and
+    names the reward throughout; without it, the reward layer is stripped and the
+    same card reads as a plain weekly-XP tracker (bar, day strip, level)."""
     pct = round(progress.fraction * 100, 1)
     reward = html.escape(progress.reward_name)
+    goal_emoji = progress.reward_emoji if show_reward else "🎯"
     colors = theming.PRINTED_COMIC_WEEKDAY_COLORS
 
+    title_text = "🎯 This week's reward" if show_reward else "🎯 Your week"
     header = (
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px;">'
         '<span style="font-family:var(--c-head);font-weight:800;font-size:21px;'
-        'letter-spacing:.03em;text-transform:uppercase;">🎯 This week\'s reward</span>'
+        f'letter-spacing:.03em;text-transform:uppercase;">{title_text}</span>'
         f'<span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;'
         f'color:#fff;background:var(--c-border);padding:3px 9px;border-radius:20px;'
         f'border:2px solid {_XP_INK};white-space:nowrap;">🧭 {html.escape(state.title)} · Lvl {state.level}</span>'
@@ -3199,7 +3208,7 @@ def _weekly_xp_html(state: "xp_module.XPState", progress: "xp_module.WeeklyProgr
         '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:5px;">'
         f'<span style="font-family:var(--c-head);font-weight:800;font-size:25px;line-height:.9;">'
         f'{progress.total}<span style="font-size:14px;color:var(--c-dim);"> / {progress.goal} XP</span></span>'
-        f'<span style="font-size:12px;font-weight:800;color:var(--c-dim);">{progress.reward_emoji} Fri</span></div>'
+        f'<span style="font-size:12px;font-weight:800;color:var(--c-dim);">{goal_emoji} Fri</span></div>'
         f'<div style="height:19px;border:2.5px solid {_XP_INK};border-radius:20px;background:var(--c-panel);'
         f'box-shadow:2px 2px 0 {_XP_INK};overflow:hidden;">'
         f'<div style="height:100%;width:{pct}%;background:repeating-linear-gradient(45deg,'
@@ -3208,13 +3217,15 @@ def _weekly_xp_html(state: "xp_module.XPState", progress: "xp_module.WeeklyProgr
         + '"></div></div>'
     )
 
+    goal_label = reward if show_reward else "your goal"
     if progress.reached:
-        cap = f'<div style="font-size:12.5px;font-weight:800;margin-top:7px;color:var(--c-good);">🎉 {reward} — unlocked!</div>'
+        reached_text = f"🎉 {reward} — unlocked!" if show_reward else "🎉 Goal reached — great week!"
+        cap = f'<div style="font-size:12.5px;font-weight:800;margin-top:7px;color:var(--c-good);">{reached_text}</div>'
     else:
         cap = (
             f'<div style="font-size:12.5px;font-weight:700;margin-top:7px;">'
             f'<span style="color:var(--c-bad);font-weight:800;">{progress.remaining} XP</span> '
-            f'to {reward} — {"one more push!" if progress.close else "keep at it."}</div>'
+            f'to {goal_label} — {"one more push!" if progress.close else "keep at it."}</div>'
         )
     if progress.is_short_week:
         # A holiday/short week -- say the goal was trimmed so a lighter bar
@@ -3254,11 +3265,12 @@ def _weekly_xp_html(state: "xp_module.XPState", progress: "xp_module.WeeklyProgr
         f'<span style="font-size:10px;font-weight:800;text-transform:uppercase;">{lock}</span></div></div>'
     )
 
-    # A wrapping row: the five day panels and the reward fill the full width and
-    # wrap to more rows on a narrow screen -- no sideways scroll on his phone.
+    # A wrapping row: the five day panels and (with rewards on) the reward payoff
+    # fill the full width and wrap to more rows on a narrow screen -- no sideways
+    # scroll on his phone. Rewards off: just the five day panels, no payoff.
     strip = (
         '<div style="display:flex;flex-wrap:wrap;gap:10px;padding:4px 2px 6px;">'
-        + frames + payoff + "</div>"
+        + frames + (payoff if show_reward else "") + "</div>"
     )
 
     return f'<div style="color:var(--c-text);">{header}{meter}{cap}{strip}</div>'
@@ -3347,6 +3359,14 @@ def render_day_target_editor(db: Database) -> None:
         st.rerun()
 
 
+def _rewards_enabled(db: Database) -> bool:
+    """Whether the weekly REWARD layer is shown to the student. XP (points, bar,
+    streak, day strip) always stays; this only governs the reward parts. Off is a
+    deliberate parent choice for a kid who spirals over a reward -- see config
+    `rewards_enabled`."""
+    return (db.get_setting("rewards_enabled") or "1") != "0"
+
+
 def render_xp_level(db: Database, student: dict[str, Any]) -> None:
     """His weekly XP card -- everything he finishes Mon-Fri turned into a comic
     strip climbing toward one reward by Friday. Core school work (lessons,
@@ -3356,68 +3376,82 @@ def render_xp_level(db: Database, student: dict[str, Any]) -> None:
     Monday. Student view only; pure motivation, not a grade."""
     state = xp_module.compute(db, student["id"])
     progress = xp_module.weekly_progress(db, student["id"], date.today())
+    rewards_on = _rewards_enabled(db)
 
-    st.markdown(_weekly_xp_html(state, progress), unsafe_allow_html=True)
+    st.markdown(_weekly_xp_html(state, progress, show_reward=rewards_on), unsafe_allow_html=True)
 
-    # His own reward pick: choose from a parent's library (or suggest one), then
-    # a parent approves. The pick is for the week that's still open -- this week
-    # Mon-Fri, or the upcoming week once the weekend's here -- so it never
-    # overwrites a reward he's already earned. The bar above still shows the
-    # current (Mon-Fri) week; only the picker looks ahead on weekends.
-    pick_week = xp_module.reward_pick_week()
-    for_next_week = pick_week != progress.week_start
-    pick_choice = xp_module.week_reward_choice(db, pick_week) or {}
-    pick_status = pick_choice.get("status", "unset")
-    when = "next week" if for_next_week else "this week"
-    if pick_status in ("unset", "denied"):
-        render_reward_picker(
-            db, student, pick_week,
-            denied_note=pick_choice.get("note", "") if pick_status == "denied" else "",
-            for_next_week=for_next_week,
-        )
-    elif pick_status == "pending":
-        st.info(
-            f"🎁 You picked {pick_choice.get('emoji', '🎁')} "
-            f"**{md(pick_choice.get('name', 'a reward'))}** for {when} — "
-            "waiting for a parent to say yes."
-        )
-    elif pick_status == "approved" and for_next_week:
-        st.caption(
-            f"🎁 Next week's reward: {pick_choice.get('emoji', '🎁')} "
-            f"{md(pick_choice.get('name', 'a reward'))} — locked in."
-        )
+    if rewards_on:
+        # His own reward pick: choose from a parent's library (or suggest one),
+        # then a parent approves. The pick is for the week that's still open --
+        # this week Mon-Fri, or the upcoming week once the weekend's here -- so it
+        # never overwrites a reward he's already earned. The bar above still shows
+        # the current (Mon-Fri) week; only the picker looks ahead on weekends.
+        pick_week = xp_module.reward_pick_week()
+        for_next_week = pick_week != progress.week_start
+        pick_choice = xp_module.week_reward_choice(db, pick_week) or {}
+        pick_status = pick_choice.get("status", "unset")
+        when = "next week" if for_next_week else "this week"
+        if pick_status in ("unset", "denied"):
+            render_reward_picker(
+                db, student, pick_week,
+                denied_note=pick_choice.get("note", "") if pick_status == "denied" else "",
+                for_next_week=for_next_week,
+            )
+        elif pick_status == "pending":
+            st.info(
+                f"🎁 You picked {pick_choice.get('emoji', '🎁')} "
+                f"**{md(pick_choice.get('name', 'a reward'))}** for {when} — "
+                "waiting for a parent to say yes."
+            )
+        elif pick_status == "approved" and for_next_week:
+            st.caption(
+                f"🎁 Next week's reward: {pick_choice.get('emoji', '🎁')} "
+                f"{md(pick_choice.get('name', 'a reward'))} — locked in."
+            )
 
     # Extra credit already banked this week -- the reserve that counts toward the
-    # same goal, shown as its own line so the bar stays about school work.
+    # same goal, shown as its own line so the bar stays about school work. This is
+    # XP, so it shows whether or not the reward layer is on.
     if progress.bonus_items:
         line = " · ".join(f"{b.emoji} {md(b.label)} +{b.xp}" for b in progress.bonus_items)
         st.caption(f"⚡ Bonus this week: {line}")
 
-    # The reward state. Earned reads as a win to act on; close reads as a nudge
-    # to grab one piece of extra credit; otherwise nothing extra is shown.
-    if progress.reached and not progress.given:
-        st.success(
-            f"🎉 {progress.reward_emoji} **{md(progress.reward_name)}** unlocked — "
-            "great week! Go ask a parent to make it happen."
-        )
-    elif progress.reached and progress.given:
-        st.caption(f"✅ {progress.reward_emoji} {md(progress.reward_name)} — claimed. Nice week.")
-    elif progress.close:
-        opts = " · ".join(f"{b.emoji} {md(b.label)} +{b.xp}" for b in xp_module.bonus_options())
-        st.info(
-            f"⚡ **{progress.remaining} XP from {md(progress.reward_name)}** — you crushed the "
-            f"school week. Finish one more to lock it in: {opts}."
-        )
+    if rewards_on:
+        # The reward state. Earned reads as a win to act on; close reads as a
+        # nudge to grab one piece of extra credit; otherwise nothing extra shows.
+        if progress.reached and not progress.given:
+            st.success(
+                f"🎉 {progress.reward_emoji} **{md(progress.reward_name)}** unlocked — "
+                "great week! Go ask a parent to make it happen."
+            )
+        elif progress.reached and progress.given:
+            st.caption(f"✅ {progress.reward_emoji} {md(progress.reward_name)} — claimed. Nice week.")
+        elif progress.close:
+            opts = " · ".join(f"{b.emoji} {md(b.label)} +{b.xp}" for b in xp_module.bonus_options())
+            st.info(
+                f"⚡ **{progress.remaining} XP from {md(progress.reward_name)}** — you crushed the "
+                f"school week. Finish one more to lock it in: {opts}."
+            )
 
     # How the weekly score works, spelled out for him -- built from the same
     # config knobs the scoring uses, so the numbers here can't drift from what he
     # actually earns and loses.
     with st.expander("ℹ️ How the week works"):
+        if rewards_on:
+            goal_line = (
+                f"Everything you finish **Monday–Friday** fills the bar toward "
+                f"**{progress.goal} XP**. Hit it and {progress.reward_emoji} "
+                f"**{md(progress.reward_name)}** is yours for the weekend. It resets every Monday.\n\n"
+            )
+        else:
+            goal_line = (
+                f"Everything you finish **Monday–Friday** fills the bar toward "
+                f"**{progress.goal} XP** — see how big a week you can stack up. It resets "
+                "every Monday.\n\n"
+            )
         st.markdown(
-            f"Everything you finish **Monday–Friday** fills the bar toward "
-            f"**{progress.goal} XP**. Hit it and {progress.reward_emoji} "
-            f"**{md(progress.reward_name)}** is yours for the weekend. It resets every Monday.\n\n"
-            "**Fills the bar (your school work):**\n"
+            goal_line
+            + "**Fills the bar (your school work):**\n"
             f"- ✅ Finish a lesson: **+{config.XP_PER_LESSON}**\n"
             f"- 🧠 Pass a quiz: **+{config.XP_QUIZ_PASS_BONUS}**\n"
             f"- 📐 Master a math skill: **+{config.XP_PER_MASTERED_SKILL}**\n\n"
@@ -3538,6 +3572,8 @@ def render_weekly_reward_approval(db: Database, student: dict[str, Any]) -> None
     Checks both the current school week and the upcoming one (which is where a
     pick lands over the weekend), so a pick made ahead of Monday still surfaces
     for approval."""
+    if not _rewards_enabled(db):
+        return
     today = date.today()
     this_monday, _ = xp_module.week_bounds(today)
     weeks = [this_monday]
@@ -3557,6 +3593,8 @@ def render_earned_rewards(db: Database, student: dict[str, Any]) -> None:
     **earned it but not yet been handed it**, with a button to mark it given.
     Reads as a notification when he's earned it, and a quiet one-line status the
     rest of the time."""
+    if not _rewards_enabled(db):
+        return
     progress = xp_module.weekly_progress(db, student["id"], date.today())
     name = student.get("name") or "He"
 
@@ -3605,6 +3643,26 @@ def render_xp_reward_editor(db: Database) -> None:
     weighted to fewer days. The student XP card reads these same settings, so a
     change here is what he sees next load. The point values themselves (per
     lesson, per quiz, ...) stay in config; these are the knobs a parent turns."""
+    # The master switch. Off hides every reward surface from Landon (the picker,
+    # the payoff, the earned/pending messaging) and from the parent (approval +
+    # earned alerts), while the XP bar, points, streak and day strip stay. For a
+    # kid who spirals over a reward he thinks he's lost, pull the reward, keep the
+    # game.
+    rewards_on = _rewards_enabled(db)
+    toggle = st.toggle(
+        "Show the weekly reward to Landon", value=rewards_on, key="rewards_enabled_toggle",
+        help="Off: XP, streak and the progress bar stay; only the reward parts are hidden.",
+    )
+    if toggle != rewards_on:
+        db.set_setting("rewards_enabled", "1" if toggle else "0")
+        st.rerun()
+    if not toggle:
+        st.caption(
+            "🚫 Rewards are **off** — Landon sees his XP and streak, but no reward to "
+            "earn, pick, or lose. Turn this back on any time to restore it."
+        )
+        return
+
     goal = xp_module.weekly_goal(db)
     reward_name, reward_emoji = xp_module.weekly_reward(db)
     this_monday = date.today() - timedelta(days=date.today().weekday())

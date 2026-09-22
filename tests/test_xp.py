@@ -632,3 +632,94 @@ def test_learner_stats_are_all_zero_for_a_fresh_student(db, student):
     assert stats.quizzes_passed == 0
     assert stats.heaviest_subject is None
     assert stats.heaviest_subject_count == 0
+
+
+# --- the reward on/off switch ---------------------------------------------------
+
+
+def test_rewards_off_hides_the_reward_but_keeps_xp(monkeypatch, tmp_path):
+    """Reported: a kid spiraling over a reward he thinks he lost. With rewards
+    off, his Home shows XP (the bar, the day strip) but no reward: no picker, no
+    'this week's reward' payoff."""
+    db_path = tmp_path / "rewards_off.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    database.set_setting("rewards_enabled", "0")
+    monday = weekly.week_start().isoformat()
+    database.save_lesson(
+        student_id=s["id"], agent="math", subject="math", topic="t", title="Math",
+        payload={"title": "Math", "activities": []},
+        metadata={"planned_for": monday, "week_start": monday},
+    )
+    database.close()
+
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+    at = AppTest.from_file(HOME_PATH)
+    at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+
+    # No reward picker anywhere.
+    assert not any((r.key or "") == "reward_pick_radio" for r in at.radio)
+    body = " ".join(m.value for m in at.markdown)
+    # XP card still renders, in its rewards-off form.
+    assert "Your week" in body and "XP" in body
+    assert "This week's reward" not in body
+
+
+def test_rewards_on_still_shows_the_picker(monkeypatch, tmp_path):
+    """Control: with rewards on (the default), the picker is there -- so the test
+    above is proving the switch, not just an empty Home."""
+    db_path = tmp_path / "rewards_on.db"
+    database = Database(db_path)
+    database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    database.close()
+
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+    at = AppTest.from_file(HOME_PATH)
+    at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+    assert any((r.key or "") == "reward_pick_radio" for r in at.radio)
+
+
+def test_rewards_off_silences_the_parent_reward_alerts(monkeypatch, tmp_path):
+    """Even a pending pick shouldn't nag the parent when rewards are off."""
+    db_path = tmp_path / "parent_off.db"
+    database = Database(db_path)
+    s = database.ensure_default_student()
+    auth.set_pin(database, "1234")
+    database.set_setting("rewards_enabled", "0")
+    xp.set_week_reward_choice(database, weekly.week_start(), "Arcade", "🕹️", "custom")
+    database.close()
+
+    at = _open_mission_control(monkeypatch, db_path)
+    body = " ".join(m.value for m in at.markdown)
+    assert "picked a reward" not in body
+    assert "earned this week's reward" not in body
+
+
+def test_the_reward_toggle_turns_it_off(monkeypatch, tmp_path):
+    """The parent's master switch: flipping it off stores the setting."""
+    db_path = tmp_path / "toggle.db"
+    database = Database(db_path)
+    database.ensure_default_student()
+    database.close()
+
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+    at = AppTest.from_file(HOME_PATH)
+    at.session_state["parent_unlocked"] = True
+    at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+
+    toggles = [t for t in at.toggle if (t.key or "") == "rewards_enabled_toggle"]
+    assert toggles, "the reward on/off toggle must be on the parent's reward editor"
+    toggles[0].set_value(False).run()
+
+    database = Database(db_path)
+    value = database.get_setting("rewards_enabled")
+    database.close()
+    assert value == "0"
