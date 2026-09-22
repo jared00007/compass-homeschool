@@ -188,6 +188,29 @@ def test_render_lesson_shows_learn_and_worked_example_but_hides_the_answer(monke
     assert "SECRET-ANSWER-KEY" not in page, "the answer key must never reach him"
 
 
+def test_worked_steps_render_as_a_markdown_list_not_a_flattened_blob(monkeypatch):
+    """A multi-line `steps` string comes through as a real markdown list --
+    blank-line separated so each step renders stacked and indented -- not a
+    single <br>-joined run of text. Reported: lessons read as 'a long cluster
+    of string,' with the worked example the worst offender."""
+    written: list[str] = []
+    monkeypatch.setattr(ui, "st", Recorder(written, {}))
+    monkeypatch.setattr(ui, "is_parent", lambda: False)
+    lesson = _fixed_shape_lesson(
+        worked_example={
+            "problem": "Solve 4x - 7 = 13.",
+            "steps": "1. Add 7 to both sides.\n2. Now 4x = 20.\n3. Divide by 4.\n4. x = 5.",
+        }
+    )
+    ui.render_lesson(lesson, for_parent=False)
+    page = "\n".join(written)
+
+    assert "<br>" not in page, "steps must not be flattened into a <br> blob"
+    # Consecutive numbered lines survive AND are blank-line separated, which is
+    # what renders them as one indented ordered list rather than run-on text.
+    assert "1. Add 7 to both sides.\n\n2. Now 4x = 20." in page
+
+
 # --- student_lesson_view: his own "I'm done" signal, separate from `status` ---
 
 

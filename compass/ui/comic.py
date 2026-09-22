@@ -379,15 +379,10 @@ def _render_activity_body(
 
     example = activity.get("example")
     if example:
-        _ui.st.markdown(
-            f'<div style="background:var(--c-panel); border-left:3px solid '
-            f'var(--c-alt); border-radius:var(--c-radius); padding:10px 14px; '
-            f'margin-bottom:10px; font-size:13.5px;">'
-            f'<b>📖 Here\'s how:</b><br>{html.escape(example).replace(chr(10), "<br>")}'
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-    _ui.st.write(md(activity.get("instructions", "")))
+        with _ui.st.container(border=True):
+            _ui.st.markdown("**📖 Here's how:**")
+            _render_steps(example)
+    _ui.st.markdown(md(activity.get("instructions", "")))
 
     if not parent and db is not None and lesson_id is not None:
         _render_reading_check(
@@ -696,11 +691,30 @@ def _render_activity_comic_panel(
                 _ui.st.rerun()
 
 
+def _render_steps(text: str) -> None:
+    """Render a multi-line `steps` / worked-example / `example` string as
+    STRUCTURED markdown instead of one flat run of <br>-joined text.
+
+    Numbered lines ("1.", "2)", …) become a real indented ordered list -- a step
+    that wraps hangs under its number the way a worked solution should read --
+    and any lead-in or trailing prose stays its own paragraph. Every line is
+    blank-line-separated so Streamlit renders it as proper markdown (a single
+    loose ordered list keeps its 1, 2, 3 numbering) rather than collapsing the
+    newlines into one horizontal cluster of string, which is what the old
+    escape-and-newline->"<br>" approach produced."""
+    lines = [line.strip() for line in (text or "").split("\n") if line.strip()]
+    if not lines:
+        return
+    _ui.st.markdown("\n\n".join(md(line) for line in lines))
+
+
 def _render_learn_section(lesson: dict[str, Any], *, parent: bool) -> None:
     """The teaching half of the fixed lesson shape -- the Learn explanation (with
     its one video) and the walked-through Worked example -- rendered before the
-    two graded activities. Silent on an old-shape lesson that has neither, so it
-    layers in without disturbing how existing lessons render."""
+    two graded activities. Each half sits in its own bordered container so the
+    lesson reads as distinct sections with real spacing, not a wall of text.
+    Silent on an old-shape lesson that has neither, so it layers in without
+    disturbing how existing lessons render."""
     learn = lesson.get("learn") or {}
     explanation = (learn.get("explanation") or "").strip()
     worked = lesson.get("worked_example") or {}
@@ -709,32 +723,28 @@ def _render_learn_section(lesson: dict[str, Any], *, parent: bool) -> None:
 
     if explanation:
         _ui.st.markdown("### 📗 Learn")
-        _ui.st.write(md(explanation))
-        video = learn.get("video") or {}
-        if video.get("found") and video.get("url"):
-            _ui.st.markdown(f"▶️ **[{md(video.get('title', 'Watch'))}]({video['url']})**")
-            bits = [b for b in (video.get("channel"), video.get("why")) if b]
-            if bits:
-                _ui.st.caption(" — ".join(bits))
-            if parent:
-                _ui.st.caption(
-                    "Checked against a real search result and restricted to YouTube, "
-                    "but Compass doesn't control what YouTube recommends after it ends."
-                )
+        with _ui.st.container(border=True):
+            _ui.st.markdown(md(explanation))
+            video = learn.get("video") or {}
+            if video.get("found") and video.get("url"):
+                _ui.st.markdown(f"▶️ **[{md(video.get('title', 'Watch'))}]({video['url']})**")
+                bits = [b for b in (video.get("channel"), video.get("why")) if b]
+                if bits:
+                    _ui.st.caption(" — ".join(bits))
+                if parent:
+                    _ui.st.caption(
+                        "Checked against a real search result and restricted to YouTube, "
+                        "but Compass doesn't control what YouTube recommends after it ends."
+                    )
 
     if problem or steps:
         _ui.st.markdown("### 🧭 Let's do one together")
         _ui.st.caption("Worked all the way through, so you can see how — you're not graded on this one.")
-        if problem:
-            _ui.st.markdown(f"**{md(problem)}**")
-        if steps:
-            _ui.st.markdown(
-                f'<div style="background:var(--c-panel); border-left:3px solid '
-                f'var(--c-alt); border-radius:var(--c-radius); padding:10px 14px; '
-                f'margin:6px 0 12px; font-size:14px;">'
-                f'{html.escape(steps).replace(chr(10), "<br>")}</div>',
-                unsafe_allow_html=True,
-            )
+        with _ui.st.container(border=True):
+            if problem:
+                _ui.st.markdown(f"**🧮 {md(problem)}**")
+            if steps:
+                _render_steps(steps)
 
     if explanation or problem or steps:
         # The graded work starts here -- a clear line between "taught" and "your

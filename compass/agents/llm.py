@@ -124,8 +124,11 @@ LESSON_SCHEMA: dict[str, Any] = _object(
                     "type": "string",
                     "description": (
                         "The full step-by-step walkthrough of `problem`, solved for him "
-                        "start to finish. Break it into small, numbered steps in plain "
-                        "language, and use a relatable hook or comparison where one fits "
+                        "start to finish. Write it as a markdown numbered list -- each "
+                        "step on its OWN line, starting with '1.', '2.', '3.' ... with a "
+                        "line break between them, never one long line with the steps run "
+                        "together -- so it renders as an indented, readable list. Use "
+                        "plain language and a relatable hook or comparison where one fits "
                         "his age. This is the 'let's do one together' that comes right "
                         "before he tries his own -- he is NOT graded on it. For math or "
                         "anything procedural, show every step and the check; for writing, "

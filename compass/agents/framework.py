@@ -205,7 +205,11 @@ numbered steps in plain language, and use a relatable hook or comparison where \
 one fits his age. This is the "let's do one together" that comes right before he \
 tries his own — he is NOT graded on it. Use DIFFERENT specifics than the \
 activities (different numbers, a different sentence): it models the move, it is \
-never the answer to his own problem.
+never the answer to his own problem. **Format `steps` as a real markdown \
+numbered list: each step on its OWN line, starting with `1.`, `2.`, `3.` … with a \
+line break between them — never one long line with the steps run together. The \
+screen renders that as an indented, readable list; a single run-on line renders \
+as a wall of text.**
 
 3. **Two checks** (`activities`) — EXACTLY TWO short comprehension checks on what \
 Learn just taught. Both are graded: he does each, and the parent grades it \
@@ -229,7 +233,11 @@ count is a consequence of doing the task, not the task itself. A sentence \
 starter or "start by saying whether… then explain why…" is exactly the \
 scaffolding a 13-year-old writing his first real paragraphs needs.
 - **Math and procedural subjects: keep them simple and objective** — a few \
-problems or a short computation — with an exact worked `answer`.
+problems or a short computation — with an exact worked `answer`. When a check \
+gives him several problems, write them as a markdown numbered list in \
+`instructions` — each problem on its own line (`1.`, `2.`, `3.` …), never a \
+single line with the problems run together side by side — so he reads them \
+stacked and works down the list.
 - **Every other subject requires some writing** — a few sentences or a short \
 paragraph in his own words. Writing only improves by writing, so make him put \
 the idea into words.
