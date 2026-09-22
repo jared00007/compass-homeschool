@@ -3956,6 +3956,89 @@ def render_rewind_generator(db: Database, student: dict[str, Any]) -> None:
                 st.rerun()
 
 
+def render_khan_card_form(db: Database, student: dict[str, Any]) -> None:
+    """Parent-facing: hand-enter a Khan Academy unit/exercise as a lesson card.
+
+    You pick the subject, paste the Khan link, and it lands on Landon's board
+    under that subject like any lesson -- Khan carries the teaching and practice,
+    Compass logs the hours and keeps one auto-graded quiz per card as the in-app
+    retention check. One small AI call per card (just the quiz); turn it off to
+    add a card with no quiz."""
+    from compass.agents import api_available, khan_card
+
+    _SUBJECTS = [("math", "📐 Math"), ("science", "🔬 Science"),
+                 ("english", "📖 English"), ("history", "🏛️ History")]
+    labels = {k: v for k, v in _SUBJECTS}
+
+    st.caption(
+        "Enter a Khan Academy unit or exercise as a card for Landon. He does it on "
+        "Khan, logs his score, and takes a quick auto-graded quiz — it counts as "
+        "that subject's work and logs the hours when you approve it."
+    )
+    api_ok, api_message = api_available()
+
+    with st.form("khan_card_form", clear_on_submit=True):
+        agent_key = st.selectbox(
+            "Subject", options=[k for k, _ in _SUBJECTS],
+            format_func=lambda k: labels[k], key="khan_subject",
+        )
+        unit = st.text_input(
+            "Unit or exercise name",
+            key="khan_unit",
+            placeholder="e.g. Multiplying & dividing powers",
+        )
+        url = st.text_input(
+            "Khan Academy link",
+            key="khan_url",
+            placeholder="https://www.khanacademy.org/…",
+        )
+        cols = st.columns(2)
+        minutes = cols[0].number_input(
+            "Minutes", min_value=5, max_value=240,
+            value=config.SUBJECT_DEFAULT_MINUTES.get("math", 35), step=5,
+            key="khan_minutes",
+            help="Starting estimate for hours logged — you can adjust it when you approve.",
+        )
+        day = cols[1].date_input("Assign to day", value=date.today(), key="khan_day")
+        to_backlog = st.checkbox(
+            "Send to the Backlog instead of a day", key="khan_backlog",
+            help="Leave it unscheduled to place from the Board later.",
+        )
+        note = st.text_input(
+            "Note for the quiz / for Landon (optional)", key="khan_note",
+            placeholder="e.g. focus on same-base problems",
+        )
+        make_quiz = st.checkbox(
+            "Auto-generate a quiz for this skill", value=True, key="khan_make_quiz",
+            help="One small AI call. Turn off to add the card now and enter your own quiz later.",
+        )
+        if not api_ok:
+            st.caption(f"⚠️ Quiz generation unavailable: {api_message} — you can still add the card without a quiz.")
+        submitted = st.form_submit_button("➕ Add Khan card", type="primary", width="stretch")
+
+    if not submitted:
+        return
+    if not unit.strip() or not url.strip():
+        st.error("Give the unit a name and paste its Khan Academy link.")
+        return
+    generate = bool(make_quiz and api_ok)
+    day_iso = None if to_backlog else day.isoformat()
+    with st.spinner("Building the quiz…" if generate else "Adding the card…"):
+        try:
+            khan_card.create_khan_card(
+                db, student, agent_key=agent_key, unit=unit, url=url,
+                minutes=int(minutes), day_iso=day_iso, note=note,
+                generate_quiz=generate,
+            )
+        except (LessonGenerationError, ValueError) as exc:
+            st.error(str(exc))
+            return
+    where = "the Backlog" if to_backlog else day.strftime("%a %b %-d")
+    quiz_note = "with a quiz" if generate else "without a quiz"
+    st.success(f"Added “{md(unit.strip())}” ({quiz_note}) → {where}. ✅")
+    st.rerun()
+
+
 def _render_one_enrichment(
     db: Database, student: dict[str, Any], activity: dict[str, Any], spec: dict[str, Any]
 ) -> None:

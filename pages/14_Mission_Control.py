@@ -49,6 +49,7 @@ from compass.ui import (
     render_life_skill_review_card,
     render_day_target_editor,
     render_enrichment_generator,
+    render_khan_card_form,
     render_report_card,
     render_rewind_generator,
     render_story_move_control,
@@ -746,6 +747,11 @@ if mc_view == "plan":
     # Compose a balanced week from the backlog first, then generate more below.
     with st.expander("🗓️ Balance the week — spread the backlog, capped per day"):
         render_week_planner(db, student)
+
+    # Hand-enter Khan Academy units/exercises as cards -- no AI lesson, just the
+    # link + an auto-graded quiz. Khan carries the teaching; Compass logs it.
+    with st.expander("🅰️ Add a Khan Academy card — link a unit or exercise"):
+        render_khan_card_form(db, student)
 
     st.markdown("### ✍️ Plan a lesson")
     st.caption(

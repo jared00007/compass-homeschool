@@ -158,6 +158,11 @@ RESOURCE_DEFAULT_MINUTES = 20
 # capped so a huge selection can't ask for an enormous, slow generation.
 REWIND_QUIZ_POOL_MIN = 15
 REWIND_QUIZ_POOL_MAX = 30
+# A Khan card's auto-graded quiz -- the in-app retention check on a skill Landon
+# practiced on Khan Academy. Smaller than a full lesson's pool (Khan already
+# carries the drill): ~10-15 is a couple of fresh five-question sittings.
+KHAN_QUIZ_POOL_MIN = 10
+KHAN_QUIZ_POOL_MAX = 15
 # Instructional time credited the first time he completes a Rewind review -- a
 # sit-down cumulative assessment, logged once (retakes don't stack), same shape
 # as QUIZ_DEFAULT_MINUTES for an ordinary lesson quiz.
