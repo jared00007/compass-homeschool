@@ -106,11 +106,29 @@ def test_create_rejects_bad_input(db, student):
         khan_card.create_khan_card(db, student, agent_key="math", unit="",
                                    url="https://k/x", minutes=30, quiz=list(_QUIZ))
     with pytest.raises(ValueError):
-        khan_card.create_khan_card(db, student, agent_key="math", unit="Skill",
-                                   url="  ", minutes=30, quiz=list(_QUIZ))
-    with pytest.raises(ValueError):
         khan_card.create_khan_card(db, student, agent_key="art", unit="Skill",
                                    url="https://k/x", minutes=30, quiz=list(_QUIZ))
+
+
+def test_url_defaults_to_the_saved_khan_link(db, student):
+    """No URL per card: it falls back to the family's one saved Khan link, and a
+    custom saved link is what every card then points at."""
+    # Default when nothing is set.
+    lid = khan_card.create_khan_card(
+        db, student, agent_key="math", unit="Exponents",
+        minutes=35, day_iso=date.today().isoformat(), quiz=list(_QUIZ),
+    )
+    link = db.get_lesson(lid)["metadata"]["resource_url"]
+    assert link == "https://www.khanacademy.org/profile/me/courses"
+    assert link in db.get_lesson(lid)["payload"]["activities"][0]["instructions"]
+
+    # A family that changes the saved link gets it on the next card.
+    db.set_setting("khan_base_url", "https://www.khanacademy.org/math")
+    lid2 = khan_card.create_khan_card(
+        db, student, agent_key="math", unit="Fractions",
+        minutes=35, day_iso=date.today().isoformat(), quiz=list(_QUIZ),
+    )
+    assert db.get_lesson(lid2)["metadata"]["resource_url"] == "https://www.khanacademy.org/math"
 
 
 # --- the quiz generation path (no real API) ------------------------------------

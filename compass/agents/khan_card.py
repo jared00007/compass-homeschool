@@ -52,6 +52,14 @@ def is_supported_subject(agent_key: str) -> bool:
     return agent_key in AGENT_CREDIT_SUBJECT
 
 
+def khan_base_url(db: Any) -> str:
+    """The one Khan Academy link every card points at -- set once by the family,
+    so the parent never re-pastes a URL per card."""
+    return (db.get_setting("khan_base_url") or "").strip() or config.DEFAULT_SETTINGS[
+        "khan_base_url"
+    ]
+
+
 def default_minutes(agent_key: str) -> int:
     """The form opens at the subject's usual lesson length (Math 35, etc.),
     falling back to the family default -- same source the Plan-a-lesson form uses,
@@ -267,7 +275,7 @@ def create_khan_card(
     *,
     agent_key: str,
     unit: str,
-    url: str,
+    url: str | None = None,
     minutes: int,
     day_iso: str | None = None,
     note: str = "",
@@ -276,18 +284,19 @@ def create_khan_card(
 ) -> int:
     """Create one Khan card, schedule it, and return its lesson id.
 
-    Generates the quiz from the unit name unless `quiz` is passed in (tests, or a
-    parent who entered their own). Saved under the subject's own agent key so it
-    lives alongside that subject's lessons everywhere. Scheduled to `day_iso` if
-    given (via the normal reschedule path, which sets planned_for + week_start);
-    left in the backlog otherwise, for the parent to place from the Board.
+    `url` defaults to the family's saved Khan link (`khan_base_url`), so the
+    parent never re-pastes it per card. Generates the quiz from the unit name
+    unless `quiz` is passed in (tests, or a parent who entered their own). Saved
+    under the subject's own agent key so it lives alongside that subject's
+    lessons everywhere. Scheduled to `day_iso` if given (via the normal
+    reschedule path, which sets planned_for + week_start); left in the backlog
+    otherwise, for the parent to place from the Board.
     """
     if not is_supported_subject(agent_key):
         raise ValueError(f"Khan cards aren't supported for '{agent_key}'.")
     if not unit.strip():
         raise ValueError("Give the unit or exercise a name.")
-    if not url.strip():
-        raise ValueError("Paste the Khan Academy link for this skill.")
+    url = (url or "").strip() or khan_base_url(db)
 
     if quiz is None and generate_quiz:
         quiz = generate_khan_quiz(student, agent_key, unit, note=note)

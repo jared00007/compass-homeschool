@@ -3977,6 +3977,19 @@ def render_khan_card_form(db: Database, student: dict[str, Any]) -> None:
     )
     api_ok, api_message = api_available()
 
+    # The Khan link is set once and reused on every card, so it's not part of
+    # each entry. Show what every card points at, with a tuck-away to change it.
+    current_link = khan_card.khan_base_url(db)
+    st.caption(f"🔗 Every card opens: {current_link}")
+    with st.expander("Change the Khan link"):
+        new_link = st.text_input(
+            "Khan Academy link used on every card", value=current_link, key="khan_base_link",
+        )
+        if st.button("Save link", key="khan_base_link_save"):
+            db.set_setting("khan_base_url", new_link.strip())
+            st.success("Saved.")
+            st.rerun()
+
     with st.form("khan_card_form", clear_on_submit=True):
         agent_key = st.selectbox(
             "Subject", options=[k for k, _ in _SUBJECTS],
@@ -3986,11 +3999,6 @@ def render_khan_card_form(db: Database, student: dict[str, Any]) -> None:
             "Unit or exercise name",
             key="khan_unit",
             placeholder="e.g. Multiplying & dividing powers",
-        )
-        url = st.text_input(
-            "Khan Academy link",
-            key="khan_url",
-            placeholder="https://www.khanacademy.org/…",
         )
         cols = st.columns(2)
         minutes = cols[0].number_input(
@@ -4018,15 +4026,15 @@ def render_khan_card_form(db: Database, student: dict[str, Any]) -> None:
 
     if not submitted:
         return
-    if not unit.strip() or not url.strip():
-        st.error("Give the unit a name and paste its Khan Academy link.")
+    if not unit.strip():
+        st.error("Give the unit or exercise a name.")
         return
     generate = bool(make_quiz and api_ok)
     day_iso = None if to_backlog else day.isoformat()
     with st.spinner("Building the quiz…" if generate else "Adding the card…"):
         try:
             khan_card.create_khan_card(
-                db, student, agent_key=agent_key, unit=unit, url=url,
+                db, student, agent_key=agent_key, unit=unit,
                 minutes=int(minutes), day_iso=day_iso, note=note,
                 generate_quiz=generate,
             )

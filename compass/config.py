@@ -291,6 +291,11 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "tier3_cap_percent": "20",
     # Typical instructional day length in minutes, used to size lesson requests.
     "default_lesson_minutes": "60",
+    # The one Khan Academy link every Khan card points at -- set once, reused on
+    # every card so the parent never re-pastes a URL. Defaults to the family's
+    # Khan courses page; changeable on Student Profile or from the Add-a-Khan-card
+    # form.
+    "khan_base_url": "https://www.khanacademy.org/profile/me/courses",
     # Score needed on the in-app quiz to count as a pass -- real, encouraging
     # feedback ("nice work") on its own, distinct from mastery below.
     "quiz_pass_percent": "80",
