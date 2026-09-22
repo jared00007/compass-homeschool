@@ -27,6 +27,39 @@ AGENT_LABELS = {
     "history": "History",
 }
 
+# Which WA subjects a Khan card (agent `khan`) folds into for grading. A Khan
+# card carries a real subject key; when it's one of these, its quiz score and
+# approved-work verdict count toward that subject's grade exactly like an
+# AI-generated lesson, so the two tracks' scores come together. English grades
+# reading + writing; History takes social studies too. Khan cards in subjects
+# with no letter grade (art & music, health, …) still log hours, just not a grade.
+GRADED_AGENT_SUBJECTS = {
+    "math": {"math"},
+    "science": {"science"},
+    "english": {"reading", "writing"},
+    "history": {"history", "social_studies"},
+}
+
+
+def _gradeable_lessons(db: Any, student_id: int, agent: str) -> list[dict[str, Any]]:
+    """Every lesson that feeds this subject's grade: the subject's own
+    (`agent`) lessons, plus any Khan cards whose subject folds into it. Skipped
+    lessons are dropped. Both kinds carry the same graded surfaces (quiz
+    attempts + per-activity verdicts), so callers process them identically."""
+    lessons = [
+        lesson
+        for lesson in db.list_lessons(student_id, agent=agent, limit=500)
+        if lesson["status"] != "skipped"
+    ]
+    khan_subjects = GRADED_AGENT_SUBJECTS.get(agent)
+    if khan_subjects:
+        lessons += [
+            lesson
+            for lesson in db.list_lessons(student_id, agent="khan", limit=500)
+            if lesson["status"] != "skipped" and lesson.get("subject") in khan_subjects
+        ]
+    return lessons
+
 
 def _weights(db: Any, agent: str) -> dict[str, int]:
     return grades.parse_weights(db.get_setting(f"grade_weights_{agent}") or "")
@@ -61,11 +94,7 @@ def subject_grade(db: Any, student_id: int, agent: str) -> grades.SubjectGrade:
     floor = db.get_int_setting("quiz_retry_floor_percent")
     limit = config.GRADED_QUIZ_ATTEMPTS
 
-    lessons = [
-        lesson
-        for lesson in db.list_lessons(student_id, agent=agent, limit=500)
-        if lesson["status"] != "skipped"
-    ]
+    lessons = _gradeable_lessons(db, student_id, agent)
 
     # Two graded surfaces. `quiz_percents` carries both the auto quiz and the
     # auto reading checks -- they're the same kind of objective, self-graded
@@ -201,11 +230,7 @@ def graded_items(db: Any, student_id: int, agent: str) -> list[GradedItem]:
     floor = db.get_int_setting("quiz_retry_floor_percent")
     limit = config.GRADED_QUIZ_ATTEMPTS
 
-    lessons = [
-        lesson
-        for lesson in db.list_lessons(student_id, agent=agent, limit=500)
-        if lesson["status"] != "skipped"
-    ]
+    lessons = _gradeable_lessons(db, student_id, agent)
 
     items: list[GradedItem] = []
     for lesson in lessons:

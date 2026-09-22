@@ -571,3 +571,61 @@ def test_override_can_grade_a_subject_with_no_computed_grade(db):
     gradebook.set_override(db, "history", 88)
     graded = gradebook.subject_grade(db, student["id"], "history")
     assert graded.graded and graded.overridden and graded.percent == 88
+
+
+# --- Khan cards fold into the subject grade -------------------------------------
+
+
+def _khan_card(db, student, subject="math") -> int:
+    """A Khan card as `create_khan_card` saves it: the single `khan` agent, the
+    real WA subject, and one gradeable activity."""
+    return db.save_lesson(
+        student_id=student["id"], agent="khan", subject=subject, topic="Exponents",
+        title="Khan Academy: Exponents",
+        payload={
+            "title": "Khan Academy: Exponents",
+            "activities": [
+                {"title": "Do the Khan skill, then log your score",
+                 "answer": "…", "requires_written_response": True},
+            ],
+        },
+        metadata={"source": "khan"},
+    )
+
+
+def test_a_khan_cards_scores_fold_into_its_subject_grade(db, student):
+    """The whole point: a Khan card's auto-quiz and approved-work verdict count
+    toward the subject's grade exactly like an AI-generated lesson."""
+    lesson_id = _khan_card(db, student, subject="math")
+    db.record_quiz_result(lesson_id, student["id"], 4, 5, False)  # 80
+    db.record_activity_grade(lesson_id, 0, config.ASSESSMENT_SOLID)  # 90
+
+    result = gradebook.subject_grade(db, student["id"], "math")
+    quiz = [c for c in result.components if c.key == "quizzes"][0]
+    assessment = [c for c in result.components if c.key == "assessment"][0]
+    assert round(quiz.percent) == 80
+    assert assessment.percent == config.ASSESSMENT_VERDICT_SCORES[config.ASSESSMENT_SOLID]
+    # And it shows in the drill-down, named as a Khan card.
+    titles = [i.title for i in gradebook.graded_items(db, student["id"], "math")]
+    assert any("Khan Academy" in t for t in titles)
+
+
+def test_a_khan_reading_card_folds_into_english(db, student):
+    """English grades reading + writing, so a Khan reading card counts there."""
+    lesson_id = _khan_card(db, student, subject="reading")
+    db.record_quiz_result(lesson_id, student["id"], 5, 5, True)  # 100
+    quiz = [
+        c for c in gradebook.subject_grade(db, student["id"], "english").components
+        if c.key == "quizzes"
+    ][0]
+    assert round(quiz.percent) == 100
+
+
+def test_a_khan_card_in_an_ungraded_subject_stays_out_of_the_letter_grades(db, student):
+    """Art & music, health, etc. log hours but carry no letter grade, so a Khan
+    card there never leaks into one of the four graded subjects."""
+    lesson_id = _khan_card(db, student, subject="art_and_music")
+    db.record_quiz_result(lesson_id, student["id"], 5, 5, True)
+    for agent in gradebook.GRADED_AGENTS:
+        titles = [i.title for i in gradebook.graded_items(db, student["id"], agent)]
+        assert not any("Khan Academy" in t for t in titles)
