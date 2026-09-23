@@ -44,11 +44,15 @@ from compass.agents.quiz import verify_quiz
 AGENT_KEY = "khan"
 
 # The WA subjects a Khan card can be assigned to, with friendly labels for the
-# picker -- all eleven, so Khan can cover music, health, spelling, anything, not
-# just the four core academics. Each value is a real subject key hours credit to.
+# picker. Washington splits "English / ELA" into reading, writing, spelling and
+# language, so there's no single "English" subject key -- the familiar label
+# leads the reading option (reading is what the English agent credits and what
+# the English grade folds together), with writing/spelling/language available for
+# a parent who wants to credit those specifically. Each value is a real WA
+# subject key the card's hours credit to.
 KHAN_SUBJECTS: tuple[tuple[str, str], ...] = (
     ("math", "📐 Math"),
-    ("reading", "📖 Reading"),
+    ("reading", "📖 English / Language Arts"),
     ("writing", "✍️ Writing"),
     ("science", "🔬 Science"),
     ("history", "🏛️ History"),
@@ -56,7 +60,7 @@ KHAN_SUBJECTS: tuple[tuple[str, str], ...] = (
     ("art_and_music", "🎵 Art & Music"),
     ("health", "🏃 Health & Fitness"),
     ("spelling", "🔤 Spelling"),
-    ("language", "🗣️ Language"),
+    ("language", "🗣️ Grammar & Language"),
     ("occupational_education", "🛠️ Occupational Ed"),
 )
 
