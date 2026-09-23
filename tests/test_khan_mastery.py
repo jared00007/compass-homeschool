@@ -1,0 +1,202 @@
+"""The Khan mastery ladder -- Landon marks Familiar/Proficient/Mastered on a
+Khan card, a parent confirms, and each confirmed tier (plus a mastered unit)
+earns XP that flows into the same lifetime + weekly totals as everything else."""
+
+from __future__ import annotations
+
+from datetime import date, timedelta
+
+import pytest
+
+from compass import config, khan_mastery as km, xp
+from compass.agents import khan_card
+from compass.storage.db import Database
+
+
+@pytest.fixture()
+def db(tmp_path):
+    database = Database(tmp_path / "km.db")
+    yield database
+    database.close()
+
+
+@pytest.fixture()
+def student(db):
+    return db.ensure_default_student()
+
+
+def _card(db, student, unit="Exponents", day=None):
+    return khan_card.create_khan_card(
+        db, student, subject="math", unit=unit, minutes=30, day_iso=day, quiz=[],
+    )
+
+
+# --- level helpers -----------------------------------------------------------
+
+def test_levels_are_ordered_low_to_high():
+    assert km.level_index("familiar") < km.level_index("proficient") < km.level_index("mastered")
+    assert km.level_index(None) == -1            # 'nothing yet' sits below all
+    assert km.next_level(None) == "familiar"
+    assert km.next_level("proficient") == "mastered"
+    assert km.next_level("mastered") is None     # nothing past the top
+
+
+# --- claim + confirm on one card ---------------------------------------------
+
+def test_claim_is_pending_until_a_parent_confirms(db, student):
+    lid = _card(db, student)
+    km.claim_mastery(db, lid, "proficient", on="2026-09-21")
+    lesson = db.get_lesson(lid)
+    assert km.pending_claim(lesson) == "proficient"   # waiting on a parent
+    assert km.confirmed_level(lesson) is None          # nothing confirmed yet
+    assert km.card_xp(lesson) == 0                      # a claim alone earns nothing
+
+
+def test_confirm_climbs_every_tier_and_awards_their_xp(db, student):
+    lid = _card(db, student)
+    km.claim_mastery(db, lid, "proficient")
+    awarded = km.confirm_mastery(db, lid, on="2026-09-23")   # one-tap: confirm the claim
+    assert awarded == config.KHAN_MASTERY_XP["familiar"] + config.KHAN_MASTERY_XP["proficient"]
+    lesson = db.get_lesson(lid)
+    assert km.confirmed_level(lesson) == "proficient"
+    assert km.pending_claim(lesson) is None            # claim satisfied, cleared
+    assert km.card_xp(lesson) == awarded
+    # Both tiers passed through are dated the confirm day, for the weekly strip.
+    assert km.card_bumps(lesson) == [("2026-09-23", 5), ("2026-09-23", 5)]
+
+
+def test_confirm_can_partially_grant_below_the_claim(db, student):
+    lid = _card(db, student)
+    km.claim_mastery(db, lid, "mastered")
+    km.confirm_mastery(db, lid, "familiar", on="2026-09-20")   # only Familiar
+    lesson = db.get_lesson(lid)
+    assert km.confirmed_level(lesson) == "familiar"
+    assert km.card_xp(lesson) == config.KHAN_MASTERY_XP["familiar"]
+    assert km.pending_claim(lesson) == "mastered"      # the rest still pends
+
+
+def test_confirm_is_monotonic_and_never_lowers(db, student):
+    lid = _card(db, student)
+    km.confirm_mastery(db, lid, "mastered", on="2026-09-20")
+    assert km.confirm_mastery(db, lid, "familiar") == 0   # can't go back down
+    lesson = db.get_lesson(lid)
+    assert km.confirmed_level(lesson) == "mastered"
+    # A full climb is worth every tier once.
+    assert km.card_xp(lesson) == sum(config.KHAN_MASTERY_XP.values())
+
+
+def test_reject_clears_a_claim_without_awarding(db, student):
+    lid = _card(db, student)
+    km.claim_mastery(db, lid, "mastered")
+    km.reject_claim(db, lid)
+    lesson = db.get_lesson(lid)
+    assert km.pending_claim(lesson) is None and km.card_xp(lesson) == 0
+
+
+def test_claim_at_or_below_confirmed_is_a_noop(db, student):
+    lid = _card(db, student)
+    km.confirm_mastery(db, lid, "proficient", on="2026-09-20")
+    km.claim_mastery(db, lid, "familiar")              # already past this
+    assert km.pending_claim(db.get_lesson(lid)) is None
+
+
+def test_only_khan_cards_take_mastery(db, student):
+    # A plain saved lesson under a different agent is rejected.
+    lid = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="x",
+        title="x", payload={}, strategy="s", rationale="r", metadata={},
+    )
+    with pytest.raises(ValueError):
+        km.confirm_mastery(db, lid, "familiar")
+
+
+# --- aggregates across cards -------------------------------------------------
+
+def test_total_and_bumps_span_all_cards(db, student):
+    a, b = _card(db, student, "Exponents"), _card(db, student, "Radicals")
+    km.confirm_mastery(db, a, "mastered", on="2026-09-22")
+    km.confirm_mastery(db, b, "familiar", on="2026-09-23")
+    full = sum(config.KHAN_MASTERY_XP.values())
+    assert km.total_mastery_xp(db, student["id"]) == full + config.KHAN_MASTERY_XP["familiar"]
+    # Bumps carry their confirm dates for weekly attribution.
+    dates = {d for d, _ in km.mastery_bumps(db, student["id"])}
+    assert dates == {"2026-09-22", "2026-09-23"}
+
+
+def test_pending_claims_lists_the_confirm_queue(db, student):
+    a, b = _card(db, student), _card(db, student)
+    km.claim_mastery(db, a, "proficient")
+    # b has no claim -> not in the queue.
+    queue = km.pending_claims(db, student["id"])
+    assert [q["lesson"]["id"] for q in queue] == [a]
+    assert queue[0]["claim"] == "proficient"
+
+
+# --- unit rollups + the "master the unit" bonus ------------------------------
+
+def _unit(db, student, name, n):
+    res = khan_card.create_course(
+        db, student, subject="math", course=name,
+        lessons=[f"Skill {i}" for i in range(n)], minutes=30,
+    )
+    return res["created"]
+
+
+def test_unit_summary_counts_levels_and_target(db, student):
+    ids = _unit(db, student, "Exponents & radicals", 5)   # target = ceil(5*0.8) = 4
+    for lid in ids[:3]:
+        km.confirm_mastery(db, lid, "proficient", on="2026-09-21")
+    summary = km.unit_summaries(db, student["id"])[0]
+    assert summary["total"] == 5 and summary["target_count"] == 4
+    assert summary["proficient_plus"] == 3 and summary["target_met"] is False
+    assert summary["by_level"]["proficient"] == 3
+    assert summary["xp_earned"] == 3 * (config.KHAN_MASTERY_XP["familiar"] + config.KHAN_MASTERY_XP["proficient"])
+
+
+def test_unit_bonus_fires_when_the_target_is_crossed(db, student):
+    ids = _unit(db, student, "Exponents & radicals", 5)   # target = 4
+    for i, lid in enumerate(ids[:4]):
+        km.confirm_mastery(db, lid, "proficient", on=f"2026-09-2{i + 1}")  # 21..24
+    summary = km.unit_summaries(db, student["id"])[0]
+    assert summary["target_met"] is True
+    assert summary["crossed_on"] == "2026-09-24"          # the 4th to cross
+    assert km.unit_bonuses(db, student["id"]) == [("2026-09-24", config.KHAN_UNIT_MASTERY_BONUS)]
+
+
+def test_active_unit_prefers_the_one_scheduled_this_week(db, student):
+    today = date.today()
+    # An older unit, all in the backlog...
+    _unit(db, student, "Old unit", 3)
+    # ...and a newer one with a card planned for today.
+    fresh = _unit(db, student, "This week's unit", 3)
+    db.reschedule_lesson(fresh[0], today.isoformat())
+    active = km.active_unit(db, student["id"], today=today)
+    assert active["course"] == "This week's unit"
+
+
+# --- integration with the XP totals ------------------------------------------
+
+def test_mastery_xp_lands_on_the_lifetime_total(db, student):
+    lid = _card(db, student)
+    before = xp.total_xp(db, student["id"])
+    km.confirm_mastery(db, lid, "mastered", on="2026-09-20")
+    after = xp.total_xp(db, student["id"])
+    assert after - before == sum(config.KHAN_MASTERY_XP.values())
+
+
+def test_mastery_and_unit_bonus_land_on_the_weekly_bar(db, student):
+    today = date.today()
+    monday = today - timedelta(days=today.weekday())
+    ids = _unit(db, student, "Exponents", 5)              # target = 4
+    # Take 4 skills to Proficient, all dated this Monday.
+    for lid in ids[:4]:
+        km.confirm_mastery(db, lid, "proficient", on=monday.isoformat())
+    progress = xp.weekly_progress(db, student["id"], today=today)
+    # Monday's column carries the 4 skills' tier XP (familiar+proficient each).
+    per_prof = config.KHAN_MASTERY_XP["familiar"] + config.KHAN_MASTERY_XP["proficient"]
+    assert progress.days[0].mastery_xp == 4 * per_prof
+    assert progress.days[0].xp >= 4 * per_prof
+    # ...and the unit bonus shows as extra credit this week.
+    assert any(b.emoji == "🏆" and b.xp == config.KHAN_UNIT_MASTERY_BONUS
+               for b in progress.bonus_items)
+    assert progress.total >= 4 * per_prof + config.KHAN_UNIT_MASTERY_BONUS

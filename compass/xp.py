@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any
 
-from compass import config
+from compass import config, khan_mastery
 
 
 @dataclass(frozen=True)
@@ -102,6 +102,12 @@ def total_xp(db: Any, student_id: int) -> int:
         1 for t in db.list_travel_entries(student_id) if t.get("status") == "completed"
     )
     total += config.XP_PER_MASTERED_SKILL * len(db.mastered_skills(student_id))
+
+    # Khan mastery: each confirmed tier he's climbed on a Khan skill (Familiar/
+    # Proficient/Mastered), plus a bonus for every unit taken to its mastery
+    # target. All additive -- revisiting a prior skill only ever adds XP.
+    total += khan_mastery.total_mastery_xp(db, student_id)
+    total += sum(bonus for _, bonus in khan_mastery.unit_bonuses(db, student_id))
 
     # Floored at the very end: send-back penalties can eat into everything he's
     # earned, but the total never goes negative -- a zero bar reads as "start
@@ -258,6 +264,8 @@ class DayRecord:
     redos: int            # lessons sent back this day -- the one thing that docks
     is_today: bool
     is_future: bool
+    mastery_xp: int = 0   # XP from Khan mastery tiers confirmed this day (raw XP,
+                          # not a count -- tiers are worth different amounts)
 
     @property
     def xp(self) -> int:
@@ -267,12 +275,15 @@ class DayRecord:
             self.lessons * config.XP_PER_LESSON
             + self.quizzes * config.XP_QUIZ_PASS_BONUS
             + self.skills * config.XP_PER_MASTERED_SKILL
+            + self.mastery_xp
             - self.redos * config.XP_SENT_BACK_PENALTY
         )
 
     @property
     def has_activity(self) -> bool:
-        return bool(self.lessons or self.quizzes or self.skills or self.redos)
+        return bool(
+            self.lessons or self.quizzes or self.skills or self.redos or self.mastery_xp
+        )
 
 
 @dataclass(frozen=True)
@@ -671,6 +682,15 @@ def weekly_progress(
         if in_week(when):
             skills[when.weekday()] += 1
 
+    # Khan mastery tiers he climbed this week, placed on the day each was
+    # confirmed (raw XP -- Familiar/Proficient/Mastered are worth different
+    # amounts, so this can't be a simple count like the others).
+    mastery_xp = [0] * 5
+    for stamp, gained in khan_mastery.mastery_bumps(db, student_id):
+        when = _parse_iso(stamp)
+        if in_week(when):
+            mastery_xp[when.weekday()] += gained
+
     days: list[DayRecord] = []
     for i in range(5):
         d = monday + timedelta(days=i)
@@ -685,6 +705,7 @@ def weekly_progress(
                 redos=redos[i],
                 is_today=(d == today),
                 is_future=(d > today),
+                mastery_xp=mastery_xp[i],
             )
         )
 
@@ -720,6 +741,17 @@ def weekly_progress(
         bonus_items.append(
             BonusItem("🧭", f"{trips_done} trip write-up{'s' if trips_done != 1 else ''}",
                       trips_done * config.XP_PER_TRAVEL_ENTRY)
+        )
+    # A Khan unit taken to its mastery target this week -- the "master the unit
+    # by Friday" bonus, counted in the week he crossed the line.
+    units_mastered = sum(
+        1 for when, _ in khan_mastery.unit_bonuses(db, student_id)
+        if in_week(_parse_iso(when))
+    )
+    if units_mastered:
+        bonus_items.append(
+            BonusItem("🏆", f"Mastered {units_mastered} unit{'s' if units_mastered != 1 else ''}",
+                      units_mastered * config.KHAN_UNIT_MASTERY_BONUS)
         )
 
     # The reward: Landon's own pick once a parent approves it, his pending pick

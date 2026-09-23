@@ -139,6 +139,41 @@ XP_PER_CODING_MODULE = 15
 XP_PER_TRAVEL_ENTRY = 30
 XP_PER_MASTERED_SKILL = 10
 
+# --- Khan mastery ladder -----------------------------------------------------
+# Khan Academy scores a skill on its own ladder (Familiar -> Proficient ->
+# Mastered). Landon can push a Khan skill up that ladder by going back and
+# practicing, and *each step he reaches earns XP* -- so revisiting a prior skill
+# to raise it is pure upside, never a penalty. He marks the level he reached on
+# Khan; a parent confirms with one tap; only the confirmed level bears XP.
+# Ordered low -> high; the names are what's stored on the card.
+KHAN_MASTERY_LEVELS = ("familiar", "proficient", "mastered")
+KHAN_MASTERY_LABELS = {
+    "familiar": "Familiar",
+    "proficient": "Proficient",
+    "mastered": "Mastered",
+}
+KHAN_MASTERY_EMOJI = {
+    "familiar": "🌱",
+    "proficient": "⭐",
+    "mastered": "🏆",
+}
+# XP for *reaching* each tier, earned once as he climbs. The values are
+# increments, so passing all three is 5 + 5 + 10 = 20 -- one lesson's worth of
+# XP on top of the +20 he already got for doing the skill the first time. Kept
+# in parity with a mastered math skill (mastered tier = XP_PER_MASTERED_SKILL).
+KHAN_MASTERY_XP = {
+    "familiar": 5,
+    "proficient": 5,
+    "mastered": 10,
+}
+# The weekly "master the unit by Friday" bonus. A Khan unit is usually a whole
+# week's work for a big core class, so it doubles as the week's mastery target:
+# get this share of the unit's skills to Proficient-or-better and a bonus chunk
+# lands on the weekly bar, attributed to the day he crossed the line. Additive,
+# like every mastery reward.
+KHAN_UNIT_MASTERY_TARGET = 0.8   # 80% of a unit's skills at Proficient+
+KHAN_UNIT_MASTERY_BONUS = 50     # XP for taking a unit to its mastery target
+
 # Default instructional minutes credited when a Big Project step or a coding
 # module is completed without hours logged by hand -- both are real, substantial
 # work that used to credit *nothing* toward the hour floor (reported: hours were
