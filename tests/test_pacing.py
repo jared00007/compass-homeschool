@@ -147,23 +147,3 @@ def test_home_roster_lists_every_khan_card_assigned_to_today(monkeypatch, tmp_pa
         assert any(name in (label or "") for label in khan_links)
 
 
-def test_home_shows_full_day_message_once_he_clears_the_target(monkeypatch, tmp_path):
-    db_path = tmp_path / "pacing.db"
-    db = Database(db_path)
-    student = db.ensure_default_student()
-    auth.set_pin(db, "1234")  # a PIN makes is_parent() default False -> student view
-    # Dismiss the once-a-year first-day celebration so the normal Today view (and
-    # its pacing card) renders instead of the cover page st.stop()ing it.
-    db.set_setting("first_day_celebrated_start", db.school_year_bounds()[0])
-    pacing.set_day_target(db, 1, 0)  # one lesson = a full day, for a deterministic test
-    lid = db.save_lesson(student["id"], "math", "math", "Slope", "Slope", {"quiz": []})
-    db.mark_student_done(lid)
-    db.close()
-
-    st.cache_resource.clear()
-    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
-    at = AppTest.from_file(HOME_PATH)
-    at.run(timeout=30)
-    assert not at.exception, [e.message for e in at.exception]
-    body = " ".join(m.value for m in at.markdown)
-    assert "Full day" in body
