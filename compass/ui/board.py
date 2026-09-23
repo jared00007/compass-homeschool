@@ -960,7 +960,11 @@ def render_board_backlog(
         if not items:
             continue
         icon = EPIC_ICONS.get(epic, "📘")
-        with _ui.st.expander(f"{icon} {epic} ({len(items)})", expanded=True):
+        # Each epic group starts collapsed -- the backlog can hold a lot of
+        # parked stories, and a parent asked for the groups closed by default
+        # so the panel opens as a short list of headers ("Khan Academy (5)")
+        # to expand one at a time, not a wall of every card at once.
+        with _ui.st.expander(f"{icon} {epic} ({len(items)})", expanded=False):
             with _ui.st.container(key=f"{key_prefix}_backlog_row_{epic.replace(' ', '_')}"):
                 backlog_columns = _ui.st.columns(min(len(items), 4))
                 for position, (kind, item) in enumerate(items):
