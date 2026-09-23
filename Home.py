@@ -25,6 +25,7 @@ from compass.ui import (
     render_day_pacing,
     render_enrichment_activities,
     render_free_reading,
+    render_khan_unit_mastery_meter,
     render_recess,
     render_rewind_review,
     render_declaration_banner,
@@ -146,6 +147,9 @@ if not is_parent():
 
     def _render_level_and_progress() -> None:
         render_xp_level(db, student)
+        # The standing "this week's unit" mastery meter -- always in front of him
+        # so the go-back-and-improve goal stays visible all week.
+        render_khan_unit_mastery_meter(db, student, today_iso)
         st.divider()
         render_progress_panel(db, student)
 

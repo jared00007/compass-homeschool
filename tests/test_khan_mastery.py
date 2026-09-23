@@ -278,3 +278,24 @@ def test_confirmations_render_nothing_with_an_empty_queue(db, student, monkeypat
     monkeypatch.setattr(ui, "st", rec)
     ui.render_khan_mastery_confirmations(db, student)
     assert "Mastery to confirm" not in "\n".join(rec.written)
+
+
+def test_unit_meter_shows_this_weeks_unit_and_progress(db, student, monkeypatch):
+    today = date.today()
+    ids = _unit(db, student, "Exponents & radicals", 5)
+    db.reschedule_lesson(ids[0], today.isoformat())   # makes it this week's active unit
+    km.confirm_mastery(db, ids[0], "proficient", on=today.isoformat())
+    rec = _Rec()
+    monkeypatch.setattr(ui, "st", rec)
+    ui.render_khan_unit_mastery_meter(db, student, today.isoformat())
+    page = "\n".join(rec.written)
+    assert "This week’s unit" in page and "Exponents & radicals" in page
+    assert "banked from mastery" in page
+
+
+def test_unit_meter_is_silent_without_any_units(db, student, monkeypatch):
+    _card(db, student)  # a standalone card, not part of a unit
+    rec = _Rec()
+    monkeypatch.setattr(ui, "st", rec)
+    ui.render_khan_unit_mastery_meter(db, student, date.today().isoformat())
+    assert "This week’s unit" not in "\n".join(rec.written)

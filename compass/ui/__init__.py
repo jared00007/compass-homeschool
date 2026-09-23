@@ -4493,6 +4493,45 @@ def render_khan_mastery_confirmations(db: Database, student: dict[str, Any]) -> 
                 st.rerun()
 
 
+def render_khan_unit_mastery_meter(
+    db: Database, student: dict[str, Any], today_iso: str | None = None
+) -> None:
+    """The standing 'this week's unit' mastery meter for Landon's Home -- the Khan
+    unit he's working now, how many of its skills are at Proficient-or-better,
+    the XP he's banked from mastery, and the 'master the unit by Friday' bonus
+    still on the table. Always on his Home so the goal sits in front of him all
+    week (a unit is usually the whole week's work for a big core class)."""
+    from compass import khan_mastery as km
+
+    today = date.fromisoformat(today_iso) if today_iso else date.today()
+    unit = km.active_unit(db, student["id"], today=today)
+    if unit is None:
+        return
+    total, prof, target = unit["total"], unit["proficient_plus"], unit["target_count"]
+    fraction = min(1.0, prof / target) if target else 1.0
+    with st.container(border=True, key="khan_unit_mastery"):
+        st.markdown(f"**🏆 This week’s unit — {md(unit['course'])}**")
+        st.progress(
+            fraction,
+            text=f"{prof} of {total} skills at Proficient+ · goal: {target}",
+        )
+        earned, available, bonus = unit["xp_earned"], unit["xp_available"], unit["bonus"]
+        if unit["target_met"]:
+            st.caption(
+                f"✅ Unit goal hit — **+{bonus}** bonus earned! You’ve banked "
+                f"**{earned} XP** from mastery. Keep climbing: up to **+{available}** "
+                "more if you master the rest."
+            )
+        else:
+            need = max(1, target - prof)
+            st.caption(
+                f"**{earned} XP** banked from mastery so far. Level up **{need}** more "
+                f"skill{'s' if need != 1 else ''} to Proficient+ to hit the goal and "
+                f"earn **+{bonus}** — and up to **+{available}** more is on the table."
+            )
+        st.page_link("pages/18_Khan.py", label="Go level up a skill on Khan", icon="🅰️")
+
+
 def _render_one_enrichment(
     db: Database, student: dict[str, Any], activity: dict[str, Any], spec: dict[str, Any]
 ) -> None:
