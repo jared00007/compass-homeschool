@@ -116,6 +116,20 @@ def test_latest_per_day_sorts_by_planned_for_then_id():
     assert [l["id"] for l in result] == [1, 3, 5]
 
 
+def test_latest_per_day_never_collapses_multiple_khan_cards_on_one_day():
+    """Regression: Khan cards all share the `khan` agent, and a parent assigns
+    several to the same day on purpose -- keying them by (agent, day) like
+    regenerated lessons made all but one vanish (reported: "moved two Khan math
+    lessons to today and only one shows"). Each is kept by its own id."""
+    lessons = [
+        _lesson(1, "khan", "2026-08-10"),
+        _lesson(2, "khan", "2026-08-10"),
+        _lesson(3, "khan", "2026-08-10"),
+    ]
+    result = latest_per_day(lessons)
+    assert {l["id"] for l in result} == {1, 2, 3}
+
+
 # --- due_lessons: "what's actually due now," not "whatever was generated most recently" ---
 
 

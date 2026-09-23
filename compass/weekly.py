@@ -74,10 +74,20 @@ def latest_per_day(lessons: list[dict[str, Any]]) -> list[dict[str, Any]]:
     keeps the newest entry for each day. Shared by `pages/14_Mission_Control.py`
     (the parent's planner) and Home's Week tab (the student's read-only
     view of the same plan).
+
+    Khan cards are the exception: they all share the single `khan` agent, and a
+    parent assigns *several* to the same day on purpose (that's the whole Khan
+    workflow) -- they don't supersede one another the way a regenerated lesson
+    does. So each Khan card is keyed by its own id and never collapsed, or all
+    but one would vanish from a day column (reported: "moved two Khan math
+    lessons to today and only one shows").
     """
-    latest: dict[tuple[str, str], dict[str, Any]] = {}
+    latest: dict[tuple[str, object], dict[str, Any]] = {}
     for lesson in lessons:
-        key = (lesson["agent"], lesson["metadata"].get("planned_for", ""))
+        if lesson["agent"] == "khan":
+            key: tuple[str, object] = ("khan", lesson["id"])
+        else:
+            key = (lesson["agent"], lesson["metadata"].get("planned_for", ""))
         latest[key] = lesson
     return sorted(
         latest.values(), key=lambda l: (l["metadata"].get("planned_for", ""), l["id"])
