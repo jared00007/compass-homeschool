@@ -206,13 +206,17 @@ def generate_rewind_review(
     # cumulative review spans several, so its sit-time is split across the ones it
     # actually covered rather than pinned to a made-up "review" subject. English
     # folds to reading, the others map to themselves; only valid keys survive.
+    def _credit_subject(selection: dict[str, Any]) -> str | None:
+        # A core agent maps by its key (English -> reading); a Khan card isn't in
+        # that map, so it credits its own real WA subject (math, reading, ...).
+        mapped = _AGENT_CREDIT_SUBJECT.get(selection.get("agent") or "")
+        if mapped:
+            return mapped
+        subject = selection.get("subject") or ""
+        return subject if subjects.is_valid(subject) else None
+
     credit_subjects = sorted(
-        {
-            k
-            for s in selections
-            for k in (_AGENT_CREDIT_SUBJECT.get(s.get("agent") or ""),)
-            if k and subjects.is_valid(k)
-        }
+        {c for s in selections if (c := _credit_subject(s))}
     )
     lesson_id = db.save_lesson(
         student_id=student["id"],

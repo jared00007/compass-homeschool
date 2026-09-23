@@ -3919,6 +3919,54 @@ def _rewind_within_days(lesson: dict[str, Any], days: int, today: date) -> bool:
     return (today - when).days <= days
 
 
+def _render_random_khan_rewind(
+    db: Database, student: dict[str, Any], completed: list[dict[str, Any]]
+) -> None:
+    """A one-click Rewind over a random sample of finished Khan cards (optionally
+    one subject) -- so heavy Khan practice feeds cumulative recall without
+    hand-picking. Silent when there's no finished Khan work yet."""
+    import random
+
+    from compass.agents import LessonGenerationError, api_available, rewind
+
+    khan_done = [lesson for lesson in completed if lesson.get("agent") == "khan"]
+    if not khan_done:
+        return
+
+    with st.container(border=True, key="khan_rewind_box"):
+        st.markdown("**🎲 Random Rewind from Khan work**")
+        st.caption(
+            "Spin up a cumulative quiz from Khan cards he's finished — spaced review "
+            "with no hand-picking. One AI generation."
+        )
+        subject_keys = sorted({lesson["subject"] for lesson in khan_done})
+        options = ["__any__", *subject_keys]
+        pick = st.selectbox(
+            "From subject", options,
+            format_func=lambda k: "Any subject" if k == "__any__" else subjects.label(k),
+            key="khan_rewind_subject",
+        )
+        pool = khan_done if pick == "__any__" else [l for l in khan_done if l["subject"] == pick]
+        api_ok, api_message = api_available()
+        st.caption(
+            f"{len(pool)} finished Khan card{'s' if len(pool) != 1 else ''} to draw from."
+            + ("" if api_ok else f"  ⚠️ {api_message}")
+        )
+        if st.button(
+            "🎲 Generate random Rewind", key="khan_rewind_btn", type="primary",
+            disabled=not pool or not api_ok, width="stretch",
+        ):
+            sample = random.sample(pool, min(len(pool), 8))
+            with st.spinner("Pulling a Rewind together…"):
+                try:
+                    rewind.generate_rewind_review(db, student, sample)
+                except (LessonGenerationError, ValueError) as exc:
+                    st.error(str(exc))
+                else:
+                    st.success("Random Rewind created — it's waiting on his Home. 🎲")
+                    st.rerun()
+
+
 def render_rewind_generator(db: Database, student: dict[str, Any]) -> None:
     """Parent-facing: pick from lessons Landon has already completed and generate
     a cumulative 'Rewind' review -- a quick cross-subject refresher plus an
@@ -3938,6 +3986,11 @@ def render_rewind_generator(db: Database, student: dict[str, Any]) -> None:
     if pending:
         names = ", ".join(md(p["title"]) for p in pending)
         st.info(f"📬 Waiting for him on Home: {names}")
+
+    # Random Rewind from recent Khan work -- the fast path for a Khan-heavy week:
+    # no hand-picking, just spin up a cumulative quiz over what he's finished on
+    # Khan (optionally one subject). Lands in his 'ready for you' like any Rewind.
+    _render_random_khan_rewind(db, student, completed)
 
     if not completed:
         st.caption(
@@ -4126,6 +4179,127 @@ def render_khan_card_form(db: Database, student: dict[str, Any]) -> None:
             "later): " + ", ".join(md(u) for u in result["quiz_failed"])
         )
     st.rerun()
+
+
+def render_khan_course_loader(db: Database, student: dict[str, Any]) -> None:
+    """Parent-facing: load a whole Khan course as backlog shells. Pick the
+    subject, name the course, set how many cards it needs -- they land in the
+    Backlog to fill in and assign one at a time (render_khan_courses)."""
+    from compass.agents import khan_card
+
+    subject_labels = {k: v for k, v in khan_card.KHAN_SUBJECTS}
+    st.caption(
+        "Load a whole Khan course at once — it drops that many blank cards into "
+        "the Backlog. Fill in and assign them one at a time below, day by day, "
+        "until the course is done."
+    )
+    st.caption(f"🔗 Every card opens: {khan_card.khan_base_url(db)}")
+    with st.form("khan_course_form", clear_on_submit=True):
+        subject = st.selectbox(
+            "Subject", options=[k for k, _ in khan_card.KHAN_SUBJECTS],
+            format_func=lambda k: subject_labels[k], key="khan_course_subject",
+        )
+        course = st.text_input(
+            "Course or lesson name", key="khan_course_name",
+            placeholder="e.g. Algebra 1: Exponents & radicals",
+        )
+        cols = st.columns(2)
+        count = cols[0].number_input(
+            "How many cards?", min_value=1, max_value=100, value=10, step=1,
+            key="khan_course_count", help="One card per Khan lesson/exercise you'll assign.",
+        )
+        minutes = cols[1].number_input(
+            "Minutes each", min_value=5, max_value=240,
+            value=config.SUBJECT_DEFAULT_MINUTES.get("math", 35), step=5,
+            key="khan_course_minutes",
+        )
+        submitted = st.form_submit_button(
+            "📋 Load course into Backlog", type="primary", width="stretch"
+        )
+    if not submitted:
+        return
+    if not course.strip():
+        st.error("Name the course.")
+        return
+    try:
+        ids = khan_card.create_course_shells(
+            db, student, subject=subject, course=course, count=int(count),
+            minutes=int(minutes),
+        )
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+    st.success(
+        f"Loaded {len(ids)} cards for “{md(course.strip())}” into the Backlog. "
+        "Fill & assign them below. 📋"
+    )
+    st.rerun()
+
+
+def render_khan_courses(db: Database, student: dict[str, Any]) -> None:
+    """Parent-facing: your loaded Khan courses. For each, a progress read and a
+    form to fill in and assign the *next* card -- set the specific skill, pick a
+    day, and it's off to his Khan page. Assign them out until the course is done."""
+    from compass.agents import LessonGenerationError, api_available, khan_card
+
+    summaries = khan_card.course_summaries(db, student["id"])
+    if not summaries:
+        st.caption("No Khan courses loaded yet — load one above to fill and assign it out.")
+        return
+    api_ok, api_msg = api_available()
+    for course in summaries:
+        cid = course["course_id"]
+        subject_label = subjects.label(course["subject"])
+        done, total = course["done"], course["total"]
+        with st.container(border=True):
+            st.markdown(f"**📋 {md(course['course'])}** · {subject_label}")
+            st.progress(
+                (done / total) if total else 0.0,
+                text=f"{done} of {total} done · {course['unfilled']} left to assign",
+            )
+            nxt = course["next_shell"]
+            if nxt is None:
+                st.caption("✅ Every card is filled and assigned.")
+                continue
+            part = (nxt.get("metadata") or {}).get("khan_part")
+            with st.form(f"khan_fill_{cid}", clear_on_submit=True):
+                st.caption(f"Assign the next card — Part {part} of {total}.")
+                unit = st.text_input(
+                    "What's the skill / assignment?", key=f"khan_fill_unit_{cid}",
+                    placeholder="e.g. Multiplying & dividing powers",
+                )
+                fill_cols = st.columns(2)
+                day = fill_cols[0].date_input(
+                    "Assign to day", value=date.today(), key=f"khan_fill_day_{cid}"
+                )
+                to_backlog = fill_cols[1].checkbox(
+                    "Fill only — leave in Backlog", key=f"khan_fill_backlog_{cid}",
+                )
+                make_quiz = st.checkbox(
+                    "Generate a quiz for it", value=True, key=f"khan_fill_quiz_{cid}"
+                )
+                if not api_ok:
+                    st.caption(f"⚠️ Quiz generation unavailable: {api_msg}")
+                assign = st.form_submit_button("➕ Fill & assign", type="primary")
+            if not assign:
+                continue
+            if not unit.strip():
+                st.error("Name the skill first.")
+                continue
+            generate = bool(make_quiz and api_ok)
+            day_iso = None if to_backlog else day.isoformat()
+            with st.spinner("Building the card…"):
+                try:
+                    khan_card.fill_shell(
+                        db, student, nxt["id"], unit=unit, day_iso=day_iso,
+                        generate_quiz=generate,
+                    )
+                except (LessonGenerationError, ValueError) as exc:
+                    st.error(str(exc))
+                    continue
+            where = "the Backlog" if to_backlog else day.strftime("%a %b %-d")
+            st.success(f"Assigned “{md(unit.strip())}” → {where}. ✅")
+            st.rerun()
 
 
 def _render_one_enrichment(

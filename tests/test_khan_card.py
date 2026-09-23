@@ -231,3 +231,122 @@ def test_created_card_renders_with_the_khan_link(db, student, monkeypatch):
     page = "\n".join(written)
     assert "Open in Khan Academy" in page
     assert "khan/exp" in page
+
+
+# --- course shells: load a course, fill & assign it out ------------------------
+
+
+def test_course_shells_land_in_the_backlog(db, student):
+    ids = khan_card.create_course_shells(
+        db, student, subject="math", course="Exponents & radicals", count=5, minutes=30,
+    )
+    assert len(ids) == 5
+    first = db.get_lesson(ids[0])
+    m = first["metadata"]
+    assert first["agent"] == "khan" and first["subject"] == "math"
+    assert m["khan_shell"] is True and m["held_back"] is True
+    assert m["khan_course"] == "Exponents & radicals" and m["khan_part"] == 1
+    # All five share one course id, and none is due (they're backlog shells).
+    course_ids = {db.get_lesson(i)["metadata"]["khan_course_id"] for i in ids}
+    assert len(course_ids) == 1
+    khan = db.list_lessons(student["id"], agent="khan")
+    assert not weekly.due_lessons(khan, date.today().isoformat())
+
+
+def test_fill_shell_turns_a_shell_into_a_real_scheduled_card(db, student):
+    ids = khan_card.create_course_shells(
+        db, student, subject="math", course="Exponents", count=3, minutes=30,
+    )
+    khan_card.fill_shell(
+        db, student, ids[0], unit="Multiplying & dividing powers",
+        day_iso=date.today().isoformat(), quiz=list(_QUIZ),
+    )
+    lesson = db.get_lesson(ids[0])
+    assert lesson["title"] == "Khan Academy: Multiplying & dividing powers"
+    assert lesson["metadata"].get("khan_shell") is None          # no longer a shell
+    assert lesson["metadata"]["planned_for"] == date.today().isoformat()
+    assert lesson["metadata"]["khan_course"] == "Exponents"       # course tag kept
+    assert lesson["payload"]["quiz"] == _QUIZ
+    assert lesson["payload"]["subject_credits"][0]["subject"] == "math"
+    # It's now a due math-subject Khan card.
+    khan = db.list_lessons(student["id"], agent="khan")
+    assert any(l["id"] == ids[0] for l in weekly.due_lessons(khan, date.today().isoformat()))
+
+
+def test_fill_shell_can_leave_it_in_the_backlog(db, student):
+    ids = khan_card.create_course_shells(
+        db, student, subject="science", course="Cells", count=2, minutes=30,
+    )
+    khan_card.fill_shell(db, student, ids[0], unit="Cell structure", quiz=list(_QUIZ))
+    lesson = db.get_lesson(ids[0])
+    # Filled but not dated -> still held back in the backlog.
+    assert lesson["metadata"].get("khan_shell") is None
+    assert lesson["metadata"].get("held_back") is True
+
+
+def test_course_summary_tracks_progress(db, student):
+    ids = khan_card.create_course_shells(
+        db, student, subject="math", course="Fractions", count=4, minutes=30,
+    )
+    khan_card.fill_shell(db, student, ids[0], unit="Add fractions",
+                         day_iso=date.today().isoformat(), quiz=list(_QUIZ))
+    db.set_lesson_status(ids[0], "completed")
+
+    summary = khan_card.course_summaries(db, student["id"])[0]
+    assert summary["course"] == "Fractions" and summary["total"] == 4
+    assert summary["done"] == 1 and summary["unfilled"] == 3
+    assert summary["next_shell"]["metadata"]["khan_part"] == 2  # part 1 is filled
+
+
+def test_create_course_shells_rejects_bad_input(db, student):
+    with pytest.raises(ValueError):
+        khan_card.create_course_shells(db, student, subject="math", course="", count=3, minutes=30)
+    with pytest.raises(ValueError):
+        khan_card.create_course_shells(db, student, subject="not_a_subject", course="X", count=3, minutes=30)
+    with pytest.raises(ValueError):
+        khan_card.create_course_shells(db, student, subject="math", course="X", count=0, minutes=30)
+
+
+def test_a_completed_khan_card_is_rewind_eligible(db, student):
+    """The metadata payoff: finished Khan work feeds Rewind. A completed Khan card
+    shows up in the pool a Rewind draws from (it didn't before)."""
+    lid = khan_card.create_khan_card(
+        db, student, subject="math", unit="Exponent rules",
+        minutes=35, day_iso=date.today().isoformat(), quiz=list(_QUIZ),
+    )
+    db.set_lesson_status(lid, "completed")
+    pool = db.completed_lessons_for_review(student["id"])
+    khan = [l for l in pool if l["agent"] == "khan"]
+    assert any(l["id"] == lid for l in khan)
+    assert khan[0]["subject"] == "math"  # carries the real subject for the review
+
+
+def test_render_khan_courses_shows_a_loaded_course_and_progress(db, student, monkeypatch):
+    """The Backlog course manager renders a loaded course with its progress, and
+    doesn't blow up doing it."""
+    khan_card.create_course_shells(
+        db, student, subject="math", course="Algebra basics", count=4, minutes=30,
+    )
+    written: list[str] = []
+
+    class Rec:
+        session_state: dict = {}
+        def __getattr__(self, _n):
+            def rec(*a, **k):
+                for x in list(a) + list(k.values()):
+                    if isinstance(x, str):
+                        written.append(x)
+                return self
+            return rec
+        def __getitem__(self, _i): return self
+        def __iter__(self): return iter([self, self])
+        def __enter__(self): return self
+        def __exit__(self, *e): return False
+        def __bool__(self): return False
+
+    monkeypatch.setattr(ui, "st", Rec())
+    ui.render_khan_courses(db, student)
+    page = "\n".join(written)
+    assert "Algebra basics" in page
+    assert "0 of 4 done" in page
+    assert "Part 1 of 4" in page  # the next shell to assign

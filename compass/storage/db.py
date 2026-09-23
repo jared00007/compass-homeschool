@@ -2733,6 +2733,40 @@ class Database:
             row["metadata"] = json.loads(row["metadata"])
         return row
 
+    def update_lesson_content(
+        self,
+        lesson_id: int,
+        *,
+        title: str | None = None,
+        topic: str | None = None,
+        payload: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Overwrite selected fields of an existing lesson row -- used to turn a
+        Khan course 'shell' in the backlog into a real, filled-in card. Only the
+        fields passed are changed; student, agent, subject, status and timestamps
+        stay. `metadata`/`payload` replace the stored dict wholesale, so a caller
+        reads it, mutates, and passes the whole thing back."""
+        sets: list[str] = []
+        params: list[Any] = []
+        if title is not None:
+            sets.append("title = ?")
+            params.append(title)
+        if topic is not None:
+            sets.append("topic = ?")
+            params.append(topic)
+        if payload is not None:
+            sets.append("payload = ?")
+            params.append(json.dumps(payload))
+        if metadata is not None:
+            sets.append("metadata = ?")
+            params.append(json.dumps(metadata))
+        if not sets:
+            return
+        params.append(lesson_id)
+        self.conn.execute(f"UPDATE lessons SET {', '.join(sets)} WHERE id = ?", params)
+        self.conn.commit()
+
     def list_lessons(
         self, student_id: int, agent: str | None = None, limit: int = 25
     ) -> list[dict[str, Any]]:
@@ -2880,8 +2914,14 @@ class Database:
 
         A generated Rewind review is itself a lesson, but under the `rewind`
         agent, so it never shows up here as its own review material.
+
+        Khan cards (agent `khan`) are reviewable too -- their whole point is
+        volume of practice a parent wants to build cumulative recall on -- so they
+        join the four core agents here (but NOT in `core_lessons_done_on`, which
+        is the academic-day count, since a Khan card can be any subject).
         """
-        placeholders = ",".join("?" for _ in self._REVIEWABLE_AGENTS)
+        reviewable = (*self._REVIEWABLE_AGENTS, "khan")
+        placeholders = ",".join("?" for _ in reviewable)
         rows = _rows(
             self.conn.execute(
                 f"""
@@ -2895,7 +2935,7 @@ class Database:
                   AND agent IN ({placeholders})
                 ORDER BY created_at DESC, id DESC
                 """,
-                (student_id, *self._REVIEWABLE_AGENTS),
+                (student_id, *reviewable),
             )
         )
         for row in rows:

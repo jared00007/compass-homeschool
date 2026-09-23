@@ -50,6 +50,8 @@ from compass.ui import (
     render_day_target_editor,
     render_enrichment_generator,
     render_khan_card_form,
+    render_khan_course_loader,
+    render_khan_courses,
     render_report_card,
     render_rewind_generator,
     render_story_move_control,
@@ -748,11 +750,18 @@ if mc_view == "plan":
     with st.expander("🗓️ Balance the week — spread the backlog, capped per day"):
         render_week_planner(db, student)
 
-    # Hand-enter Khan Academy units/exercises as cards -- no AI lesson, just the
-    # saved link + an auto-graded quiz per card. Khan carries the teaching;
-    # Compass logs it. Paste a whole course's units at once.
-    with st.expander("🅰️ Add Khan Academy cards — paste a course's units"):
-        render_khan_card_form(db, student)
+    # Khan Academy: load a whole course as backlog shells, then fill in and
+    # assign them out day by day until it's done. Khan carries the teaching;
+    # Compass schedules, logs the hours, and can pull the finished work into a
+    # cumulative Rewind. A "quick add" paste form is tucked underneath.
+    with st.expander("🅰️ Khan Academy — load a course & assign it out"):
+        render_khan_course_loader(db, student)
+        st.divider()
+        st.markdown("#### Your Khan courses")
+        render_khan_courses(db, student)
+        st.divider()
+        with st.expander("Quick add — paste units without a course"):
+            render_khan_card_form(db, student)
 
     st.markdown("### ✍️ Plan a lesson")
     st.caption(
