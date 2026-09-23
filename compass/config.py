@@ -121,6 +121,11 @@ TRAVEL_JOURNAL_DEFAULT_REQUIREMENTS = "\n".join(
 # completion signals (see compass.xp) -- no stored score to drift out of sync,
 # and no waiting on a parent to log hours. All tunable knobs, pure motivation.
 XP_PER_LESSON = 20
+# A Khan card is a single Khan Academy skill -- a much smaller unit of work than
+# a full AI-generated lesson (which carries a whole teach + practice + quiz), so
+# finishing one is worth less toward the reward. The mastery ladder (going back
+# to raise a skill) is where the rest of a Khan skill's XP comes from. Tunable.
+XP_PER_KHAN_LESSON = 10
 XP_QUIZ_PASS_BONUS = 10
 XP_PER_LIFE_SKILL = 15
 

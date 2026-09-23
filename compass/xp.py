@@ -83,7 +83,13 @@ def total_xp(db: Any, student_id: int) -> int:
     for lesson in db.list_lessons(student_id, limit=500):
         metadata = lesson.get("metadata") or {}
         if metadata.get("student_done_on"):
-            total += config.XP_PER_LESSON
+            # A Khan card is a single small skill, worth less than a full lesson
+            # (see config); its mastery ladder carries the rest of its XP.
+            total += (
+                config.XP_PER_KHAN_LESSON
+                if lesson.get("agent") == "khan"
+                else config.XP_PER_LESSON
+            )
         quiz_result = metadata.get("quiz_result") or {}
         if quiz_result.get("passed"):
             total += config.XP_QUIZ_PASS_BONUS
@@ -266,13 +272,20 @@ class DayRecord:
     is_future: bool
     mastery_xp: int = 0   # XP from Khan mastery tiers confirmed this day (raw XP,
                           # not a count -- tiers are worth different amounts)
+    khan_lessons: int = 0  # how many of `lessons` are Khan cards (worth the
+                           # smaller XP_PER_KHAN_LESSON each, not XP_PER_LESSON)
 
     @property
     def xp(self) -> int:
         """This day's net core XP. Can go negative on a rough day (a redo with
-        nothing finished) -- shown honestly per day; the week total is floored."""
+        nothing finished) -- shown honestly per day; the week total is floored.
+
+        Khan cards (a subset of `lessons`) are worth the smaller
+        XP_PER_KHAN_LESSON; the rest earn the full XP_PER_LESSON."""
+        full_lessons = self.lessons - self.khan_lessons
         return (
-            self.lessons * config.XP_PER_LESSON
+            full_lessons * config.XP_PER_LESSON
+            + self.khan_lessons * config.XP_PER_KHAN_LESSON
             + self.quizzes * config.XP_QUIZ_PASS_BONUS
             + self.skills * config.XP_PER_MASTERED_SKILL
             + self.mastery_xp
@@ -656,6 +669,7 @@ def weekly_progress(
 
     # Per-day core tallies, keyed by weekday index 0-4 (Mon-Fri).
     lessons = [0] * 5
+    khan_lessons = [0] * 5   # subset of `lessons`, worth the smaller Khan rate
     quizzes = [0] * 5
     skills = [0] * 5
     redos = [0] * 5
@@ -665,6 +679,8 @@ def weekly_progress(
         done = _parse_iso(metadata.get("student_done_on"))
         if in_week(done):
             lessons[done.weekday()] += 1
+            if lesson.get("agent") == "khan":
+                khan_lessons[done.weekday()] += 1
         quiz = metadata.get("quiz_result") or {}
         if quiz.get("passed"):
             # Prefer the quiz's own graded date; fall back to the lesson's
@@ -706,6 +722,7 @@ def weekly_progress(
                 is_today=(d == today),
                 is_future=(d > today),
                 mastery_xp=mastery_xp[i],
+                khan_lessons=khan_lessons[i],
             )
         )
 

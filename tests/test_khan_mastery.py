@@ -301,6 +301,27 @@ def test_unit_meter_is_silent_without_any_units(db, student, monkeypatch):
     assert "This week’s unit" not in "\n".join(rec.written)
 
 
+def test_finishing_a_khan_card_awards_the_smaller_khan_rate(db, student):
+    """A Khan card is a small single skill, so finishing one is worth the reduced
+    XP_PER_KHAN_LESSON, not a full lesson's XP_PER_LESSON."""
+    assert config.XP_PER_KHAN_LESSON < config.XP_PER_LESSON
+    lid = _card(db, student)
+    before = xp.total_xp(db, student["id"])
+    db.mark_student_done(lid)
+    assert xp.total_xp(db, student["id"]) - before == config.XP_PER_KHAN_LESSON
+
+
+def test_khan_card_uses_the_smaller_rate_on_the_weekly_bar(db, student):
+    today = date.today()
+    lid = _card(db, student)
+    db.mark_student_done(lid)                       # stamps student_done_on = today
+    progress = xp.weekly_progress(db, student["id"], today=today)
+    if today.weekday() < 5:                         # Mon-Fri: it lands on the bar
+        day = progress.days[today.weekday()]
+        assert day.lessons == 1 and day.khan_lessons == 1
+        assert day.xp == config.XP_PER_KHAN_LESSON  # the reduced rate, not XP_PER_LESSON
+
+
 def test_daily_due_lessons_tile_counts_khan_cards(db, student, monkeypatch):
     """Khan cards assigned to today count in the 'Lessons — N of M' Due-today
     tile, each on its own -- a day of Khan work shouldn't read as zero lessons."""

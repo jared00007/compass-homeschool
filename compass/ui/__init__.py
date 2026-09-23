@@ -3500,6 +3500,7 @@ def render_xp_level(db: Database, student: dict[str, Any]) -> None:
             goal_line
             + "**Fills the bar (your school work):**\n"
             f"- ✅ Finish a lesson: **+{config.XP_PER_LESSON}**\n"
+            f"- 🅰️ Finish a Khan card: **+{config.XP_PER_KHAN_LESSON}** (smaller — one skill)\n"
             f"- 🧠 Pass a quiz: **+{config.XP_QUIZ_PASS_BONUS}**\n"
             f"- 📐 Master a math skill: **+{config.XP_PER_MASTERED_SKILL}**\n\n"
             "**Extra credit (tops you off if Friday's close):**\n"
