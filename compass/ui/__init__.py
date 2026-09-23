@@ -4546,6 +4546,71 @@ def render_khan_unit_mastery_meter(
         st.page_link("pages/18_Khan.py", label="Go level up a skill on Khan", icon="🅰️")
 
 
+def _render_one_khan_due_card(
+    db: Database, student: dict[str, Any], card: dict[str, Any], *, expanded: bool
+) -> None:
+    """One Khan card he can work and turn in on its own -- its link + quiz and a
+    Turn-it-in button, in an expander so a day of several stays scannable."""
+    marker = "↩️" if card["status"] == "needs_revision" else "⬜"
+    with st.expander(f"{marker} 🅰️ {md(card['title'])}", expanded=expanded):
+        if card["status"] == "needs_revision":
+            st.warning("Sent back — read your parent's note, fix it, and turn it in again.")
+        render_lesson(
+            card["payload"], for_parent=False, db=db, lesson_id=card["id"],
+            metadata=card.get("metadata") or {}, comic_layout=False, student=student,
+        )
+        render_quiz(
+            db, student, card["id"], card.get("metadata") or {},
+            card["payload"].get("quiz") or [], agent="khan",
+        )
+        ready, why_not = _lesson_ready_to_submit(card)
+        if st.button(
+            "📬 Turn it in for review", key=f"submit_khan_{card['id']}",
+            type="primary", disabled=not ready,
+        ):
+            db.submit_lesson(card["id"])
+            st.rerun()
+        if not ready:
+            st.caption(why_not)
+
+
+def render_khan_due_cards(db: Database, student: dict[str, Any]) -> None:
+    """Every Khan card due for him now, each with its OWN quiz and Turn-it-in
+    button. Khan cards are independent single skills, so -- unlike a core
+    subject, which gates to one lesson at a time -- he can work and submit
+    several in a day. Reported: only one card had a submit button; each needs
+    its own. Submitted cards show as waiting; sent-back ones are workable again."""
+    lessons = db.list_lessons(student["id"], agent="khan", limit=500)
+    today_iso = date.today().isoformat()
+
+    waiting = [l for l in lessons if l["status"] == "submitted"]
+    sent_back = [l for l in lessons if l["status"] == "needs_revision"]
+    todo = [
+        l for l in lessons
+        if l["status"] not in ("skipped", "submitted", "needs_revision", "completed")
+        and not (l.get("metadata") or {}).get("student_done_on")
+    ]
+    due = weekly.due_lessons(todo, today_iso)
+    actionable = sent_back + due  # each of these needs him to work it + turn it in
+
+    if not actionable and not waiting:
+        st.info("No Khan cards to do right now — nice work. Ask your parent to assign one.")
+        return
+
+    if actionable:
+        st.caption(
+            f"You have **{len(actionable)}** Khan card{'s' if len(actionable) != 1 else ''} to do. "
+            "Open each, do it on Khan, take its quiz if it has one, and turn it in — one at a time or all at once."
+        )
+    for card in actionable:
+        _render_one_khan_due_card(db, student, card, expanded=len(actionable) == 1)
+
+    for card in waiting:
+        with st.container(border=True):
+            st.markdown(f"**📤 {md(card['title'])}**")
+            st.caption("Submitted — waiting on your parent to check this.")
+
+
 def _render_one_enrichment(
     db: Database, student: dict[str, Any], activity: dict[str, Any], spec: dict[str, Any]
 ) -> None:

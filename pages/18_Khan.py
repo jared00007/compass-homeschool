@@ -14,9 +14,9 @@ import streamlit as st
 from compass.ui import (
     is_parent,
     page_setup,
+    render_khan_due_cards,
     render_khan_mastery_boost,
     render_past_lessons,
-    student_lesson_view,
 )
 
 db, student = page_setup("Khan Academy", icon="🅰️")
@@ -29,7 +29,7 @@ st.caption(
 
 # Student view: his current Khan card, its quiz, and the ones he's finished.
 if not is_parent():
-    student_lesson_view(db, student, "khan", "Khan Academy")
+    render_khan_due_cards(db, student)
     render_khan_mastery_boost(db, student)
     render_past_lessons(db, student, "khan", "Khan Academy")
     st.stop()

@@ -149,6 +149,35 @@ def test_parent_can_change_what_a_full_day_is(db, student):
     assert plan.is_full_day is True
 
 
+def test_khan_page_gives_each_due_card_its_own_submit_button(monkeypatch, tmp_path):
+    """Khan cards are independent single skills, so each due card on the Khan
+    page gets its own Turn-it-in button -- he can submit several in a day.
+    Reported: only one card had a submit button."""
+    from compass.agents import khan_card
+
+    khan_path = str(REPO_ROOT / "pages" / "18_Khan.py")
+    db_path = tmp_path / "khan.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")  # student view
+    db.set_setting("first_day_celebrated_start", db.school_year_bounds()[0])
+    today = date.today().isoformat()
+    for name in ("Exponents", "Radicals", "Polynomials"):
+        khan_card.create_khan_card(
+            db, student, subject="math", unit=name, minutes=30, day_iso=today, quiz=[])
+    db.close()
+
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+    at = AppTest.from_file(HOME_PATH)
+    at.run(timeout=30)
+    at.switch_page(khan_path)
+    at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+    submits = [b for b in at.button if "Turn it in" in (b.label or "")]
+    assert len(submits) == 3, [b.label for b in at.button]
+
+
 def test_home_roster_lists_every_khan_card_assigned_to_today(monkeypatch, tmp_path):
     """The lessons roster must show ALL of today's board cards, not collapse the
     Khan ones into a single row. Reported: the count said 6 but the list showed
