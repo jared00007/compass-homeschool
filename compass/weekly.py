@@ -379,10 +379,16 @@ def board_for_week(
 # The order every epic-grouped view (the Board tab's Product Backlog panel)
 # lists epics in -- core subjects first in their usual order, then the two
 # catch-all epics last, matching how the parent described the grouping.
-EPIC_ORDER = ("Math", "Science", "English", "History", "Life Skills", "Big Projects")
+EPIC_ORDER = (
+    "Math", "Science", "English", "History", "Khan Academy", "Life Skills", "Big Projects"
+)
 
 _LESSON_AGENT_EPIC = {
     "math": "Math", "science": "Science", "english": "English", "history": "History",
+    # Every Khan card (any subject) shares the single `khan` agent, so they all
+    # group under one Khan Academy epic on the Board -- without this they mapped
+    # to a "Khan" epic that wasn't in EPIC_ORDER and vanished from the Backlog.
+    "khan": "Khan Academy",
     # Both fold into the Life Skills epic, same as the page they already
     # share (pages/6_Life_Skills.py's Coding tab) -- a generated lesson
     # from either agent is still a Life Skills story, not a seventh epic.

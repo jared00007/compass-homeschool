@@ -2193,7 +2193,7 @@ _BOARD_ROW_ORDER = [
 # panel groups by this, not by story kind.
 EPIC_ICONS = {
     "Math": "📐", "Science": "🔬", "English": "📖", "History": "🏛️",
-    "Life Skills": "🛠️", "Big Projects": "🎬",
+    "Khan Academy": "🅰️", "Life Skills": "🛠️", "Big Projects": "🎬",
 }
 
 def _render_grade_override_form(db: Database, grade: Any) -> None:

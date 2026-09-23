@@ -589,3 +589,19 @@ def test_group_backlog_by_epic_groups_life_skills_and_coding_together():
     assert [item["id"] for _, item in grouped["Life Skills"]] == [1, 2]
     assert [item["id"] for _, item in grouped["Big Projects"]] == [3]
     assert grouped["Math"] == []
+
+
+def test_khan_cards_get_their_own_epic_so_the_backlog_shows_them():
+    """Regression: a Khan card's agent is `khan`, which mapped to a 'Khan' epic
+    that wasn't in EPIC_ORDER -- so backlog Khan cards were grouped into a bucket
+    render_board_backlog never iterated, and vanished. It has its own epic now."""
+    assert "Khan Academy" in EPIC_ORDER
+    backlog = [
+        ("lesson", {"id": 1, "agent": "khan", "subject": "math", "title": "Khan: Exponents"}),
+        ("lesson", {"id": 2, "agent": "math", "subject": "math", "title": "Two-step equations"}),
+    ]
+    grouped = group_backlog_by_epic(backlog)
+    assert [item["id"] for _, item in grouped["Khan Academy"]] == [1]
+    assert [item["id"] for _, item in grouped["Math"]] == [2]
+    # And it lands in an epic the Board actually renders.
+    assert sum(len(grouped.get(e, [])) for e in EPIC_ORDER) == 2
