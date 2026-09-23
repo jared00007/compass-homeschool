@@ -16,6 +16,7 @@ from compass.storage.db import Database
 from compass.ui import (
     BOARD_KIND_ICONS,
     EPIC_ICONS,
+    KHAN_ACCENT_COLOR,
     SUBJECT_ICONS,
     _BOARD_ROW_ORDER,
     _board_identity,
@@ -605,8 +606,14 @@ def render_board_card(
         # reads whether the card is open or collapsed) -- one glance tells you
         # how heavy this block is, and the day header below sums them.
         est = format_board_minutes(board_item_minutes(kind, item))
+        # Khan cards carry a fixed Khan-colored left stripe on top of their
+        # subject-colored bar -- two colors at once: the bar names the subject,
+        # the stripe says "this is Khan," so they read as a group across subjects.
+        is_khan = kind == "lesson" and item.get("agent") == "khan"
+        khan_stripe = f"border-left:6px solid {KHAN_ACCENT_COLOR}; " if is_khan else ""
         _ui.st.markdown(
             f'<div style="background:{tag_color}; color:#fff; margin:-1px -1px 8px; '
+            f'{khan_stripe}'
             f'padding:3px 9px 3px; border-radius:2px 2px 0 0; font-size:10.5px; '
             f'font-weight:800; text-transform:uppercase; letter-spacing:.06em; '
             f'display:flex; justify-content:space-between; gap:8px;">'

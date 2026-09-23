@@ -376,117 +376,96 @@ def create_khan_cards(
 # --- course shells: load a whole course, fill & assign it out over time --------
 
 
-def _shell_payload(
-    subject_label: str, course: str, part: int, total: int, url: str, minutes: int
-) -> dict[str, Any]:
-    """A blank Khan card the parent fills in later -- a placeholder that holds a
-    course's slot until it's assigned. Rebuilt into a real card by `fill_shell`."""
-    return {
-        "title": f"{course} — Part {part}",
-        "topic": course,
-        "overview": (
-            f"📋 **{course} — Part {part} of {total}** · {subject_label} · Khan Academy\n\n"
-            "A placeholder to fill in when you assign it — set the specific skill "
-            "and it's ready for him."
-        ),
-        "learning_objectives": [f"Khan Academy course: {course} (part {part} of {total})"],
-        "learn": {"explanation": "", "video": {"found": False, "title": "", "url": "", "channel": "", "why": ""}},
-        "worked_example": {"problem": "", "steps": ""},
-        "activities": [],
-        "materials": ["A device with Khan Academy open"],
-        "subject_credits": [],  # no hours until it's filled, done and approved
-        "quiz": [],
-        "estimated_minutes": minutes,
-        "fun_extra": {"title": "", "instructions": ""},
-        "parent_notes": f"Shell for the Khan course '{course}'. Fill in the specific skill when you assign it.",
-        "branches": [],
-    }
-
-
-def create_course_shells(
+def create_course(
     db: Any,
     student: dict[str, Any],
     *,
     subject: str,
     course: str,
-    count: int,
+    lessons: list[str],
     minutes: int,
-) -> list[int]:
-    """Load a whole Khan course as `count` blank card shells parked in the
-    Backlog, all tagged with one course id so they group together (and later feed
-    a course Rewind). Each is titled '{course} — Part k'. Filled in and assigned
-    one at a time from the Backlog (see `fill_shell`). Returns the shell ids."""
+    generate_quiz: bool = False,
+    on_progress: Callable[[int, int, str | None], None] | None = None,
+) -> dict[str, list[Any]]:
+    """Load a whole Khan course from an ordered lesson list -- one card per
+    lesson, numbered in order ("1. …", "2. …"), all tagged with a shared course
+    id and parked in the Backlog to assign out day by day.
+
+    Quizzes are normally generated when a card is *assigned* (assign_course_card),
+    so this defaults to no quiz -- pass generate_quiz=True to build them all up
+    front. Returns {"created": [ids], "quiz_failed": [names]}."""
     if not is_supported_subject(subject):
         raise ValueError(f"'{subject}' isn't a valid subject for a Khan card.")
     course = course.strip()
     if not course:
         raise ValueError("Name the course.")
-    count = int(count)
-    if count < 1:
-        raise ValueError("Set how many cards the course needs.")
-    count = min(count, 100)  # a sane cap so a typo can't create thousands
+    lessons = [lesson.strip() for lesson in lessons if lesson.strip()]
+    if not lessons:
+        raise ValueError("Enter at least one lesson (one per line).")
+    lessons = lessons[:100]  # a sane cap so a paste-gone-wrong can't create thousands
     url = khan_base_url(db)
-    subject_label = subjects.label(subject)
     course_id = f"khancourse-{uuid4().hex[:8]}"
-    ids: list[int] = []
-    for part in range(1, count + 1):
+    total = len(lessons)
+    result: dict[str, list[Any]] = {"created": [], "quiz_failed": []}
+    for index, lesson in enumerate(lessons, start=1):
+        if on_progress is not None:
+            on_progress(index - 1, total, lesson)
+        quiz = None
+        if generate_quiz:
+            try:
+                quiz = generate_khan_quiz(student, subject, lesson)
+            except LessonGenerationError:
+                result["quiz_failed"].append(lesson)
+        payload = build_khan_card_payload(subject, lesson, url, minutes, quiz=quiz)
+        payload["title"] = f"{index}. {lesson}"  # numbered so the order reads at a glance
         lesson_id = db.save_lesson(
             student_id=student["id"], agent=AGENT_KEY, subject=subject,
-            topic=course, title=f"{course} — Part {part}",
-            payload=_shell_payload(subject_label, course, part, count, url, minutes),
-            strategy="parent_khan_course",
-            rationale="Parent loaded a Khan course as backlog shells to fill and assign.",
+            topic=lesson, title=f"{index}. {lesson}",
+            payload=payload, strategy="parent_khan_course",
+            rationale="Parent loaded a Khan course as an ordered lesson list.",
             metadata={
-                "source": "khan", "resource_url": url, "khan_shell": True,
+                "source": "khan", "resource_url": url,
                 "khan_course": course, "khan_course_id": course_id,
-                "khan_part": part, "khan_course_total": count, "held_back": True,
+                "khan_part": index, "khan_course_total": total, "held_back": True,
             },
         )
-        ids.append(lesson_id)
-    return ids
+        result["created"].append(lesson_id)
+    if on_progress is not None:
+        on_progress(total, total, None)
+    return result
 
 
-def fill_shell(
+def assign_course_card(
     db: Any,
     student: dict[str, Any],
     lesson_id: int,
     *,
-    unit: str,
-    day_iso: str | None = None,
+    day_iso: str,
     generate_quiz: bool = True,
     quiz: list[dict[str, Any]] | None = None,
 ) -> int:
-    """Turn a backlog shell into a real, filled Khan card: set the specific unit,
-    (optionally) generate its quiz, drop the shell flag, and schedule it to a day
-    (or leave it in the backlog, filled, if no day). Returns the lesson id."""
+    """Assign one Khan course card to a day: generate its quiz if it doesn't have
+    one yet (and generate_quiz is on), then schedule it (which clears held_back).
+    Keeps the numbered title and course tags. Returns the lesson id."""
     lesson = db.get_lesson(lesson_id)
     if lesson is None or (lesson.get("metadata") or {}).get("source") != "khan":
         raise ValueError("That isn't a Khan card.")
-    unit = unit.strip()
-    if not unit:
-        raise ValueError("Give the assignment a name.")
-    subject = lesson["subject"]
-    meta = dict(lesson.get("metadata") or {})
-    url = meta.get("resource_url") or khan_base_url(db)
-    minutes = int((lesson.get("payload") or {}).get("estimated_minutes") or default_minutes(subject))
-    if quiz is None and generate_quiz:
-        quiz = generate_khan_quiz(student, subject, unit)
-    payload = build_khan_card_payload(subject, unit, url, minutes, quiz=quiz)
-    meta.pop("khan_shell", None)  # it's a real card now, not a placeholder
-    db.update_lesson_content(
-        lesson_id, title=f"Khan Academy: {unit}", topic=unit,
-        payload=payload, metadata=meta,
-    )
-    if day_iso is not None:
-        db.reschedule_lesson(lesson_id, day_iso)  # schedules + clears held_back
+    payload = lesson["payload"]
+    if not payload.get("quiz"):
+        if quiz is None and generate_quiz:
+            quiz = generate_khan_quiz(student, lesson["subject"], lesson["topic"])
+        if quiz:
+            payload["quiz"] = quiz
+            db.update_lesson_content(lesson_id, payload=payload)
+    db.reschedule_lesson(lesson_id, day_iso)  # schedules + clears held_back
     return lesson_id
 
 
 def course_summaries(db: Any, student_id: int) -> list[dict[str, Any]]:
     """A student's Khan courses, grouped by course id with progress -- the data
     behind the Backlog course manager. Newest course first. Each carries the
-    course name/subject/total, its cards, the still-unfilled shells (lowest part
-    first), and how many are filled/done."""
+    course name/subject/total, its cards in order, how many are done, and the
+    still-unassigned ones (parked in the Backlog), lowest part first."""
     cards = db.list_lessons(student_id, agent=AGENT_KEY, limit=1000)
     by_course: dict[str, list[dict[str, Any]]] = {}
     for card in cards:
@@ -498,19 +477,17 @@ def course_summaries(db: Any, student_id: int) -> list[dict[str, Any]]:
     for cid, group in by_course.items():
         group.sort(key=lambda c: (c.get("metadata") or {}).get("khan_part") or 0)
         meta0 = group[0].get("metadata") or {}
-        shells = [c for c in group if (c.get("metadata") or {}).get("khan_shell")]
         done = [c for c in group if c["status"] == "completed"]
+        unassigned = [c for c in group if (c.get("metadata") or {}).get("held_back")]
         summaries.append({
             "course_id": cid,
             "course": meta0.get("khan_course", "Course"),
             "subject": group[0]["subject"],
             "total": meta0.get("khan_course_total") or len(group),
             "cards": group,
-            "shells": shells,
-            "unfilled": len(shells),
-            "filled": len(group) - len(shells),
             "done": len(done),
-            "next_shell": shells[0] if shells else None,
+            "unassigned": len(unassigned),
+            "next_unassigned": unassigned[0] if unassigned else None,
         })
     summaries.sort(key=lambda s: max(c["id"] for c in s["cards"]), reverse=True)
     return summaries

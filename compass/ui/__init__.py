@@ -2154,6 +2154,26 @@ BOARD_TAG_LABELS = {
 }
 _BOARD_TAG_FALLBACK_COLOR = "#8a7a5c"
 
+# One color per WA subject, so a Khan card (which can be any subject) is
+# color-coded by its subject the way a core lesson is by its agent. The four
+# academics reuse the agent colors above; the rest get their own hue.
+SUBJECT_TAG_COLORS = {
+    "math": "#3f6bd8",
+    "reading": "#e0871a",
+    "writing": "#c96f14",
+    "spelling": "#b9932b",
+    "language": "#7c5cd6",
+    "science": "#2f9e5f",
+    "social_studies": "#a8642f",
+    "history": "#c0553b",
+    "health": "#0f9b9b",
+    "occupational_education": "#6b7a3a",
+    "art_and_music": "#c0398f",
+}
+# The Khan brand accent -- a fixed stripe on every Khan card so they read as a
+# group at a glance, whatever subject color the bar itself carries.
+KHAN_ACCENT_COLOR = "#14a37f"
+
 
 def board_card_tag(kind: str, item: dict[str, Any]) -> tuple[str, str, str]:
     """(color, icon, label) for a board card's colored kind bar. A lesson's
@@ -2161,6 +2181,16 @@ def board_card_tag(kind: str, item: dict[str, Any]) -> tuple[str, str, str]:
     identified by the kind itself."""
     if kind == "lesson":
         agent = item.get("agent", "")
+        if agent == "khan":
+            # Khan cards color by their real WA subject and are labeled "Khan ·
+            # <Subject>", so the bar names both. The 🅰️ icon plus the fixed Khan
+            # accent stripe (added in render_board_card) marks them as Khan.
+            subject = item.get("subject", "")
+            return (
+                SUBJECT_TAG_COLORS.get(subject, _BOARD_TAG_FALLBACK_COLOR),
+                "🅰️",
+                f"Khan · {subjects.label(subject) if subjects.is_valid(subject) else 'Khan'}",
+            )
         return (
             BOARD_TAG_COLORS.get(agent, _BOARD_TAG_FALLBACK_COLOR),
             SUBJECT_ICONS.get(agent, "📘"),
@@ -4182,69 +4212,101 @@ def render_khan_card_form(db: Database, student: dict[str, Any]) -> None:
 
 
 def render_khan_course_loader(db: Database, student: dict[str, Any]) -> None:
-    """Parent-facing: load a whole Khan course as backlog shells. Pick the
-    subject, name the course, set how many cards it needs -- they land in the
-    Backlog to fill in and assign one at a time (render_khan_courses)."""
-    from compass.agents import khan_card
+    """Parent-facing: load a whole Khan course from an ordered lesson list. Pick
+    the subject, name the course, and type the lessons one per line, in order --
+    Compass makes a numbered card for each and parks them in the Backlog to assign
+    out day by day (render_khan_courses)."""
+    from compass.agents import api_available, khan_card
 
     subject_labels = {k: v for k, v in khan_card.KHAN_SUBJECTS}
     st.caption(
-        "Load a whole Khan course at once — it drops that many blank cards into "
-        "the Backlog. Fill in and assign them one at a time below, day by day, "
-        "until the course is done."
+        "Type the course's lessons one per line, in order — Compass numbers them "
+        "and drops a card for each into the Backlog. Assign them out below, day by "
+        "day. Some courses have 3, some have 8 — however many lines you enter."
     )
     st.caption(f"🔗 Every card opens: {khan_card.khan_base_url(db)}")
+    api_ok, api_msg = api_available()
     with st.form("khan_course_form", clear_on_submit=True):
         subject = st.selectbox(
             "Subject", options=[k for k, _ in khan_card.KHAN_SUBJECTS],
             format_func=lambda k: subject_labels[k], key="khan_course_subject",
         )
         course = st.text_input(
-            "Course or lesson name", key="khan_course_name",
+            "Course name", key="khan_course_name",
             placeholder="e.g. Algebra 1: Exponents & radicals",
         )
-        cols = st.columns(2)
-        count = cols[0].number_input(
-            "How many cards?", min_value=1, max_value=100, value=10, step=1,
-            key="khan_course_count", help="One card per Khan lesson/exercise you'll assign.",
+        lessons_text = st.text_area(
+            "Lessons — one per line, in order", key="khan_course_lessons", height=170,
+            placeholder=(
+                "Multiplying & dividing powers\n"
+                "Powers of products & quotients\n"
+                "Negative exponents\n"
+                "…one line per lesson"
+            ),
         )
-        minutes = cols[1].number_input(
+        minutes = st.number_input(
             "Minutes each", min_value=5, max_value=240,
             value=config.SUBJECT_DEFAULT_MINUTES.get("math", 35), step=5,
             key="khan_course_minutes",
         )
+        make_quiz_now = st.checkbox(
+            "Generate every quiz now", value=False, key="khan_course_quiz_now",
+            help="Off (recommended): a card's quiz is generated when you assign it. "
+                 "On: generate all quizzes up front (one AI call per lesson).",
+        )
+        if not api_ok and make_quiz_now:
+            st.caption(f"⚠️ Quiz generation unavailable: {api_msg}")
         submitted = st.form_submit_button(
             "📋 Load course into Backlog", type="primary", width="stretch"
         )
     if not submitted:
         return
+    lessons = khan_card.parse_units(lessons_text)
     if not course.strip():
         st.error("Name the course.")
         return
+    if not lessons:
+        st.error("Enter at least one lesson (one per line).")
+        return
+    generate = bool(make_quiz_now and api_ok)
+    progress = st.progress(0.0, text="Loading the course…")
+
+    def _on_progress(done: int, total: int, lesson: str | None) -> None:
+        frac = done / total if total else 1.0
+        progress.progress(
+            min(frac, 1.0),
+            text=(f"Building “{lesson}” ({done + 1}/{total})…" if lesson else "Finishing…"),
+        )
+
     try:
-        ids = khan_card.create_course_shells(
-            db, student, subject=subject, course=course, count=int(count),
-            minutes=int(minutes),
+        result = khan_card.create_course(
+            db, student, subject=subject, course=course, lessons=lessons,
+            minutes=int(minutes), generate_quiz=generate, on_progress=_on_progress,
         )
     except ValueError as exc:
+        progress.empty()
         st.error(str(exc))
         return
+    progress.empty()
+    count = len(result["created"])
     st.success(
-        f"Loaded {len(ids)} cards for “{md(course.strip())}” into the Backlog. "
-        "Fill & assign them below. 📋"
+        f"Loaded {count} lesson{'s' if count != 1 else ''} for “{md(course.strip())}” "
+        "into the Backlog, in order. Assign them out below. 📋"
     )
+    if result["quiz_failed"]:
+        st.warning("No quiz yet for: " + ", ".join(md(u) for u in result["quiz_failed"]))
     st.rerun()
 
 
 def render_khan_courses(db: Database, student: dict[str, Any]) -> None:
-    """Parent-facing: your loaded Khan courses. For each, a progress read and a
-    form to fill in and assign the *next* card -- set the specific skill, pick a
-    day, and it's off to his Khan page. Assign them out until the course is done."""
+    """Parent-facing: your loaded Khan courses. For each, the ordered lesson list
+    with progress, and a form to assign the *next* unassigned card to a day (its
+    quiz is generated then). Assign them out until the course is done."""
     from compass.agents import LessonGenerationError, api_available, khan_card
 
     summaries = khan_card.course_summaries(db, student["id"])
     if not summaries:
-        st.caption("No Khan courses loaded yet — load one above to fill and assign it out.")
+        st.caption("No Khan courses loaded yet — load one above to assign it out.")
         return
     api_ok, api_msg = api_available()
     for course in summaries:
@@ -4255,50 +4317,52 @@ def render_khan_courses(db: Database, student: dict[str, Any]) -> None:
             st.markdown(f"**📋 {md(course['course'])}** · {subject_label}")
             st.progress(
                 (done / total) if total else 0.0,
-                text=f"{done} of {total} done · {course['unfilled']} left to assign",
+                text=f"{done} of {total} done · {course['unassigned']} left to assign",
             )
-            nxt = course["next_shell"]
+            # The ordered lesson list, with each card's state at a glance.
+            lines = []
+            for card in course["cards"]:
+                part = (card.get("metadata") or {}).get("khan_part")
+                topic = card.get("topic") or ""
+                if card["status"] == "completed":
+                    state = "✅ done"
+                elif (card.get("metadata") or {}).get("held_back"):
+                    state = "⬜ in backlog"
+                else:
+                    planned = (card.get("metadata") or {}).get("planned_for") or ""
+                    state = f"📅 {planned}" if planned else "📤 assigned"
+                lines.append(f"{part}. {md(topic)} — *{state}*")
+            st.markdown("\n".join(f"- {line}" for line in lines))
+
+            nxt = course["next_unassigned"]
             if nxt is None:
-                st.caption("✅ Every card is filled and assigned.")
+                st.caption("✅ Every lesson is assigned.")
                 continue
             part = (nxt.get("metadata") or {}).get("khan_part")
-            with st.form(f"khan_fill_{cid}", clear_on_submit=True):
-                st.caption(f"Assign the next card — Part {part} of {total}.")
-                unit = st.text_input(
-                    "What's the skill / assignment?", key=f"khan_fill_unit_{cid}",
-                    placeholder="e.g. Multiplying & dividing powers",
+            with st.form(f"khan_assign_{cid}", clear_on_submit=True):
+                st.caption(f"Assign the next lesson — {part}. {md(nxt.get('topic') or '')}")
+                assign_cols = st.columns(2)
+                day = assign_cols[0].date_input(
+                    "Assign to day", value=date.today(), key=f"khan_assign_day_{cid}"
                 )
-                fill_cols = st.columns(2)
-                day = fill_cols[0].date_input(
-                    "Assign to day", value=date.today(), key=f"khan_fill_day_{cid}"
-                )
-                to_backlog = fill_cols[1].checkbox(
-                    "Fill only — leave in Backlog", key=f"khan_fill_backlog_{cid}",
-                )
-                make_quiz = st.checkbox(
-                    "Generate a quiz for it", value=True, key=f"khan_fill_quiz_{cid}"
+                make_quiz = assign_cols[1].checkbox(
+                    "Generate its quiz", value=True, key=f"khan_assign_quiz_{cid}",
                 )
                 if not api_ok:
                     st.caption(f"⚠️ Quiz generation unavailable: {api_msg}")
-                assign = st.form_submit_button("➕ Fill & assign", type="primary")
+                assign = st.form_submit_button("➕ Assign to day", type="primary")
             if not assign:
                 continue
-            if not unit.strip():
-                st.error("Name the skill first.")
-                continue
-            generate = bool(make_quiz and api_ok)
-            day_iso = None if to_backlog else day.isoformat()
-            with st.spinner("Building the card…"):
+            with st.spinner("Assigning…"):
                 try:
-                    khan_card.fill_shell(
-                        db, student, nxt["id"], unit=unit, day_iso=day_iso,
-                        generate_quiz=generate,
+                    khan_card.assign_course_card(
+                        db, student, nxt["id"], day_iso=day.isoformat(),
+                        generate_quiz=bool(make_quiz and api_ok),
                     )
                 except (LessonGenerationError, ValueError) as exc:
                     st.error(str(exc))
                     continue
-            where = "the Backlog" if to_backlog else day.strftime("%a %b %-d")
-            st.success(f"Assigned “{md(unit.strip())}” → {where}. ✅")
+            st.success(f"Assigned “{md(nxt.get('topic') or '')}” → {day.strftime('%a %b %-d')}. ✅")
             st.rerun()
 
 

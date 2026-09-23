@@ -233,78 +233,71 @@ def test_created_card_renders_with_the_khan_link(db, student, monkeypatch):
     assert "khan/exp" in page
 
 
-# --- course shells: load a course, fill & assign it out ------------------------
+# --- courses: load an ordered lesson list, assign it out -----------------------
 
 
-def test_course_shells_land_in_the_backlog(db, student):
-    ids = khan_card.create_course_shells(
-        db, student, subject="math", course="Exponents & radicals", count=5, minutes=30,
+def test_create_course_makes_ordered_backlog_cards(db, student):
+    lessons = ["Multiplying & dividing powers", "Negative exponents", "Powers of products"]
+    result = khan_card.create_course(
+        db, student, subject="math", course="Exponents & radicals",
+        lessons=lessons, minutes=30,  # generate_quiz defaults off
     )
-    assert len(ids) == 5
+    ids = result["created"]
+    assert len(ids) == 3
     first = db.get_lesson(ids[0])
     m = first["metadata"]
     assert first["agent"] == "khan" and first["subject"] == "math"
-    assert m["khan_shell"] is True and m["held_back"] is True
-    assert m["khan_course"] == "Exponents & radicals" and m["khan_part"] == 1
-    # All five share one course id, and none is due (they're backlog shells).
-    course_ids = {db.get_lesson(i)["metadata"]["khan_course_id"] for i in ids}
-    assert len(course_ids) == 1
+    assert m["held_back"] is True and m["khan_part"] == 1
+    assert m["khan_course"] == "Exponents & radicals"
+    # Numbered titles so the order reads at a glance.
+    assert first["title"] == "1. Multiplying & dividing powers"
+    assert db.get_lesson(ids[2])["title"] == "3. Powers of products"
+    # One shared course id, and none is due (all in the backlog).
+    assert len({db.get_lesson(i)["metadata"]["khan_course_id"] for i in ids}) == 1
     khan = db.list_lessons(student["id"], agent="khan")
     assert not weekly.due_lessons(khan, date.today().isoformat())
 
 
-def test_fill_shell_turns_a_shell_into_a_real_scheduled_card(db, student):
-    ids = khan_card.create_course_shells(
-        db, student, subject="math", course="Exponents", count=3, minutes=30,
+def test_assign_course_card_schedules_it_and_generates_the_quiz(db, student, monkeypatch):
+    result = khan_card.create_course(
+        db, student, subject="math", course="Exponents",
+        lessons=["Multiply powers", "Divide powers"], minutes=30,
     )
-    khan_card.fill_shell(
-        db, student, ids[0], unit="Multiplying & dividing powers",
-        day_iso=date.today().isoformat(), quiz=list(_QUIZ),
-    )
-    lesson = db.get_lesson(ids[0])
-    assert lesson["title"] == "Khan Academy: Multiplying & dividing powers"
-    assert lesson["metadata"].get("khan_shell") is None          # no longer a shell
+    first = result["created"][0]
+    monkeypatch.setattr(khan_card, "generate_khan_quiz", lambda *a, **k: list(_QUIZ))
+    khan_card.assign_course_card(db, student, first, day_iso=date.today().isoformat())
+    lesson = db.get_lesson(first)
+    assert lesson["metadata"].get("held_back") is None            # scheduled now
     assert lesson["metadata"]["planned_for"] == date.today().isoformat()
-    assert lesson["metadata"]["khan_course"] == "Exponents"       # course tag kept
-    assert lesson["payload"]["quiz"] == _QUIZ
-    assert lesson["payload"]["subject_credits"][0]["subject"] == "math"
-    # It's now a due math-subject Khan card.
+    assert lesson["title"] == "1. Multiply powers"                # numbered title kept
+    assert lesson["payload"]["quiz"] == _QUIZ                     # quiz generated on assign
     khan = db.list_lessons(student["id"], agent="khan")
-    assert any(l["id"] == ids[0] for l in weekly.due_lessons(khan, date.today().isoformat()))
-
-
-def test_fill_shell_can_leave_it_in_the_backlog(db, student):
-    ids = khan_card.create_course_shells(
-        db, student, subject="science", course="Cells", count=2, minutes=30,
-    )
-    khan_card.fill_shell(db, student, ids[0], unit="Cell structure", quiz=list(_QUIZ))
-    lesson = db.get_lesson(ids[0])
-    # Filled but not dated -> still held back in the backlog.
-    assert lesson["metadata"].get("khan_shell") is None
-    assert lesson["metadata"].get("held_back") is True
+    assert any(l["id"] == first for l in weekly.due_lessons(khan, date.today().isoformat()))
 
 
 def test_course_summary_tracks_progress(db, student):
-    ids = khan_card.create_course_shells(
-        db, student, subject="math", course="Fractions", count=4, minutes=30,
+    result = khan_card.create_course(
+        db, student, subject="math", course="Fractions",
+        lessons=["Add", "Subtract", "Multiply", "Divide"], minutes=30,
     )
-    khan_card.fill_shell(db, student, ids[0], unit="Add fractions",
-                         day_iso=date.today().isoformat(), quiz=list(_QUIZ))
+    ids = result["created"]
+    khan_card.assign_course_card(db, student, ids[0], day_iso=date.today().isoformat(),
+                                 quiz=list(_QUIZ))
     db.set_lesson_status(ids[0], "completed")
 
     summary = khan_card.course_summaries(db, student["id"])[0]
     assert summary["course"] == "Fractions" and summary["total"] == 4
-    assert summary["done"] == 1 and summary["unfilled"] == 3
-    assert summary["next_shell"]["metadata"]["khan_part"] == 2  # part 1 is filled
+    assert summary["done"] == 1 and summary["unassigned"] == 3
+    assert summary["next_unassigned"]["metadata"]["khan_part"] == 2  # part 1 is assigned
 
 
-def test_create_course_shells_rejects_bad_input(db, student):
+def test_create_course_rejects_bad_input(db, student):
     with pytest.raises(ValueError):
-        khan_card.create_course_shells(db, student, subject="math", course="", count=3, minutes=30)
+        khan_card.create_course(db, student, subject="math", course="", lessons=["a"], minutes=30)
     with pytest.raises(ValueError):
-        khan_card.create_course_shells(db, student, subject="not_a_subject", course="X", count=3, minutes=30)
+        khan_card.create_course(db, student, subject="not_a_subject", course="X", lessons=["a"], minutes=30)
     with pytest.raises(ValueError):
-        khan_card.create_course_shells(db, student, subject="math", course="X", count=0, minutes=30)
+        khan_card.create_course(db, student, subject="math", course="X", lessons=[], minutes=30)
 
 
 def test_a_completed_khan_card_is_rewind_eligible(db, student):
@@ -324,8 +317,9 @@ def test_a_completed_khan_card_is_rewind_eligible(db, student):
 def test_render_khan_courses_shows_a_loaded_course_and_progress(db, student, monkeypatch):
     """The Backlog course manager renders a loaded course with its progress, and
     doesn't blow up doing it."""
-    khan_card.create_course_shells(
-        db, student, subject="math", course="Algebra basics", count=4, minutes=30,
+    khan_card.create_course(
+        db, student, subject="math", course="Algebra basics",
+        lessons=["Exponents", "Radicals", "Polynomials", "Factoring"], minutes=30,
     )
     written: list[str] = []
 
@@ -349,4 +343,21 @@ def test_render_khan_courses_shows_a_loaded_course_and_progress(db, student, mon
     page = "\n".join(written)
     assert "Algebra basics" in page
     assert "0 of 4 done" in page
-    assert "Part 1 of 4" in page  # the next shell to assign
+    assert "1. Exponents" in page  # the ordered lesson list
+
+
+def test_khan_board_tag_colors_by_subject_and_marks_khan():
+    """A Khan card's board tag is colored by its subject and labeled 'Khan · X',
+    with the 🅰️ marker -- two color signals (subject bar + fixed Khan stripe)."""
+    color, icon, label = ui.board_card_tag("lesson", {"agent": "khan", "subject": "math"})
+    assert color == ui.SUBJECT_TAG_COLORS["math"]
+    assert icon == "🅰️" and label == "Khan · Math"
+    # A different subject gets a different color.
+    art_color, _, art_label = ui.board_card_tag(
+        "lesson", {"agent": "khan", "subject": "art_and_music"}
+    )
+    assert art_color == ui.SUBJECT_TAG_COLORS["art_and_music"] and art_color != color
+    assert art_label.startswith("Khan ·")
+    # A normal (non-Khan) lesson tag is unchanged.
+    _, _, math_label = ui.board_card_tag("lesson", {"agent": "math", "subject": "math"})
+    assert math_label == "Math"
