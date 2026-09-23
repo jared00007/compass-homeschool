@@ -524,6 +524,27 @@ def today_subject_status(
     return None, ""
 
 
+def card_marker(lesson: dict[str, Any], today: str) -> str:
+    """The Home-roster status marker for ONE lesson shown on its own (not a
+    subject's single pick) -- the same glyphs today_subject_status uses, so a
+    Khan card rendered individually reads the same as a collapsed subject row:
+
+        submitted        -> waiting on a parent               "\U0001F4E4"
+        needs_revision   -> sent back, waiting on him again    "↩️"
+        completed + note -> an approval note to read           "\U0001F4E3"
+        completed        -> a parent approved it               "✅"
+        anything else    -> nothing turned in yet              "⬜"
+    """
+    status = lesson["status"]
+    if status == "submitted":
+        return "\U0001F4E4"  # 📤
+    if status == "needs_revision":
+        return "↩️"
+    if status == "completed":
+        return "\U0001F4E3" if _has_unread_approval_note(lesson) else "✅"
+    return "⬜"
+
+
 def _has_unread_approval_note(lesson: dict[str, Any]) -> bool:
     """Whether any writing piece in this lesson was approved with a note he
     hasn't yet read and replied to -- the signal that keeps an otherwise-done

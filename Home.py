@@ -258,13 +258,29 @@ if not is_parent():
             if lesson is not None:
                 roster.append((lesson, marker, page_path, subject_label))
 
-        # Khan Academy cards (any subject) share one agent and one page, so they
-        # ride the same roster: today's due Khan card links to the Khan page.
-        khan_lessons = db.list_lessons(student["id"], agent="khan", limit=500)
-        khan_lesson, khan_marker = weekly.today_subject_status(khan_lessons, today)
-        if khan_lesson is not None:
+        # Khan cards do NOT collapse to one subject row: he can have several
+        # assigned to a single day, and each should show on his roster as its
+        # own card, matching what's on the board for today. Reported directly:
+        # the count said 6 but the list only showed one Khan row. Every Khan
+        # card that's on today's board column (or that he finished today) gets
+        # its own row, in lesson order, each linking to the Khan page with its
+        # own status marker.
+        khan_today = [
+            l
+            for l in db.list_lessons(student["id"], agent="khan", limit=500)
+            if l["status"] != "skipped"
+            and not weekly.is_backlogged(l, today)
+            and (
+                (l.get("metadata") or {}).get("planned_for") == today
+                or str((l.get("metadata") or {}).get("student_done_on") or "")[:10] == today
+            )
+        ]
+        khan_today.sort(key=lambda l: (l.get("metadata") or {}).get("khan_part") or 0)
+        for card in khan_today:
+            subject_key = card.get("subject") or ""
+            khan_label = f"Khan · {label(subject_key)}" if subject_key else "Khan Academy"
             roster.append(
-                (khan_lesson, khan_marker, "pages/18_Khan.py", "Khan Academy")
+                (card, weekly.card_marker(card, today), "pages/18_Khan.py", khan_label)
             )
 
         # Each lesson gets its own bordered card -- the same white-box
