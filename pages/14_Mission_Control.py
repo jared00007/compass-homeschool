@@ -750,17 +750,18 @@ if mc_view == "plan":
     with st.expander("🗓️ Balance the week — spread the backlog, capped per day"):
         render_week_planner(db, student)
 
-    # Khan Academy: load a whole course as backlog shells, then fill in and
-    # assign them out day by day until it's done. Khan carries the teaching;
-    # Compass schedules, logs the hours, and can pull the finished work into a
-    # cumulative Rewind. A "quick add" paste form is tucked underneath.
-    with st.expander("🅰️ Khan Academy — load a course & assign it out"):
+    # Khan Academy: load a whole unit (Khan's grouping of small lessons) as
+    # backlog cards, then assign them out day by day until it's done. Khan
+    # carries the teaching; Compass schedules, logs the hours, and can pull the
+    # finished work into a cumulative Rewind. A "quick add" paste form is tucked
+    # underneath.
+    with st.expander("🅰️ Khan Academy — load a unit & assign it out"):
         render_khan_course_loader(db, student)
         st.divider()
-        st.markdown("#### Your Khan courses")
+        st.markdown("#### Your Khan units")
         render_khan_courses(db, student)
         st.divider()
-        with st.expander("Quick add — paste units without a course"):
+        with st.expander("Quick add — paste lessons without a unit"):
             render_khan_card_form(db, student)
 
     st.markdown("### ✍️ Plan a lesson")

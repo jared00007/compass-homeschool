@@ -358,6 +358,37 @@ def test_khan_board_tag_colors_by_subject_and_marks_khan():
     )
     assert art_color == ui.SUBJECT_TAG_COLORS["art_and_music"] and art_color != color
     assert art_label.startswith("Khan ·")
+    # A card loaded from a unit names the unit on the bar, so you can tell which
+    # unit a numbered card belongs to at a glance; color still encodes subject.
+    unit_color, _, unit_label = ui.board_card_tag(
+        "lesson",
+        {"agent": "khan", "subject": "math",
+         "metadata": {"khan_course": "Exponents & radicals"}},
+    )
+    assert unit_color == ui.SUBJECT_TAG_COLORS["math"]  # still subject-colored
+    assert unit_label == "Khan · Exponents & radicals"
     # A normal (non-Khan) lesson tag is unchanged.
     _, _, math_label = ui.board_card_tag("lesson", {"agent": "math", "subject": "math"})
     assert math_label == "Math"
+
+
+def test_khan_card_states_its_unit_on_the_card():
+    """When a card comes from a loaded unit, the unit name is stated in the
+    lesson body so it's visible when the card is opened, not just on the bar."""
+    payload = khan_card.build_khan_card_payload(
+        "math", "Multiplying powers", "https://khan", 30, course="Exponents & radicals",
+    )
+    assert "**Unit:** Exponents & radicals" in payload["overview"]
+    # A standalone card (no unit) has no unit line.
+    plain = khan_card.build_khan_card_payload("math", "Multiplying powers", "https://khan", 30)
+    assert "Unit:" not in plain["overview"]
+
+
+def test_create_course_puts_the_unit_name_on_every_card(db, student):
+    """Loading a unit tags each card with the unit name in its body."""
+    khan_card.create_course(
+        db, student, subject="math", course="Exponents & radicals",
+        lessons=["Multiply powers", "Divide powers"], minutes=30,
+    )
+    for card in db.list_lessons(student["id"], agent="khan"):
+        assert "**Unit:** Exponents & radicals" in card["payload"]["overview"]

@@ -215,14 +215,17 @@ def build_khan_card_payload(
     *,
     quiz: list[dict[str, Any]] | None = None,
     note: str = "",
+    course: str = "",
 ) -> dict[str, Any]:
     """The ordinary-lesson payload for a Khan card -- pure, no model call, so the
     shape is unit-testable on its own. Renders through render_lesson + render_quiz
-    exactly like any other lesson."""
+    exactly like any other lesson. When the card came from a loaded course, pass
+    `course` so the course name is stated on the card itself."""
     credit_subject = subject_key
     subject_label = subjects.label(credit_subject)
     unit = unit.strip()
     url = url.strip()
+    course = course.strip()
     quiz = list(quiz or [])
     # Lift any usage the quiz carried up to a top-level `_usage`, where the cost
     # report already looks, and off the question the student sees.
@@ -232,7 +235,9 @@ def build_khan_card_payload(
     # opens the link, does the skill on Khan, takes the quiz, and turns it in;
     # the quiz is what scores it. No graded activity, so the parent's review is
     # one tap (see review._render_khan_review).
+    course_line = f"📚 **Unit:** {course}\n\n" if course else ""
     overview = (
+        f"{course_line}"
         f"Do this one on Khan Academy:\n\n"
         f"▶️ **[Open in Khan Academy]({url})**\n\n"
         f"Work the skill all the way through over there, then come back and take "
@@ -420,7 +425,7 @@ def create_course(
                 quiz = generate_khan_quiz(student, subject, lesson)
             except LessonGenerationError:
                 result["quiz_failed"].append(lesson)
-        payload = build_khan_card_payload(subject, lesson, url, minutes, quiz=quiz)
+        payload = build_khan_card_payload(subject, lesson, url, minutes, quiz=quiz, course=course)
         payload["title"] = f"{index}. {lesson}"  # numbered so the order reads at a glance
         lesson_id = db.save_lesson(
             student_id=student["id"], agent=AGENT_KEY, subject=subject,

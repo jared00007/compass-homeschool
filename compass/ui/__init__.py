@@ -2182,14 +2182,20 @@ def board_card_tag(kind: str, item: dict[str, Any]) -> tuple[str, str, str]:
     if kind == "lesson":
         agent = item.get("agent", "")
         if agent == "khan":
-            # Khan cards color by their real WA subject and are labeled "Khan ·
-            # <Subject>", so the bar names both. The 🅰️ icon plus the fixed Khan
-            # accent stripe (added in render_board_card) marks them as Khan.
+            # Khan cards color by their real WA subject. The bar names the card:
+            # for a card loaded from a unit, that's the unit name ("Khan ·
+            # Exponents & radicals") so you can tell at a glance which unit a
+            # numbered card belongs to; for a standalone card, the subject
+            # ("Khan · Math"). Either way the color still encodes the subject, and
+            # the 🅰️ icon plus the fixed Khan accent stripe (added in
+            # render_board_card) mark them as Khan.
             subject = item.get("subject", "")
+            course = ((item.get("metadata") or {}).get("khan_course") or "").strip()
+            subject_label = subjects.label(subject) if subjects.is_valid(subject) else "Khan"
             return (
                 SUBJECT_TAG_COLORS.get(subject, _BOARD_TAG_FALLBACK_COLOR),
                 "🅰️",
-                f"Khan · {subjects.label(subject) if subjects.is_valid(subject) else 'Khan'}",
+                f"Khan · {course or subject_label}",
             )
         return (
             BOARD_TAG_COLORS.get(agent, _BOARD_TAG_FALLBACK_COLOR),
@@ -4110,7 +4116,7 @@ def render_khan_card_form(db: Database, student: dict[str, Any]) -> None:
     subject_labels = {k: v for k, v in khan_card.KHAN_SUBJECTS}
 
     st.caption(
-        "Paste a Khan course's units or exercises — one per line — and Compass "
+        "Paste Khan lessons or exercises — one per line — and Compass "
         "makes a card for each. Landon does each on Khan, takes a quick auto-graded "
         "quiz, and turns it in; the quiz scores it, it counts as that subject's "
         "work, and approving is one tap to log the hours."
@@ -4142,7 +4148,7 @@ def render_khan_card_form(db: Database, student: dict[str, Any]) -> None:
                 "Multiplying & dividing powers\n"
                 "Powers of products & quotients\n"
                 "Negative exponents\n"
-                "…paste a whole course's units here"
+                "…paste a batch of Khan lessons here"
             ),
         )
         cols = st.columns(2)
@@ -4213,17 +4219,20 @@ def render_khan_card_form(db: Database, student: dict[str, Any]) -> None:
 
 
 def render_khan_course_loader(db: Database, student: dict[str, Any]) -> None:
-    """Parent-facing: load a whole Khan course from an ordered lesson list. Pick
-    the subject, name the course, and type the lessons one per line, in order --
-    Compass makes a numbered card for each and parks them in the Backlog to assign
-    out day by day (render_khan_courses)."""
+    """Parent-facing: load a whole Khan unit from an ordered lesson list. Pick
+    the subject, name the unit (Khan's grouping of small lessons), and type the
+    lessons one per line, in order -- Compass makes a numbered card for each and
+    parks them in the Backlog to assign out day by day (render_khan_courses).
+    (Internally the grouping is still called a "course"; the parent-facing word
+    is "unit," which is what Khan calls it.)"""
     from compass.agents import api_available, khan_card
 
     subject_labels = {k: v for k, v in khan_card.KHAN_SUBJECTS}
     st.caption(
-        "Type the course's lessons one per line, in order — Compass numbers them "
-        "and drops a card for each into the Backlog. Assign them out below, day by "
-        "day. Some courses have 3, some have 8 — however many lines you enter."
+        "A Khan unit is a grouping of small lessons. Name the unit, then type its "
+        "lessons one per line, in order — Compass numbers them and drops a card for "
+        "each into the Backlog. Assign them out below, day by day. Some units have "
+        "3, some have 8 — however many lines you enter. Load each unit on its own."
     )
     st.caption(f"🔗 Every card opens: {khan_card.khan_base_url(db)}")
     api_ok, api_msg = api_available()
@@ -4233,8 +4242,8 @@ def render_khan_course_loader(db: Database, student: dict[str, Any]) -> None:
             format_func=lambda k: subject_labels[k], key="khan_course_subject",
         )
         course = st.text_input(
-            "Course name", key="khan_course_name",
-            placeholder="e.g. Algebra 1: Exponents & radicals",
+            "Unit name", key="khan_course_name",
+            placeholder="e.g. Exponents & radicals",
         )
         lessons_text = st.text_area(
             "Lessons — one per line, in order", key="khan_course_lessons", height=170,
@@ -4258,19 +4267,19 @@ def render_khan_course_loader(db: Database, student: dict[str, Any]) -> None:
         if not api_ok and make_quiz_now:
             st.caption(f"⚠️ Quiz generation unavailable: {api_msg}")
         submitted = st.form_submit_button(
-            "📋 Load course into Backlog", type="primary", width="stretch"
+            "📋 Load unit into Backlog", type="primary", width="stretch"
         )
     if not submitted:
         return
     lessons = khan_card.parse_units(lessons_text)
     if not course.strip():
-        st.error("Name the course.")
+        st.error("Name the unit.")
         return
     if not lessons:
         st.error("Enter at least one lesson (one per line).")
         return
     generate = bool(make_quiz_now and api_ok)
-    progress = st.progress(0.0, text="Loading the course…")
+    progress = st.progress(0.0, text="Loading the unit…")
 
     def _on_progress(done: int, total: int, lesson: str | None) -> None:
         frac = done / total if total else 1.0
@@ -4300,14 +4309,14 @@ def render_khan_course_loader(db: Database, student: dict[str, Any]) -> None:
 
 
 def render_khan_courses(db: Database, student: dict[str, Any]) -> None:
-    """Parent-facing: your loaded Khan courses. For each, the ordered lesson list
+    """Parent-facing: your loaded Khan units. For each, the ordered lesson list
     with progress, and a form to assign the *next* unassigned card to a day (its
-    quiz is generated then). Assign them out until the course is done."""
+    quiz is generated then). Assign them out until the unit is done."""
     from compass.agents import LessonGenerationError, api_available, khan_card
 
     summaries = khan_card.course_summaries(db, student["id"])
     if not summaries:
-        st.caption("No Khan courses loaded yet — load one above to assign it out.")
+        st.caption("No Khan units loaded yet — load one above to assign it out.")
         return
     api_ok, api_msg = api_available()
     for course in summaries:
