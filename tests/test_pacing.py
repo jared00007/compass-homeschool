@@ -101,6 +101,38 @@ def test_a_khan_card_can_complete_a_full_day(db, student):
     assert plan.is_full_day is True
 
 
+def test_a_skipped_lesson_stops_counting_for_pacing_and_xp(db, student):
+    """Marking a lesson skipped takes it off the record: it no longer counts
+    toward the daily pacing OR his XP, even though it still carries the
+    student_done_on stamp from when he'd done it. This is how a mistakenly
+    credited lesson is taken back -- reported: 'I deleted the old lesson but
+    it's still showing 20 points'."""
+    from compass import xp
+
+    today = date.today().isoformat()
+    lid = _core_done(db, student, "Slope", "math")
+    assert db.core_lessons_done_on(student["id"], today) == 1
+    before = xp.total_xp(db, student["id"])
+    assert before >= config.XP_PER_LESSON
+
+    db.set_lesson_status(lid, "skipped")
+    assert db.core_lessons_done_on(student["id"], today) == 0        # gone from pacing
+    assert xp.total_xp(db, student["id"]) == before - config.XP_PER_LESSON  # and from XP
+
+
+def test_a_skipped_lesson_drops_off_the_weekly_bar(db, student):
+    from compass import xp
+
+    today = date.today()
+    if today.weekday() >= 5:            # only Mon-Fri land on the strip
+        return
+    lid = _core_done(db, student, "Slope", "math")
+    wd = today.weekday()
+    assert xp.weekly_progress(db, student["id"], today=today).days[wd].lessons == 1
+    db.set_lesson_status(lid, "skipped")
+    assert xp.weekly_progress(db, student["id"], today=today).days[wd].lessons == 0
+
+
 def test_only_todays_work_counts(db, student):
     _core_done(db, student, "Slope", "math")
     # Yesterday there's nothing; today has one core lesson.

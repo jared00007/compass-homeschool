@@ -81,6 +81,12 @@ def total_xp(db: Any, student_id: int) -> int:
     total = 0
 
     for lesson in db.list_lessons(student_id, limit=500):
+        # A skipped lesson is out of the record entirely -- a parent marked it
+        # "not going to do this one", so it earns nothing even if he'd already
+        # self-reported it done (that's how a mistakenly-credited lesson is
+        # taken back off his XP: skip it).
+        if lesson.get("status") == "skipped":
+            continue
         metadata = lesson.get("metadata") or {}
         if metadata.get("student_done_on"):
             # A Khan card is a single small skill, worth less than a full lesson
@@ -144,6 +150,8 @@ def learner_stats(db: Any, student_id: int) -> LearnerStats:
     quizzes_passed = 0
     subject_counts: dict[str, int] = {}
     for lesson in db.list_lessons(student_id, limit=500):
+        if lesson.get("status") == "skipped":
+            continue  # off the record -- keeps this KPI in step with the XP bar
         metadata = lesson.get("metadata") or {}
         if metadata.get("student_done_on"):
             lessons_done += 1
@@ -675,6 +683,8 @@ def weekly_progress(
     redos = [0] * 5
 
     for lesson in db.list_lessons(student_id, limit=500):
+        if lesson.get("status") == "skipped":
+            continue  # skipped work is off the record -- earns and shows nothing
         metadata = lesson.get("metadata") or {}
         done = _parse_iso(metadata.get("student_done_on"))
         if in_week(done):

@@ -2990,7 +2990,7 @@ class Database:
         placeholders = ",".join("?" for _ in self._REVIEWABLE_AGENTS)
         row = self.conn.execute(
             f"SELECT COUNT(*) AS n FROM lessons WHERE student_id = ? "
-            f"AND agent IN ({placeholders}) "
+            f"AND agent IN ({placeholders}) AND status != 'skipped' "
             f"AND substr(json_extract(metadata, '$.student_done_on'), 1, 10) = ?",
             (student_id, *self._REVIEWABLE_AGENTS, day),
         ).fetchone()
@@ -3000,7 +3000,7 @@ class Database:
         subj_placeholders = ",".join("?" for _ in core_subjects)
         khan_row = self.conn.execute(
             f"SELECT COUNT(*) AS n FROM lessons WHERE student_id = ? AND agent = 'khan' "
-            f"AND subject IN ({subj_placeholders}) "
+            f"AND status != 'skipped' AND subject IN ({subj_placeholders}) "
             f"AND substr(json_extract(metadata, '$.student_done_on'), 1, 10) = ?",
             (student_id, *core_subjects, day),
         ).fetchone()
@@ -3051,6 +3051,7 @@ class Database:
         subj_placeholders = ",".join("?" for _ in core_subjects)
         row = self.conn.execute(
             f"SELECT COUNT(*) AS n FROM lessons WHERE student_id = ? AND agent = 'khan' "
+            f"AND status != 'skipped' "
             f"AND (subject IS NULL OR subject NOT IN ({subj_placeholders})) "
             f"AND substr(json_extract(metadata, '$.student_done_on'), 1, 10) = ?",
             (student_id, *core_subjects, day),

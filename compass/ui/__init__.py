@@ -2739,6 +2739,8 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
     # Khan work read as "0 lessons" here.
     _KHAN_STATUS_MARKER = {"completed": "✅", "submitted": "📤", "needs_revision": "↩️"}
     for khan in db.list_lessons(student["id"], agent="khan", limit=500):
+        if khan["status"] == "skipped":
+            continue
         meta = khan.get("metadata") or {}
         done_today = str(meta.get("student_done_on") or "")[:10] == today
         if meta.get("planned_for") == today or done_today:
