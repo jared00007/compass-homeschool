@@ -4162,8 +4162,9 @@ def render_khan_card_form(db: Database, student: dict[str, Any]) -> None:
             placeholder="e.g. focus on same-base problems",
         )
         make_quiz = st.checkbox(
-            "Auto-generate a quiz for each card", value=True, key="khan_make_quiz",
-            help="One small AI call per card. Turn off to add the cards now and add quizzes later.",
+            "Auto-generate a quiz for each card", value=False, key="khan_make_quiz",
+            help="Off by default. Turn on for one small AI call per card; leave off "
+                 "to add the cards now and add quizzes later.",
         )
         if not api_ok:
             st.caption(f"⚠️ Quiz generation unavailable: {api_message} — you can still add the cards without quizzes.")
@@ -4346,7 +4347,8 @@ def render_khan_courses(db: Database, student: dict[str, Any]) -> None:
                     "Assign to day", value=date.today(), key=f"khan_assign_day_{cid}"
                 )
                 make_quiz = assign_cols[1].checkbox(
-                    "Generate its quiz", value=True, key=f"khan_assign_quiz_{cid}",
+                    "Generate its quiz", value=False, key=f"khan_assign_quiz_{cid}",
+                    help="Off by default. Turn on to generate this card's quiz now.",
                 )
                 if not api_ok:
                     st.caption(f"⚠️ Quiz generation unavailable: {api_msg}")
