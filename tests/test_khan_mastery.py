@@ -8,9 +8,42 @@ from datetime import date, timedelta
 
 import pytest
 
+import compass.ui as ui
 from compass import config, khan_mastery as km, xp
 from compass.agents import khan_card
 from compass.storage.db import Database
+
+
+class _Rec:
+    """A stand-in for streamlit that records every string it's shown and makes
+    buttons/forms falsy, so a render can be exercised without a live app."""
+    session_state: dict = {}
+
+    def __init__(self):
+        self.written: list[str] = []
+
+    def __getattr__(self, _name):
+        def rec(*a, **k):
+            for x in list(a) + list(k.values()):
+                if isinstance(x, str):
+                    self.written.append(x)
+            return self
+        return rec
+
+    def __getitem__(self, _i):
+        return self
+
+    def __iter__(self):
+        return iter([self, self])
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *e):
+        return False
+
+    def __bool__(self):
+        return False
 
 
 @pytest.fixture()
@@ -200,3 +233,48 @@ def test_mastery_and_unit_bonus_land_on_the_weekly_bar(db, student):
     assert any(b.emoji == "🏆" and b.xp == config.KHAN_UNIT_MASTERY_BONUS
                for b in progress.bonus_items)
     assert progress.total >= 4 * per_prof + config.KHAN_UNIT_MASTERY_BONUS
+
+
+# --- the marking UI (rendering only; the actions are covered above) -----------
+
+def test_boost_shows_the_ladder_for_a_finished_card(db, student, monkeypatch):
+    lid = _card(db, student, "Exponents")
+    db.set_lesson_status(lid, "completed")
+    rec = _Rec()
+    monkeypatch.setattr(ui, "st", rec)
+    ui.render_khan_mastery_boost(db, student)
+    page = "\n".join(rec.written)
+    assert "Level up your mastery" in page
+    assert "Not rated yet" in page          # nothing confirmed on it yet
+    assert "Exponents" in page              # the unit name groups it
+
+
+def test_boost_shows_pending_when_he_has_claimed(db, student, monkeypatch):
+    lid = _card(db, student, "Exponents")
+    db.set_lesson_status(lid, "completed")
+    km.claim_mastery(db, lid, "proficient")
+    rec = _Rec()
+    monkeypatch.setattr(ui, "st", rec)
+    ui.render_khan_mastery_boost(db, student)
+    assert "Waiting on a parent to confirm" in "\n".join(rec.written)
+
+
+def test_confirmations_list_the_queue_with_the_award(db, student, monkeypatch):
+    lid = _card(db, student, "Exponents")
+    db.set_lesson_status(lid, "completed")
+    km.claim_mastery(db, lid, "proficient")
+    rec = _Rec()
+    monkeypatch.setattr(ui, "st", rec)
+    ui.render_khan_mastery_confirmations(db, student)
+    page = "\n".join(rec.written)
+    assert "Mastery to confirm" in page
+    award = km.xp_to_reach(None, "proficient")
+    assert f"Confirm Proficient (+{award})" in page
+
+
+def test_confirmations_render_nothing_with_an_empty_queue(db, student, monkeypatch):
+    _card(db, student)  # a card, but no claim
+    rec = _Rec()
+    monkeypatch.setattr(ui, "st", rec)
+    ui.render_khan_mastery_confirmations(db, student)
+    assert "Mastery to confirm" not in "\n".join(rec.written)

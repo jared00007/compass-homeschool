@@ -52,6 +52,7 @@ from compass.ui import (
     render_khan_card_form,
     render_khan_course_loader,
     render_khan_courses,
+    render_khan_mastery_confirmations,
     render_report_card,
     render_rewind_generator,
     render_story_move_control,
@@ -756,6 +757,7 @@ if mc_view == "plan":
     # finished work into a cumulative Rewind. A "quick add" paste form is tucked
     # underneath.
     with st.expander("🅰️ Khan Academy — load a unit & assign it out"):
+        render_khan_mastery_confirmations(db, student)
         render_khan_course_loader(db, student)
         st.divider()
         st.markdown("#### Your Khan units")

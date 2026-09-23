@@ -65,6 +65,14 @@ def next_level(level: Any) -> str | None:
     return LEVELS[idx + 1] if idx + 1 < len(LEVELS) else None
 
 
+def xp_to_reach(from_level: Any, to_level: Any) -> int:
+    """The XP earned by climbing from `from_level` up to `to_level` -- the sum of
+    every tier in between. Zero if `to_level` isn't above `from_level`. Powers
+    both the student's '+X' hint and the parent's confirm button."""
+    start, end = level_index(from_level), level_index(to_level)
+    return sum(config.KHAN_MASTERY_XP.get(LEVELS[i], 0) for i in range(start + 1, end + 1))
+
+
 # --- reading one card --------------------------------------------------------
 
 def _record(lesson: dict[str, Any]) -> dict[str, Any]:

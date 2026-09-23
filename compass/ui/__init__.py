@@ -4377,6 +4377,122 @@ def render_khan_courses(db: Database, student: dict[str, Any]) -> None:
             st.rerun()
 
 
+# --- Khan mastery: Landon marks a level, a parent confirms it ------------------
+
+def _render_one_mastery_row(db: Database, card: dict[str, Any]) -> None:
+    """One Khan skill's mastery ladder for Landon: his current level and, unless
+    he's maxed or already waiting on a confirm, a control to claim the level he
+    reached. Claiming is additive -- it only ever sets up bonus XP."""
+    from compass import khan_mastery as km
+
+    state = km.card_state(card)
+    confirmed, pending, is_max = state["confirmed"], state["pending"], state["is_max"]
+    current = (
+        f"{km.level_emoji(confirmed)} {km.level_label(confirmed)}"
+        if confirmed else "▫️ Not rated yet"
+    )
+    cols = st.columns([3, 2])
+    cols[0].markdown(f"**{md(card['title'])}**  \n{current}")
+    if pending:
+        cols[1].caption(f"⏳ Waiting on a parent to confirm **{km.level_label(pending)}**")
+        return
+    if is_max:
+        cols[1].caption("🏆 Mastered — top of the ladder!")
+        return
+    options = [lvl for lvl in km.LEVELS if km.level_index(lvl) > km.level_index(confirmed)]
+    with cols[1].form(f"km_claim_{card['id']}", clear_on_submit=True):
+        pick = st.selectbox(
+            "How far did you get on Khan?",
+            options,
+            format_func=lambda l: f"{km.level_emoji(l)} {km.level_label(l)} (+{km.xp_to_reach(confirmed, l)} XP)",
+            key=f"km_pick_{card['id']}",
+        )
+        if st.form_submit_button("Mark it", type="primary"):
+            km.claim_mastery(db, card["id"], pick)
+            st.success("Sent to your parent to confirm. 🏆")
+            st.rerun()
+
+
+def render_khan_mastery_boost(db: Database, student: dict[str, Any]) -> None:
+    """Landon's mastery ladder for the Khan skills he's already done -- the whole
+    'go back and improve' loop. Practice a prior skill on Khan, mark how far you
+    got, and each tier (Familiar → Proficient → Mastered) earns bonus XP once a
+    parent confirms it. Grouped by unit. Nothing here ever costs XP."""
+    from compass import khan_mastery as km
+
+    cards = db.list_lessons(student["id"], agent="khan", limit=500)
+    revisitable = [c for c in cards if c["status"] == "completed" or km.confirmed_level(c)]
+    if not revisitable:
+        return
+    st.divider()
+    st.subheader("🏆 Level up your mastery")
+    st.caption(
+        "Go back to Khan, practice a skill you've already done, and mark how far "
+        "you got. Every level up earns bonus XP — and it never costs you anything, "
+        "so climbing is always worth it."
+    )
+    groups: dict[tuple[Any, str], list[dict[str, Any]]] = {}
+    for card in revisitable:
+        meta = card.get("metadata") or {}
+        key = (meta.get("khan_course_id") or "", meta.get("khan_course") or "Other Khan skills")
+        groups.setdefault(key, []).append(card)
+    for (_cid, cname), cards_in in groups.items():
+        cards_in.sort(key=lambda c: (c.get("metadata") or {}).get("khan_part") or 0)
+        with st.expander(f"🅰️ {md(cname)}", expanded=True):
+            for card in cards_in:
+                _render_one_mastery_row(db, card)
+
+
+def render_khan_mastery_confirmations(db: Database, student: dict[str, Any]) -> None:
+    """A parent's one-tap confirm queue: the Khan skills Landon marked as leveled
+    up, waiting to be confirmed so the XP lands. Confirming awards the tiers'
+    XP; dismissing just clears the claim (never docks anything)."""
+    from compass import khan_mastery as km
+
+    queue = km.pending_claims(db, student["id"])
+    if not queue:
+        return
+    st.markdown("#### 🏆 Mastery to confirm")
+    st.caption(
+        f"Landon marked {len(queue)} Khan skill{'s' if len(queue) != 1 else ''} as leveled "
+        "up. Confirm to award the bonus XP, or dismiss it."
+    )
+    for item in queue:
+        lesson, claim, confirmed = item["lesson"], item["claim"], item["confirmed"]
+        award = km.xp_to_reach(confirmed, claim)
+        with st.container(border=True):
+            now = km.level_label(confirmed) if confirmed else "not rated"
+            st.markdown(
+                f"**{md(lesson['title'])}**  \n"
+                f"He says he reached {km.level_emoji(claim)} **{km.level_label(claim)}** "
+                f"(currently {now})"
+            )
+            cols = st.columns(3)
+            if cols[0].button(
+                f"✅ Confirm {km.level_label(claim)} (+{award})",
+                key=f"km_conf_{lesson['id']}", type="primary",
+            ):
+                km.confirm_mastery(db, lesson["id"])
+                st.success(f"Confirmed — +{award} XP. 🏆")
+                st.rerun()
+            middle = [
+                lvl for lvl in km.LEVELS
+                if km.level_index(confirmed) < km.level_index(lvl) < km.level_index(claim)
+            ]
+            if middle:
+                adj = cols[1].selectbox(
+                    "or confirm a lower level", middle,
+                    format_func=km.level_label, index=None, placeholder="lower…",
+                    key=f"km_adj_pick_{lesson['id']}",
+                )
+                if adj and cols[1].button("Confirm that", key=f"km_adj_{lesson['id']}"):
+                    km.confirm_mastery(db, lesson["id"], adj)
+                    st.rerun()
+            if cols[2].button("✕ Dismiss", key=f"km_dismiss_{lesson['id']}"):
+                km.reject_claim(db, lesson["id"])
+                st.rerun()
+
+
 def _render_one_enrichment(
     db: Database, student: dict[str, Any], activity: dict[str, Any], spec: dict[str, Any]
 ) -> None:
