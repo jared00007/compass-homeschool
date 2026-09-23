@@ -2783,6 +2783,32 @@ class Database:
             row["metadata"] = json.loads(row["metadata"])
         return rows
 
+    def lessons_by_status(
+        self, student_id: int, statuses: tuple[str, ...]
+    ) -> list[dict[str, Any]]:
+        """Every lesson in one of `statuses`, newest-created first, with NO count
+        cap. The parent's review queue needs this: a submitted lesson is 'waiting
+        on you' no matter when it was created, but `list_lessons`'s recency cap
+        could push it out of view behind a big batch of freshly-created cards (a
+        loaded Khan unit, a week planned as a series), so a turned-in lesson would
+        silently never reach the review list. Filtering by status instead of by a
+        creation window is what keeps the two ends -- his 'done' count and your
+        'to review' list -- looking at the same set of work."""
+        if not statuses:
+            return []
+        placeholders = ",".join("?" for _ in statuses)
+        rows = _rows(
+            self.conn.execute(
+                f"SELECT * FROM lessons WHERE student_id = ? AND status IN ({placeholders}) "
+                f"ORDER BY created_at DESC, id DESC",
+                (student_id, *statuses),
+            )
+        )
+        for row in rows:
+            row["payload"] = json.loads(row["payload"])
+            row["metadata"] = json.loads(row["metadata"])
+        return rows
+
     def lessons_for_week(self, student_id: int, week_start: str) -> list[dict[str, Any]]:
         """Every lesson planned for one Monday-anchored week, earliest planned
         day first -- the raw material for both halves of `pages/14_Mission_Control.py`.

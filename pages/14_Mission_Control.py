@@ -361,9 +361,20 @@ def _render_travel_review_card(entry: dict, *, open: bool = False) -> None:
 today = date.today()
 today_iso = today.isoformat()
 
-all_lessons = db.list_lessons(student["id"], limit=50)
-to_review = [l for l in all_lessons if l["status"] in ("planned", "submitted", "needs_revision")]
-history = [l for l in all_lessons if l["status"] in ("completed", "skipped")]
+# The review queue is fetched BY STATUS, with no recency cap: a lesson he's
+# turned in is "waiting on you" whenever it was created, and a creation-capped
+# fetch (list_lessons) could hide it behind a big batch of freshly-created cards
+# -- a loaded Khan unit, a week planned as a series -- so a submitted lesson
+# would silently never appear here even though his side counts it done.
+to_review = db.lessons_by_status(
+    student["id"], ("planned", "submitted", "needs_revision")
+)
+# History stays a bounded "recent" view -- it's an optional, tucked-away list of
+# already-finished work, so the newest handful is all it needs to show.
+history = [
+    l for l in db.list_lessons(student["id"], limit=50)
+    if l["status"] in ("completed", "skipped")
+]
 
 all_travel_entries = db.list_travel_entries(student["id"])
 travel_to_review = [

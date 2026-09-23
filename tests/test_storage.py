@@ -25,6 +25,27 @@ def student(db):
     return db.ensure_default_student()
 
 
+def test_lessons_by_status_finds_a_submitted_lesson_beyond_the_recency_cap(db, student):
+    """The review-queue bug: a lesson turned in is 'waiting on you' no matter
+    when it was made, but list_lessons caps at the newest 50 by creation, so a
+    submitted lesson buried behind a big batch of newer cards (a loaded Khan
+    unit) vanished from the parent's queue. lessons_by_status has no cap."""
+    sid = student["id"]
+    # The one he actually turned in, created first (so it's the OLDEST).
+    submitted = db.save_lesson(sid, "math", "math", "Slope", "Slope", {"activities": []})
+    db.submit_lesson(submitted)
+    # ...then 60 freshly-created backlog cards pile in on top of it.
+    for i in range(60):
+        db.save_lesson(sid, "khan", "math", f"Skill {i}", f"Skill {i}", {"activities": []})
+
+    newest_50 = db.list_lessons(sid, limit=50)
+    assert submitted not in [l["id"] for l in newest_50]         # hidden by the cap
+
+    waiting = db.lessons_by_status(sid, ("submitted",))
+    assert submitted in [l["id"] for l in waiting]               # but the queue finds it
+    assert all(l["status"] == "submitted" for l in waiting)
+
+
 def test_migrate_is_idempotent(tmp_path):
     path = tmp_path / "twice.db"
     first = Database(path)
