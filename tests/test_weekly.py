@@ -401,6 +401,47 @@ def test_board_buckets_every_story_type_by_its_own_day(board_db, board_student):
     assert board["backlog"] == []
 
 
+def test_board_day_groups_cards_by_course_type(board_db, board_student):
+    """A day column reads as tidy clusters: subjects in epic order, and Khan
+    cards grouped by their unit in lesson order -- not an interleaved pile."""
+    from compass.agents import khan_card
+
+    monday = week_start()
+    sid = board_student["id"]
+    # Two Khan units, created out of order, all assigned to Monday.
+    beta = khan_card.create_course(
+        board_db, board_student, subject="math", course="Beta",
+        lessons=["B1", "B2"], minutes=30)["created"]
+    alpha = khan_card.create_course(
+        board_db, board_student, subject="math", course="Alpha",
+        lessons=["A1", "A2"], minutes=30)["created"]
+    for lid in beta + alpha:
+        khan_card.assign_course_card(
+            board_db, board_student, lid, day_iso=monday.isoformat(), generate_quiz=False)
+    # A science and a math lesson on the same day.
+    for agent in ("science", "math"):
+        board_db.save_lesson(
+            student_id=sid, agent=agent, subject=agent, topic="t", title=agent.title(),
+            payload={"activities": []},
+            metadata={"planned_for": monday.isoformat(), "week_start": monday.isoformat()},
+        )
+
+    column = board_for_week(board_db, board_student, monday)[monday.isoformat()]
+
+    def label(item: dict) -> tuple:
+        meta = item.get("metadata") or {}
+        return (item.get("agent"), meta.get("khan_course"), item.get("title"))
+
+    assert [label(item) for _, item in column] == [
+        ("math", None, "Math"),                    # core subjects first, in epic order
+        ("science", None, "Science"),
+        ("khan", "Alpha", "1. A1"),                # then Khan, grouped by unit...
+        ("khan", "Alpha", "2. A2"),
+        ("khan", "Beta", "1. B1"),                 # ...each unit in lesson order
+        ("khan", "Beta", "2. B2"),
+    ]
+
+
 def test_board_puts_a_backlogged_lesson_in_backlog_not_its_stale_day(board_db, board_student):
     monday = week_start()
     sid = board_student["id"]

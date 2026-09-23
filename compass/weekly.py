@@ -383,7 +383,33 @@ def board_for_week(
         ):
             board["backlog"].append(("travel_entry", trip))
 
+    # Group each day column by "course type" so a day reads as tidy clusters --
+    # all of one subject together, and Khan cards from the same unit in their
+    # lesson order -- instead of an interleaved pile. A stable sort keeps the
+    # existing order within each group. (Requested directly: "sort the card order
+    # on the board view. just grouping like course type.") The backlog is left
+    # alone: its own panel already groups by epic (group_backlog_by_epic).
+    for day_iso in days:
+        board[day_iso].sort(key=_board_group_key)
+
     return board
+
+
+def _board_group_key(pair: tuple[str, dict[str, Any]]) -> tuple[int, str, int]:
+    """Sort key that clusters a day column's cards by epic (EPIC_ORDER: the core
+    subjects, then Khan, then the catch-alls), and within the Khan epic by unit
+    and lesson order -- so same-unit Khan cards sit together in the order they're
+    meant to be done."""
+    kind, item = pair
+    epic = epic_for(kind, item)
+    try:
+        epic_rank = EPIC_ORDER.index(epic)
+    except ValueError:
+        epic_rank = len(EPIC_ORDER)
+    if kind == "lesson" and item.get("agent") == "khan":
+        metadata = item.get("metadata") or {}
+        return (epic_rank, str(metadata.get("khan_course") or ""), metadata.get("khan_part") or 0)
+    return (epic_rank, "", 0)
 
 
 # The order every epic-grouped view (the Board tab's Product Backlog panel)
