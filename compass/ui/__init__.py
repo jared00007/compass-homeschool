@@ -2732,6 +2732,17 @@ def render_daily_due(db: Database, student: dict[str, Any], today: str) -> None:
         lesson_row, marker = weekly.today_subject_status(agent_lessons, today)
         if lesson_row is not None:
             lesson_markers.append(marker)
+    # Khan cards ride their own agent and don't collapse to one row per subject
+    # -- he can have several on a day -- so each Khan card that's assigned to
+    # today (or that he finished today) counts on its own toward the day's
+    # lesson tally, the same as a core-subject lesson. Without this a day of
+    # Khan work read as "0 lessons" here.
+    _KHAN_STATUS_MARKER = {"completed": "✅", "submitted": "📤", "needs_revision": "↩️"}
+    for khan in db.list_lessons(student["id"], agent="khan", limit=500):
+        meta = khan.get("metadata") or {}
+        done_today = str(meta.get("student_done_on") or "")[:10] == today
+        if meta.get("planned_for") == today or done_today:
+            lesson_markers.append(_KHAN_STATUS_MARKER.get(khan["status"], "⬜"))
     total_lessons = len(lesson_markers)
     if total_lessons:
         submitted_lessons = sum(1 for m in lesson_markers if m in ("📤", "✅", "📣"))

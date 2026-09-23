@@ -299,3 +299,16 @@ def test_unit_meter_is_silent_without_any_units(db, student, monkeypatch):
     monkeypatch.setattr(ui, "st", rec)
     ui.render_khan_unit_mastery_meter(db, student, date.today().isoformat())
     assert "This week’s unit" not in "\n".join(rec.written)
+
+
+def test_daily_due_lessons_tile_counts_khan_cards(db, student, monkeypatch):
+    """Khan cards assigned to today count in the 'Lessons — N of M' Due-today
+    tile, each on its own -- a day of Khan work shouldn't read as zero lessons."""
+    today = date.today().isoformat()
+    a = _card(db, student, "Exponents", day=today)
+    _card(db, student, "Radicals", day=today)          # still to do
+    db.submit_lesson(a)                                 # turned in -> counts as "in"
+    rec = _Rec()
+    monkeypatch.setattr(ui, "st", rec)
+    ui.render_daily_due(db, student, today)
+    assert "Lessons — 1 of 2 submitted" in "\n".join(rec.written)
