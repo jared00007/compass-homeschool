@@ -70,6 +70,37 @@ def test_enrichment_counts_life_skills_and_trips(db, student):
     assert db.enrichment_done_on(student["id"], today) == 1
 
 
+def _khan_done(db, student, title, subject="math"):
+    lid = db.save_lesson(student["id"], "khan", subject, title, title, {"quiz": []})
+    db.mark_student_done(lid)
+    return lid
+
+
+def test_khan_core_cards_count_toward_the_core_target(db, student):
+    today = date.today().isoformat()
+    _khan_done(db, student, "Exponents", "math")
+    _khan_done(db, student, "Cells", "science")
+    _khan_done(db, student, "Main idea", "reading")   # reading folds into English -> core
+    assert db.core_lessons_done_on(student["id"], today) == 3
+
+
+def test_khan_noncore_cards_count_as_enrichment_not_core(db, student):
+    today = date.today().isoformat()
+    _khan_done(db, student, "Nutrition basics", "health")   # not a core academic subject
+    assert db.core_lessons_done_on(student["id"], today) == 0
+    assert db.enrichment_done_on(student["id"], today) == 1
+
+
+def test_a_khan_card_can_complete_a_full_day(db, student):
+    today = date.today().isoformat()
+    _core_done(db, student, "Slope", "math")
+    _khan_done(db, student, "Exponents", "math")   # the second core lesson, via Khan
+    db.log_free_reading(student["id"], "Dog Man", 30)
+    plan = pacing.day_plan(db, student["id"], today)
+    assert (plan.core_done, plan.enrichment_done) == (2, 1)
+    assert plan.is_full_day is True
+
+
 def test_only_todays_work_counts(db, student):
     _core_done(db, student, "Slope", "math")
     # Yesterday there's nothing; today has one core lesson.

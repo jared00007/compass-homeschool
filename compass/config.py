@@ -225,6 +225,15 @@ SUBJECT_DEFAULT_MINUTES = {
 # The parent can override both (settings `day_target_core` / `day_target_enrichment`).
 DAY_TARGET_CORE = 2
 DAY_TARGET_ENRICHMENT = 1
+# Which WA subjects count as "core academic" for the daily-pacing signal -- the
+# same subjects the four graded agents cover (see gradebook.GRADED_AGENT_SUBJECTS).
+# It's what decides how a *Khan* card counts toward "enough for today": a Khan
+# card in one of these credits a core lesson (like a math or science lesson),
+# while a Khan card in any other subject (health, art & music, ...) counts as an
+# enrichment block instead -- so Khan work moves the daily count either way.
+CORE_ACADEMIC_SUBJECTS = frozenset(
+    {"math", "science", "reading", "writing", "history", "social_studies"}
+)
 # Light, AI-generated enrichment tracks -- the parts of a real year that aren't
 # the four academic cores. Each is a quick activity he just does (no grading),
 # credited to the WA subject it covers. Keyed by agent key.

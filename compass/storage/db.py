@@ -2951,10 +2951,16 @@ class Database:
         return rows
 
     def core_lessons_done_on(self, student_id: int, day: str) -> int:
-        """How many core academic lessons (the four graded subjects) he marked
-        done on `day` -- his own 'did the work' signal (student_done_on), whether
-        or not a parent has reviewed it yet. The core half of the daily-pacing
-        'enough for today' count."""
+        """How many core academic lessons he marked done on `day` -- his own 'did
+        the work' signal (student_done_on), whether or not a parent has reviewed
+        it yet. The core half of the daily-pacing 'enough for today' count.
+
+        Counts the four graded-subject agents, plus any Khan card whose subject
+        is a core academic one (config.CORE_ACADEMIC_SUBJECTS) -- Khan carries a
+        lot of the core work now, so a Khan math/science/reading card should move
+        the daily count exactly like an AI-generated lesson in that subject. A
+        Khan card in a non-core subject counts as enrichment instead (see
+        enrichment_done_on), so no Khan card is ever missed by the pacing."""
         placeholders = ",".join("?" for _ in self._REVIEWABLE_AGENTS)
         row = self.conn.execute(
             f"SELECT COUNT(*) AS n FROM lessons WHERE student_id = ? "
@@ -2962,7 +2968,17 @@ class Database:
             f"AND substr(json_extract(metadata, '$.student_done_on'), 1, 10) = ?",
             (student_id, *self._REVIEWABLE_AGENTS, day),
         ).fetchone()
-        return int(row["n"]) if row else 0
+        n = int(row["n"]) if row else 0
+
+        core_subjects = tuple(sorted(config.CORE_ACADEMIC_SUBJECTS))
+        subj_placeholders = ",".join("?" for _ in core_subjects)
+        khan_row = self.conn.execute(
+            f"SELECT COUNT(*) AS n FROM lessons WHERE student_id = ? AND agent = 'khan' "
+            f"AND subject IN ({subj_placeholders}) "
+            f"AND substr(json_extract(metadata, '$.student_done_on'), 1, 10) = ?",
+            (student_id, *core_subjects, day),
+        ).fetchone()
+        return n + (int(khan_row["n"]) if khan_row else 0)
 
     def enrichment_done_on(self, student_id: int, day: str) -> int:
         """How many enrichment blocks he finished on `day` -- life skills, coding
@@ -2999,6 +3015,19 @@ class Database:
             "AND source IN ('free_reading', 'art_music', 'movement') "
             "AND substr(occurred_on, 1, 10) = ?",
             (student_id, day),
+        ).fetchone()
+        n += int(row["n"]) if row else 0
+        # Khan cards in a non-core subject (health, art & music, ...) are the
+        # enrichment half of Khan work -- counted by his own done signal, the
+        # mirror of core_lessons_done_on's Khan clause, so every Khan card moves
+        # the daily count one way or the other.
+        core_subjects = tuple(sorted(config.CORE_ACADEMIC_SUBJECTS))
+        subj_placeholders = ",".join("?" for _ in core_subjects)
+        row = self.conn.execute(
+            f"SELECT COUNT(*) AS n FROM lessons WHERE student_id = ? AND agent = 'khan' "
+            f"AND (subject IS NULL OR subject NOT IN ({subj_placeholders})) "
+            f"AND substr(json_extract(metadata, '$.student_done_on'), 1, 10) = ?",
+            (student_id, *core_subjects, day),
         ).fetchone()
         n += int(row["n"]) if row else 0
         return n
