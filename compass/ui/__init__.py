@@ -2190,12 +2190,15 @@ def board_card_tag(kind: str, item: dict[str, Any]) -> tuple[str, str, str]:
             # the 🅰️ icon plus the fixed Khan accent stripe (added in
             # render_board_card) mark them as Khan.
             subject = item.get("subject", "")
-            course = ((item.get("metadata") or {}).get("khan_course") or "").strip()
+            meta = item.get("metadata") or {}
+            course = (meta.get("khan_course") or "").strip()
             subject_label = subjects.label(subject) if subjects.is_valid(subject) else "Khan"
+            # A no-XP reminder/review card is marked so it's clear it earns nothing.
+            no_xp_tag = " · 🔕 no XP" if meta.get("no_xp") else ""
             return (
                 SUBJECT_TAG_COLORS.get(subject, _BOARD_TAG_FALLBACK_COLOR),
                 "🅰️",
-                f"Khan · {course or subject_label}",
+                f"Khan · {course or subject_label}{no_xp_tag}",
             )
         return (
             BOARD_TAG_COLORS.get(agent, _BOARD_TAG_FALLBACK_COLOR),
@@ -4186,6 +4189,12 @@ def render_khan_card_form(db: Database, student: dict[str, Any]) -> None:
             help="Off by default. Turn on for one small AI call per card; leave off "
                  "to add the cards now and add quizzes later.",
         )
+        no_xp = st.checkbox(
+            "🔕 Reminder / review card — no XP", value=False, key="khan_no_xp",
+            help="A card that behaves like any other (it schedules, he turns it in, "
+                 "you review it, its hours log) but earns no XP -- for putting "
+                 "'circle back and review' time on his calendar without padding the reward.",
+        )
         if not api_ok:
             st.caption(f"⚠️ Quiz generation unavailable: {api_message} — you can still add the cards without quizzes.")
         submitted = st.form_submit_button("➕ Add Khan cards", type="primary", width="stretch")
@@ -4212,7 +4221,7 @@ def render_khan_card_form(db: Database, student: dict[str, Any]) -> None:
     try:
         result = khan_card.create_khan_cards(
             db, student, subject=subject, units=units, minutes=int(minutes),
-            day_iso=day_iso, note=note, generate_quiz=generate,
+            day_iso=day_iso, note=note, generate_quiz=generate, no_xp=no_xp,
             on_progress=_on_progress,
         )
     except ValueError as exc:
@@ -4553,6 +4562,8 @@ def _render_one_khan_due_card(
     Turn-it-in button, in an expander so a day of several stays scannable."""
     marker = "↩️" if card["status"] == "needs_revision" else "⬜"
     with st.expander(f"{marker} 🅰️ {md(card['title'])}", expanded=expanded):
+        if (card.get("metadata") or {}).get("no_xp"):
+            st.caption("🔕 Review card — no XP, just time to circle back before your quiz.")
         if card["status"] == "needs_revision":
             st.warning("Sent back — read your parent's note, fix it, and turn it in again.")
         render_lesson(

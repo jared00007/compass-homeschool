@@ -322,6 +322,37 @@ def test_khan_card_uses_the_smaller_rate_on_the_weekly_bar(db, student):
         assert day.xp == config.XP_PER_KHAN_LESSON  # the reduced rate, not XP_PER_LESSON
 
 
+def test_a_no_xp_reminder_card_earns_nothing_but_still_behaves(db, student):
+    """A no-XP reminder/review card is a real card (scheduled, turned in,
+    reviewable) that never touches the reward total -- 'circle back and review'
+    time on his calendar without padding XP."""
+    lid = khan_card.create_khan_card(
+        db, student, subject="math", unit="Circle back and review",
+        minutes=30, day_iso=date.today().isoformat(), quiz=[], no_xp=True,
+    )
+    assert db.get_lesson(lid)["metadata"].get("no_xp") is True
+
+    before = xp.total_xp(db, student["id"])
+    db.submit_lesson(lid)                       # he does it + turns it in
+    assert xp.total_xp(db, student["id"]) == before   # ...but earns no XP
+
+    today = date.today()
+    if today.weekday() < 5:                     # and nothing on the weekly bar
+        day = xp.weekly_progress(db, student["id"], today=today).days[today.weekday()]
+        assert day.lessons == 0 and day.xp == 0
+    # A normal card, by contrast, does earn its Khan-rate XP.
+    normal = _card(db, student, "Real skill", day=date.today().isoformat())
+    db.submit_lesson(normal)
+    assert xp.total_xp(db, student["id"]) == before + config.XP_PER_KHAN_LESSON
+
+
+def test_no_xp_card_is_marked_on_the_board_tag():
+    _, _, label = ui.board_card_tag(
+        "lesson", {"agent": "khan", "subject": "math", "metadata": {"no_xp": True}}
+    )
+    assert "no XP" in label
+
+
 def test_daily_due_lessons_tile_counts_khan_cards(db, student, monkeypatch):
     """Khan cards assigned to today count in the 'Lessons — N of M' Due-today
     tile, each on its own -- a day of Khan work shouldn't read as zero lessons."""

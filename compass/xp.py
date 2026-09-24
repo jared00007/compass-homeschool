@@ -36,6 +36,18 @@ class XPState:
         return self.into_level / self.level_span
 
 
+def _off_the_xp_books(lesson: dict[str, Any]) -> bool:
+    """A lesson that earns no XP at all: one a parent marked skipped, or a
+    reminder/review card explicitly flagged no-XP (metadata `no_xp`). Both are
+    still real cards everywhere else -- on the board, in the daily count, in the
+    review queue, logging their hours -- they just never touch the reward total.
+    A no-XP card is how "circle back and review" time goes on his calendar
+    without padding his XP."""
+    if lesson.get("status") == "skipped":
+        return True
+    return bool((lesson.get("metadata") or {}).get("no_xp"))
+
+
 def _sent_back_count(metadata: dict[str, Any]) -> int:
     """How many times one lesson has been sent back for a redo -- every bounce,
     counted. The authoritative source is `sent_back_on`, which gets one entry
@@ -81,11 +93,9 @@ def total_xp(db: Any, student_id: int) -> int:
     total = 0
 
     for lesson in db.list_lessons(student_id, limit=500):
-        # A skipped lesson is out of the record entirely -- a parent marked it
-        # "not going to do this one", so it earns nothing even if he'd already
-        # self-reported it done (that's how a mistakenly-credited lesson is
-        # taken back off his XP: skip it).
-        if lesson.get("status") == "skipped":
+        # Skipped lessons and no-XP reminder cards earn nothing, even with a
+        # student_done_on stamp -- they're off the reward books (see helper).
+        if _off_the_xp_books(lesson):
             continue
         metadata = lesson.get("metadata") or {}
         if metadata.get("student_done_on"):
@@ -150,7 +160,7 @@ def learner_stats(db: Any, student_id: int) -> LearnerStats:
     quizzes_passed = 0
     subject_counts: dict[str, int] = {}
     for lesson in db.list_lessons(student_id, limit=500):
-        if lesson.get("status") == "skipped":
+        if _off_the_xp_books(lesson):
             continue  # off the record -- keeps this KPI in step with the XP bar
         metadata = lesson.get("metadata") or {}
         if metadata.get("student_done_on"):
@@ -683,8 +693,8 @@ def weekly_progress(
     redos = [0] * 5
 
     for lesson in db.list_lessons(student_id, limit=500):
-        if lesson.get("status") == "skipped":
-            continue  # skipped work is off the record -- earns and shows nothing
+        if _off_the_xp_books(lesson):
+            continue  # skipped / no-XP work earns nothing on the weekly bar
         metadata = lesson.get("metadata") or {}
         done = _parse_iso(metadata.get("student_done_on"))
         if in_week(done):

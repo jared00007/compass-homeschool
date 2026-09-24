@@ -295,6 +295,7 @@ def create_khan_card(
     note: str = "",
     quiz: list[dict[str, Any]] | None = None,
     generate_quiz: bool = True,
+    no_xp: bool = False,
 ) -> int:
     """Create one Khan card, schedule it, and return its lesson id.
 
@@ -305,6 +306,11 @@ def create_khan_card(
     under the single `khan` agent so every Khan card shares one home (the Khan
     page). Scheduled to `day_iso` if given (via the normal reschedule path, which
     sets planned_for + week_start); left in the backlog otherwise.
+
+    `no_xp=True` marks it a reminder/review card: it behaves like any other card
+    (scheduled, worked, turned in, reviewed, hours logged) but earns no XP -- a
+    way to put "circle back and review" time on his calendar without it padding
+    the reward total.
     """
     if not is_supported_subject(subject):
         raise ValueError(f"'{subject}' isn't a valid subject for a Khan card.")
@@ -317,6 +323,8 @@ def create_khan_card(
 
     payload = build_khan_card_payload(subject, unit, url, minutes, quiz=quiz, note=note)
     metadata: dict[str, Any] = {"source": "khan", "resource_url": url.strip()}
+    if no_xp:
+        metadata["no_xp"] = True
     if day_iso is None:
         # No day yet -> park it in the parent's Backlog to schedule from the
         # Board, the same way a generated series lands (held_back).
@@ -348,6 +356,7 @@ def create_khan_cards(
     day_iso: str | None = None,
     note: str = "",
     generate_quiz: bool = True,
+    no_xp: bool = False,
     on_progress: Callable[[int, int, str | None], None] | None = None,
 ) -> dict[str, list[Any]]:
     """Create a card for each unit in a pasted list -- the bulk path.
@@ -356,7 +365,8 @@ def create_khan_cards(
     the card is still created *without* a quiz rather than aborting the whole
     batch, and its name is collected in `quiz_failed` so the parent can retry it.
     `on_progress(done, total, current_unit)` is called before each card so the UI
-    can show a progress bar. Returns {"created": [ids], "quiz_failed": [names]}.
+    can show a progress bar. `no_xp` marks every card in the batch a reminder /
+    review card that earns no XP. Returns {"created": [ids], "quiz_failed": [names]}.
     """
     result: dict[str, list[Any]] = {"created": [], "quiz_failed": []}
     total = len(units)
@@ -366,14 +376,14 @@ def create_khan_cards(
         try:
             lesson_id = create_khan_card(
                 db, student, subject=subject, unit=unit, minutes=minutes,
-                day_iso=day_iso, note=note, generate_quiz=generate_quiz,
+                day_iso=day_iso, note=note, generate_quiz=generate_quiz, no_xp=no_xp,
             )
         except LessonGenerationError:
             # The quiz call failed for this one -- add the card anyway, no quiz,
             # so a single API hiccup doesn't sink the whole import.
             lesson_id = create_khan_card(
                 db, student, subject=subject, unit=unit, minutes=minutes,
-                day_iso=day_iso, note=note, generate_quiz=False,
+                day_iso=day_iso, note=note, generate_quiz=False, no_xp=no_xp,
             )
             result["quiz_failed"].append(unit)
         result["created"].append(lesson_id)
