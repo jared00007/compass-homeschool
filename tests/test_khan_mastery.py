@@ -95,7 +95,10 @@ def test_confirm_climbs_every_tier_and_awards_their_xp(db, student):
     assert km.pending_claim(lesson) is None            # claim satisfied, cleared
     assert km.card_xp(lesson) == awarded
     # Both tiers passed through are dated the confirm day, for the weekly strip.
-    assert km.card_bumps(lesson) == [("2026-09-23", 5), ("2026-09-23", 5)]
+    assert km.card_bumps(lesson) == [
+        ("2026-09-23", config.KHAN_MASTERY_XP["familiar"]),
+        ("2026-09-23", config.KHAN_MASTERY_XP["proficient"]),
+    ]
 
 
 def test_confirm_can_partially_grant_below_the_claim(db, student):

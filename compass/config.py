@@ -163,21 +163,25 @@ KHAN_MASTERY_EMOJI = {
     "mastered": "🏆",
 }
 # XP for *reaching* each tier, earned once as he climbs. The values are
-# increments, so passing all three is 5 + 5 + 10 = 20 -- one lesson's worth of
-# XP on top of the +20 he already got for doing the skill the first time. Kept
-# in parity with a mastered math skill (mastered tier = XP_PER_MASTERED_SKILL).
+# increments, so passing all three is 2 + 3 + 5 = 10 total -- half a lesson's
+# worth, on top of the +10 for doing the Khan card the first time. Deliberately
+# modest: mastery is a bonus for going back and retaining, not the main way to
+# earn -- and since he can climb *every* skill, over-paying it lets a reward be
+# won on mastery grinding alone (reported: "he can crush it on that... that's
+# overweight"). Retention stays worthwhile without swamping the base work.
 KHAN_MASTERY_XP = {
-    "familiar": 5,
-    "proficient": 5,
-    "mastered": 10,
+    "familiar": 2,
+    "proficient": 3,
+    "mastered": 5,
 }
 # The weekly "master the unit by Friday" bonus. A Khan unit is usually a whole
 # week's work for a big core class, so it doubles as the week's mastery target:
 # get this share of the unit's skills to Proficient-or-better and a bonus chunk
 # lands on the weekly bar, attributed to the day he crossed the line. Additive,
-# like every mastery reward.
+# like every mastery reward. Trimmed with the tiers above so mastering a unit is
+# a nice bump, not most of a week's reward on its own.
 KHAN_UNIT_MASTERY_TARGET = 0.8   # 80% of a unit's skills at Proficient+
-KHAN_UNIT_MASTERY_BONUS = 50     # XP for taking a unit to its mastery target
+KHAN_UNIT_MASTERY_BONUS = 25     # XP for taking a unit to its mastery target
 
 # Default instructional minutes credited when a Big Project step or a coding
 # module is completed without hours logged by hand -- both are real, substantial
