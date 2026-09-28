@@ -340,7 +340,7 @@ def test_pages_per_day_is_settable_from_the_plan_panel(monkeypatch, tmp_path):
     at.switch_page(MISSION_CONTROL_PATH)
     at.run(timeout=30)
     [b for b in at.button if (b.key or "") == "mc_viewbtn_plan"][0].click().run()
-    [b for b in at.button if (b.key or "") == "plan_subjectbtn_english"][0].click().run()
+    [s for s in at.selectbox if (s.key or "") == "plan_subject_select"][0].set_value("english").run()
 
     rate = [n for n in at.number_input if "Pages per day" in (n.label or "")][0]
     rate.set_value(25).run()

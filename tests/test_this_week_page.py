@@ -68,16 +68,16 @@ def test_the_old_day_by_day_week_planner_is_gone(monkeypatch, tmp_path):
     assert not any(d.label.startswith("Week to plan") for d in at.date_input)
 
 
-def test_plan_view_offers_a_button_per_subject_and_defaults_to_math(monkeypatch, tmp_path):
+def test_plan_view_offers_a_subject_dropdown_and_defaults_to_math(monkeypatch, tmp_path):
     db_path = tmp_path / "plan.db"
     db = Database(db_path)
     db.ensure_default_student()
     db.close()
 
     at = _open_plan_view(monkeypatch, db_path)
-    keys = [b.key or "" for b in at.button]
-    for subject in ("math", "science", "english", "history"):
-        assert f"plan_subjectbtn_{subject}" in keys
+    subject_select = [s for s in at.selectbox if (s.key or "") == "plan_subject_select"][0]
+    assert len(subject_select.options) == 4          # one dropdown, four subjects
+    assert subject_select.value == "math"            # defaults to Math
     # Math is the default panel -- its skill picker is on the page.
     assert any((s.key or "") == "math_skill" for s in at.selectbox)
     # And the one-click series generator, not a single-lesson button.
@@ -91,7 +91,7 @@ def test_switching_subject_shows_that_subjects_panel(monkeypatch, tmp_path):
     db.close()
 
     at = _open_plan_view(monkeypatch, db_path)
-    [b for b in at.button if (b.key or "") == "plan_subjectbtn_history"][0].click().run()
+    [s for s in at.selectbox if (s.key or "") == "plan_subject_select"][0].set_value("history").run()
     assert not at.exception, [e.message for e in at.exception]
     assert any((b.key or "") == "history_gen_series" for b in at.button)
     assert not any((s.key or "") == "math_skill" for s in at.selectbox)

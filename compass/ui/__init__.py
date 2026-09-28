@@ -948,7 +948,9 @@ def render_subject_plan_panel(
         "flagged to him as skippable). Leave off for a straight-ahead lesson.",
     )
     ctx.inputs["include_fun_extra"] = include_fun
-    with st.expander("💡 Tips for a strong lesson"):
+    # A checkbox rather than an expander so this panel can live inside a
+    # collapsible section on the Plan tab (Streamlit forbids nested expanders).
+    if st.checkbox("💡 Tips for a strong lesson", key=f"{k}_tips"):
         st.markdown(_PLAN_TIPS_MD)
 
     proposal = agent.propose_topic(ctx)
@@ -4171,7 +4173,9 @@ def render_khan_card_form(db: Database, student: dict[str, Any]) -> None:
     # each entry. Show what every card points at, with a tuck-away to change it.
     current_link = khan_card.khan_base_url(db)
     st.caption(f"🔗 Every card opens: {current_link}")
-    with st.expander("Change the Khan link"):
+    # Checkbox, not an expander, so this form can sit inside the Plan tab's
+    # collapsible "Quick add" section (Streamlit forbids nested expanders).
+    if st.checkbox("Change the Khan link", key="khan_base_link_toggle"):
         new_link = st.text_input(
             "Khan Academy link used on every card", value=current_link, key="khan_base_link",
         )

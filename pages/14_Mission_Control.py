@@ -746,65 +746,53 @@ if mc_view == "review":
 # page used to carry, now consolidated here so planning lives in one place.
 
 if mc_view == "plan":
-    # --- Plan a full lesson: the primary action, so it leads. Pick a subject,
-    # choose the topic, generate the whole thing as a day-sized series that lands
-    # in the Board's Backlog to assign.
-    st.markdown("### ✍️ Plan a lesson")
-    st.caption(
-        "Pick a subject, choose the topic, and generate the whole thing as a series of "
-        "day-sized lessons — the generator decides how many days it needs. They land in the "
-        "**Board's Backlog** for you to assign to days, same as any other lesson."
-    )
     plan_api_ok = api_status_banner()
 
-    _PLAN_SUBJECTS = [
-        ("math", "📐 Math"),
-        ("science", "🔬 Science"),
-        ("english", "📖 English"),
-        ("history", "🏛️ History"),
-    ]
-    if "plan_subject" not in st.session_state:
-        st.session_state["plan_subject"] = "math"
-    plan_subject = st.session_state["plan_subject"]
-    subject_cols = st.columns(len(_PLAN_SUBJECTS))
-    for _i, (_subject_key, _subject_label) in enumerate(_PLAN_SUBJECTS):
-        if subject_cols[_i].button(
-            _subject_label,
-            key=f"plan_subjectbtn_{_subject_key}",
-            width="stretch",
-            type="primary" if _subject_key == plan_subject else "secondary",
-        ):
-            st.session_state["plan_subject"] = _subject_key
-            st.rerun()
-    with st.container(border=True):
+    # Two collapsible main-function containers, everything folded inside them
+    # (reported: "all containers in plan a lesson should collapse into its main
+    # function container -- plan a lesson and quick add"). Streamlit forbids
+    # nested expanders, so the sub-tools are plain sections here, not expanders.
+
+    # ── Plan a lesson: the full AI lesson generator. ──
+    with st.expander("✍️ Plan a lesson", expanded=True):
+        st.caption(
+            "Pick a subject, choose the topic, and generate the whole thing as a series of "
+            "day-sized lessons that land in the **Board's Backlog** to assign."
+        )
+        _PLAN_SUBJECTS = {
+            "math": "📐 Math", "science": "🔬 Science",
+            "english": "📖 English", "history": "🏛️ History",
+        }
+        plan_subject = st.selectbox(
+            "Subject", list(_PLAN_SUBJECTS),
+            format_func=lambda k: _PLAN_SUBJECTS[k], key="plan_subject_select",
+        )
         render_subject_plan_panel(db, student, plan_subject, api_ok=plan_api_ok)
 
-    # --- Quick add: the small, fast generators.
-    st.divider()
-    st.markdown("### ⚡ Quick add")
-    with st.expander("⚡ Lightning lesson — a quick single-topic lesson"):
+    # ── Quick add: every fast content tool, grouped under one container. ──
+    with st.expander("⚡ Quick add"):
+        st.markdown("#### ⚡ Lightning lesson — a quick single-topic lesson")
         render_lightning_lesson_panel(db, student)
-    with st.expander("🔕 Refresh / Quiz-prep card — no XP"):
+
+        st.divider()
+        st.markdown("#### 🔕 Refresh / Quiz-prep card — no XP")
         render_khan_review_card_form(db, student)
 
-    # --- Khan Academy: load a whole unit as backlog cards and assign it out.
-    st.divider()
-    with st.expander("🅰️ Khan Academy — load a unit & assign it out"):
+        st.divider()
+        st.markdown("#### 🅰️ Khan Academy")
         render_khan_mastery_confirmations(db, student)
-        st.markdown("#### 📥 Import a whole course (many units at once)")
+        st.markdown("**📥 Import a whole course** (many units at once)")
         render_khan_course_importer(db, student)
-        st.divider()
-        st.markdown("#### Or load one unit at a time")
+        st.markdown("**Or load one unit at a time**")
         render_khan_course_loader(db, student)
-        st.divider()
-        st.markdown("#### Your Khan units")
+        st.markdown("**Your Khan units**")
         render_khan_courses(db, student)
-        st.divider()
-        with st.expander("Quick add — paste lessons without a unit"):
-            render_khan_card_form(db, student)
+        st.markdown("**Paste lessons without a unit**")
+        render_khan_card_form(db, student)
 
-    # --- Balance the week: spread the backlog across days, capped per day.
-    with st.expander("🗓️ Balance the week — spread the backlog, capped per day"):
+        st.divider()
+        st.markdown("#### 🗓️ Balance the week")
+        st.caption("Spread the backlog across days, capped per day.")
         render_week_planner(db, student)
 
 
