@@ -98,8 +98,15 @@ def pending_claim(lesson: dict[str, Any]) -> str | None:
     return claimed if level_index(claimed) > level_index(confirmed_level(lesson)) else None
 
 
+def _is_no_xp(lesson: dict[str, Any]) -> bool:
+    """A card flagged no-XP earns nothing anywhere -- including mastery XP."""
+    return bool((lesson.get("metadata") or {}).get("no_xp"))
+
+
 def card_xp(lesson: dict[str, Any]) -> int:
     """XP a card has earned from its confirmed mastery tiers."""
+    if _is_no_xp(lesson):
+        return 0
     return sum(
         config.KHAN_MASTERY_XP.get(entry.get("level"), 0)
         for entry in _record(lesson).get("history") or []
@@ -109,6 +116,8 @@ def card_xp(lesson: dict[str, Any]) -> int:
 def card_bumps(lesson: dict[str, Any]) -> list[tuple[str, int]]:
     """(date_iso, xp) for each confirmed tier on this card -- what the weekly
     strip needs to place a level-up on the day it was confirmed."""
+    if _is_no_xp(lesson):
+        return []
     out: list[tuple[str, int]] = []
     for entry in _record(lesson).get("history") or []:
         xp = config.KHAN_MASTERY_XP.get(entry.get("level"), 0)
