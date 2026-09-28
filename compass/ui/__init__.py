@@ -3328,20 +3328,6 @@ def _weekly_xp_html(
     return f'<div style="color:var(--c-text);">{header}{meter}{cap}{strip}</div>'
 
 
-def _pacing_nudge(plan: "pacing.DayPlan") -> str:
-    if plan.core_left and plan.enrichment_left:
-        return (
-            f"{plan.core_left} more lesson{'s' if plan.core_left != 1 else ''} and one "
-            "enrichment block (art, a project, some reading, a documentary) and you're done."
-        )
-    if plan.core_left:
-        return f"{plan.core_left} more lesson{'s' if plan.core_left != 1 else ''} to a full day."
-    return (
-        "One enrichment block — art, a project step, some reading, a workout, a "
-        "documentary — finishes the day."
-    )
-
-
 def render_recess(db: Database, student: dict[str, Any], today: str) -> None:
     """Student-facing: a quick, no-stakes break -- move, doodle, wonder, take a
     silly side. Rotates daily, costs nothing, isn't tracked. Framed as 'you've
@@ -3360,31 +3346,6 @@ def render_recess(db: Database, student: dict[str, Any], today: str) -> None:
         )
         st.markdown(f"{emoji} **{md(kind)}:** {md(prompt)}")
         st.caption("Not homework — just a quick break. A new one shows up every day.")
-
-
-def render_day_pacing(db: Database, student: dict[str, Any], today: str) -> None:
-    """Student-facing: where he is against a full, balanced day (a couple of core
-    lessons plus one enrichment block). When he's cleared it, it says so plainly
-    and hands the rest of the day back to him -- a real day isn't an endless
-    lesson stack. Otherwise it's a quiet one-line goal, not a nag."""
-    plan = pacing.day_plan(db, student["id"], today)
-    if plan.core_target == 0 and plan.enrichment_target == 0:
-        return
-    if plan.is_full_day:
-        with st.container(border=True, key="landon_card_daydone"):
-            st.markdown(
-                f'<div style="font-size:16px;font-weight:900;">🎉 Full day — done!</div>'
-                f'<div style="font-size:13px;color:var(--c-dim);margin-top:2px;">'
-                f'{plan.core_done} lesson{"s" if plan.core_done != 1 else ""} + '
-                f'{plan.enrichment_done} enrichment. That\'s a real day\'s work — the rest '
-                "of it is yours. Do more if you want, but you've earned the break.</div>",
-                unsafe_allow_html=True,
-            )
-        return
-    st.caption(
-        f"🎯 **Today:** 📚 {plan.core_done}/{plan.core_target} lessons · "
-        f"✨ {plan.enrichment_done}/{plan.enrichment_target} enrichment — {_pacing_nudge(plan)}"
-    )
 
 
 def render_day_target_editor(db: Database) -> None:
@@ -4241,6 +4202,60 @@ def render_khan_card_form(db: Database, student: dict[str, Any]) -> None:
     st.rerun()
 
 
+# The fixed wording for a review/quiz-prep card, so it reads the same every time
+# a parent drops one on his calendar.
+REVIEW_CARD_TEXT = "Refresh / Quiz prep card - get that XP up towards mastery!"
+
+
+def render_khan_review_card_form(db: Database, student: dict[str, Any]) -> None:
+    """One-tap 'refresh / quiz-prep' review card -- a heavily used, no-XP card
+    that just puts 'circle back and review before the quiz' time on his calendar.
+    Pre-filled with the same wording every time; the parent only picks a subject
+    and a day. It logs school hours like any card (it credits the subject's time),
+    it just earns no XP."""
+    from compass.agents import khan_card
+
+    subject_labels = {k: v for k, v in khan_card.KHAN_SUBJECTS}
+    st.caption(
+        "A quick review reminder for his calendar — same wording every time. It "
+        "**counts as school hours** for the subject you pick, but earns **no XP**. "
+        "Pick a subject and a day and add it."
+    )
+    with st.form("khan_review_card_form", clear_on_submit=False):
+        cols = st.columns(2)
+        subject = cols[0].selectbox(
+            "Subject", options=[k for k, _ in khan_card.KHAN_SUBJECTS],
+            format_func=lambda k: subject_labels[k], key="khan_review_subject",
+        )
+        minutes = cols[1].number_input(
+            "Minutes (school hours)", min_value=5, max_value=240,
+            value=config.SUBJECT_DEFAULT_MINUTES.get("math", 35), step=5,
+            key="khan_review_minutes",
+        )
+        text = st.text_input(
+            "Card text", value=REVIEW_CARD_TEXT, key="khan_review_text",
+            help="Pre-filled and the same each time — edit it only if you want to.",
+        )
+        day = st.date_input("Assign to day", value=date.today(), key="khan_review_day")
+        to_backlog = st.checkbox(
+            "Send to the Backlog instead of a day", key="khan_review_backlog",
+        )
+        submitted = st.form_submit_button(
+            "➕ Add review card (no XP)", type="primary", width="stretch"
+        )
+    if not submitted:
+        return
+    unit = text.strip() or REVIEW_CARD_TEXT
+    day_iso = None if to_backlog else day.isoformat()
+    khan_card.create_khan_card(
+        db, student, subject=subject, unit=unit, minutes=int(minutes),
+        day_iso=day_iso, quiz=[], generate_quiz=False, no_xp=True,
+    )
+    where = "the Backlog" if to_backlog else day.strftime("%a %b %-d")
+    st.success(f"🔕 Added a no-XP review card to {where}.")
+    st.rerun()
+
+
 def render_khan_course_loader(db: Database, student: dict[str, Any]) -> None:
     """Parent-facing: load a whole Khan unit from an ordered lesson list. Pick
     the subject, name the unit (Khan's grouping of small lessons), and type the
@@ -4444,7 +4459,11 @@ def render_khan_mastery_boost(db: Database, student: dict[str, Any]) -> None:
     from compass import khan_mastery as km
 
     cards = db.list_lessons(student["id"], agent="khan", limit=500)
-    revisitable = [c for c in cards if c["status"] == "completed" or km.confirmed_level(c)]
+    revisitable = [
+        c for c in cards
+        if (c["status"] == "completed" or km.confirmed_level(c))
+        and not (c.get("metadata") or {}).get("no_xp")  # no-XP cards earn no mastery either
+    ]
     if not revisitable:
         return
     st.divider()

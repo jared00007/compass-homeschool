@@ -53,6 +53,7 @@ from compass.ui import (
     render_khan_course_loader,
     render_khan_courses,
     render_khan_mastery_confirmations,
+    render_khan_review_card_form,
     render_report_card,
     render_rewind_generator,
     render_story_move_control,
@@ -767,6 +768,12 @@ if mc_view == "plan":
     # carries the teaching; Compass schedules, logs the hours, and can pull the
     # finished work into a cumulative Rewind. A "quick add" paste form is tucked
     # underneath.
+    # A heavily-used, one-tap review card: no XP, just "circle back and review
+    # before the quiz" time on his calendar. Its own top-level expander so it's
+    # easy to find, not buried under the unit loader.
+    with st.expander("🔕 Add a Refresh / Quiz-prep card (no XP)"):
+        render_khan_review_card_form(db, student)
+
     with st.expander("🅰️ Khan Academy — load a unit & assign it out"):
         render_khan_mastery_confirmations(db, student)
         render_khan_course_loader(db, student)

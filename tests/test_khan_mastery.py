@@ -346,6 +346,42 @@ def test_a_no_xp_reminder_card_earns_nothing_but_still_behaves(db, student):
     assert xp.total_xp(db, student["id"]) == before + config.XP_PER_KHAN_LESSON
 
 
+def test_review_card_text_is_the_fixed_requested_wording():
+    assert ui.REVIEW_CARD_TEXT == "Refresh / Quiz prep card - get that XP up towards mastery!"
+
+
+def test_review_card_form_prefills_the_standard_text(db, student, monkeypatch):
+    rec = _Rec()
+    monkeypatch.setattr(ui, "st", rec)
+    ui.render_khan_review_card_form(db, student)
+    page = "\n".join(rec.written)
+    assert ui.REVIEW_CARD_TEXT in page          # pre-filled, same every time
+    assert "no XP" in page and "school hours" in page
+
+
+def test_review_card_still_carries_its_school_hours(db, student):
+    """A no-XP review card still credits the subject's hours (they log on
+    approval like any card) -- it's only XP that's withheld."""
+    lid = khan_card.create_khan_card(
+        db, student, subject="math", unit=ui.REVIEW_CARD_TEXT, minutes=40,
+        day_iso=date.today().isoformat(), quiz=[], no_xp=True,
+    )
+    credit = db.get_lesson(lid)["payload"]["subject_credits"][0]
+    assert credit["subject"] == "math" and credit["minutes"] == 40
+
+
+def test_no_xp_card_earns_no_mastery_xp_either(db, student):
+    """'No XP' means no XP anywhere -- including the mastery ladder, even if a
+    level somehow gets confirmed on a reminder card."""
+    lid = khan_card.create_khan_card(
+        db, student, subject="math", unit=ui.REVIEW_CARD_TEXT, minutes=30,
+        day_iso=date.today().isoformat(), quiz=[], no_xp=True,
+    )
+    km.confirm_mastery(db, lid, "mastered", on=date.today().isoformat())
+    assert km.card_xp(db.get_lesson(lid)) == 0
+    assert km.total_mastery_xp(db, student["id"]) == 0
+
+
 def test_no_xp_card_is_marked_on_the_board_tag():
     _, _, label = ui.board_card_tag(
         "lesson", {"agent": "khan", "subject": "math", "metadata": {"no_xp": True}}
