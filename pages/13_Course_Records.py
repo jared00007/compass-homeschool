@@ -101,9 +101,16 @@ def _render_suggestions(courses: list[dict]) -> None:
                 names = ", ".join(c["title"] for c in matching)
                 st.markdown(
                     f"**{label(subject)}** — {hours:.1f} untagged hours this year. "
-                    f"You already have **{names}** covering this — open it below and "
-                    "check these hours in."
+                    f"You already have **{names}** covering this — open it and check "
+                    "these hours in."
                 )
+                # Actually open the matching course(s) below, rather than just
+                # telling the parent to find them -- the old text had no button, so
+                # a subject that already had a course was a dead end here.
+                if st.button(f"📂 Open {names}", key=f"nudge_open_{subject}"):
+                    for course in matching:
+                        st.session_state[f"course_open_{course['id']}"] = True
+                    st.rerun()
             else:
                 st.markdown(
                     f"**{label(subject)}** — {hours:.1f} untagged hours this year, "
