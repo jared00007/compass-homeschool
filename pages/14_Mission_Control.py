@@ -466,9 +466,9 @@ div[class*="st-key-backlog_row_"] div[data-testid="stColumn"] {
 _MC_VIEWS = [
     ("review", f"✅ Review ({needs_review_count})"),
     ("board", f"📋 Board · Backlog ({backlog_count})"),
-    ("plan", "✍️ Plan a lesson"),
-    ("record", "🗂️ Record"),
-    ("grades", "📊 Grades"),
+    ("plan", "✍️ Plan"),
+    ("grades", "📊 Grades & Record"),
+    ("setup", "⚙️ Setup"),
 ]
 if "mc_view" not in st.session_state:
     st.session_state["mc_view"] = "review"
@@ -601,7 +601,7 @@ if mc_view == "review":
         st.caption(
             f"📊 {report.total_hours:g} hrs logged this week · aim ~{_needed:g}/wk to stay "
             "on pace for 1,000. Real-life learning (documentaries, field trips, travel "
-            "days) counts — quick-log it in the **Record** tab."
+            "days) counts — quick-log it in the **Grades & Record** tab."
         )
 
     # Chat with him -- auto-opens with a count when he's replied, so a message
@@ -616,26 +616,11 @@ if mc_view == "review":
 
     # His weekly reward pick, waiting on a yes/no (absent unless one's pending).
     render_weekly_reward_approval(db, student)
+    st.divider()
 
-    # The weekly-reward settings sit right under the reward status, on the
-    # default Review view -- reported it was too buried under the Grades tab to
-    # find. This is the goal, the reward picker/library, and the holiday-week
-    # weighting.
-    with st.expander("🎁 Weekly reward — set the goal, reward & holiday weeks"):
-        render_xp_reward_editor(db)
-
-    # Rewind: pull already-completed lessons back into a cumulative recall review
-    # for him. On-demand, parent-triggered, lands in his "ready for you" on Home.
-    with st.expander("🔁 Rewind — build a review from finished lessons"):
-        render_rewind_generator(db, student)
-
-    # Daily rhythm: what counts as a full day, so "enough for today" kicks in.
-    with st.expander("🎯 Daily rhythm — what counts as a full day"):
-        render_day_target_editor(db)
-
-    # Enrichment: light art/music + movement activities (the non-academic week).
-    with st.expander("🎨 Enrichment — art, music & movement activities"):
-        render_enrichment_generator(db, student)
+    # The settings that used to clutter this daily view (reward goal, daily
+    # rhythm, enrichment, Rewind) now live in the ⚙️ Setup tab, so Review is just
+    # the queue.
 
     submitted_lessons = [l for l in to_review if l["status"] == "submitted"]
     submitted_lessons.sort(key=lambda l: (l.get("metadata") or {}).get("planned_for") or "")
@@ -760,37 +745,9 @@ if mc_view == "review":
 # page used to carry, now consolidated here so planning lives in one place.
 
 if mc_view == "plan":
-    # Compose a balanced week from the backlog first, then generate more below.
-    with st.expander("🗓️ Balance the week — spread the backlog, capped per day"):
-        render_week_planner(db, student)
-
-    # Khan Academy: load a whole unit (Khan's grouping of small lessons) as
-    # backlog cards, then assign them out day by day until it's done. Khan
-    # carries the teaching; Compass schedules, logs the hours, and can pull the
-    # finished work into a cumulative Rewind. A "quick add" paste form is tucked
-    # underneath.
-    # A quick single-topic Compass lesson to pair with Khan -- Khan is the
-    # content backbone, this wraps a short lesson around it, steered by an
-    # editable prompt.
-    with st.expander("⚡ Lightning lesson — a quick single-topic lesson"):
-        render_lightning_lesson_panel(db, student)
-
-    # A heavily-used, one-tap review card: no XP, just "circle back and review
-    # before the quiz" time on his calendar. Its own top-level expander so it's
-    # easy to find, not buried under the unit loader.
-    with st.expander("🔕 Add a Refresh / Quiz-prep card (no XP)"):
-        render_khan_review_card_form(db, student)
-
-    with st.expander("🅰️ Khan Academy — load a unit & assign it out"):
-        render_khan_mastery_confirmations(db, student)
-        render_khan_course_loader(db, student)
-        st.divider()
-        st.markdown("#### Your Khan units")
-        render_khan_courses(db, student)
-        st.divider()
-        with st.expander("Quick add — paste lessons without a unit"):
-            render_khan_card_form(db, student)
-
+    # --- Plan a full lesson: the primary action, so it leads. Pick a subject,
+    # choose the topic, generate the whole thing as a day-sized series that lands
+    # in the Board's Backlog to assign.
     st.markdown("### ✍️ Plan a lesson")
     st.caption(
         "Pick a subject, choose the topic, and generate the whole thing as a series of "
@@ -818,15 +775,50 @@ if mc_view == "plan":
         ):
             st.session_state["plan_subject"] = _subject_key
             st.rerun()
-    st.divider()
-
     with st.container(border=True):
         render_subject_plan_panel(db, student, plan_subject, api_ok=plan_api_ok)
 
+    # --- Quick add: the small, fast generators.
+    st.divider()
+    st.markdown("### ⚡ Quick add")
+    with st.expander("⚡ Lightning lesson — a quick single-topic lesson"):
+        render_lightning_lesson_panel(db, student)
+    with st.expander("🔕 Refresh / Quiz-prep card — no XP"):
+        render_khan_review_card_form(db, student)
 
-# --- Record: the hours ledger, and logging one by hand --------------------------
+    # --- Khan Academy: load a whole unit as backlog cards and assign it out.
+    st.divider()
+    with st.expander("🅰️ Khan Academy — load a unit & assign it out"):
+        render_khan_mastery_confirmations(db, student)
+        render_khan_course_loader(db, student)
+        st.divider()
+        st.markdown("#### Your Khan units")
+        render_khan_courses(db, student)
+        st.divider()
+        with st.expander("Quick add — paste lessons without a unit"):
+            render_khan_card_form(db, student)
 
-if mc_view == "record":
+    # --- Balance the week: spread the backlog across days, capped per day.
+    with st.expander("🗓️ Balance the week — spread the backlog, capped per day"):
+        render_week_planner(db, student)
+
+
+# --- Grades & Record: the report card, then the hours ledger --------------------
+#
+# Merged: the report card (his numbers, editable) and the instructional record
+# (the hours ledger + hand-logging) are both "the results," so they share one
+# tab instead of two. Report card leads; the ledger follows.
+
+if mc_view == "grades":
+    st.markdown("### 📊 Report card")
+    st.caption(
+        "The same numbers he sees. Open a subject to read every graded item that "
+        "made up its grade (worst first) and, at the bottom of each, set that "
+        "subject's grade by hand if a number needs overriding."
+    )
+    render_report_card(db, student, for_parent=True)
+
+    st.divider()
     st.markdown("### 🗂️ The instructional record")
     st.caption(
         "Every hour that counts. Activities created from agent lessons land here "
@@ -940,20 +932,24 @@ if mc_view == "record":
             _render_review_card(lesson, today_iso)
 
 
-# --- Grades: the report card, editable, in the parent's own hub -----------------
+# --- Setup: the settings and occasional tools, out of the daily way ------------
 #
-# Reported: "how can the parent edit/review these grades ... i feel like this
-# should also live in the mission control. thats base for all parent stuff." The
-# full report card -- every subject's number, the per-item drill-down (worst
-# first, with its traffic-light dots), and the hand-set override form inside each
-# subject's breakdown -- renders here now, off the same gradebook the student
-# sees, so there is still only one set of numbers.
+# Everything configuration-y that used to clutter the Review view lives here now:
+# set it once and forget it. Keeps the daily surfaces (Review, Board, Grades) to
+# just what a parent acts on every day.
 
-if mc_view == "grades":
-    st.markdown("### 📊 Report card")
-    st.caption(
-        "The same numbers he sees. Open a subject to read every graded item that "
-        "made up its grade (worst first) and, at the bottom of each, set that "
-        "subject's grade by hand if a number needs overriding."
-    )
-    render_report_card(db, student, for_parent=True)
+if mc_view == "setup":
+    st.markdown("### ⚙️ Setup")
+    st.caption("Settings and occasional tools — mostly set-once-and-forget.")
+
+    with st.expander("🎁 Weekly reward — set the goal, reward & holiday weeks"):
+        render_xp_reward_editor(db)
+
+    with st.expander("🎯 Daily rhythm — what counts as a full day"):
+        render_day_target_editor(db)
+
+    with st.expander("🎨 Enrichment — art, music & movement activities"):
+        render_enrichment_generator(db, student)
+
+    with st.expander("🔁 Rewind — build a review from finished lessons"):
+        render_rewind_generator(db, student)

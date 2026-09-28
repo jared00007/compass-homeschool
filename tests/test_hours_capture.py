@@ -237,8 +237,8 @@ def test_quick_log_button_logs_an_activity(monkeypatch, tmp_path):
     at.run(timeout=30)
     at.switch_page(MISSION_CONTROL_PATH)
     at.run(timeout=30)
-    # Switch to the Record view where the quick-log lives.
-    [b for b in at.button if (b.key or "") == "mc_viewbtn_record"][0].click().run()
+    # Switch to the Grades & Record view where the quick-log lives now.
+    [b for b in at.button if (b.key or "") == "mc_viewbtn_grades"][0].click().run()
     assert not at.exception, [e.message for e in at.exception]
 
     [b for b in at.button if (b.key or "") == "quicklog_0"][0].click().run()

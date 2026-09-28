@@ -246,6 +246,8 @@ def test_mission_control_can_generate_a_rewind_review(monkeypatch, tmp_path):
     monkeypatch.setattr("compass.agents.api_available", lambda: (True, "Ready."))
 
     at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
+    # Rewind lives on the Setup view now.
+    [b for b in at.button if (b.key or "") == "mc_viewbtn_setup"][0].click().run()
 
     # "Review everything" selects all completed lessons, then generate (LLM mocked).
     at.checkbox(key="rewind_all").set_value(True).run()
@@ -270,6 +272,8 @@ def test_mission_control_rewind_multiselect_picks_specific_lessons(monkeypatch, 
 
     monkeypatch.setattr("compass.agents.api_available", lambda: (True, "Ready."))
     at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
+    # Rewind lives on the Setup view now.
+    [b for b in at.button if (b.key or "") == "mc_viewbtn_setup"][0].click().run()
 
     # Pick just the one Math lesson from its multiselect, then generate.
     at.multiselect(key="rewind_ms_Math").set_value([m]).run()

@@ -587,7 +587,7 @@ def test_sending_a_travel_entry_back_sets_needs_revision(monkeypatch, tmp_path):
     assert "more detail" in entry["revision_note"]
 
 
-# --- the Record tab: completed/skipped history behind a checkbox ---------------
+# --- Grades & Record: completed/skipped history behind a checkbox --------------
 
 
 def test_history_stays_hidden_until_the_checkbox_is_checked(monkeypatch, tmp_path):
@@ -605,9 +605,9 @@ def test_history_stays_hidden_until_the_checkbox_is_checked(monkeypatch, tmp_pat
     assert not any("Finished lesson" in (e.label or "") for e in review_tab.expander)
     assert any("Nothing turned in to grade" in s.value for s in review_tab.success)
 
-    # The completed/skipped history lives on the Record view now (its own
-    # button), hidden until the checkbox there is checked.
-    record = _switch_view(at, "record")
+    # The completed/skipped history lives on the merged Grades & Record view now,
+    # hidden until the checkbox there is checked.
+    record = _switch_view(at, "grades")
     checkbox = [c for c in record.checkbox if c.label.startswith("Also show")][0]
     checkbox.set_value(True).run()
 

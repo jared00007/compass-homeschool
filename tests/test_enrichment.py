@@ -201,6 +201,8 @@ def test_mission_control_generates_an_enrichment_activity(monkeypatch, tmp_path)
 
     monkeypatch.setattr("compass.agents.api_available", lambda: (True, "Ready."))
     at = _open(monkeypatch, db_path, MISSION_CONTROL_PATH, as_parent=True)
+    # Enrichment lives on the Setup view now.
+    [b for b in at.button if (b.key or "") == "mc_viewbtn_setup"][0].click().run()
     with patch("compass.agents.enrichment.generate_lesson", return_value=an_activity_payload()):
         at.button(key="gen_enrich_art_music").click().run()
     assert not at.exception, [e.message for e in at.exception]
