@@ -647,6 +647,72 @@ def render_week_planner(db: Database, student: dict[str, Any]) -> None:
                 st.caption(f"**{dname}:** " + " · ".join(md(t) for t in titles))
 
 
+_LIGHTNING_SUBJECT_LABELS = {
+    "math": "📐 Math", "science": "🔬 Science",
+    "english": "📖 English", "history": "🏛️ History",
+}
+
+
+def render_lightning_lesson_panel(db: Database, student: dict[str, Any]) -> None:
+    """Parent-facing: generate one short, single-topic 'lightning' lesson on a
+    core subject, with an editable instructions box to steer what it teaches and
+    how. Lands in the Board's Backlog to schedule. Khan carries the depth; this
+    wraps a quick Compass lesson around it."""
+    from compass.agents import LessonGenerationError, api_available, lightning
+
+    api_ok, api_msg = api_available()
+    st.caption(
+        "A quick, single-topic mini-lesson (~10–15 min) to pair with his Khan work. "
+        "Pick a subject, say what it's about, tweak the instructions to steer it, and "
+        "generate — it lands in the Board's Backlog to schedule."
+    )
+    with st.form("lightning_form", clear_on_submit=False):
+        cols = st.columns([2, 1])
+        agent_key = cols[0].selectbox(
+            "Subject", lightning.LIGHTNING_AGENTS,
+            format_func=lambda k: _LIGHTNING_SUBJECT_LABELS.get(k, k.title()),
+            key="lightning_subject",
+        )
+        minutes = cols[1].number_input(
+            "Minutes", min_value=5, max_value=60, value=15, step=5, key="lightning_minutes",
+        )
+        topic = st.text_input(
+            "What's it about? (topic)", key="lightning_topic",
+            placeholder="e.g. Multiplying & dividing negative exponents",
+        )
+        instructions = st.text_area(
+            "Instructions — edit to steer it", value=lightning.DEFAULT_INSTRUCTIONS,
+            key="lightning_instructions", height=100,
+            help="This is the prompt the writer follows. Change it to focus the "
+                 "lesson, set the level, ask for word problems, etc.",
+        )
+        if not api_ok:
+            st.caption(f"⚠️ Generation unavailable: {api_msg}")
+        submitted = st.form_submit_button(
+            "⚡ Generate lightning lesson", type="primary", width="stretch",
+            disabled=not api_ok,
+        )
+    if not submitted:
+        return
+    if not topic.strip():
+        st.error("Say what the lesson is about.")
+        return
+    with st.spinner("Writing a quick lesson…"):
+        try:
+            lightning.generate_lightning_lesson(
+                db, student, agent_key, topic=topic,
+                instructions=instructions, minutes=int(minutes),
+            )
+        except (LessonGenerationError, ValueError) as exc:
+            st.error(str(exc))
+            return
+    st.success(
+        f"⚡ Added a lightning lesson on “{md(topic.strip())}” to the Backlog — "
+        "schedule it from the Board."
+    )
+    st.rerun()
+
+
 def render_subject_plan_panel(
     db: Database, student: dict[str, Any], agent_key: str, *, api_ok: bool
 ) -> None:

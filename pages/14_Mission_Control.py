@@ -54,6 +54,7 @@ from compass.ui import (
     render_khan_courses,
     render_khan_mastery_confirmations,
     render_khan_review_card_form,
+    render_lightning_lesson_panel,
     render_report_card,
     render_rewind_generator,
     render_story_move_control,
@@ -768,6 +769,12 @@ if mc_view == "plan":
     # carries the teaching; Compass schedules, logs the hours, and can pull the
     # finished work into a cumulative Rewind. A "quick add" paste form is tucked
     # underneath.
+    # A quick single-topic Compass lesson to pair with Khan -- Khan is the
+    # content backbone, this wraps a short lesson around it, steered by an
+    # editable prompt.
+    with st.expander("⚡ Lightning lesson — a quick single-topic lesson"):
+        render_lightning_lesson_panel(db, student)
+
     # A heavily-used, one-tap review card: no XP, just "circle back and review
     # before the quiz" time on his calendar. Its own top-level expander so it's
     # easy to find, not buried under the unit loader.
