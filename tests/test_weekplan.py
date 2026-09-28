@@ -5,7 +5,7 @@ mixed, leftovers left in the Backlog.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -18,7 +18,10 @@ from compass.storage.db import Database
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HOME_PATH = str(REPO_ROOT / "Home.py")
 MISSION_CONTROL_PATH = str(REPO_ROOT / "pages" / "14_Mission_Control.py")
-A_MONDAY = date(2026, 9, 21)
+# The current week's Monday, not a hardcoded date: these tests plan "this week"
+# and check that a lesson scheduled into it isn't read as backlogged -- a fixed
+# past Monday silently breaks that the moment the real clock rolls to a new week.
+A_MONDAY = date.today() - timedelta(days=date.today().weekday())
 
 
 @pytest.fixture()
