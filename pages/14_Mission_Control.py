@@ -503,11 +503,10 @@ if mc_view == "board":
     if "board_week_picker" not in st.session_state:
         st.session_state["board_week_picker"] = date.today()
 
-    # One button per direction to page a week at a time; the date picker below
-    # is the calendar filter for jumping straight to any week (including this
-    # one). The old "This week"/"Next week" jump buttons were duplicative of
-    # that picker, so they're gone -- ◀/▶ plus the calendar covers it.
-    jump_columns = st.columns([1, 1, 6])
+    # One compact nav row: page a week at a time with ◀/▶, or jump to any week
+    # with the calendar picker beside them (label hidden so it lines up with the
+    # buttons). Everything writes the same board_week_picker key.
+    jump_columns = st.columns([2, 2, 5])
     if jump_columns[0].button("◀ Prev week", key="board_jump_prev", width="stretch"):
         current = st.session_state.get("board_week_picker", date.today())
         st.session_state["board_week_picker"] = weekly.week_start(current) - timedelta(days=7)
@@ -518,9 +517,10 @@ if mc_view == "board":
         st.rerun()
 
     board_week_start = weekly.week_start(
-        st.date_input(
+        jump_columns[2].date_input(
             "Jump to any week",
             key="board_week_picker",
+            label_visibility="collapsed",
             help="Pick any day and the board snaps to that week's Monday. "
             "The ◀/▶ buttons step one week at a time.",
         )
