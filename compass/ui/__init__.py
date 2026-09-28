@@ -4322,6 +4322,89 @@ def render_khan_review_card_form(db: Database, student: dict[str, Any]) -> None:
     st.rerun()
 
 
+def render_khan_course_importer(db: Database, student: dict[str, Any]) -> None:
+    """Parent-facing: load a WHOLE Khan course in one paste -- many units at
+    once. Mark units with 'Unit: …' lines and list each unit's lessons under it;
+    Preview shows what parsed, then one click creates every unit's cards. Khan
+    page chrome (Quiz, Unit test, Practice, mastery %) is skipped."""
+    from compass.agents import khan_card
+
+    subject_labels = {k: v for k, v in khan_card.KHAN_SUBJECTS}
+    st.caption(
+        "Paste a whole course at once instead of a unit at a time. Start units with "
+        "**Unit:** lines and list each unit's lessons under it (an optional **Course:** "
+        "line names it). Preview first, then load — Khan chrome like *Quiz*, *Unit test*, "
+        "*Practice* and mastery %s is skipped automatically."
+    )
+    with st.form("khan_course_import_form", clear_on_submit=False):
+        cols = st.columns(2)
+        subject = cols[0].selectbox(
+            "Subject", options=[k for k, _ in khan_card.KHAN_SUBJECTS],
+            format_func=lambda k: subject_labels[k], key="khan_import_subject",
+        )
+        minutes = cols[1].number_input(
+            "Minutes each", min_value=5, max_value=240,
+            value=config.SUBJECT_DEFAULT_MINUTES.get("math", 35), step=5,
+            key="khan_import_minutes",
+        )
+        text = st.text_area(
+            "Paste the course outline", key="khan_import_text", height=240,
+            placeholder=(
+                "Course: Algebra 1\n"
+                "Unit: Exponents & radicals\n"
+                "Multiplying & dividing powers\n"
+                "Negative exponents\n"
+                "Unit: Polynomials\n"
+                "Adding & subtracting polynomials\n"
+                "Multiplying binomials"
+            ),
+        )
+        preview = st.form_submit_button("👁️ Preview what will load", width="stretch")
+        submitted = st.form_submit_button(
+            "📥 Load the whole course", type="primary", width="stretch"
+        )
+    if not (preview or submitted):
+        return
+    parsed = khan_card.parse_course_outline(text)
+    if not parsed["units"]:
+        st.error(
+            "Couldn't find any units or lessons. Mark units with **Unit: …** lines and "
+            "list each unit's lessons on their own lines underneath."
+        )
+        return
+    lesson_total = sum(len(u["lessons"]) for u in parsed["units"])
+    where = f" in **{md(parsed['course'])}**" if parsed["course"] else ""
+    st.markdown(f"**{len(parsed['units'])} units · {lesson_total} lessons**{where}")
+    for unit in parsed["units"]:
+        st.markdown(f"- **{md(unit['unit'])}** ({len(unit['lessons'])} lessons)")
+    if not submitted:
+        st.caption("Looks right? Hit **Load the whole course**.")
+        return
+    progress = st.progress(0.0, text="Loading the course…")
+
+    def _on_progress(done: int, total: int, unit: str | None) -> None:
+        progress.progress(
+            min(done / total if total else 1.0, 1.0),
+            text=(f"Loading “{unit}” ({done + 1}/{total})…" if unit else "Finishing…"),
+        )
+
+    try:
+        result = khan_card.create_course_from_outline(
+            db, student, subject=subject, text=text, minutes=int(minutes),
+            on_progress=_on_progress,
+        )
+    except ValueError as exc:
+        progress.empty()
+        st.error(str(exc))
+        return
+    progress.empty()
+    st.success(
+        f"📥 Loaded **{result['card_count']} cards** across **{result['unit_count']} units** "
+        "into the Backlog. Assign them out below, unit by unit. 🅰️"
+    )
+    st.rerun()
+
+
 def render_khan_course_loader(db: Database, student: dict[str, Any]) -> None:
     """Parent-facing: load a whole Khan unit from an ordered lesson list. Pick
     the subject, name the unit (Khan's grouping of small lessons), and type the

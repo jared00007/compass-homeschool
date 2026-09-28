@@ -454,6 +454,115 @@ def create_course(
     return result
 
 
+# --- bulk import: a whole course (many units) from one pasted outline ----------
+
+_COURSE_LINE_RE = re.compile(r"^\s*course\s*[:\-]\s*(.+)$", re.I)
+# "Unit 3: Polynomials", "Unit: Exponents", "## Unit 2 — Radicals" ...
+_UNIT_LINE_RE = re.compile(r"^\s*#{0,6}\s*unit\b[ \t]*\d*[ \t]*[:\-.—]?[ \t]*(.*)$", re.I)
+# A markdown header that isn't a "Unit" line -> also a unit boundary.
+_MD_HEADER_RE = re.compile(r"^\s*#{1,6}[ \t]+(.+)$")
+# A leading bullet or numbering on a lesson line, stripped before storing.
+_BULLET_RE = re.compile(r"^\s*(?:[-*•·–—]|\d+[.)])[ \t]+")
+# Khan course-page chrome to drop -- whole-line matches only, so a real lesson
+# that merely contains one of these words (e.g. "Review of exponents") survives.
+_NOISE_LINE_RE = re.compile(
+    r"^(?:"
+    r"quiz(?:[ \t]*\d+)?|"
+    r"unit[ \t]*\d*[ \t]*test|"
+    r"course challenge|"
+    r"practice|learn|review|test|start|continue|up next|see all|skill summary|"
+    r"get[ \t]+\d+[ \t]+of[ \t]+\d+.*|"
+    r"\d+\s*%.*|"
+    r"(?:not started|attempted|familiar|proficient|mastered)\b.*|"
+    r"level[ \t]+\d+.*|"
+    r"mastery.*"
+    r")$",
+    re.I,
+)
+
+
+def parse_course_outline(text: str) -> dict[str, Any]:
+    """Parse a pasted Khan course outline into ``{course, units}`` where each
+    unit is ``{"unit": name, "lessons": [str, ...]}``.
+
+    Unit boundaries are "Unit ..." lines (or markdown ``#`` headers); an optional
+    "Course: ..." line at the top names the course. Every other line is a lesson
+    under the current unit, with Khan-page chrome (Quiz, Unit test, Practice,
+    mastery %, ...) skipped. Lessons that appear before the first unit fall under
+    a default unit named after the course. Empty units are dropped."""
+    course = ""
+    units: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+
+    def _start_unit(name: str) -> None:
+        nonlocal current
+        current = {"unit": name.strip() or f"Unit {len(units) + 1}", "lessons": []}
+        units.append(current)
+
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        course_match = _COURSE_LINE_RE.match(line)
+        if course_match and not units and not course:
+            course = course_match.group(1).strip()
+            continue
+        stripped = _BULLET_RE.sub("", line).strip()
+        if _NOISE_LINE_RE.match(stripped):
+            continue  # Khan chrome -- checked before "Unit ..." so "Unit test" drops
+        unit_match = _UNIT_LINE_RE.match(line)
+        if unit_match is not None:
+            _start_unit(unit_match.group(1))
+            continue
+        header_match = _MD_HEADER_RE.match(line)
+        if header_match is not None:
+            _start_unit(header_match.group(1))
+            continue
+        if current is None:
+            _start_unit(course or "Unit 1")
+        current["lessons"].append(stripped)
+
+    return {"course": course, "units": [u for u in units if u["lessons"]]}
+
+
+def create_course_from_outline(
+    db: Any,
+    student: dict[str, Any],
+    *,
+    subject: str,
+    text: str,
+    minutes: int,
+    generate_quiz: bool = False,
+    on_progress: Callable[[int, int, str | None], None] | None = None,
+) -> dict[str, Any]:
+    """Load a whole Khan course from one pasted outline: parse it into units and
+    create each unit's ordered cards (via `create_course`). Every unit is its own
+    grouping, exactly like loading them one at a time -- this just does the whole
+    course in one paste. Returns a summary: the course name, the units created,
+    and the total card count."""
+    parsed = parse_course_outline(text)
+    if not parsed["units"]:
+        raise ValueError("Couldn't find any units or lessons in that paste.")
+    created: list[dict[str, Any]] = []
+    total_units = len(parsed["units"])
+    for index, unit in enumerate(parsed["units"]):
+        if on_progress is not None:
+            on_progress(index, total_units, unit["unit"])
+        result = create_course(
+            db, student, subject=subject, course=unit["unit"],
+            lessons=unit["lessons"], minutes=minutes, generate_quiz=generate_quiz,
+        )
+        created.append({"unit": unit["unit"], "ids": result["created"]})
+    if on_progress is not None:
+        on_progress(total_units, total_units, None)
+    return {
+        "course": parsed["course"],
+        "units": created,
+        "unit_count": len(created),
+        "card_count": sum(len(c["ids"]) for c in created),
+    }
+
+
 def assign_course_card(
     db: Any,
     student: dict[str, Any],

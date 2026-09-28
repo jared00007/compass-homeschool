@@ -50,6 +50,7 @@ from compass.ui import (
     render_day_target_editor,
     render_enrichment_generator,
     render_khan_card_form,
+    render_khan_course_importer,
     render_khan_course_loader,
     render_khan_courses,
     render_khan_mastery_confirmations,
@@ -790,6 +791,10 @@ if mc_view == "plan":
     st.divider()
     with st.expander("🅰️ Khan Academy — load a unit & assign it out"):
         render_khan_mastery_confirmations(db, student)
+        st.markdown("#### 📥 Import a whole course (many units at once)")
+        render_khan_course_importer(db, student)
+        st.divider()
+        st.markdown("#### Or load one unit at a time")
         render_khan_course_loader(db, student)
         st.divider()
         st.markdown("#### Your Khan units")

@@ -314,6 +314,63 @@ def test_a_completed_khan_card_is_rewind_eligible(db, student):
     assert khan[0]["subject"] == "math"  # carries the real subject for the review
 
 
+def test_parse_course_outline_splits_units_and_lessons():
+    text = (
+        "Course: Algebra 1\n"
+        "Unit: Exponents & radicals\n"
+        "Multiplying & dividing powers\n"
+        "- Negative exponents\n"
+        "Unit 2: Polynomials\n"
+        "1. Adding polynomials\n"
+        "Multiplying binomials\n"
+    )
+    parsed = khan_card.parse_course_outline(text)
+    assert parsed["course"] == "Algebra 1"
+    assert [u["unit"] for u in parsed["units"]] == ["Exponents & radicals", "Polynomials"]
+    assert parsed["units"][0]["lessons"] == ["Multiplying & dividing powers", "Negative exponents"]
+    assert parsed["units"][1]["lessons"] == ["Adding polynomials", "Multiplying binomials"]
+
+
+def test_parse_course_outline_skips_khan_page_chrome():
+    text = (
+        "Unit: Exponents\n"
+        "Multiplying powers\n"
+        "Quiz 1\n"
+        "Practice\n"
+        "80% mastery\n"
+        "Negative exponents\n"
+        "Unit test\n"
+    )
+    parsed = khan_card.parse_course_outline(text)
+    assert len(parsed["units"]) == 1
+    # Chrome dropped; the two real lessons kept. "Unit test" did NOT start a unit.
+    assert parsed["units"][0]["lessons"] == ["Multiplying powers", "Negative exponents"]
+
+
+def test_create_course_from_outline_loads_every_unit(db, student):
+    text = (
+        "Course: Algebra 1\n"
+        "Unit: Exponents\n"
+        "Multiply powers\n"
+        "Divide powers\n"
+        "Unit: Radicals\n"
+        "Square roots\n"
+    )
+    result = khan_card.create_course_from_outline(
+        db, student, subject="math", text=text, minutes=30)
+    assert result["course"] == "Algebra 1"
+    assert result["unit_count"] == 2 and result["card_count"] == 3
+    khan = db.list_lessons(student["id"], agent="khan")
+    units = {(l.get("metadata") or {}).get("khan_course") for l in khan}
+    assert units == {"Exponents", "Radicals"}
+
+
+def test_create_course_from_outline_rejects_an_empty_paste(db, student):
+    with pytest.raises(ValueError):
+        khan_card.create_course_from_outline(
+            db, student, subject="math", text="Quiz\nPractice\nUnit test\n", minutes=30)
+
+
 def test_render_khan_courses_shows_a_loaded_course_and_progress(db, student, monkeypatch):
     """The Backlog course manager renders a loaded course with its progress, and
     doesn't blow up doing it."""
