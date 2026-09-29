@@ -4536,6 +4536,38 @@ def render_khan_courses(db: Database, student: dict[str, Any]) -> None:
                 lines.append(f"{part}. {md(topic)} — *{state}*")
             st.markdown("\n".join(f"- {line}" for line in lines))
 
+            # 📅 Schedule the whole unit at a pace, instead of one card at a time:
+            # pick a start day and lessons/day, and Compass lays the unit's
+            # remaining lessons across school days in order (skipping weekends).
+            with st.form(f"khan_schedule_{cid}", clear_on_submit=False):
+                st.caption("📅 Schedule this unit across days")
+                sched_cols = st.columns(2)
+                sched_start = sched_cols[0].date_input(
+                    "Start day", value=date.today(), key=f"khan_sched_start_{cid}"
+                )
+                sched_per_day = sched_cols[1].number_input(
+                    "Lessons per day", min_value=1, max_value=8, value=2,
+                    key=f"khan_sched_perday_{cid}",
+                )
+                lay_it_out = st.form_submit_button(
+                    "📅 Schedule this unit", type="primary", width="stretch"
+                )
+            if lay_it_out:
+                try:
+                    sched = khan_card.schedule_unit(
+                        db, student, cid, start_day=sched_start, per_day=int(sched_per_day),
+                    )
+                except ValueError as exc:
+                    st.error(str(exc))
+                else:
+                    st.success(
+                        f"📅 Scheduled {sched['scheduled']} lesson"
+                        f"{'s' if sched['scheduled'] != 1 else ''} across "
+                        f"{sched['days']} day{'s' if sched['days'] != 1 else ''}, "
+                        f"through {sched['last_day'].strftime('%a %b %-d')}."
+                    )
+                    st.rerun()
+
             # ✨ Spin off a Compass companion lesson from any skill in this unit:
             # Khan runs the practice, Compass layers a taught lesson on the same
             # skill. Reuses the Lightning generator, seeded from the skill and

@@ -314,6 +314,47 @@ def test_a_completed_khan_card_is_rewind_eligible(db, student):
     assert khan[0]["subject"] == "math"  # carries the real subject for the review
 
 
+def test_schedule_unit_lays_lessons_across_school_days(db, student):
+    from datetime import date, timedelta
+
+    ids = khan_card.create_course(
+        db, student, subject="math", course="Exponents",
+        lessons=["A", "B", "C", "D", "E"], minutes=30)["created"]
+    # Start on a Friday so the 2/day pace has to skip the weekend.
+    friday = date(2026, 10, 2)  # a Friday
+    assert friday.weekday() == 4
+    result = khan_card.schedule_unit(db, student, _course_id(db, ids[0]),
+                                     start_day=friday, per_day=2)
+    assert result["scheduled"] == 5
+    planned = {
+        db.get_lesson(i)["metadata"]["khan_part"]: db.get_lesson(i)["metadata"]["planned_for"]
+        for i in ids
+    }
+    monday = (friday + timedelta(days=3)).isoformat()
+    tuesday = (friday + timedelta(days=4)).isoformat()
+    # 2 on Fri, 2 on Mon (weekend skipped), 1 on Tue -- in lesson order.
+    assert planned[1] == friday.isoformat() and planned[2] == friday.isoformat()
+    assert planned[3] == monday and planned[4] == monday
+    assert planned[5] == tuesday
+
+
+def test_schedule_unit_skips_done_cards_and_errors_when_empty(db, student):
+    from datetime import date
+
+    ids = khan_card.create_course(
+        db, student, subject="math", course="Exponents",
+        lessons=["A", "B"], minutes=30)["created"]
+    for i in ids:
+        db.set_lesson_status(i, "completed")
+    with pytest.raises(ValueError):
+        khan_card.schedule_unit(db, student, _course_id(db, ids[0]),
+                                start_day=date.today(), per_day=2)
+
+
+def _course_id(db, lesson_id):
+    return db.get_lesson(lesson_id)["metadata"]["khan_course_id"]
+
+
 def test_parse_course_outline_splits_units_and_lessons():
     text = (
         "Course: Algebra 1\n"

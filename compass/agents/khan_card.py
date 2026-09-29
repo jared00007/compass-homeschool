@@ -30,6 +30,7 @@ score, but "mastered this node" stays something the prerequisite graph decides.
 from __future__ import annotations
 
 import re
+from datetime import date, timedelta
 from typing import Any, Callable
 from uuid import uuid4
 
@@ -587,6 +588,50 @@ def assign_course_card(
             db.update_lesson_content(lesson_id, payload=payload)
     db.reschedule_lesson(lesson_id, day_iso)  # schedules + clears held_back
     return lesson_id
+
+
+def _next_school_day(day: date) -> date:
+    """`day` itself if it's a weekday, else the next Monday-Friday."""
+    while day.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
+        day += timedelta(days=1)
+    return day
+
+
+def schedule_unit(
+    db: Any,
+    student: dict[str, Any],
+    course_id: str,
+    *,
+    start_day: date,
+    per_day: int,
+    generate_quiz: bool = False,
+) -> dict[str, Any]:
+    """Lay a unit's remaining lessons onto the calendar, `per_day` per school day
+    (Mon-Fri), in lesson order, starting on `start_day`. One action instead of
+    assigning each card by hand. Skips weekends and cards already done/skipped.
+    Returns {"scheduled": n, "last_day": date, "days": k}."""
+    per_day = max(1, int(per_day))
+    cards = [
+        card
+        for card in db.list_lessons(student["id"], agent="khan", limit=500)
+        if (card.get("metadata") or {}).get("khan_course_id") == course_id
+        and card["status"] not in ("completed", "skipped")
+    ]
+    cards.sort(key=lambda c: (c.get("metadata") or {}).get("khan_part") or 0)
+    if not cards:
+        raise ValueError("This unit has no lessons left to schedule.")
+
+    day = _next_school_day(start_day)
+    placed_today = 0
+    days_used = 1
+    for card in cards:
+        if placed_today >= per_day:
+            day = _next_school_day(day + timedelta(days=1))
+            placed_today = 0
+            days_used += 1
+        assign_course_card(db, student, card["id"], day_iso=day.isoformat(), generate_quiz=generate_quiz)
+        placed_today += 1
+    return {"scheduled": len(cards), "last_day": day, "days": days_used}
 
 
 def course_summaries(db: Any, student_id: int) -> list[dict[str, Any]]:
