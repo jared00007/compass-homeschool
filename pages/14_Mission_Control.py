@@ -748,16 +748,38 @@ if mc_view == "review":
 if mc_view == "plan":
     plan_api_ok = api_status_banner()
 
-    # Two collapsible main-function containers, everything folded inside them
-    # (reported: "all containers in plan a lesson should collapse into its main
-    # function container -- plan a lesson and quick add"). Streamlit forbids
-    # nested expanders, so the sub-tools are plain sections here, not expanders.
+    # Three sibling containers, one per job, each collapsing on its own so the
+    # screen stays scannable (reported: "organize that plan a lesson screen, its a
+    # disaster. also move khan to top."). Streamlit forbids nested expanders, so
+    # inside each container the sub-tools are plain markdown sections, not
+    # expanders. Khan is the content backbone, so it leads and opens by default.
 
-    # ── Plan a lesson: the full AI lesson generator. ──
-    with st.expander("✍️ Plan a lesson", expanded=True):
+    # ── 🅰️ Khan Academy: load courses, schedule them, track them. ──
+    with st.expander("🅰️ Khan Academy — load & schedule courses", expanded=True):
+        # Time-sensitive parent action; renders nothing when no claims are pending.
+        render_khan_mastery_confirmations(db, student)
+
+        st.markdown("#### 📥 Load a course")
+        st.caption("Paste a whole course at once — its units and lessons become cards.")
+        render_khan_course_importer(db, student)
+
+        st.divider()
+        st.markdown("#### 📚 Your Khan units")
+        st.caption("Schedule a unit (or the whole load) across days, and spin off companions.")
+        render_khan_courses(db, student)
+
+        st.divider()
+        st.markdown("#### ➕ Other ways to add")
+        st.caption("Load a single unit, or paste loose lessons that aren't in a unit.")
+        render_khan_course_loader(db, student)
+        render_khan_card_form(db, student)
+
+    # ── ✍️ Write a Compass lesson: AI-written lessons, full or lightning-quick. ──
+    with st.expander("✍️ Write a Compass lesson"):
+        st.markdown("#### 📖 Full lesson — a topic as a multi-day series")
         st.caption(
-            "Pick a subject, choose the topic, and generate the whole thing as a series of "
-            "day-sized lessons that land in the **Board's Backlog** to assign."
+            "Pick a subject and topic; Compass writes day-sized lessons into the "
+            "**Board's Backlog** to assign."
         )
         _PLAN_SUBJECTS = {
             "math": "📐 Math", "science": "🔬 Science",
@@ -769,29 +791,16 @@ if mc_view == "plan":
         )
         render_subject_plan_panel(db, student, plan_subject, api_ok=plan_api_ok)
 
-    # ── Quick add: every fast content tool, grouped under one container. ──
-    with st.expander("⚡ Quick add"):
-        st.markdown("#### ⚡ Lightning lesson — a quick single-topic lesson")
+        st.divider()
+        st.markdown("#### ⚡ Lightning lesson — one quick single topic")
         render_lightning_lesson_panel(db, student)
 
         st.divider()
         st.markdown("#### 🔕 Refresh / Quiz-prep card — no XP")
         render_khan_review_card_form(db, student)
 
-        st.divider()
-        st.markdown("#### 🅰️ Khan Academy")
-        render_khan_mastery_confirmations(db, student)
-        st.markdown("**📥 Import a whole course** (many units at once)")
-        render_khan_course_importer(db, student)
-        st.markdown("**Or load one unit at a time**")
-        render_khan_course_loader(db, student)
-        st.markdown("**Your Khan units**")
-        render_khan_courses(db, student)
-        st.markdown("**Paste lessons without a unit**")
-        render_khan_card_form(db, student)
-
-        st.divider()
-        st.markdown("#### 🗓️ Balance the week")
+    # ── 🗓️ Balance the week: spread the backlog across days. ──
+    with st.expander("🗓️ Balance the week"):
         st.caption("Spread the backlog across days, capped per day.")
         render_week_planner(db, student)
 
