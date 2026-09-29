@@ -39,6 +39,34 @@ DEFAULT_INSTRUCTIONS = (
     "clear worked example, and a couple of quick practice questions."
 )
 
+# Which lesson-writing agent a Khan card's WA subject spins off through. The four
+# graded agents cover these; a Khan card in a subject not listed here (health,
+# art & music, occupational ed) has no writer to spin off from.
+_SUBJECT_TO_AGENT = {
+    "math": "math",
+    "science": "science",
+    "reading": "english", "writing": "english", "spelling": "english", "language": "english",
+    "history": "history", "social_studies": "history",
+}
+
+
+def agent_for_subject(subject: str) -> str | None:
+    """The lesson agent that can write a spin-off for a Khan card in `subject`,
+    or None when the subject has no writer (health, art & music, ...)."""
+    return _SUBJECT_TO_AGENT.get(subject)
+
+
+def spinoff_seed_prompt(skill: str) -> str:
+    """The editable prompt a Khan spin-off opens with -- seeded from the skill so
+    the companion lesson teaches exactly what he just practiced on Khan."""
+    skill = (skill or "the skill").strip()
+    return (
+        f"A companion to the Khan Academy skill “{skill}” he just practiced. "
+        "Teach it in Compass's own voice for an 8th grader: a brief clear explanation, "
+        "one worked example, and a couple of quick practice questions that go a little "
+        "deeper than rote drill."
+    )
+
 
 def generate_lightning_lesson(
     db: Any,
@@ -48,10 +76,13 @@ def generate_lightning_lesson(
     topic: str,
     instructions: str = "",
     minutes: int = 15,
+    link: dict[str, Any] | None = None,
 ) -> GeneratedLesson:
     """Write one short lesson on `topic` in `agent_key`'s subject, using the
     parent's editable `instructions`. Lands in the Backlog like any generated
-    lesson. Raises ValueError for an unknown subject or an empty topic."""
+    lesson. `link`, when given, is stored on the lesson's metadata (used to record
+    that a lesson was spun off from a Khan skill). Raises ValueError for an unknown
+    subject or an empty topic."""
     if agent_key not in LIGHTNING_AGENTS:
         raise ValueError(f"'{agent_key}' isn't a lightning-lesson subject.")
     topic = (topic or "").strip()
@@ -67,12 +98,15 @@ def generate_lightning_lesson(
     guidance = LIGHTNING_GUIDANCE
     if instructions:
         guidance += "\n\nParent's instructions for this one: " + instructions
+    metadata: dict[str, Any] = {"lightning": True}
+    if link:
+        metadata["spun_off_from"] = dict(link)
     proposal = TopicProposal(
         topic=topic,
         rationale="Parent asked for a quick lightning lesson on this topic.",
         strategy="parent_lightning",
         guidance=guidance,
-        metadata={"lightning": True},
+        metadata=metadata,
     )
     # target_days=1 skips the multi-day planner and writes the whole topic as one
     # short lesson.

@@ -78,3 +78,27 @@ def test_rejects_a_bad_subject_or_empty_topic(db, student):
         lightning.generate_lightning_lesson(db, student, "art_music", topic="Color")
     with pytest.raises(ValueError):
         lightning.generate_lightning_lesson(db, student, "math", topic="   ")
+
+
+def test_agent_for_subject_maps_khan_subjects_to_writers():
+    assert lightning.agent_for_subject("math") == "math"
+    assert lightning.agent_for_subject("reading") == "english"
+    assert lightning.agent_for_subject("social_studies") == "history"
+    assert lightning.agent_for_subject("health") is None          # no writer -> no spin-off
+
+
+def test_spinoff_seed_prompt_names_the_skill():
+    seed = lightning.spinoff_seed_prompt("Negative exponents")
+    assert "Negative exponents" in seed and "companion" in seed.lower()
+
+
+def test_a_spin_off_lesson_links_back_to_its_khan_skill(db, student):
+    link = {"khan_lesson_id": 42, "skill": "Negative exponents", "unit": "Exponents", "course_id": "kc1"}
+    with patch("compass.agents.framework.generate_lesson", side_effect=lambda **k: _payload()):
+        result = lightning.generate_lightning_lesson(
+            db, student, "math", topic="Negative exponents",
+            instructions="Companion to his Khan practice.", link=link,
+        )
+    meta = db.get_lesson(result.lesson_id)["metadata"]
+    assert meta.get("lightning") is True
+    assert meta.get("spun_off_from") == link          # the layer is trackable

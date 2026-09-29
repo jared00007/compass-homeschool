@@ -4502,8 +4502,9 @@ def render_khan_course_loader(db: Database, student: dict[str, Any]) -> None:
 def render_khan_courses(db: Database, student: dict[str, Any]) -> None:
     """Parent-facing: your loaded Khan units. For each, the ordered lesson list
     with progress, and a form to assign the *next* unassigned card to a day (its
-    quiz is generated then). Assign them out until the unit is done."""
-    from compass.agents import LessonGenerationError, api_available, khan_card
+    quiz is generated then). Assign them out until the unit is done. Each unit
+    can also spin off a Compass companion lesson from any of its skills."""
+    from compass.agents import LessonGenerationError, api_available, khan_card, lightning
 
     summaries = khan_card.course_summaries(db, student["id"])
     if not summaries:
@@ -4534,6 +4535,55 @@ def render_khan_courses(db: Database, student: dict[str, Any]) -> None:
                     state = f"📅 {planned}" if planned else "📤 assigned"
                 lines.append(f"{part}. {md(topic)} — *{state}*")
             st.markdown("\n".join(f"- {line}" for line in lines))
+
+            # ✨ Spin off a Compass companion lesson from any skill in this unit:
+            # Khan runs the practice, Compass layers a taught lesson on the same
+            # skill. Reuses the Lightning generator, seeded from the skill and
+            # editable, and links the result back to its Khan card.
+            spin_agent = lightning.agent_for_subject(course["subject"])
+            skills = [c.get("topic") or "" for c in course["cards"]]
+            if spin_agent and skills:
+                st.markdown("**✨ Spin off a Compass lesson**")
+                pick = st.selectbox(
+                    "Spin off from which skill?",
+                    range(len(skills)),
+                    format_func=lambda i: f"{i + 1}. {md(skills[i])}",
+                    key=f"spinoff_pick_{cid}", label_visibility="collapsed",
+                )
+                if not isinstance(pick, int):
+                    pick = 0  # no selection yet (or a non-live render)
+                prompt = st.text_area(
+                    "Prompt — edit to steer it",
+                    value=lightning.spinoff_seed_prompt(skills[pick]),
+                    key=f"spinoff_prompt_{cid}_{pick}", height=90,
+                )
+                if st.button(
+                    "✨ Generate companion lesson", key=f"spinoff_btn_{cid}",
+                    disabled=not api_ok,
+                ):
+                    source = course["cards"][pick]
+                    try:
+                        with st.spinner("Writing a companion lesson…"):
+                            lightning.generate_lightning_lesson(
+                                db, student, spin_agent, topic=skills[pick],
+                                instructions=prompt,
+                                link={
+                                    "khan_lesson_id": source["id"],
+                                    "skill": skills[pick],
+                                    "unit": course["course"],
+                                    "course_id": cid,
+                                },
+                            )
+                    except (LessonGenerationError, ValueError) as exc:
+                        st.error(str(exc))
+                    else:
+                        st.success(
+                            f"✨ Spun off a Compass lesson from “{md(skills[pick])}” "
+                            "into the Backlog."
+                        )
+                        st.rerun()
+                if not api_ok:
+                    st.caption(f"⚠️ Generation unavailable: {api_msg}")
 
             nxt = course["next_unassigned"]
             if nxt is None:
