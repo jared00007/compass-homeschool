@@ -4511,17 +4511,59 @@ def render_khan_courses(db: Database, student: dict[str, Any]) -> None:
         st.caption("No Khan units loaded yet — load one above to assign it out.")
         return
     api_ok, api_msg = api_available()
+
+    # Which Khan cards already have a Compass spin-off pointing back at them --
+    # the "second layer" made visible (a ✨ on the skill). One scan for the whole
+    # manager rather than per-unit.
+    spun_off_ids: set[int] = set()
+    for lesson in db.list_lessons(student["id"], limit=500):
+        source = (lesson.get("metadata") or {}).get("spun_off_from") or {}
+        if source.get("khan_lesson_id"):
+            spun_off_ids.add(source["khan_lesson_id"])
+
+    # 📅 Book the whole load: schedule EVERY loaded unit's remaining lessons
+    # across school days at one pace, in one click.
+    with st.form("khan_schedule_all", clear_on_submit=False):
+        st.caption("📅 Schedule ALL units at once")
+        all_cols = st.columns(2)
+        all_start = all_cols[0].date_input(
+            "Start day", value=date.today(), key="khan_sched_all_start"
+        )
+        all_per_day = all_cols[1].number_input(
+            "Lessons per day", min_value=1, max_value=8, value=2, key="khan_sched_all_perday"
+        )
+        book_all = st.form_submit_button("📅 Schedule everything", width="stretch")
+    if book_all:
+        try:
+            done_all = khan_card.schedule_all_units(
+                db, student, start_day=all_start, per_day=int(all_per_day)
+            )
+        except ValueError as exc:
+            st.error(str(exc))
+        else:
+            st.success(
+                f"📅 Scheduled {done_all['scheduled']} lessons across "
+                f"{done_all['units']} units and {done_all['days']} days, through "
+                f"{done_all['last_day'].strftime('%a %b %-d')}."
+            )
+            st.rerun()
+
     for course in summaries:
         cid = course["course_id"]
         subject_label = subjects.label(course["subject"])
         done, total = course["done"], course["total"]
+        spun_here = sum(1 for c in course["cards"] if c["id"] in spun_off_ids)
         with st.container(border=True):
-            st.markdown(f"**📋 {md(course['course'])}** · {subject_label}")
+            header = f"**📋 {md(course['course'])}** · {subject_label}"
+            if spun_here:
+                header += f" · ✨ {spun_here}"
+            st.markdown(header)
             st.progress(
                 (done / total) if total else 0.0,
                 text=f"{done} of {total} done · {course['unassigned']} left to assign",
             )
-            # The ordered lesson list, with each card's state at a glance.
+            # The ordered lesson list, with each card's state at a glance and a
+            # ✨ on any skill that already has a Compass spin-off.
             lines = []
             for card in course["cards"]:
                 part = (card.get("metadata") or {}).get("khan_part")
@@ -4533,7 +4575,8 @@ def render_khan_courses(db: Database, student: dict[str, Any]) -> None:
                 else:
                     planned = (card.get("metadata") or {}).get("planned_for") or ""
                     state = f"📅 {planned}" if planned else "📤 assigned"
-                lines.append(f"{part}. {md(topic)} — *{state}*")
+                spark = " ✨" if card["id"] in spun_off_ids else ""
+                lines.append(f"{part}. {md(topic)} — *{state}*{spark}")
             st.markdown("\n".join(f"- {line}" for line in lines))
 
             # 📅 Schedule the whole unit at a pace, instead of one card at a time:

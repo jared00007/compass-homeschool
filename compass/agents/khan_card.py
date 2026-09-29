@@ -634,6 +634,47 @@ def schedule_unit(
     return {"scheduled": len(cards), "last_day": day, "days": days_used}
 
 
+def schedule_all_units(
+    db: Any,
+    student: dict[str, Any],
+    *,
+    start_day: date,
+    per_day: int,
+    generate_quiz: bool = False,
+) -> dict[str, Any]:
+    """Lay EVERY loaded unit's remaining lessons onto the calendar back-to-back,
+    `per_day` per school day, in unit-then-lesson order (oldest unit first) --
+    the 'book the whole load' action. One continuous day cursor flows across
+    units, so day 1 fills before day 2. Returns
+    {"scheduled": n, "units": u, "last_day": date, "days": k}."""
+    per_day = max(1, int(per_day))
+    summaries = course_summaries(db, student["id"])  # newest unit first
+    ordered_cards: list[dict[str, Any]] = []
+    for unit in reversed(summaries):  # oldest unit first, so it takes the early days
+        cards = [c for c in unit["cards"] if c["status"] not in ("completed", "skipped")]
+        cards.sort(key=lambda c: (c.get("metadata") or {}).get("khan_part") or 0)
+        ordered_cards.extend(cards)
+    if not ordered_cards:
+        raise ValueError("No Khan lessons left to schedule.")
+
+    day = _next_school_day(start_day)
+    placed_today = 0
+    days_used = 1
+    for card in ordered_cards:
+        if placed_today >= per_day:
+            day = _next_school_day(day + timedelta(days=1))
+            placed_today = 0
+            days_used += 1
+        assign_course_card(db, student, card["id"], day_iso=day.isoformat(), generate_quiz=generate_quiz)
+        placed_today += 1
+    return {
+        "scheduled": len(ordered_cards),
+        "units": len(summaries),
+        "last_day": day,
+        "days": days_used,
+    }
+
+
 def course_summaries(db: Any, student_id: int) -> list[dict[str, Any]]:
     """A student's Khan courses, grouped by course id with progress -- the data
     behind the Backlog course manager. Newest course first. Each carries the

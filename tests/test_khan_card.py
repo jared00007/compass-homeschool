@@ -351,6 +351,46 @@ def test_schedule_unit_skips_done_cards_and_errors_when_empty(db, student):
                                 start_day=date.today(), per_day=2)
 
 
+def test_schedule_all_units_chains_every_unit_back_to_back(db, student):
+    from datetime import date, timedelta
+
+    # Two units loaded oldest-first: the earlier unit should take the early days.
+    first = khan_card.create_course(
+        db, student, subject="math", course="Exponents",
+        lessons=["A", "B", "C"], minutes=30)["created"]
+    second = khan_card.create_course(
+        db, student, subject="math", course="Polynomials",
+        lessons=["D", "E"], minutes=30)["created"]
+
+    monday = date(2026, 10, 5)  # a Monday
+    assert monday.weekday() == 0
+    result = khan_card.schedule_all_units(db, student, start_day=monday, per_day=2)
+
+    assert result["scheduled"] == 5
+    assert result["units"] == 2
+    day_of = lambda i: db.get_lesson(i)["metadata"]["planned_for"]
+    tuesday = (monday + timedelta(days=1)).isoformat()
+    wednesday = (monday + timedelta(days=2)).isoformat()
+    # Unit 1 (oldest) flows first: A,B on Mon; C then unit-2's D on Tue; E on Wed.
+    assert day_of(first[0]) == monday.isoformat()
+    assert day_of(first[1]) == monday.isoformat()
+    assert day_of(first[2]) == tuesday
+    assert day_of(second[0]) == tuesday
+    assert day_of(second[1]) == wednesday
+
+
+def test_schedule_all_units_errors_when_nothing_is_left(db, student):
+    from datetime import date
+
+    ids = khan_card.create_course(
+        db, student, subject="math", course="Exponents",
+        lessons=["A", "B"], minutes=30)["created"]
+    for i in ids:
+        db.set_lesson_status(i, "completed")
+    with pytest.raises(ValueError):
+        khan_card.schedule_all_units(db, student, start_day=date.today(), per_day=2)
+
+
 def _course_id(db, lesson_id):
     return db.get_lesson(lesson_id)["metadata"]["khan_course_id"]
 
