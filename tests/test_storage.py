@@ -56,6 +56,32 @@ def test_migrate_is_idempotent(tmp_path):
     second.close()
 
 
+def test_migrate_rewrites_old_checkpoint_green_check(db, student):
+    """Khan checkpoint cards created before the icon change baked a ✅ into their
+    stored title/payload; the migration rewrites those to 📝 (and is idempotent)."""
+    from compass.agents import khan_card
+
+    khan_card.create_course_from_outline(
+        db, student, subject="math", minutes=30,
+        text="Unit: U\nLesson: A\nU: Quiz 1 - Quiz · 5 questions\n",
+    )
+    chk = [c for c in db.list_lessons(student["id"], agent="khan")
+           if (c.get("metadata") or {}).get("khan_checkpoint")][0]
+    # Simulate old data: force the green check back into title + payload.
+    db.conn.execute(
+        "UPDATE lessons SET title = REPLACE(title, '📝', '✅'), "
+        "payload = REPLACE(payload, '📝', '✅') WHERE id = ?", (chk["id"],)
+    )
+    db.conn.commit()
+    db._migrate_khan_checkpoint_icon()
+    fixed = db.get_lesson(chk["id"])
+    assert "✅" not in fixed["title"] and "📝" in fixed["title"]
+    assert "✅" not in fixed["payload"]["overview"]
+    # Idempotent: a second run changes nothing.
+    db._migrate_khan_checkpoint_icon()
+    assert db.get_lesson(chk["id"])["title"] == fixed["title"]
+
+
 def test_migrate_carries_old_park_visits_into_travel_entries(db, student):
     """park_visits (park-only, no story) predates the state-first travel
     journal -- a family already running the old tracker has real rows in it

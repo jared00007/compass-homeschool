@@ -1599,7 +1599,27 @@ class Database:
         self.conn.commit()
         self._reconcile_stale_math_mastery()
         self._migrate_grade_weights_two_surface()
+        self._migrate_khan_checkpoint_icon()
         self._prune_retired_seed_rewards()
+
+    def _migrate_khan_checkpoint_icon(self) -> None:
+        """One-time: Khan checkpoint (quiz / unit test) cards created before the
+        icon change baked a ✅ into their stored title/payload, which read as a
+        completion check. Rewrite those to 📝. Idempotent -- only rows still
+        holding a ✅ are touched, so it's a no-op once clean."""
+        self.conn.execute(
+            "UPDATE lessons SET title = REPLACE(title, '✅', '📝') "
+            "WHERE agent = 'khan' "
+            "AND json_extract(metadata, '$.khan_checkpoint') = 1 "
+            "AND title LIKE '%✅%'"
+        )
+        self.conn.execute(
+            "UPDATE lessons SET payload = REPLACE(payload, '✅', '📝') "
+            "WHERE agent = 'khan' "
+            "AND json_extract(metadata, '$.khan_checkpoint') = 1 "
+            "AND payload LIKE '%✅%'"
+        )
+        self.conn.commit()
 
     def _migrate_grade_weights_two_surface(self) -> None:
         """One-time, flag-guarded: collapse any stored four-lane grade weights
