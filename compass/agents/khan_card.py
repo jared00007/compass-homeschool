@@ -217,11 +217,13 @@ def build_khan_card_payload(
     quiz: list[dict[str, Any]] | None = None,
     note: str = "",
     course: str = "",
+    items: list[str] | None = None,
 ) -> dict[str, Any]:
     """The ordinary-lesson payload for a Khan card -- pure, no model call, so the
     shape is unit-testable on its own. Renders through render_lesson + render_quiz
     exactly like any other lesson. When the card came from a loaded course, pass
-    `course` so the course name is stated on the card itself."""
+    `course` so the course name is stated on the card itself. `items` (the Khan
+    lesson's videos/exercises) render as a checklist of what to do on Khan."""
     credit_subject = subject_key
     subject_label = subjects.label(credit_subject)
     unit = unit.strip()
@@ -236,6 +238,7 @@ def build_khan_card_payload(
     # opens the link, does the skill on Khan, takes the quiz, and turns it in;
     # the quiz is what scores it. No graded activity, so the parent's review is
     # one tap (see review._render_khan_review).
+    items = [str(i).strip() for i in (items or []) if str(i).strip()]
     course_line = f"📚 **Unit:** {course}\n\n" if course else ""
     overview = (
         f"{course_line}"
@@ -244,6 +247,9 @@ def build_khan_card_payload(
         f"Work the skill all the way through over there, then come back and take "
         f"the quick quiz below to lock it in and turn it in."
     )
+    if items:
+        checklist = "\n".join(f"- {item}" for item in items)
+        overview += f"\n\n**On Khan, work through:**\n{checklist}"
     if note.strip():
         overview += f"\n\n**From your parent:** {note.strip()}"
 
@@ -402,7 +408,7 @@ def create_course(
     *,
     subject: str,
     course: str,
-    lessons: list[str],
+    lessons: list[Any],
     minutes: int,
     generate_quiz: bool = False,
     on_progress: Callable[[int, int, str | None], None] | None = None,
@@ -410,6 +416,10 @@ def create_course(
     """Load a whole Khan course from an ordered lesson list -- one card per
     lesson, numbered in order ("1. …", "2. …"), all tagged with a shared course
     id and parked in the Backlog to assign out day by day.
+
+    Each entry in ``lessons`` is either a plain name (``str``) or a
+    ``{"name": str, "items": [str]}`` dict, where ``items`` is the Khan lesson's
+    videos/exercises -- shown on the card as a checklist of what to do on Khan.
 
     Quizzes are normally generated when a card is *assigned* (assign_course_card),
     so this defaults to no quiz -- pass generate_quiz=True to build them all up
@@ -419,35 +429,49 @@ def create_course(
     course = course.strip()
     if not course:
         raise ValueError("Name the course.")
-    lessons = [lesson.strip() for lesson in lessons if lesson.strip()]
-    if not lessons:
+    normalized: list[dict[str, Any]] = []
+    for entry in lessons:
+        if isinstance(entry, dict):
+            name = str(entry.get("name") or "").strip()
+            items = [str(i).strip() for i in (entry.get("items") or []) if str(i).strip()]
+        else:
+            name, items = str(entry).strip(), []
+        if name:
+            normalized.append({"name": name, "items": items})
+    if not normalized:
         raise ValueError("Enter at least one lesson (one per line).")
-    lessons = lessons[:100]  # a sane cap so a paste-gone-wrong can't create thousands
+    normalized = normalized[:100]  # a sane cap so a paste-gone-wrong can't create thousands
     url = khan_base_url(db)
     course_id = f"khancourse-{uuid4().hex[:8]}"
-    total = len(lessons)
+    total = len(normalized)
     result: dict[str, list[Any]] = {"created": [], "quiz_failed": []}
-    for index, lesson in enumerate(lessons, start=1):
+    for index, lesson in enumerate(normalized, start=1):
+        name, items = lesson["name"], lesson["items"]
         if on_progress is not None:
-            on_progress(index - 1, total, lesson)
+            on_progress(index - 1, total, name)
         quiz = None
         if generate_quiz:
             try:
-                quiz = generate_khan_quiz(student, subject, lesson)
+                quiz = generate_khan_quiz(student, subject, name)
             except LessonGenerationError:
-                result["quiz_failed"].append(lesson)
-        payload = build_khan_card_payload(subject, lesson, url, minutes, quiz=quiz, course=course)
-        payload["title"] = f"{index}. {lesson}"  # numbered so the order reads at a glance
+                result["quiz_failed"].append(name)
+        payload = build_khan_card_payload(
+            subject, name, url, minutes, quiz=quiz, course=course, items=items
+        )
+        payload["title"] = f"{index}. {name}"  # numbered so the order reads at a glance
+        metadata: dict[str, Any] = {
+            "source": "khan", "resource_url": url,
+            "khan_course": course, "khan_course_id": course_id,
+            "khan_part": index, "khan_course_total": total, "held_back": True,
+        }
+        if items:
+            metadata["khan_items"] = items
         lesson_id = db.save_lesson(
             student_id=student["id"], agent=AGENT_KEY, subject=subject,
-            topic=lesson, title=f"{index}. {lesson}",
+            topic=name, title=f"{index}. {name}",
             payload=payload, strategy="parent_khan_course",
             rationale="Parent loaded a Khan course as an ordered lesson list.",
-            metadata={
-                "source": "khan", "resource_url": url,
-                "khan_course": course, "khan_course_id": course_id,
-                "khan_part": index, "khan_course_total": total, "held_back": True,
-            },
+            metadata=metadata,
         )
         result["created"].append(lesson_id)
     if on_progress is not None:
@@ -460,10 +484,17 @@ def create_course(
 _COURSE_LINE_RE = re.compile(r"^\s*course\s*[:\-]\s*(.+)$", re.I)
 # "Unit 3: Polynomials", "Unit: Exponents", "## Unit 2 — Radicals" ...
 _UNIT_LINE_RE = re.compile(r"^\s*#{0,6}\s*unit\b[ \t]*\d*[ \t]*[:\-.—]?[ \t]*(.*)$", re.I)
+# "Lesson: Repeating decimals" -- Khan's grouping *inside* a unit. Each becomes
+# one card; the video/exercise lines under it become that card's checklist.
+_LESSON_LINE_RE = re.compile(r"^\s*#{0,6}\s*lesson\b[ \t]*\d*[ \t]*[:\-.]?[ \t]*(.*)$", re.I)
 # A markdown header that isn't a "Unit" line -> also a unit boundary.
 _MD_HEADER_RE = re.compile(r"^\s*#{1,6}[ \t]+(.+)$")
 # A leading bullet or numbering on a lesson line, stripped before storing.
 _BULLET_RE = re.compile(r"^\s*(?:[-*•·–—]|\d+[.)])[ \t]+")
+# Khan's own cumulative checks -- a "... Quiz · N questions" row or a unit test /
+# course challenge. Dropped: Compass makes its own quiz on demand, so these
+# aren't cards. Matches anywhere in the line (they're prefixed with the unit name).
+_KHAN_TEST_LINE_RE = re.compile(r"\bquiz\b[^\n]*·|\bunit\s+test\b|\bcourse\s+challenge\b", re.I)
 # Khan course-page chrome to drop -- whole-line matches only, so a real lesson
 # that merely contains one of these words (e.g. "Review of exponents") survives.
 _NOISE_LINE_RE = re.compile(
@@ -483,22 +514,39 @@ _NOISE_LINE_RE = re.compile(
 
 
 def parse_course_outline(text: str) -> dict[str, Any]:
-    """Parse a pasted Khan course outline into ``{course, units}`` where each
-    unit is ``{"unit": name, "lessons": [str, ...]}``.
+    """Parse a pasted Khan course/unit outline into ``{course, units}`` where each
+    unit is ``{"unit": name, "lessons": [{"name": str, "items": [str]}, ...]}``.
 
-    Unit boundaries are "Unit ..." lines (or markdown ``#`` headers); an optional
-    "Course: ..." line at the top names the course. Every other line is a lesson
-    under the current unit, with Khan-page chrome (Quiz, Unit test, Practice,
-    mastery %, ...) skipped. Lessons that appear before the first unit fall under
-    a default unit named after the course. Empty units are dropped."""
+    Khan's real shape is Unit → Lesson → (videos / exercises). Each ``Lesson:``
+    line becomes one card and the video/exercise lines under it become that card's
+    checklist (``items``). A unit with **no** ``Lesson:`` markers falls back to the
+    flat style — every content line under it is its own name-only card — so an
+    older simple paste still works.
+
+    An optional "Course: ..." line at the top names the course; unit boundaries are
+    "Unit ..." lines or markdown ``#`` headers. Khan's own quizzes, unit tests, and
+    page chrome (Practice, Learn, mastery %, ...) are dropped. Empty units and
+    lessons are dropped."""
     course = ""
     units: list[dict[str, Any]] = []
-    current: dict[str, Any] | None = None
+    current_unit: dict[str, Any] | None = None
+    current_lesson: dict[str, Any] | None = None
+    lesson_is_explicit = False  # was the current lesson opened by a "Lesson:" line?
 
     def _start_unit(name: str) -> None:
-        nonlocal current
-        current = {"unit": name.strip() or f"Unit {len(units) + 1}", "lessons": []}
-        units.append(current)
+        nonlocal current_unit, current_lesson, lesson_is_explicit
+        current_unit = {"unit": name.strip() or f"Unit {len(units) + 1}", "lessons": []}
+        current_lesson = None
+        lesson_is_explicit = False
+        units.append(current_unit)
+
+    def _start_lesson(name: str, *, explicit: bool) -> None:
+        nonlocal current_lesson, lesson_is_explicit
+        if current_unit is None:
+            _start_unit(course or "Unit 1")
+        current_lesson = {"name": name.strip(), "items": []}
+        lesson_is_explicit = explicit
+        current_unit["lessons"].append(current_lesson)
 
     for raw in (text or "").splitlines():
         line = raw.strip()
@@ -509,21 +557,39 @@ def parse_course_outline(text: str) -> dict[str, Any]:
             course = course_match.group(1).strip()
             continue
         stripped = _BULLET_RE.sub("", line).strip()
+        if not stripped:
+            continue
+        if _KHAN_TEST_LINE_RE.search(stripped):
+            continue  # Khan's own quiz / unit test / course challenge
         if _NOISE_LINE_RE.match(stripped):
-            continue  # Khan chrome -- checked before "Unit ..." so "Unit test" drops
+            continue  # other Khan page chrome
         unit_match = _UNIT_LINE_RE.match(line)
         if unit_match is not None:
             _start_unit(unit_match.group(1))
+            continue
+        lesson_match = _LESSON_LINE_RE.match(line)
+        if lesson_match is not None:
+            name = lesson_match.group(1).strip()
+            if name:
+                _start_lesson(name, explicit=True)
             continue
         header_match = _MD_HEADER_RE.match(line)
         if header_match is not None:
             _start_unit(header_match.group(1))
             continue
-        if current is None:
-            _start_unit(course or "Unit 1")
-        current["lessons"].append(stripped)
+        # A normal content line. Under an explicit "Lesson:" it's a checklist item;
+        # otherwise (flat paste) it's its own name-only card.
+        if current_lesson is not None and lesson_is_explicit:
+            current_lesson["items"].append(stripped)
+        else:
+            _start_lesson(stripped, explicit=False)
 
-    return {"course": course, "units": [u for u in units if u["lessons"]]}
+    clean_units: list[dict[str, Any]] = []
+    for unit in units:
+        lessons = [l for l in unit["lessons"] if l["name"] or l["items"]]
+        if lessons:
+            clean_units.append({"unit": unit["unit"], "lessons": lessons})
+    return {"course": course, "units": clean_units}
 
 
 def create_course_from_outline(

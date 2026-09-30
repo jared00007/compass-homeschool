@@ -453,8 +453,55 @@ def test_parse_course_outline_splits_units_and_lessons():
     parsed = khan_card.parse_course_outline(text)
     assert parsed["course"] == "Algebra 1"
     assert [u["unit"] for u in parsed["units"]] == ["Exponents & radicals", "Polynomials"]
-    assert parsed["units"][0]["lessons"] == ["Multiplying & dividing powers", "Negative exponents"]
-    assert parsed["units"][1]["lessons"] == ["Adding polynomials", "Multiplying binomials"]
+    # No "Lesson:" markers -> flat style: each line is its own name-only card.
+    assert [l["name"] for l in parsed["units"][0]["lessons"]] == [
+        "Multiplying & dividing powers", "Negative exponents"]
+    assert [l["name"] for l in parsed["units"][1]["lessons"]] == [
+        "Adding polynomials", "Multiplying binomials"]
+    assert all(l["items"] == [] for u in parsed["units"] for l in u["lessons"])
+
+
+def test_parse_course_outline_groups_lessons_with_their_items():
+    """Khan's real Unit -> Lesson -> items shape: each 'Lesson:' is one card and
+    the videos/exercises under it become that card's checklist. Quizzes and the
+    unit test are dropped."""
+    text = (
+        "Unit: Numbers and operations\n"
+        "Lesson: Repeating decimals\n"
+        "Converting a fraction to a repeating decimal - Video · 4 minutes\n"
+        "Writing fractions as repeating decimals - Exercise · 4 questions\n"
+        "Lesson: Square roots & cube roots\n"
+        "Intro to square roots - Video · 5 minutes\n"
+        "Square roots - Exercise · 4 questions\n"
+        "Numbers and operations: Quiz 1 - Quiz · 6 questions\n"
+        "Numbers and operations: Unit test\n"
+    )
+    parsed = khan_card.parse_course_outline(text)
+    lessons = parsed["units"][0]["lessons"]
+    assert [l["name"] for l in lessons] == ["Repeating decimals", "Square roots & cube roots"]
+    assert len(lessons[0]["items"]) == 2 and len(lessons[1]["items"]) == 2
+    assert "Intro to square roots - Video · 5 minutes" in lessons[1]["items"]
+    # Neither the quiz row nor the unit test became a card or an item.
+    all_text = str(parsed)
+    assert "Quiz 1" not in all_text and "Unit test" not in all_text
+
+
+def test_a_lesson_cards_checklist_shows_on_the_card(db, student):
+    khan_card.create_course_from_outline(
+        db, student, subject="math", minutes=30, text=(
+            "Unit: Numbers and operations\n"
+            "Lesson: Square roots & cube roots\n"
+            "Intro to square roots - Video · 5 minutes\n"
+            "Square roots - Exercise · 4 questions\n"
+        ),
+    )
+    card = db.list_lessons(student["id"], agent="khan")[0]
+    assert card["metadata"]["khan_items"] == [
+        "Intro to square roots - Video · 5 minutes",
+        "Square roots - Exercise · 4 questions",
+    ]
+    assert "On Khan, work through:" in card["payload"]["overview"]
+    assert "Intro to square roots" in card["payload"]["overview"]
 
 
 def test_parse_course_outline_skips_khan_page_chrome():
@@ -470,7 +517,8 @@ def test_parse_course_outline_skips_khan_page_chrome():
     parsed = khan_card.parse_course_outline(text)
     assert len(parsed["units"]) == 1
     # Chrome dropped; the two real lessons kept. "Unit test" did NOT start a unit.
-    assert parsed["units"][0]["lessons"] == ["Multiplying powers", "Negative exponents"]
+    assert [l["name"] for l in parsed["units"][0]["lessons"]] == [
+        "Multiplying powers", "Negative exponents"]
 
 
 def test_create_course_from_outline_loads_every_unit(db, student):

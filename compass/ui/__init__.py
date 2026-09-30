@@ -4335,10 +4335,11 @@ def render_khan_course_importer(db: Database, student: dict[str, Any]) -> None:
 
     subject_labels = {k: v for k, v in khan_card.KHAN_SUBJECTS}
     st.caption(
-        "Paste a whole course at once instead of a unit at a time. Start units with "
-        "**Unit:** lines and list each unit's lessons under it (an optional **Course:** "
-        "line names it). Preview first, then load — Khan chrome like *Quiz*, *Unit test*, "
-        "*Practice* and mastery %s is skipped automatically."
+        "Paste straight from a Khan course page. Mark units with **Unit:** lines and "
+        "lessons with **Lesson:** lines — each lesson becomes ONE card, and the videos/"
+        "exercises under it become that card's checklist. (No *Lesson:* lines? Every line "
+        "is its own card.) Khan's own *Quiz*, *Unit test*, *Practice* and mastery %s are "
+        "skipped automatically. Preview first, then load."
     )
     with st.form("khan_course_import_form", clear_on_submit=False):
         cols = st.columns(2)
@@ -4354,13 +4355,13 @@ def render_khan_course_importer(db: Database, student: dict[str, Any]) -> None:
         text = st.text_area(
             "Paste the course outline", key="khan_import_text", height=240,
             placeholder=(
-                "Course: Algebra 1\n"
-                "Unit: Exponents & radicals\n"
-                "Multiplying & dividing powers\n"
-                "Negative exponents\n"
-                "Unit: Polynomials\n"
-                "Adding & subtracting polynomials\n"
-                "Multiplying binomials"
+                "Unit: Numbers and operations\n"
+                "Lesson: Repeating decimals\n"
+                "Converting a fraction to a repeating decimal - Video · 4 minutes\n"
+                "Writing fractions as repeating decimals - Exercise · 4 questions\n"
+                "Lesson: Square roots & cube roots\n"
+                "Intro to square roots - Video · 5 minutes\n"
+                "Square roots - Exercise · 4 questions"
             ),
         )
         preview = st.form_submit_button("👁️ Preview what will load", width="stretch")
