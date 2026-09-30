@@ -84,13 +84,6 @@ def test_generation_usage_is_lifted_off_the_question_to_the_top():
 # --- parsing a pasted list -----------------------------------------------------
 
 
-def test_parse_units_trims_bullets_and_numbers_and_blanks():
-    text = "  Unit one\n- Exponents\n2. Negative exponents\n\n• Powers of products\n   \n"
-    assert khan_card.parse_units(text) == [
-        "Unit one", "Exponents", "Negative exponents", "Powers of products",
-    ]
-
-
 # --- creating + scheduling -----------------------------------------------------
 
 
@@ -147,37 +140,6 @@ def test_url_defaults_to_the_saved_khan_link(db, student):
 
 
 # --- bulk create ---------------------------------------------------------------
-
-
-def test_bulk_create_makes_a_card_per_unit(db, student):
-    units = ["Exponents", "Negative exponents", "Powers of products"]
-    result = khan_card.create_khan_cards(
-        db, student, subject="math", units=units, minutes=35,
-        day_iso=date.today().isoformat(), generate_quiz=False,
-    )
-    assert len(result["created"]) == 3
-    assert result["quiz_failed"] == []
-    titles = {db.get_lesson(i)["payload"]["title"] for i in result["created"]}
-    assert titles == {f"Khan Academy: {u}" for u in units}
-
-
-def test_bulk_create_survives_a_quiz_failure(db, student, monkeypatch):
-    """A single quiz-generation hiccup doesn't sink the batch -- that card is
-    added without a quiz and named in quiz_failed."""
-    from compass.agents.llm import LessonGenerationError
-
-    def boom(*a, **k):
-        raise LessonGenerationError("model blip")
-
-    monkeypatch.setattr(khan_card, "generate_khan_quiz", boom)
-    result = khan_card.create_khan_cards(
-        db, student, subject="math", units=["A", "B"], minutes=35,
-        day_iso=date.today().isoformat(), generate_quiz=True,
-    )
-    assert len(result["created"]) == 2          # both still created
-    assert result["quiz_failed"] == ["A", "B"]  # neither got a quiz
-    for lid in result["created"]:
-        assert db.get_lesson(lid)["payload"]["quiz"] == []
 
 
 # --- the quiz generation path (no real API) ------------------------------------

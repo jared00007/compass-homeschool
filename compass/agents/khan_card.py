@@ -87,21 +87,6 @@ def default_minutes(subject_key: str) -> int:
     )
 
 
-_BULLET = re.compile(r"^\s*(?:[-*•·▪◦–—]|\d{1,3}[.)])\s+")
-
-
-def parse_units(text: str) -> list[str]:
-    """Split a pasted block into clean unit names -- one per line, blanks dropped,
-    and a leading bullet or number ('- ', '1. ', '• ') trimmed so a list copied
-    off a Khan course page comes in as tidy titles."""
-    units: list[str] = []
-    for line in (text or "").splitlines():
-        cleaned = _BULLET.sub("", line).strip()
-        if cleaned:
-            units.append(cleaned)
-    return units
-
-
 # Just the quiz -- the only thing a Khan card asks a model for. Same item shape
 # the app already grades everywhere, so nothing downstream needs to special-case
 # it.
@@ -417,52 +402,6 @@ def create_khan_card(
     if day_iso is not None:
         db.reschedule_lesson(lesson_id, day_iso)
     return lesson_id
-
-
-def create_khan_cards(
-    db: Any,
-    student: dict[str, Any],
-    *,
-    subject: str,
-    units: list[str],
-    minutes: int,
-    day_iso: str | None = None,
-    note: str = "",
-    generate_quiz: bool = True,
-    no_xp: bool = False,
-    on_progress: Callable[[int, int, str | None], None] | None = None,
-) -> dict[str, list[Any]]:
-    """Create a card for each unit in a pasted list -- the bulk path.
-
-    Resilient: if a card's quiz generation fails (an API hiccup on one of many),
-    the card is still created *without* a quiz rather than aborting the whole
-    batch, and its name is collected in `quiz_failed` so the parent can retry it.
-    `on_progress(done, total, current_unit)` is called before each card so the UI
-    can show a progress bar. `no_xp` marks every card in the batch a reminder /
-    review card that earns no XP. Returns {"created": [ids], "quiz_failed": [names]}.
-    """
-    result: dict[str, list[Any]] = {"created": [], "quiz_failed": []}
-    total = len(units)
-    for index, unit in enumerate(units):
-        if on_progress is not None:
-            on_progress(index, total, unit)
-        try:
-            lesson_id = create_khan_card(
-                db, student, subject=subject, unit=unit, minutes=minutes,
-                day_iso=day_iso, note=note, generate_quiz=generate_quiz, no_xp=no_xp,
-            )
-        except LessonGenerationError:
-            # The quiz call failed for this one -- add the card anyway, no quiz,
-            # so a single API hiccup doesn't sink the whole import.
-            lesson_id = create_khan_card(
-                db, student, subject=subject, unit=unit, minutes=minutes,
-                day_iso=day_iso, note=note, generate_quiz=False, no_xp=no_xp,
-            )
-            result["quiz_failed"].append(unit)
-        result["created"].append(lesson_id)
-    if on_progress is not None:
-        on_progress(total, total, None)
-    return result
 
 
 # --- course shells: load a whole course, fill & assign it out over time --------

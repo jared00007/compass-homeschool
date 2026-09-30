@@ -49,9 +49,7 @@ from compass.ui import (
     render_life_skill_review_card,
     render_day_target_editor,
     render_enrichment_generator,
-    render_khan_card_form,
     render_khan_course_importer,
-    render_khan_course_loader,
     render_khan_clear_control,
     render_khan_course_tracker,
     render_khan_courses,
@@ -788,9 +786,6 @@ if mc_view == "plan":
             st.markdown("**📊 Record a score by hand** (override, e.g. after the fact)")
             st.caption("Normally Landon logs his score and you approve it in Review.")
             render_khan_score_recorder(db, student)
-            st.markdown("**➕ Other ways to add** (single unit, or loose lessons)")
-            render_khan_course_loader(db, student)
-            render_khan_card_form(db, student)
 
     # ── ✍️ Write a Compass lesson: AI-written lessons, full or lightning-quick. ──
     with st.expander("✍️ Write a Compass lesson"):
