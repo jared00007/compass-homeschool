@@ -777,20 +777,20 @@ if mc_view == "plan":
         render_khan_courses(db, student)
 
         st.divider()
-        st.markdown("#### 📊 Record his real Khan scores")
-        st.caption("Khan holds the true scores/attempts — punch them in so they hit his grade.")
-        render_khan_score_recorder(db, student)
-
-        st.divider()
-        st.markdown("#### ➕ Other ways to add")
-        st.caption("Load a single unit, or paste loose lessons that aren't in a unit.")
-        render_khan_course_loader(db, student)
-        render_khan_card_form(db, student)
-
-        st.divider()
         st.markdown("#### 🧹 Start fresh")
         st.caption("Clear the board + backlog Khan cards so you can reload courses clean.")
         render_khan_clear_control(db, student)
+
+        # Secondary/override tools, tucked behind a toggle so the primary flow
+        # (load → track → schedule → reset) stays uncluttered.
+        st.divider()
+        if st.checkbox("⚙️ More Khan tools", key="khan_more_tools"):
+            st.markdown("**📊 Record a score by hand** (override, e.g. after the fact)")
+            st.caption("Normally Landon logs his score and you approve it in Review.")
+            render_khan_score_recorder(db, student)
+            st.markdown("**➕ Other ways to add** (single unit, or loose lessons)")
+            render_khan_course_loader(db, student)
+            render_khan_card_form(db, student)
 
     # ── ✍️ Write a Compass lesson: AI-written lessons, full or lightning-quick. ──
     with st.expander("✍️ Write a Compass lesson"):
