@@ -290,6 +290,72 @@ def build_khan_card_payload(
     return payload
 
 
+def build_khan_checkpoint_payload(
+    subject_key: str,
+    label: str,
+    url: str,
+    minutes: int,
+    *,
+    kind: str,
+    covers: list[str] | None = None,
+    course: str = "",
+) -> dict[str, Any]:
+    """The payload for a Khan CHECKPOINT card -- a quiz or unit test he takes on
+    Khan. It carries no Compass quiz (it IS the quiz); he takes it on Khan, turns
+    it in, and the parent records his real Khan score (which feeds the grade). The
+    card lists which lessons it covers."""
+    subject_label = subjects.label(subject_key)
+    label = label.strip()
+    url = url.strip()
+    course = course.strip()
+    covers = [str(c).strip() for c in (covers or []) if str(c).strip()]
+    kind_label = "Unit test" if kind == "unit_test" else "Quiz"
+
+    course_line = f"📚 **Unit:** {course}\n\n" if course else ""
+    covers_block = ""
+    if covers:
+        covers_block = "\n\n**It covers:**\n" + "\n".join(f"- {c}" for c in covers)
+    overview = (
+        f"{course_line}"
+        f"✅ **Checkpoint — Khan {kind_label}.**\n\n"
+        f"▶️ **[Open in Khan Academy]({url})**\n\n"
+        f"Take this {kind_label.lower()} over on Khan, then come back and turn it in. "
+        f"Your parent records your real Khan score, which counts toward your grade."
+        f"{covers_block}"
+    )
+    return {
+        "title": f"Khan Academy: {label}",
+        "topic": label,
+        "overview": overview,
+        "learning_objectives": [f"Take the Khan {kind_label}: {label}"],
+        "learn": {
+            "explanation": "",
+            "video": {"found": False, "title": "", "url": "", "channel": "", "why": ""},
+        },
+        "worked_example": {"problem": "", "steps": ""},
+        "activities": [],
+        "materials": ["A device with Khan Academy open"],
+        "subject_credits": [
+            {
+                "subject": subject_key,
+                "minutes": minutes,
+                "justification": (
+                    f"Took the Khan Academy {kind_label.lower()} '{label}' for "
+                    f"{subject_label}."
+                ),
+            }
+        ],
+        "quiz": [],
+        "estimated_minutes": minutes,
+        "fun_extra": {"title": "", "instructions": ""},
+        "parent_notes": (
+            f"Khan {kind_label} checkpoint. He takes it on Khan and turns it in; "
+            f"record his real Khan score on the card (it feeds the grade)."
+        ),
+        "branches": [],
+    }
+
+
 def create_khan_card(
     db: Any,
     student: dict[str, Any],
@@ -417,13 +483,16 @@ def create_course(
     lesson, numbered in order ("1. …", "2. …"), all tagged with a shared course
     id and parked in the Backlog to assign out day by day.
 
-    Each entry in ``lessons`` is either a plain name (``str``) or a
-    ``{"name": str, "items": [str]}`` dict, where ``items`` is the Khan lesson's
-    videos/exercises -- shown on the card as a checklist of what to do on Khan.
+    Each entry in ``lessons`` is one card, in order, and is either:
+      * a plain name (``str``) or ``{"name", "items"}`` dict -> a LESSON card
+        (``items`` is the Khan lesson's videos/exercises, shown as a checklist), or
+      * a ``{"kind": "quiz"|"unit_test", "name", "covers"}`` dict -> a CHECKPOINT
+        card (Khan's own quiz / unit test), the graded point where his real Khan
+        score is recorded; it never gets a Compass quiz.
 
-    Quizzes are normally generated when a card is *assigned* (assign_course_card),
-    so this defaults to no quiz -- pass generate_quiz=True to build them all up
-    front. Returns {"created": [ids], "quiz_failed": [names]}."""
+    Lesson quizzes are normally generated when a card is *assigned*
+    (assign_course_card), so this defaults to no quiz -- pass generate_quiz=True to
+    build them all up front. Returns {"created": [ids], "quiz_failed": [names]}."""
     if not is_supported_subject(subject):
         raise ValueError(f"'{subject}' isn't a valid subject for a Khan card.")
     course = course.strip()
@@ -431,44 +500,70 @@ def create_course(
         raise ValueError("Name the course.")
     normalized: list[dict[str, Any]] = []
     for entry in lessons:
+        if isinstance(entry, dict) and entry.get("kind") in ("quiz", "unit_test"):
+            name = str(entry.get("name") or "").strip()
+            if name:
+                covers = [str(c).strip() for c in (entry.get("covers") or []) if str(c).strip()]
+                normalized.append({"kind": entry["kind"], "name": name, "covers": covers})
+            continue
         if isinstance(entry, dict):
             name = str(entry.get("name") or "").strip()
             items = [str(i).strip() for i in (entry.get("items") or []) if str(i).strip()]
         else:
             name, items = str(entry).strip(), []
         if name:
-            normalized.append({"name": name, "items": items})
-    if not normalized:
+            normalized.append({"kind": "lesson", "name": name, "items": items})
+    if not any(e["kind"] == "lesson" for e in normalized):
         raise ValueError("Enter at least one lesson (one per line).")
-    normalized = normalized[:100]  # a sane cap so a paste-gone-wrong can't create thousands
+    normalized = normalized[:120]  # a sane cap so a paste-gone-wrong can't create thousands
     url = khan_base_url(db)
     course_id = f"khancourse-{uuid4().hex[:8]}"
     total = len(normalized)
     result: dict[str, list[Any]] = {"created": [], "quiz_failed": []}
-    for index, lesson in enumerate(normalized, start=1):
-        name, items = lesson["name"], lesson["items"]
+    for index, entry in enumerate(normalized, start=1):
+        name = entry["name"]
         if on_progress is not None:
             on_progress(index - 1, total, name)
-        quiz = None
-        if generate_quiz:
-            try:
-                quiz = generate_khan_quiz(student, subject, name)
-            except LessonGenerationError:
-                result["quiz_failed"].append(name)
-        payload = build_khan_card_payload(
-            subject, name, url, minutes, quiz=quiz, course=course, items=items
-        )
-        payload["title"] = f"{index}. {name}"  # numbered so the order reads at a glance
         metadata: dict[str, Any] = {
             "source": "khan", "resource_url": url,
             "khan_course": course, "khan_course_id": course_id,
             "khan_part": index, "khan_course_total": total, "held_back": True,
         }
-        if items:
-            metadata["khan_items"] = items
+        if entry["kind"] in ("quiz", "unit_test"):
+            label = name
+            prefix = f"{course}: "
+            if label.startswith(prefix):
+                label = label[len(prefix):]           # "Numbers and operations: Quiz 1" -> "Quiz 1"
+            payload = build_khan_checkpoint_payload(
+                subject, label, url, minutes, kind=entry["kind"],
+                covers=entry["covers"], course=course,
+            )
+            title = f"{index}. ✅ {label}"
+            payload["title"] = title
+            metadata["khan_checkpoint"] = True
+            metadata["khan_checkpoint_kind"] = entry["kind"]
+            if entry["covers"]:
+                metadata["khan_covers"] = entry["covers"]
+            topic = label
+        else:
+            items = entry["items"]
+            quiz = None
+            if generate_quiz:
+                try:
+                    quiz = generate_khan_quiz(student, subject, name)
+                except LessonGenerationError:
+                    result["quiz_failed"].append(name)
+            payload = build_khan_card_payload(
+                subject, name, url, minutes, quiz=quiz, course=course, items=items
+            )
+            title = f"{index}. {name}"
+            payload["title"] = title
+            if items:
+                metadata["khan_items"] = items
+            topic = name
         lesson_id = db.save_lesson(
             student_id=student["id"], agent=AGENT_KEY, subject=subject,
-            topic=name, title=f"{index}. {name}",
+            topic=topic, title=title,
             payload=payload, strategy="parent_khan_course",
             rationale="Parent loaded a Khan course as an ordered lesson list.",
             metadata=metadata,
@@ -492,9 +587,15 @@ _MD_HEADER_RE = re.compile(r"^\s*#{1,6}[ \t]+(.+)$")
 # A leading bullet or numbering on a lesson line, stripped before storing.
 _BULLET_RE = re.compile(r"^\s*(?:[-*•·–—]|\d+[.)])[ \t]+")
 # Khan's own cumulative checks -- a "... Quiz · N questions" row or a unit test /
-# course challenge. Dropped: Compass makes its own quiz on demand, so these
-# aren't cards. Matches anywhere in the line (they're prefixed with the unit name).
+# course challenge. These become CHECKPOINT cards (the graded points where his
+# real Khan score is recorded), placed after the lessons they cover. Matches
+# anywhere in the line (they're prefixed with the unit name).
 _KHAN_TEST_LINE_RE = re.compile(r"\bquiz\b[^\n]*·|\bunit\s+test\b|\bcourse\s+challenge\b", re.I)
+# Strip a checkpoint line's trailing "- Quiz · N questions" / "- Unit Test · …"
+# down to its label ("Numbers and operations: Quiz 1").
+_CHECKPOINT_SUFFIX_RE = re.compile(
+    r"\s*[-–—]\s*(?:quiz|unit\s+test|course\s+challenge)\b.*$", re.I
+)
 # Khan course-page chrome to drop -- whole-line matches only, so a real lesson
 # that merely contains one of these words (e.g. "Review of exponents") survives.
 _NOISE_LINE_RE = re.compile(
@@ -515,18 +616,22 @@ _NOISE_LINE_RE = re.compile(
 
 def parse_course_outline(text: str) -> dict[str, Any]:
     """Parse a pasted Khan course/unit outline into ``{course, units}`` where each
-    unit is ``{"unit": name, "lessons": [{"name": str, "items": [str]}, ...]}``.
+    unit is ``{"unit": name, "entries": [...]}`` and every entry is one card, in
+    order. Two kinds of entry:
 
-    Khan's real shape is Unit → Lesson → (videos / exercises). Each ``Lesson:``
-    line becomes one card and the video/exercise lines under it become that card's
-    checklist (``items``). A unit with **no** ``Lesson:`` markers falls back to the
-    flat style — every content line under it is its own name-only card — so an
-    older simple paste still works.
+      * a **lesson** -- ``{"kind": "lesson", "name": str, "items": [str]}`` -- one
+        per Khan ``Lesson:``; the video/exercise lines under it become ``items``
+        (its checklist). A unit with no ``Lesson:`` markers falls back to the flat
+        style: every content line is its own name-only lesson.
+      * a **checkpoint** -- ``{"kind": "quiz"|"unit_test", "name": str,
+        "covers": [lesson names]}`` -- from Khan's own quizzes and unit test.
+        ``covers`` is computed by position: a quiz covers the lessons since the
+        previous checkpoint; the unit test covers the whole unit. Checkpoints are
+        the graded points where his real Khan score is recorded.
 
-    An optional "Course: ..." line at the top names the course; unit boundaries are
-    "Unit ..." lines or markdown ``#`` headers. Khan's own quizzes, unit tests, and
-    page chrome (Practice, Learn, mastery %, ...) are dropped. Empty units and
-    lessons are dropped."""
+    An optional "Course: ..." line names the course; unit boundaries are "Unit ..."
+    lines or markdown ``#`` headers. Other Khan page chrome (Practice, Learn,
+    mastery %, ...) is dropped. Empty units are dropped."""
     course = ""
     units: list[dict[str, Any]] = []
     current_unit: dict[str, Any] | None = None
@@ -535,7 +640,7 @@ def parse_course_outline(text: str) -> dict[str, Any]:
 
     def _start_unit(name: str) -> None:
         nonlocal current_unit, current_lesson, lesson_is_explicit
-        current_unit = {"unit": name.strip() or f"Unit {len(units) + 1}", "lessons": []}
+        current_unit = {"unit": name.strip() or f"Unit {len(units) + 1}", "entries": []}
         current_lesson = None
         lesson_is_explicit = False
         units.append(current_unit)
@@ -544,9 +649,22 @@ def parse_course_outline(text: str) -> dict[str, Any]:
         nonlocal current_lesson, lesson_is_explicit
         if current_unit is None:
             _start_unit(course or "Unit 1")
-        current_lesson = {"name": name.strip(), "items": []}
+        current_lesson = {"kind": "lesson", "name": name.strip(), "items": []}
         lesson_is_explicit = explicit
-        current_unit["lessons"].append(current_lesson)
+        current_unit["entries"].append(current_lesson)
+
+    def _add_checkpoint(line: str) -> None:
+        nonlocal current_lesson, lesson_is_explicit
+        if current_unit is None:
+            _start_unit(course or "Unit 1")
+        low = line.lower()
+        kind = "unit_test" if ("unit test" in low or "course challenge" in low) else "quiz"
+        label = _CHECKPOINT_SUFFIX_RE.sub("", line).strip() or (
+            "Unit test" if kind == "unit_test" else "Quiz"
+        )
+        current_unit["entries"].append({"kind": kind, "name": label, "covers": []})
+        current_lesson = None  # a quiz ends the run of lessons before it
+        lesson_is_explicit = False
 
     for raw in (text or "").splitlines():
         line = raw.strip()
@@ -560,7 +678,8 @@ def parse_course_outline(text: str) -> dict[str, Any]:
         if not stripped:
             continue
         if _KHAN_TEST_LINE_RE.search(stripped):
-            continue  # Khan's own quiz / unit test / course challenge
+            _add_checkpoint(stripped)
+            continue
         if _NOISE_LINE_RE.match(stripped):
             continue  # other Khan page chrome
         unit_match = _UNIT_LINE_RE.match(line)
@@ -578,7 +697,7 @@ def parse_course_outline(text: str) -> dict[str, Any]:
             _start_unit(header_match.group(1))
             continue
         # A normal content line. Under an explicit "Lesson:" it's a checklist item;
-        # otherwise (flat paste) it's its own name-only card.
+        # otherwise (flat paste) it's its own name-only lesson.
         if current_lesson is not None and lesson_is_explicit:
             current_lesson["items"].append(stripped)
         else:
@@ -586,9 +705,25 @@ def parse_course_outline(text: str) -> dict[str, Any]:
 
     clean_units: list[dict[str, Any]] = []
     for unit in units:
-        lessons = [l for l in unit["lessons"] if l["name"] or l["items"]]
-        if lessons:
-            clean_units.append({"unit": unit["unit"], "lessons": lessons})
+        entries = [
+            e for e in unit["entries"]
+            if e["kind"] != "lesson" or e["name"] or e["items"]
+        ]
+        lesson_names = [e["name"] for e in entries if e["kind"] == "lesson"]
+        if not lesson_names:
+            continue  # a unit with no real lessons (just stray chrome) is dropped
+        # Fill each checkpoint's coverage by position.
+        since: list[str] = []
+        for entry in entries:
+            if entry["kind"] == "lesson":
+                since.append(entry["name"])
+            elif entry["kind"] == "unit_test":
+                entry["covers"] = list(lesson_names)
+                since = []
+            else:  # quiz
+                entry["covers"] = list(since)
+                since = []
+        clean_units.append({"unit": unit["unit"], "entries": entries})
     return {"course": course, "units": clean_units}
 
 
@@ -617,7 +752,7 @@ def create_course_from_outline(
             on_progress(index, total_units, unit["unit"])
         result = create_course(
             db, student, subject=subject, course=unit["unit"],
-            lessons=unit["lessons"], minutes=minutes, generate_quiz=generate_quiz,
+            lessons=unit["entries"], minutes=minutes, generate_quiz=generate_quiz,
         )
         created.append({"unit": unit["unit"], "ids": result["created"]})
     if on_progress is not None:

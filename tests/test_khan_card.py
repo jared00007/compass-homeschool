@@ -454,11 +454,13 @@ def test_parse_course_outline_splits_units_and_lessons():
     assert parsed["course"] == "Algebra 1"
     assert [u["unit"] for u in parsed["units"]] == ["Exponents & radicals", "Polynomials"]
     # No "Lesson:" markers -> flat style: each line is its own name-only card.
-    assert [l["name"] for l in parsed["units"][0]["lessons"]] == [
+    def _lessons(u):
+        return [e for e in u["entries"] if e["kind"] == "lesson"]
+    assert [l["name"] for l in _lessons(parsed["units"][0])] == [
         "Multiplying & dividing powers", "Negative exponents"]
-    assert [l["name"] for l in parsed["units"][1]["lessons"]] == [
+    assert [l["name"] for l in _lessons(parsed["units"][1])] == [
         "Adding polynomials", "Multiplying binomials"]
-    assert all(l["items"] == [] for u in parsed["units"] for l in u["lessons"])
+    assert all(l["items"] == [] for u in parsed["units"] for l in _lessons(u))
 
 
 def test_parse_course_outline_groups_lessons_with_their_items():
@@ -477,13 +479,17 @@ def test_parse_course_outline_groups_lessons_with_their_items():
         "Numbers and operations: Unit test\n"
     )
     parsed = khan_card.parse_course_outline(text)
-    lessons = parsed["units"][0]["lessons"]
+    entries = parsed["units"][0]["entries"]
+    lessons = [e for e in entries if e["kind"] == "lesson"]
     assert [l["name"] for l in lessons] == ["Repeating decimals", "Square roots & cube roots"]
     assert len(lessons[0]["items"]) == 2 and len(lessons[1]["items"]) == 2
     assert "Intro to square roots - Video · 5 minutes" in lessons[1]["items"]
-    # Neither the quiz row nor the unit test became a card or an item.
-    all_text = str(parsed)
-    assert "Quiz 1" not in all_text and "Unit test" not in all_text
+    # The quiz and the unit test became CHECKPOINTS (not lessons/items), each
+    # covering the lessons before it.
+    checks = [e for e in entries if e["kind"] != "lesson"]
+    assert [c["kind"] for c in checks] == ["quiz", "unit_test"]
+    assert checks[0]["covers"] == ["Repeating decimals", "Square roots & cube roots"]
+    assert checks[1]["covers"] == ["Repeating decimals", "Square roots & cube roots"]
 
 
 def test_a_lesson_cards_checklist_shows_on_the_card(db, student):
@@ -504,6 +510,35 @@ def test_a_lesson_cards_checklist_shows_on_the_card(db, student):
     assert "Intro to square roots" in card["payload"]["overview"]
 
 
+def test_create_course_from_outline_makes_checkpoint_cards(db, student):
+    khan_card.create_course_from_outline(
+        db, student, subject="math", minutes=30, text=(
+            "Unit: Numbers and operations\n"
+            "Lesson: Repeating decimals\n"
+            "Writing fractions - Exercise · 4 questions\n"
+            "Lesson: Square roots & cube roots\n"
+            "Square roots - Exercise · 4 questions\n"
+            "Numbers and operations: Quiz 1 - Quiz · 6 questions\n"
+            "Numbers and operations: Unit test\n"
+        ),
+    )
+    cards = sorted(
+        db.list_lessons(student["id"], agent="khan"),
+        key=lambda c: c["metadata"]["khan_part"],
+    )
+    kinds = [(c["metadata"].get("khan_checkpoint_kind") or "lesson") for c in cards]
+    assert kinds == ["lesson", "lesson", "quiz", "unit_test"]
+
+    quiz_card = cards[2]
+    assert quiz_card["metadata"]["khan_checkpoint"] is True
+    assert quiz_card["metadata"]["khan_covers"] == [
+        "Repeating decimals", "Square roots & cube roots"]
+    assert "✅" in quiz_card["title"] and "Quiz 1" in quiz_card["title"]  # unit prefix stripped
+    assert "Checkpoint" in quiz_card["payload"]["overview"]
+    assert "It covers" in quiz_card["payload"]["overview"]
+    assert quiz_card["payload"]["quiz"] == []          # a checkpoint carries no Compass quiz
+
+
 def test_parse_course_outline_skips_khan_page_chrome():
     text = (
         "Unit: Exponents\n"
@@ -516,9 +551,15 @@ def test_parse_course_outline_skips_khan_page_chrome():
     )
     parsed = khan_card.parse_course_outline(text)
     assert len(parsed["units"]) == 1
-    # Chrome dropped; the two real lessons kept. "Unit test" did NOT start a unit.
-    assert [l["name"] for l in parsed["units"][0]["lessons"]] == [
-        "Multiplying powers", "Negative exponents"]
+    entries = parsed["units"][0]["entries"]
+    lessons = [e["name"] for e in entries if e["kind"] == "lesson"]
+    # Page chrome (Practice, mastery %) dropped; the two real lessons kept, and
+    # "Quiz 1" / "Unit test" became checkpoints, not lessons.
+    assert lessons == ["Multiplying powers", "Negative exponents"]
+    # A bare "Quiz 1" (no "· N questions") is just chrome and is dropped; the
+    # "Unit test" row becomes a checkpoint.
+    kinds = [e["kind"] for e in entries if e["kind"] != "lesson"]
+    assert kinds == ["unit_test"]
 
 
 def test_create_course_from_outline_loads_every_unit(db, student):

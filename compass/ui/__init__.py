@@ -2263,10 +2263,17 @@ def board_card_tag(kind: str, item: dict[str, Any]) -> tuple[str, str, str]:
             subject_label = subjects.label(subject) if subjects.is_valid(subject) else "Khan"
             # A no-XP reminder/review card is marked so it's clear it earns nothing.
             no_xp_tag = " · 🔕 no XP" if meta.get("no_xp") else ""
+            # A checkpoint (Khan quiz / unit test) is marked so it reads as a graded
+            # check, not another lesson.
+            check_kind = meta.get("khan_checkpoint_kind")
+            check_tag = (
+                " · ✅ Unit test" if check_kind == "unit_test"
+                else " · ✅ Quiz" if check_kind == "quiz" else ""
+            )
             return (
                 SUBJECT_TAG_COLORS.get(subject, _BOARD_TAG_FALLBACK_COLOR),
                 "🅰️",
-                f"Khan · {course or subject_label}{no_xp_tag}",
+                f"Khan · {course or subject_label}{check_tag}{no_xp_tag}",
             )
         return (
             BOARD_TAG_COLORS.get(agent, _BOARD_TAG_FALLBACK_COLOR),
@@ -4377,11 +4384,19 @@ def render_khan_course_importer(db: Database, student: dict[str, Any]) -> None:
             "list each unit's lessons on their own lines underneath."
         )
         return
-    lesson_total = sum(len(u["lessons"]) for u in parsed["units"])
+    def _counts(unit):
+        lessons = sum(1 for e in unit["entries"] if e["kind"] == "lesson")
+        checks = sum(1 for e in unit["entries"] if e["kind"] in ("quiz", "unit_test"))
+        return lessons, checks
+    lesson_total = sum(_counts(u)[0] for u in parsed["units"])
+    check_total = sum(_counts(u)[1] for u in parsed["units"])
     where = f" in **{md(parsed['course'])}**" if parsed["course"] else ""
-    st.markdown(f"**{len(parsed['units'])} units · {lesson_total} lessons**{where}")
+    tail = f" · {check_total} checkpoints" if check_total else ""
+    st.markdown(f"**{len(parsed['units'])} units · {lesson_total} lessons{tail}**{where}")
     for unit in parsed["units"]:
-        st.markdown(f"- **{md(unit['unit'])}** ({len(unit['lessons'])} lessons)")
+        lessons, checks = _counts(unit)
+        extra = f", {checks} checkpoint{'s' if checks != 1 else ''}" if checks else ""
+        st.markdown(f"- **{md(unit['unit'])}** ({lessons} lessons{extra})")
     if not submitted:
         st.caption("Looks right? Hit **Load the whole course**.")
         return
@@ -4735,12 +4750,14 @@ def render_khan_score_recorder(db: Database, student: dict[str, Any]) -> None:
                 st.caption(f"📊 On record: {bits}")
             with st.form(f"khan_score_{card['id']}", clear_on_submit=False):
                 cols = st.columns([2, 1, 1])
+                default_kind = (existing["kind"] if existing else None) or (
+                    (card.get("metadata") or {}).get("khan_checkpoint_kind")
+                )
                 kind = cols[0].selectbox(
                     "What was it?", options=config.KHAN_RESULT_KINDS,
                     format_func=km.result_label,
-                    index=(config.KHAN_RESULT_KINDS.index(existing["kind"])
-                           if existing and existing.get("kind") in config.KHAN_RESULT_KINDS
-                           else 1),
+                    index=(config.KHAN_RESULT_KINDS.index(default_kind)
+                           if default_kind in config.KHAN_RESULT_KINDS else 1),
                     key=f"khan_score_kind_{card['id']}",
                 )
                 pct = cols[1].number_input(
@@ -4849,6 +4866,7 @@ def render_khan_mastery_boost(db: Database, student: dict[str, Any]) -> None:
         c for c in cards
         if (c["status"] == "completed" or km.confirmed_level(c))
         and not (c.get("metadata") or {}).get("no_xp")  # no-XP cards earn no mastery either
+        and not (c.get("metadata") or {}).get("khan_checkpoint")  # you don't "master" a quiz
     ]
     if not revisitable:
         return

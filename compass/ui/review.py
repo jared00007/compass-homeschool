@@ -492,11 +492,14 @@ def _render_khan_review(
             "It replaces Compass's auto-quiz for this card's grade."
         )
         score_cols = _ui.st.columns([2, 1, 1])
+        default_kind = (existing["kind"] if existing else None) or metadata.get(
+            "khan_checkpoint_kind"
+        )
         kind = score_cols[0].selectbox(
             "What was it?", options=config.KHAN_RESULT_KINDS,
             format_func=km.result_label,
-            index=(config.KHAN_RESULT_KINDS.index(existing["kind"])
-                   if existing and existing.get("kind") in config.KHAN_RESULT_KINDS else 1),
+            index=(config.KHAN_RESULT_KINDS.index(default_kind)
+                   if default_kind in config.KHAN_RESULT_KINDS else 1),
             key=f"{key_prefix}_khres_kind_{lesson['id']}",
         )
         real_score = score_cols[1].number_input(
