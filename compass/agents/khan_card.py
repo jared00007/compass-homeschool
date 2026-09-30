@@ -478,6 +478,7 @@ def create_course(
     minutes: int,
     generate_quiz: bool = False,
     course_name: str = "",
+    unit_number: int = 0,
     on_progress: Callable[[int, int, str | None], None] | None = None,
 ) -> dict[str, list[Any]]:
     """Load a whole Khan course from an ordered lesson list -- one card per
@@ -536,6 +537,8 @@ def create_course(
         }
         if course_name.strip():
             metadata["khan_course_name"] = course_name.strip()
+        if unit_number:
+            metadata["khan_unit_number"] = int(unit_number)
         if entry["kind"] in ("quiz", "unit_test"):
             label = name
             prefix = f"{course}: "
@@ -760,7 +763,7 @@ def create_course_from_outline(
         result = create_course(
             db, student, subject=subject, course=unit["unit"],
             lessons=unit["entries"], minutes=minutes, generate_quiz=generate_quiz,
-            course_name=parsed["course"],
+            course_name=parsed["course"], unit_number=index + 1,
         )
         created.append({"unit": unit["unit"], "ids": result["created"]})
     if on_progress is not None:
@@ -800,6 +803,108 @@ def assign_course_card(
             db.update_lesson_content(lesson_id, payload=payload)
     db.reschedule_lesson(lesson_id, day_iso)  # schedules + clears held_back
     return lesson_id
+
+
+def _unit_stats(cards: list[dict[str, Any]], today_iso: str) -> dict[str, Any]:
+    """Roll one unit's cards up into the tracker's per-unit numbers: progress,
+    where the cards sit (scheduled / backlog / overdue), the average approved Khan
+    score, and what needs the parent (help flags, scores to approve)."""
+    cards = sorted(cards, key=lambda c: (c.get("metadata") or {}).get("khan_part") or 0)
+    total = len(cards)
+    done = scheduled = backlog = overdue = needs_help = pending_scores = 0
+    scores: list[float] = []
+    next_card: dict[str, Any] | None = None
+    for card in cards:
+        meta = card.get("metadata") or {}
+        status = card["status"]
+        if status == "completed":
+            done += 1
+        elif status == "skipped":
+            pass
+        elif meta.get("held_back"):
+            backlog += 1
+            if next_card is None:
+                next_card = {"id": card["id"], "title": card.get("title") or card.get("topic")}
+        else:
+            scheduled += 1
+            planned = str(meta.get("planned_for") or "")[:10]
+            if planned and planned < today_iso and status in ("planned", "needs_revision"):
+                overdue += 1
+        result = meta.get("khan_result") or {}
+        if result.get("percent") is not None:
+            scores.append(float(result["percent"]))
+        if (meta.get("khan_reflection") or {}).get("went") == "need_help" and status in (
+            "submitted", "needs_revision"
+        ):
+            needs_help += 1
+        if (meta.get("khan_score_claim") or {}).get("percent") is not None:
+            pending_scores += 1
+    if done >= total and total:
+        status_label = "done"
+    elif done == 0 and scheduled == 0 and overdue == 0:
+        status_label = "not_started"
+    else:
+        status_label = "in_progress"
+    return {
+        "total": total, "done": done, "scheduled": scheduled, "backlog": backlog,
+        "overdue": overdue, "needs_help": needs_help, "pending_scores": pending_scores,
+        "avg_score": round(sum(scores) / len(scores), 1) if scores else None,
+        "scored": len(scores), "next_card": next_card, "status": status_label,
+    }
+
+
+def course_tracker(db: Any, student: dict[str, Any], today: date | None = None) -> list[dict[str, Any]]:
+    """A read-only roll-up of every loaded Khan course for the Course Tracker:
+    course -> units, each with progress, the average approved Khan score, and what
+    needs the parent (help flags, scores to approve) plus the next card to schedule.
+    Courses and their units come back in load order (earliest card first). Only
+    cards that belong to a loaded unit (with a ``khan_course_id``) are included."""
+    today_iso = (today or date.today()).isoformat()
+    all_cards = db.list_lessons(student["id"], agent=AGENT_KEY, limit=2000)
+
+    # course name -> {unit course_id -> [cards]}, remembering load order by min id.
+    courses: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    course_first: dict[str, int] = {}
+    unit_first: dict[tuple[str, str], int] = {}
+    unit_name: dict[tuple[str, str], str] = {}
+    unit_number: dict[tuple[str, str], int] = {}
+    for card in all_cards:
+        meta = card.get("metadata") or {}
+        cid = meta.get("khan_course_id")
+        if not cid:
+            continue
+        course = meta.get("khan_course_name") or "Other Khan cards"
+        courses.setdefault(course, {}).setdefault(cid, []).append(card)
+        i = card["id"]
+        course_first[course] = min(course_first.get(course, i), i)
+        unit_first[(course, cid)] = min(unit_first.get((course, cid), i), i)
+        unit_name.setdefault((course, cid), meta.get("khan_course") or "Unit")
+        if meta.get("khan_unit_number"):
+            unit_number[(course, cid)] = int(meta["khan_unit_number"])
+
+    out: list[dict[str, Any]] = []
+    for course in sorted(courses, key=lambda c: (course_first[c], c)):
+        units_out: list[dict[str, Any]] = []
+        c_total = c_done = c_help = c_pending = 0
+        c_scores: list[float] = []
+        for cid in sorted(courses[course], key=lambda u: unit_first[(course, u)]):
+            stats = _unit_stats(courses[course][cid], today_iso)
+            stats["course_id"] = cid
+            stats["unit"] = unit_name[(course, cid)]
+            stats["unit_number"] = unit_number.get((course, cid))
+            stats["subject"] = courses[course][cid][0].get("subject", "")
+            units_out.append(stats)
+            c_total += stats["total"]; c_done += stats["done"]
+            c_help += stats["needs_help"]; c_pending += stats["pending_scores"]
+            if stats["avg_score"] is not None:
+                c_scores += [stats["avg_score"]] * stats["scored"]
+        out.append({
+            "course": course, "units": units_out,
+            "total": c_total, "done": c_done,
+            "needs_help": c_help, "pending_scores": c_pending,
+            "avg_score": round(sum(c_scores) / len(c_scores), 1) if c_scores else None,
+        })
+    return out
 
 
 def _next_school_day(day: date) -> date:

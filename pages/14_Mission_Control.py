@@ -53,6 +53,7 @@ from compass.ui import (
     render_khan_course_importer,
     render_khan_course_loader,
     render_khan_clear_control,
+    render_khan_course_tracker,
     render_khan_courses,
     render_khan_mastery_confirmations,
     render_khan_review_card_form,
@@ -764,6 +765,11 @@ if mc_view == "plan":
         st.markdown("#### 📥 Load a course")
         st.caption("Paste a whole course at once — its units and lessons become cards.")
         render_khan_course_importer(db, student)
+
+        st.divider()
+        st.markdown("#### 📊 Course tracker")
+        st.caption("Every course by unit — progress, real scores, and what needs you.")
+        render_khan_course_tracker(db, student)
 
         st.divider()
         st.markdown("#### 📚 Your Khan units")

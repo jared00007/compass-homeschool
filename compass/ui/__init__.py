@@ -4515,6 +4515,97 @@ def render_khan_course_loader(db: Database, student: dict[str, Any]) -> None:
     st.rerun()
 
 
+def render_khan_course_tracker(db: Database, student: dict[str, Any]) -> None:
+    """Parent-facing course tracker: every loaded Khan course rolled up by
+    course -> unit, with progress, the average approved Khan score, what needs the
+    parent (help flags, scores to approve), and the next card to schedule.
+    Filterable by course, by status, and to just the units that need attention."""
+    from compass.agents import khan_card
+
+    tracker = khan_card.course_tracker(db, student)
+    if not tracker:
+        st.caption("No Khan courses loaded yet — load one below and it'll show up here.")
+        return
+
+    fcols = st.columns([2, 2, 3])
+    course_names = [c["course"] for c in tracker]
+    course_pick = fcols[0].selectbox(
+        "Course", ["All courses"] + course_names, key="track_course_filter"
+    )
+    _STATUS = {"all": "All", "not_started": "Not started", "in_progress": "In progress", "done": "Done"}
+    status_pick = fcols[1].selectbox(
+        "Status", list(_STATUS), format_func=lambda k: _STATUS[k], key="track_status_filter"
+    )
+    attention_only = fcols[2].checkbox(
+        "⚠️ Needs attention only", key="track_attention_filter",
+        help="Only units with an 'I need help' flag or a score waiting on your approval.",
+    )
+
+    def _needs_attention(u):
+        return u["needs_help"] > 0 or u["pending_scores"] > 0
+
+    shown_any = False
+    for course in tracker:
+        if course_pick != "All courses" and course["course"] != course_pick:
+            continue
+        units = [
+            u for u in course["units"]
+            if (status_pick == "all" or u["status"] == status_pick)
+            and (not attention_only or _needs_attention(u))
+        ]
+        if not units:
+            continue
+        shown_any = True
+        pct = round(100 * course["done"] / course["total"]) if course["total"] else 0
+        head = f"#### 📚 {md(course['course'])} — {course['done']}/{course['total']} ({pct}%)"
+        badges = []
+        if course["avg_score"] is not None:
+            badges.append(f"avg {round(course['avg_score'])}%")
+        if course["needs_help"]:
+            badges.append(f"🙋 {course['needs_help']} need help")
+        if course["pending_scores"]:
+            badges.append(f"🏅 {course['pending_scores']} to approve")
+        st.markdown(head + (f"  ·  {' · '.join(badges)}" if badges else ""))
+        st.progress(pct / 100 if course["total"] else 0.0)
+        for u in units:
+            _render_tracker_unit_row(u)
+
+    if not shown_any:
+        st.caption("Nothing matches those filters.")
+
+
+def _render_tracker_unit_row(u: dict[str, Any]) -> None:
+    """One unit's line in the course tracker."""
+    _STATUS_TAG = {
+        "done": "✅ Done", "in_progress": "⏳ In progress", "not_started": "⬜ Not started",
+    }
+    num = f"Unit {u['unit_number']}: " if u.get("unit_number") else ""
+    with st.container(border=True):
+        st.markdown(
+            f"**{md(num + u['unit'])}** — {u['done']}/{u['total']} · {_STATUS_TAG.get(u['status'], '')}"
+        )
+        bits = []
+        if u["scheduled"]:
+            bits.append(f"📅 {u['scheduled']} scheduled")
+        if u["backlog"]:
+            bits.append(f"🗄️ {u['backlog']} backlog")
+        if u["overdue"]:
+            bits.append(f"⏰ {u['overdue']} overdue")
+        if u["avg_score"] is not None:
+            bits.append(f"📝 avg {round(u['avg_score'])}%")
+        if bits:
+            st.caption(" · ".join(bits))
+        attention = []
+        if u["needs_help"]:
+            attention.append(f"🙋 {u['needs_help']} said “I need help”")
+        if u["pending_scores"]:
+            attention.append(f"🏅 {u['pending_scores']} score(s) to approve")
+        if attention:
+            st.caption("⚠️ " + " · ".join(attention))
+        if u["next_card"]:
+            st.caption(f"➡️ Next up: {md(u['next_card']['title'])}")
+
+
 def render_khan_courses(db: Database, student: dict[str, Any]) -> None:
     """Parent-facing: your loaded Khan units. For each, the ordered lesson list
     with progress, and a form to assign the *next* unassigned card to a day (its

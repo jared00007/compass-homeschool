@@ -488,6 +488,39 @@ def test_clear_all_cards_wipes_approved_too_but_keeps_hours(db, student):
     assert any(a["minutes"] == 40 and a["primary_subject"] == "math" for a in acts)
 
 
+def test_course_tracker_rolls_up_progress_scores_and_next(db, student):
+    from datetime import date
+    from compass import khan_mastery as km
+
+    ids = khan_card.create_course_from_outline(
+        db, student, subject="math", minutes=30, text=(
+            "Course: 8th grade math essentials\n"
+            "Unit: Numbers and operations\n"
+            "Lesson: Repeating decimals\n"
+            "Lesson: Square roots\n"
+            "Numbers and operations: Quiz 1 - Quiz · 5 questions\n"
+        ),
+    )["units"][0]["ids"]
+    # First lesson done; a checkpoint score approved; a help flag on the 2nd.
+    khan_card.assign_course_card(db, student, ids[0], day_iso=date.today().isoformat(),
+                                 generate_quiz=False)
+    db.set_lesson_status(ids[0], "completed")
+    km.record_reflection(db, ids[1], difficulty="hard", went="need_help")
+    db.set_lesson_status(ids[1], "submitted")
+    km.record_result(db, ids[2], kind="quiz", percent=90)
+    db.set_lesson_status(ids[2], "completed")
+
+    tracker = khan_card.course_tracker(db, student)
+    assert [c["course"] for c in tracker] == ["8th grade math essentials"]
+    course = tracker[0]
+    assert course["done"] == 2 and course["total"] == 3
+    unit = course["units"][0]
+    assert unit["unit_number"] == 1
+    assert unit["avg_score"] == 90.0            # the approved checkpoint score
+    assert unit["needs_help"] == 1              # the submitted card flagged "need help"
+    assert unit["status"] == "in_progress"
+
+
 def _course_id(db, lesson_id):
     return db.get_lesson(lesson_id)["metadata"]["khan_course_id"]
 

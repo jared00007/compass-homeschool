@@ -473,7 +473,10 @@ def _khan_course_label(item: dict[str, Any]) -> str:
 
 
 def _khan_unit_label(item: dict[str, Any]) -> str:
-    return (item.get("metadata") or {}).get("khan_course") or "Other"
+    meta = item.get("metadata") or {}
+    name = meta.get("khan_course") or "Other"
+    number = meta.get("khan_unit_number")
+    return f"Unit {number}: {name}" if number else name
 
 
 def group_khan_backlog_by_course_unit(
