@@ -506,7 +506,7 @@ def unit_summaries(db: Any, student_id: int) -> list[dict[str, Any]]:
         )
         out.append({
             "course_id": cid,
-            "course": meta0.get("khan_course", "Unit"),
+            "course": meta0.get("khan_unit") or meta0.get("khan_course") or "Unit",
             "subject": cards[0].get("subject", ""),
             "total": total,
             "by_level": by_level,

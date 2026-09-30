@@ -471,7 +471,7 @@ def create_course(
             on_progress(index - 1, total, name)
         metadata: dict[str, Any] = {
             "source": "khan", "resource_url": url,
-            "khan_course": course, "khan_course_id": course_id,
+            "khan_unit": course, "khan_course_id": course_id,
             "khan_part": index, "khan_course_total": total, "held_back": True,
         }
         if course_name.strip():
@@ -817,7 +817,7 @@ def course_tracker(db: Any, student: dict[str, Any], today: date | None = None) 
         i = card["id"]
         course_first[course] = min(course_first.get(course, i), i)
         unit_first[(course, cid)] = min(unit_first.get((course, cid), i), i)
-        unit_name.setdefault((course, cid), meta.get("khan_course") or "Unit")
+        unit_name.setdefault((course, cid), meta.get("khan_unit") or meta.get("khan_course") or "Unit")
         if meta.get("khan_unit_number"):
             unit_number[(course, cid)] = int(meta["khan_unit_number"])
 
@@ -987,7 +987,7 @@ def course_summaries(db: Any, student_id: int) -> list[dict[str, Any]]:
         unassigned = [c for c in group if (c.get("metadata") or {}).get("held_back")]
         summaries.append({
             "course_id": cid,
-            "course": meta0.get("khan_course", "Course"),
+            "course": meta0.get("khan_unit") or meta0.get("khan_course") or "Course",
             "subject": group[0]["subject"],
             "total": meta0.get("khan_course_total") or len(group),
             "cards": group,

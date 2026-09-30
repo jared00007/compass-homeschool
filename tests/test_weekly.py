@@ -430,7 +430,7 @@ def test_board_day_groups_cards_by_course_type(board_db, board_student):
 
     def label(item: dict) -> tuple:
         meta = item.get("metadata") or {}
-        return (item.get("agent"), meta.get("khan_course"), item.get("title"))
+        return (item.get("agent"), meta.get("khan_unit"), item.get("title"))
 
     assert [label(item) for _, item in column] == [
         ("math", None, "Math"),                    # core subjects first, in epic order

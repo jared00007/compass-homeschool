@@ -408,7 +408,7 @@ def _board_group_key(pair: tuple[str, dict[str, Any]]) -> tuple[int, str, int]:
         epic_rank = len(EPIC_ORDER)
     if kind == "lesson" and item.get("agent") == "khan":
         metadata = item.get("metadata") or {}
-        return (epic_rank, str(metadata.get("khan_course") or ""), metadata.get("khan_part") or 0)
+        return (epic_rank, str(metadata.get("khan_unit") or metadata.get("khan_course") or ""), metadata.get("khan_part") or 0)
     return (epic_rank, "", 0)
 
 
@@ -453,7 +453,7 @@ def _khan_course_label(item: dict[str, Any]) -> str:
 
 def _khan_unit_label(item: dict[str, Any]) -> str:
     meta = item.get("metadata") or {}
-    name = meta.get("khan_course") or "Other"
+    name = meta.get("khan_unit") or meta.get("khan_course") or "Other"
     number = meta.get("khan_unit_number")
     return f"Unit {number}: {name}" if number else name
 

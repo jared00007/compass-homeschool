@@ -210,7 +210,7 @@ def test_create_course_makes_ordered_backlog_cards(db, student):
     m = first["metadata"]
     assert first["agent"] == "khan" and first["subject"] == "math"
     assert m["held_back"] is True and m["khan_part"] == 1
-    assert m["khan_course"] == "Exponents & radicals"
+    assert m["khan_unit"] == "Exponents & radicals"
     # Numbered titles so the order reads at a glance.
     assert first["title"] == "1. Multiplying & dividing powers"
     assert db.get_lesson(ids[2])["title"] == "3. Powers of products"
@@ -640,7 +640,7 @@ def test_create_course_from_outline_loads_every_unit(db, student):
     assert result["course"] == "Algebra 1"
     assert result["unit_count"] == 2 and result["card_count"] == 3
     khan = db.list_lessons(student["id"], agent="khan")
-    units = {(l.get("metadata") or {}).get("khan_course") for l in khan}
+    units = {(l.get("metadata") or {}).get("khan_unit") for l in khan}
     assert units == {"Exponents", "Radicals"}
 
 

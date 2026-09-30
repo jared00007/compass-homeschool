@@ -2259,7 +2259,7 @@ def board_card_tag(kind: str, item: dict[str, Any]) -> tuple[str, str, str]:
             # render_board_card) mark them as Khan.
             subject = item.get("subject", "")
             meta = item.get("metadata") or {}
-            course = (meta.get("khan_course") or "").strip()
+            course = (meta.get("khan_unit") or meta.get("khan_course") or "").strip()
             subject_label = subjects.label(subject) if subjects.is_valid(subject) else "Khan"
             # A no-XP reminder/review card is marked so it's clear it earns nothing.
             no_xp_tag = " · 🔕 no XP" if meta.get("no_xp") else ""
@@ -4611,7 +4611,7 @@ def render_khan_score_recorder(db: Database, student: dict[str, Any]) -> None:
     )
     for card in cards[:25]:
         existing = km.get_result(card)
-        unit = (card.get("metadata") or {}).get("khan_course")
+        unit = (card.get("metadata") or {}).get("khan_unit") or (card.get("metadata") or {}).get("khan_course")
         with st.container(border=True):
             head = f"**{md(card['title'])}**"
             if unit:
@@ -4778,7 +4778,7 @@ def render_khan_mastery_boost(db: Database, student: dict[str, Any]) -> None:
     groups: dict[tuple[Any, str], list[dict[str, Any]]] = {}
     for card in revisitable:
         meta = card.get("metadata") or {}
-        key = (meta.get("khan_course_id") or "", meta.get("khan_course") or "Other Khan skills")
+        key = (meta.get("khan_course_id") or "", meta.get("khan_unit") or meta.get("khan_course") or "Other Khan skills")
         groups.setdefault(key, []).append(card)
     for (_cid, cname), cards_in in groups.items():
         cards_in.sort(key=lambda c: (c.get("metadata") or {}).get("khan_part") or 0)
