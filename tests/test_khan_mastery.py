@@ -337,6 +337,28 @@ def test_score_recorder_is_empty_without_finished_cards(db, student, monkeypatch
     assert "No finished Khan cards yet" in "\n".join(rec.written)
 
 
+def test_clear_control_counts_clearable_vs_kept(db, student, monkeypatch):
+    board = _card(db, student, "Exponents")
+    db.set_lesson_status(board, "planned")
+    approved = _card(db, student, "Radicals")
+    db.set_lesson_status(approved, "completed")
+    rec = _Rec()
+    monkeypatch.setattr(ui, "st", rec)
+    ui.render_khan_clear_control(db, student)
+    page = "\n".join(rec.written)
+    assert "1** Khan card(s) on the board" in page   # one clearable
+    assert "1** approved card(s)" in page             # one kept
+
+
+def test_clear_control_says_nothing_to_clear_when_all_approved(db, student, monkeypatch):
+    lid = _card(db, student)
+    db.set_lesson_status(lid, "completed")
+    rec = _Rec()
+    monkeypatch.setattr(ui, "st", rec)
+    ui.render_khan_clear_control(db, student)
+    assert "Nothing to clear" in "\n".join(rec.written)
+
+
 def test_unit_meter_shows_this_weeks_unit_and_progress(db, student, monkeypatch):
     today = date.today()
     ids = _unit(db, student, "Exponents & radicals", 5)

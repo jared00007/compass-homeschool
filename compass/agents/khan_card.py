@@ -675,6 +675,30 @@ def schedule_all_units(
     }
 
 
+def clearable_cards(db: Any, student: dict[str, Any]) -> list[dict[str, Any]]:
+    """Khan cards that AREN'T in the official record -- everything except approved
+    (``completed``) ones: board cards (planned / submitted / needs_revision),
+    backlog cards (held_back), and any leftover skipped ones. The exact set a
+    'clean slate before reloading courses' should remove."""
+    return [
+        card
+        for card in db.list_lessons(student["id"], agent=AGENT_KEY, limit=2000)
+        if card["status"] != "completed"
+    ]
+
+
+def clear_unfinished_cards(db: Any, student: dict[str, Any]) -> int:
+    """Delete every Khan card that isn't approved/completed -- a clean slate to
+    reload courses. Completed cards (the official record) are left untouched, and
+    any hours already logged survive (``activities.lesson_id`` is ``ON DELETE SET
+    NULL``, so the hours keep their credit, they just lose the back-link to a
+    now-deleted card). Returns how many cards were deleted."""
+    cards = clearable_cards(db, student)
+    for card in cards:
+        db.delete_lesson(card["id"])
+    return len(cards)
+
+
 def course_summaries(db: Any, student_id: int) -> list[dict[str, Any]]:
     """A student's Khan courses, grouped by course id with progress -- the data
     behind the Backlog course manager. Newest course first. Each carries the

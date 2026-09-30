@@ -52,6 +52,7 @@ from compass.ui import (
     render_khan_card_form,
     render_khan_course_importer,
     render_khan_course_loader,
+    render_khan_clear_control,
     render_khan_courses,
     render_khan_mastery_confirmations,
     render_khan_review_card_form,
@@ -779,6 +780,11 @@ if mc_view == "plan":
         st.caption("Load a single unit, or paste loose lessons that aren't in a unit.")
         render_khan_course_loader(db, student)
         render_khan_card_form(db, student)
+
+        st.divider()
+        st.markdown("#### 🧹 Start fresh")
+        st.caption("Clear the board + backlog Khan cards so you can reload courses clean.")
+        render_khan_clear_control(db, student)
 
     # ── ✍️ Write a Compass lesson: AI-written lessons, full or lightning-quick. ──
     with st.expander("✍️ Write a Compass lesson"):

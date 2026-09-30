@@ -391,6 +391,51 @@ def test_schedule_all_units_errors_when_nothing_is_left(db, student):
         khan_card.schedule_all_units(db, student, start_day=date.today(), per_day=2)
 
 
+def test_clear_unfinished_cards_wipes_board_and_backlog_keeps_approved(db, student):
+    from datetime import date
+
+    # A backlog card (held_back), a board card (planned on a day), a skipped
+    # leftover, and an approved one in the record.
+    ids = khan_card.create_course(
+        db, student, subject="math", course="Exponents",
+        lessons=["A", "B", "C", "D"], minutes=30)["created"]
+    khan_card.assign_course_card(db, student, ids[1], day_iso=date.today().isoformat(),
+                                 generate_quiz=False)  # -> on the board (planned)
+    db.set_lesson_status(ids[2], "skipped")
+    db.set_lesson_status(ids[3], "completed")          # approved / official record
+
+    clearable = khan_card.clearable_cards(db, student)
+    assert ids[3] not in {c["id"] for c in clearable}  # the completed one is spared
+    assert {ids[0], ids[1], ids[2]} <= {c["id"] for c in clearable}
+
+    cleared = khan_card.clear_unfinished_cards(db, student)
+    assert cleared == 3
+    remaining = db.list_lessons(student["id"], agent="khan", limit=100)
+    assert [c["id"] for c in remaining] == [ids[3]]     # only the approved card is left
+
+
+def test_clear_unfinished_cards_keeps_logged_hours(db, student):
+    from datetime import date
+
+    lid = khan_card.create_khan_card(
+        db, student, subject="math", unit="Exponent rules",
+        minutes=35, day_iso=date.today().isoformat(), quiz=[],
+    )
+    db.log_activity(
+        student_id=student["id"], title="Khan work", tier="core",
+        primary_subject="math", minutes=35, subject_credits={"math": 35},
+        lesson_id=lid,
+    )
+    # Logging hours completes the card (so it'd normally be KEPT). Force it back to
+    # a board state to exercise the delete-safety path: a cleared card whose hours
+    # must still survive (activities.lesson_id is ON DELETE SET NULL).
+    db.set_lesson_status(lid, "planned")
+    khan_card.clear_unfinished_cards(db, student)
+    assert db.get_lesson(lid) is None
+    acts = db.list_activities(student["id"])
+    assert any(a["minutes"] == 35 and a["primary_subject"] == "math" for a in acts)
+
+
 def _course_id(db, lesson_id):
     return db.get_lesson(lesson_id)["metadata"]["khan_course_id"]
 

@@ -4770,6 +4770,36 @@ def render_khan_score_recorder(db: Database, student: dict[str, Any]) -> None:
                 st.rerun()
 
 
+def render_khan_clear_control(db: Database, student: dict[str, Any]) -> None:
+    """Parent maintenance: wipe every Khan card on the board or in the backlog for
+    a clean slate before reloading courses, keeping approved (completed) cards in
+    the record. Guarded behind an explicit confirm so a stray click can't fire it;
+    hours already logged survive the delete."""
+    from compass.agents import khan_card
+
+    all_cards = db.list_lessons(student["id"], agent="khan", limit=2000)
+    clearable = [c for c in all_cards if c["status"] != "completed"]
+    kept = len(all_cards) - len(clearable)
+    if not clearable:
+        st.caption("Nothing to clear — no Khan cards on the board or in the backlog.")
+        return
+    st.caption(
+        f"This deletes the **{len(clearable)}** Khan card(s) on the board or in the "
+        f"backlog. **{kept}** approved card(s) in the official record stay put, and "
+        "any hours already logged are kept."
+    )
+    confirm = st.checkbox(
+        "Yes, clear them — I want a clean slate.", key="khan_clear_confirm"
+    )
+    if st.button(
+        "🧹 Clear board & backlog Khan cards", type="secondary",
+        disabled=not confirm, key="khan_clear_btn",
+    ):
+        cleared = khan_card.clear_unfinished_cards(db, student)
+        st.success(f"Cleared {cleared} Khan card(s). Load your courses fresh above. 🧹")
+        st.rerun()
+
+
 # --- Khan mastery: Landon marks a level, a parent confirms it ------------------
 
 def _render_one_mastery_row(db: Database, card: dict[str, Any]) -> None:
