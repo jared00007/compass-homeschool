@@ -195,6 +195,16 @@ KHAN_RESULT_LABELS = {
     "unit_test": "Unit test",
 }
 
+# A required reflection Landon fills when he turns in ANY Khan card: how hard it
+# was and how it went. "I need help" flags the card for the parent. Kept to two
+# quick picks (plus an optional note) so it's a moment, not a form.
+KHAN_DIFFICULTY = ("easy", "medium", "hard")
+KHAN_DIFFICULTY_LABELS = {"easy": "Easy", "medium": "Medium", "hard": "Hard"}
+KHAN_DIFFICULTY_EMOJI = {"easy": "😀", "medium": "😐", "hard": "😓"}
+KHAN_WENT = ("got_it", "tricky", "need_help")
+KHAN_WENT_LABELS = {"got_it": "Got it", "tricky": "A bit tricky", "need_help": "I need help"}
+KHAN_WENT_EMOJI = {"got_it": "✅", "tricky": "🤔", "need_help": "🙋"}
+
 # Default instructional minutes credited when a Big Project step or a coding
 # module is completed without hours logged by hand -- both are real, substantial
 # work that used to credit *nothing* toward the hour floor (reported: hours were

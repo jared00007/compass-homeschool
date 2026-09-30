@@ -283,6 +283,57 @@ def test_confirmations_render_nothing_with_an_empty_queue(db, student, monkeypat
     assert "Mastery to confirm" not in "\n".join(rec.written)
 
 
+# --- reflection + student-logged score -> parent approval --------------------
+
+def test_record_reflection_stores_and_flags_need_help(db, student):
+    lid = _card(db, student)
+    km.record_reflection(db, lid, difficulty="hard", went="need_help", note="tricky part")
+    refl = km.get_reflection(db.get_lesson(lid))
+    assert refl["difficulty"] == "hard" and refl["went"] == "need_help"
+    assert refl["note"] == "tricky part"
+    assert km.reflection_needs_help(db.get_lesson(lid)) is True
+
+
+def test_record_reflection_rejects_bad_values(db, student):
+    lid = _card(db, student)
+    with pytest.raises(ValueError):
+        km.record_reflection(db, lid, difficulty="brutal", went="got_it")
+    with pytest.raises(ValueError):
+        km.record_reflection(db, lid, difficulty="easy", went="whatever")
+
+
+def test_a_claimed_score_waits_for_approval_before_it_grades(db, student):
+    from compass import gradebook
+
+    lid = _card(db, student)
+    km.claim_score(db, lid, percent=80)
+    db.set_lesson_status(lid, "completed")
+    # A claim is pending and does NOT feed the grade yet.
+    assert km.get_score_claim(db.get_lesson(lid))["percent"] == 80.0
+    assert km.get_result(db.get_lesson(lid)) is None
+    quizzes = [c for c in gradebook.subject_grade(db, student["id"], "math").components
+               if c.key == "quizzes"]
+    assert quizzes == [] or quizzes[0].percent is None
+
+    # Parent approves (correcting to 82): claim clears, result records, grade counts.
+    km.approve_score(db, lid, percent=82)
+    assert km.get_score_claim(db.get_lesson(lid)) is None
+    assert km.get_result(db.get_lesson(lid))["percent"] == 82.0
+    quizzes = [c for c in gradebook.subject_grade(db, student["id"], "math").components
+               if c.key == "quizzes"]
+    assert round(quizzes[0].percent) == 82
+
+
+def test_pending_score_claims_lists_the_queue(db, student):
+    lid = _card(db, student)
+    km.claim_score(db, lid, percent=75)
+    queue = km.pending_score_claims(db, student["id"])
+    assert [item["lesson"]["id"] for item in queue] == [lid]
+    assert queue[0]["claim"]["percent"] == 75.0
+    km.reject_score_claim(db, lid)
+    assert km.pending_score_claims(db, student["id"]) == []
+
+
 # --- the real Khan score (recorded by hand) ----------------------------------
 
 def test_record_result_stores_the_real_khan_score(db, student):

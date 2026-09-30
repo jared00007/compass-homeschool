@@ -5019,15 +5019,62 @@ def _render_one_khan_due_card(
             db, student, card["id"], card.get("metadata") or {},
             card["payload"].get("quiz") or [], agent="khan",
         )
+        from compass import khan_mastery as km
+
+        meta = card.get("metadata") or {}
+        is_checkpoint = bool(meta.get("khan_checkpoint"))
+
+        # Required reflection: how hard it was and how it went. He can't turn the
+        # card in until both are picked (a quick moment, not a form).
+        st.markdown("**Before you turn it in — how did this go?**")
+        cols = st.columns(2)
+        difficulty = cols[0].radio(
+            "How hard was it?", options=config.KHAN_DIFFICULTY,
+            format_func=lambda v: f"{km.difficulty_emoji(v)} {km.difficulty_label(v)}",
+            index=None, key=f"khan_refl_diff_{card['id']}",
+        )
+        went = cols[1].radio(
+            "How did it feel?", options=config.KHAN_WENT,
+            format_func=lambda v: f"{km.went_emoji(v)} {km.went_label(v)}",
+            index=None, key=f"khan_refl_went_{card['id']}",
+        )
+        note = st.text_input(
+            "Anything to tell your parent? (optional)",
+            key=f"khan_refl_note_{card['id']}",
+            placeholder="e.g. the word problems were confusing",
+        )
+
+        # On a checkpoint he also logs his real Khan score -- it waits for a
+        # parent to approve before it counts toward his grade.
+        score = None
+        if is_checkpoint:
+            kind_label = km.result_label(meta.get("khan_checkpoint_kind"))
+            score = st.number_input(
+                f"Your {kind_label} score on Khan (%)", min_value=0, max_value=100,
+                value=None, step=1, key=f"khan_score_claim_{card['id']}",
+                help="Read it off Khan. Your parent approves it, then it counts toward your grade.",
+            )
+
         ready, why_not = _lesson_ready_to_submit(card)
+        needs = []
+        if difficulty is None or went is None:
+            needs.append("pick how hard it was and how it went")
+        if is_checkpoint and score is None:
+            needs.append("enter your Khan score")
+        can_submit = ready and not needs
         if st.button(
             "📬 Turn it in for review", key=f"submit_khan_{card['id']}",
-            type="primary", disabled=not ready,
+            type="primary", disabled=not can_submit,
         ):
+            km.record_reflection(db, card["id"], difficulty=difficulty, went=went, note=note)
+            if is_checkpoint and score is not None:
+                km.claim_score(db, card["id"], percent=float(score))
             db.submit_lesson(card["id"])
             st.rerun()
         if not ready:
             st.caption(why_not)
+        elif needs:
+            st.caption("Just " + " and ".join(needs) + " first.")
 
 
 def render_khan_due_cards(db: Database, student: dict[str, Any]) -> None:
@@ -5058,6 +5105,11 @@ def render_khan_due_cards(db: Database, student: dict[str, Any]) -> None:
             f"You have **{len(actionable)}** Khan card{'s' if len(actionable) != 1 else ''} to do. "
             "Open each, do it on Khan, take its quiz if it has one, and turn it in — one at a time or all at once."
         )
+        if any((c.get("metadata") or {}).get("khan_checkpoint") for c in actionable):
+            st.info(
+                "🏅 On a **✅ Quiz / Unit test** card, enter your Khan score when you turn it in — "
+                "your parent approves it and it counts toward your grade."
+            )
     for card in actionable:
         _render_one_khan_due_card(db, student, card, expanded=len(actionable) == 1)
 

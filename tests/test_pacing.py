@@ -178,6 +178,50 @@ def test_khan_page_gives_each_due_card_its_own_submit_button(monkeypatch, tmp_pa
     assert len(submits) == 3, [b.label for b in at.button]
 
 
+def test_khan_turn_in_requires_a_reflection(monkeypatch, tmp_path):
+    """He can't turn a Khan card in until he's picked how hard it was and how it
+    went; once he does, the button enables and the reflection is stored."""
+    from compass.agents import khan_card
+    from compass import khan_mastery as km
+
+    khan_path = str(REPO_ROOT / "pages" / "18_Khan.py")
+    db_path = tmp_path / "refl.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    student_id = student["id"]
+    auth.set_pin(db, "1234")  # student view
+    db.set_setting("first_day_celebrated_start", db.school_year_bounds()[0])
+    lid = khan_card.create_khan_card(
+        db, student, subject="math", unit="Exponents", minutes=30,
+        day_iso=date.today().isoformat(), quiz=[])
+    db.close()
+
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+    at = AppTest.from_file(HOME_PATH)
+    at.run(timeout=30)
+    at.switch_page(khan_path)
+    at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+
+    submit = [b for b in at.button if "Turn it in" in (b.label or "")][0]
+    assert submit.disabled                      # blocked until he reflects
+
+    [r for r in at.radio if (r.key or "").startswith("khan_refl_diff_")][0].set_value("easy")
+    [r for r in at.radio if (r.key or "").startswith("khan_refl_went_")][0].set_value("got_it")
+    at.run(timeout=30)
+    submit = [b for b in at.button if "Turn it in" in (b.label or "")][0]
+    assert not submit.disabled                  # now it's allowed
+    submit.click().run(timeout=30)
+
+    db = Database(db_path)
+    lesson = db.get_lesson(lid)
+    assert lesson["status"] == "submitted"
+    refl = km.get_reflection(lesson)
+    assert refl["difficulty"] == "easy" and refl["went"] == "got_it"
+    db.close()
+
+
 def test_home_roster_lists_every_khan_card_assigned_to_today(monkeypatch, tmp_path):
     """The lessons roster must show ALL of today's board cards, not collapse the
     Khan ones into a single row. Reported: the count said 6 but the list showed

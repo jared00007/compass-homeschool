@@ -298,6 +298,140 @@ def clear_result(db: Any, lesson_id: int) -> None:
         db.update_lesson_content(lesson["id"], metadata=metadata)
 
 
+# --- the required reflection Landon fills when he turns a Khan card in --------
+
+def difficulty_label(value: Any) -> str:
+    return config.KHAN_DIFFICULTY_LABELS.get(value, "")
+
+
+def difficulty_emoji(value: Any) -> str:
+    return config.KHAN_DIFFICULTY_EMOJI.get(value, "")
+
+
+def went_label(value: Any) -> str:
+    return config.KHAN_WENT_LABELS.get(value, "")
+
+
+def went_emoji(value: Any) -> str:
+    return config.KHAN_WENT_EMOJI.get(value, "")
+
+
+def get_reflection(lesson: dict[str, Any]) -> dict[str, Any] | None:
+    """The reflection Landon recorded on a card, or None. Shape:
+    ``{"difficulty", "went", "note"?, "on"}``."""
+    refl = (lesson.get("metadata") or {}).get("khan_reflection")
+    return refl if isinstance(refl, dict) and refl.get("difficulty") else None
+
+
+def reflection_needs_help(lesson: dict[str, Any]) -> bool:
+    """Whether he flagged this card 'I need help' -- the signal a parent watches."""
+    refl = get_reflection(lesson)
+    return bool(refl and refl.get("went") == "need_help")
+
+
+def record_reflection(
+    db: Any,
+    lesson_id: int,
+    *,
+    difficulty: str,
+    went: str,
+    note: str = "",
+    on: str | None = None,
+) -> dict[str, Any]:
+    """Store Landon's turn-in reflection: how hard it was and how it went, plus an
+    optional note. Raises ValueError for an unknown difficulty or 'went' value."""
+    if difficulty not in config.KHAN_DIFFICULTY:
+        raise ValueError(f"invalid Khan difficulty: {difficulty!r}")
+    if went not in config.KHAN_WENT:
+        raise ValueError(f"invalid Khan 'went' value: {went!r}")
+    lesson = _require_khan_card(db, lesson_id)
+    refl: dict[str, Any] = {
+        "difficulty": difficulty,
+        "went": went,
+        "on": on or date.today().isoformat(),
+    }
+    note = (note or "").strip()
+    if note:
+        refl["note"] = note
+    metadata = dict(lesson.get("metadata") or {})
+    metadata["khan_reflection"] = refl
+    db.update_lesson_content(lesson["id"], metadata=metadata)
+    return refl
+
+
+# --- Landon self-reports a checkpoint score; a parent approves it -------------
+#
+# The student enters his real Khan quiz/unit-test score when he turns the
+# checkpoint in. That's a *claim* -- it does NOT feed the grade until a parent
+# approves it (which writes the real ``khan_result`` the gradebook reads). Same
+# claim -> confirm shape as the mastery ladder.
+
+def get_score_claim(lesson: dict[str, Any]) -> dict[str, Any] | None:
+    """A score Landon self-reported that's still waiting on a parent, or None.
+    Shape: ``{"percent", "kind"?, "on"}``."""
+    claim = (lesson.get("metadata") or {}).get("khan_score_claim")
+    return claim if isinstance(claim, dict) and claim.get("percent") is not None else None
+
+
+def claim_score(
+    db: Any, lesson_id: int, *, percent: float, kind: str | None = None, on: str | None = None
+) -> dict[str, Any]:
+    """Landon self-reports his Khan score on a card. Stored as a pending claim
+    (never feeds the grade until a parent approves). `percent` clamps 0-100."""
+    lesson = _require_khan_card(db, lesson_id)
+    pct = max(0.0, min(100.0, round(float(percent), 1)))
+    if kind is None:
+        kind = (lesson.get("metadata") or {}).get("khan_checkpoint_kind") or "quiz"
+    claim: dict[str, Any] = {"percent": pct, "kind": kind, "on": on or date.today().isoformat()}
+    metadata = dict(lesson.get("metadata") or {})
+    metadata["khan_score_claim"] = claim
+    db.update_lesson_content(lesson["id"], metadata=metadata)
+    return claim
+
+
+def approve_score(
+    db: Any, lesson_id: int, percent: float | None = None, kind: str | None = None
+) -> dict[str, Any]:
+    """A parent approves Landon's self-reported score (optionally correcting the
+    percent/kind). Writes the real ``khan_result`` the gradebook reads and clears
+    the pending claim. Raises ValueError if there's no claim and no percent given."""
+    lesson = _require_khan_card(db, lesson_id)
+    claim = get_score_claim(lesson) or {}
+    use_pct = percent if percent is not None else claim.get("percent")
+    if use_pct is None:
+        raise ValueError("No score to approve.")
+    use_kind = kind or claim.get("kind") or (
+        lesson.get("metadata") or {}
+    ).get("khan_checkpoint_kind") or "quiz"
+    result = record_result(db, lesson_id, kind=use_kind, percent=float(use_pct))
+    fresh = db.get_lesson(lesson_id)
+    metadata = dict(fresh.get("metadata") or {})
+    if metadata.pop("khan_score_claim", None) is not None:
+        db.update_lesson_content(lesson_id, metadata=metadata)
+    return result
+
+
+def reject_score_claim(db: Any, lesson_id: int) -> None:
+    """A parent dismisses a self-reported score without recording it (leaves any
+    already-approved result untouched)."""
+    lesson = _require_khan_card(db, lesson_id)
+    metadata = dict(lesson.get("metadata") or {})
+    if metadata.pop("khan_score_claim", None) is not None:
+        db.update_lesson_content(lesson["id"], metadata=metadata)
+
+
+def pending_score_claims(db: Any, student_id: int) -> list[dict[str, Any]]:
+    """The Khan cards with a score Landon self-reported that no one has approved
+    yet -- the parent's approval queue. Newest card first."""
+    out = []
+    for lesson in _khan_lessons(db, student_id):
+        claim = get_score_claim(lesson)
+        if claim:
+            out.append({"lesson": lesson, "claim": claim})
+    out.sort(key=lambda item: item["lesson"]["id"], reverse=True)
+    return out
+
+
 # --- aggregates across all his Khan cards ------------------------------------
 
 def _khan_lessons(db: Any, student_id: int) -> list[dict[str, Any]]:

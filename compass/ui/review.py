@@ -473,6 +473,8 @@ def _render_khan_review(
             _ui.st.caption("⏳ Waiting on him to do it on Khan and take the quiz.")
         return
 
+    _render_khan_reflection(lesson)
+
     quiz_result = metadata.get("quiz_result") or {}
     if quiz_result.get("total"):
         score = round(100 * quiz_result["correct"] / quiz_result["total"])
@@ -485,15 +487,26 @@ def _render_khan_review(
         _ui.st.caption("🅰️ Khan card — approving logs the hours and files it.")
 
     existing = km.get_result(lesson)
+    claim = km.get_score_claim(lesson)          # what Landon self-reported
+    if claim:
+        _ui.st.caption(
+            f"🅰️ **He entered {round(claim['percent'])}%** for his "
+            f"{km.result_label(claim.get('kind'))}. Approve it (or correct the number) "
+            "and it counts toward his grade."
+        )
+    # The field starts from his claim (or a prior recorded score); the parent can
+    # correct it before approving.
+    start_pct = (claim or existing or {}).get("percent")
     with _ui.st.form(f"{key_prefix}_khan_{lesson['id']}"):
         feedback = _ui.st.text_area("Feedback (shown to him only if you send it back)")
         _ui.st.caption(
-            "🅰️ **His real Khan score** (optional) — read it off Khan's coach dashboard. "
+            "🅰️ **His real Khan score** — approve his number, correct it, or fill it in. "
             "It replaces Compass's auto-quiz for this card's grade."
         )
         score_cols = _ui.st.columns([2, 1, 1])
-        default_kind = (existing["kind"] if existing else None) or metadata.get(
-            "khan_checkpoint_kind"
+        default_kind = (
+            (claim or {}).get("kind") or (existing["kind"] if existing else None)
+            or metadata.get("khan_checkpoint_kind")
         )
         kind = score_cols[0].selectbox(
             "What was it?", options=config.KHAN_RESULT_KINDS,
@@ -504,7 +517,7 @@ def _render_khan_review(
         )
         real_score = score_cols[1].number_input(
             "Score %", min_value=0, max_value=100,
-            value=int(existing["percent"]) if existing else None,
+            value=int(start_pct) if start_pct is not None else None,
             step=1, key=f"{key_prefix}_khres_pct_{lesson['id']}",
         )
         real_attempts = score_cols[2].number_input(
@@ -524,6 +537,9 @@ def _render_khan_review(
                 db, lesson["id"], kind=kind, percent=float(real_score),
                 attempts=int(real_attempts) if real_attempts is not None else None,
             )
+        # Approving clears any pending self-reported claim either way (recorded
+        # above, or the parent chose not to record a score).
+        km.reject_score_claim(db, lesson["id"])
         _log_hours_for_lesson(
             db, student, lesson, minutes=minutes, location=where, credits=credits
         )
@@ -533,6 +549,27 @@ def _render_khan_review(
         db.send_lesson_back(lesson["id"], feedback)
         _ui.st.success("Sent back.")
         _ui.st.rerun()
+
+
+def _render_khan_reflection(lesson: dict[str, Any]) -> None:
+    """Show Landon's turn-in reflection (how hard it was, how it went, his note)
+    on the review card, with 'I need help' called out."""
+    from compass import khan_mastery as km
+
+    refl = km.get_reflection(lesson)
+    if not refl:
+        return
+    line = (
+        f"🧭 **He said:** {km.difficulty_emoji(refl['difficulty'])} "
+        f"{km.difficulty_label(refl['difficulty'])} · "
+        f"{km.went_emoji(refl['went'])} {km.went_label(refl['went'])}"
+    )
+    if km.reflection_needs_help(lesson):
+        _ui.st.warning(line + " — he asked for help.")
+    else:
+        _ui.st.caption(line)
+    if refl.get("note"):
+        _ui.st.caption(f"📝 “{html.escape(refl['note'])}”")
 
 
 def _render_final_grade_decision(
