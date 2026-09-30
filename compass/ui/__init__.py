@@ -4693,6 +4693,83 @@ def render_khan_courses(db: Database, student: dict[str, Any]) -> None:
             st.rerun()
 
 
+def render_khan_score_recorder(db: Database, student: dict[str, Any]) -> None:
+    """Parent-facing: record the REAL Khan score (off Khan's coach dashboard) on
+    each Khan card he's done. Khan is the source of truth for actual scores and
+    attempts, but there's no API to read them -- so the parent copies the number
+    in here, and it becomes that card's Quiz grade in place of Compass's auto-quiz.
+    Lists his finished Khan cards, newest first, capped so the list stays short."""
+    from compass import khan_mastery as km
+
+    cards = [
+        c for c in db.list_lessons(student["id"], agent="khan", limit=500)
+        if c["status"] in ("submitted", "completed")
+    ]
+    if not cards:
+        st.caption("No finished Khan cards yet — record real scores here once he's done some.")
+        return
+    # Newest first: by the day it was scheduled, then by id.
+    cards.sort(
+        key=lambda c: (str((c.get("metadata") or {}).get("planned_for") or ""), c["id"]),
+        reverse=True,
+    )
+    st.caption(
+        "Read his real number off Khan's coach dashboard and drop it in — it replaces "
+        "Compass's auto-quiz for that card's grade and shows on the report card."
+    )
+    for card in cards[:25]:
+        existing = km.get_result(card)
+        unit = (card.get("metadata") or {}).get("khan_course")
+        with st.container(border=True):
+            head = f"**{md(card['title'])}**"
+            if unit:
+                head += f"  \nKhan · {md(unit)}"
+            st.markdown(head)
+            if existing:
+                bits = f"{km.result_label(existing['kind'])} · **{round(existing['percent'])}%**"
+                if existing.get("attempts"):
+                    bits += f" · {existing['attempts']} attempt" + (
+                        "s" if existing["attempts"] != 1 else ""
+                    )
+                st.caption(f"📊 On record: {bits}")
+            with st.form(f"khan_score_{card['id']}", clear_on_submit=False):
+                cols = st.columns([2, 1, 1])
+                kind = cols[0].selectbox(
+                    "What was it?", options=config.KHAN_RESULT_KINDS,
+                    format_func=km.result_label,
+                    index=(config.KHAN_RESULT_KINDS.index(existing["kind"])
+                           if existing and existing.get("kind") in config.KHAN_RESULT_KINDS
+                           else 1),
+                    key=f"khan_score_kind_{card['id']}",
+                )
+                pct = cols[1].number_input(
+                    "Score %", min_value=0, max_value=100,
+                    value=int(existing["percent"]) if existing else None,
+                    step=1, key=f"khan_score_pct_{card['id']}",
+                )
+                att = cols[2].number_input(
+                    "Attempts", min_value=1, max_value=99,
+                    value=int(existing["attempts"]) if existing and existing.get("attempts") else None,
+                    step=1, key=f"khan_score_att_{card['id']}",
+                )
+                btns = st.columns(2)
+                save = btns[0].form_submit_button("💾 Save score", type="primary")
+                clear = btns[1].form_submit_button("✕ Clear") if existing else False
+            if save:
+                if pct is None:
+                    st.warning("Enter a score % to save.")
+                else:
+                    km.record_result(
+                        db, card["id"], kind=kind, percent=float(pct),
+                        attempts=int(att) if att is not None else None,
+                    )
+                    st.success("Saved. 📊")
+                    st.rerun()
+            elif clear:
+                km.clear_result(db, card["id"])
+                st.rerun()
+
+
 # --- Khan mastery: Landon marks a level, a parent confirms it ------------------
 
 def _render_one_mastery_row(db: Database, card: dict[str, Any]) -> None:

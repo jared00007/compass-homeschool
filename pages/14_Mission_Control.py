@@ -55,6 +55,7 @@ from compass.ui import (
     render_khan_courses,
     render_khan_mastery_confirmations,
     render_khan_review_card_form,
+    render_khan_score_recorder,
     render_lightning_lesson_panel,
     render_report_card,
     render_rewind_generator,
@@ -767,6 +768,11 @@ if mc_view == "plan":
         st.markdown("#### 📚 Your Khan units")
         st.caption("Schedule a unit (or the whole load) across days, and spin off companions.")
         render_khan_courses(db, student)
+
+        st.divider()
+        st.markdown("#### 📊 Record his real Khan scores")
+        st.caption("Khan holds the true scores/attempts — punch them in so they hit his grade.")
+        render_khan_score_recorder(db, student)
 
         st.divider()
         st.markdown("#### ➕ Other ways to add")

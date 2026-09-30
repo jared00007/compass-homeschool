@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from compass import config, grades
+from compass import khan_mastery as km
 from compass.curriculum import math_graph
 
 # The four Tier 1 subjects that carry a grade. Life skills, choice topics,
@@ -108,12 +109,18 @@ def subject_grade(db: Any, student_id: int, agent: str) -> grades.SubjectGrade:
 
     for lesson in lessons:
         metadata = lesson.get("metadata") or {}
-        # Oldest-first: the retry deduction is by position, so order is the
-        # meaning. list_quiz_attempts returns newest-first.
-        attempts = list(reversed(db.list_quiz_attempts(student_id, lesson_id=lesson["id"])))
-        percent, _ = grades.quiz_score(attempts, deduction, floor, limit)
-        if percent is not None:
-            quiz_percents.append(percent)
+        # A hand-recorded real Khan score is the better signal, so it stands in
+        # for that card's Compass auto-quiz -- one Quiz entry per card, never both.
+        real_khan = km.result_percent(lesson) if lesson.get("agent") == "khan" else None
+        if real_khan is not None:
+            quiz_percents.append(real_khan)
+        else:
+            # Oldest-first: the retry deduction is by position, so order is the
+            # meaning. list_quiz_attempts returns newest-first.
+            attempts = list(reversed(db.list_quiz_attempts(student_id, lesson_id=lesson["id"])))
+            percent, _ = grades.quiz_score(attempts, deduction, floor, limit)
+            if percent is not None:
+                quiz_percents.append(percent)
 
         # Reading checks fold in with the quiz -- both auto-graded objective checks.
         quiz_percents.extend(_reading_percents(metadata))
@@ -237,11 +244,20 @@ def graded_items(db: Any, student_id: int, agent: str) -> list[GradedItem]:
         metadata = lesson.get("metadata") or {}
         title = lesson.get("title") or lesson.get("topic") or "a lesson"
 
-        attempts = list(reversed(db.list_quiz_attempts(student_id, lesson_id=lesson["id"])))
-        percent, used = grades.quiz_score(attempts, deduction, floor, limit)
-        if percent is not None:
-            detail = "best score" if used == 1 else f"best of {used} attempts"
-            items.append(GradedItem("quizzes", title, percent, detail))
+        real_khan = km.get_result(lesson) if lesson.get("agent") == "khan" else None
+        if real_khan is not None:
+            detail = f"Khan {km.result_label(real_khan['kind']).lower()}"
+            if real_khan.get("attempts"):
+                detail += f" · {real_khan['attempts']} attempt" + (
+                    "s" if real_khan["attempts"] != 1 else ""
+                )
+            items.append(GradedItem("quizzes", title, float(real_khan["percent"]), detail))
+        else:
+            attempts = list(reversed(db.list_quiz_attempts(student_id, lesson_id=lesson["id"])))
+            percent, used = grades.quiz_score(attempts, deduction, floor, limit)
+            if percent is not None:
+                detail = "best score" if used == 1 else f"best of {used} attempts"
+                items.append(GradedItem("quizzes", title, percent, detail))
 
         for check in (metadata.get("reading_checks") or {}).values():
             if check.get("total"):

@@ -20,6 +20,7 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 from compass import auth, config, gradebook, grades
+from compass import khan_mastery as km
 from compass.storage.db import Database
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -599,6 +600,42 @@ def test_a_khan_cards_quiz_folds_into_its_subject_grade(db, student):
     # And it shows in the drill-down, named as a Khan card.
     titles = [i.title for i in gradebook.graded_items(db, student["id"], "math")]
     assert any("Khan Academy" in t for t in titles)
+
+
+def test_a_recorded_real_khan_score_feeds_the_grade(db, student):
+    """A hand-recorded real Khan score lands in the subject's Quiz component and
+    shows in the drill-down, labeled by what kind of Khan check it was."""
+    lesson_id = _khan_card(db, student, subject="math")
+    km.record_result(db, lesson_id, kind="unit_test", percent=92, attempts=2)
+
+    quiz = [
+        c for c in gradebook.subject_grade(db, student["id"], "math").components
+        if c.key == "quizzes"
+    ][0]
+    assert round(quiz.percent) == 92
+    items = gradebook.graded_items(db, student["id"], "math")
+    khan_item = [i for i in items if "Khan Academy" in i.title][0]
+    assert round(khan_item.percent) == 92
+    assert "unit test" in khan_item.detail and "2 attempt" in khan_item.detail
+
+
+def test_a_real_khan_score_replaces_that_cards_auto_quiz(db, student):
+    """The real number wins: when a card has a recorded Khan score, its Compass
+    auto-quiz doesn't also count -- one Quiz entry per card, not two."""
+    lesson_id = _khan_card(db, student, subject="math")
+    db.record_quiz_result(lesson_id, student["id"], 4, 5, False)  # Compass auto-quiz = 80
+    km.record_result(db, lesson_id, kind="unit_test", percent=100)
+
+    quiz = [
+        c for c in gradebook.subject_grade(db, student["id"], "math").components
+        if c.key == "quizzes"
+    ][0]
+    assert round(quiz.percent) == 100          # the real 100, not an 80/100 average
+    khan_items = [
+        i for i in gradebook.graded_items(db, student["id"], "math")
+        if "Khan Academy" in i.title
+    ]
+    assert len(khan_items) == 1                 # not double-counted
 
 
 def test_a_khan_reading_card_folds_into_english(db, student):

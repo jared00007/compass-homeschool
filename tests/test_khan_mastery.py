@@ -283,6 +283,60 @@ def test_confirmations_render_nothing_with_an_empty_queue(db, student, monkeypat
     assert "Mastery to confirm" not in "\n".join(rec.written)
 
 
+# --- the real Khan score (recorded by hand) ----------------------------------
+
+def test_record_result_stores_the_real_khan_score(db, student):
+    lid = _card(db, student)
+    km.record_result(db, lid, kind="unit_test", percent=85, attempts=2, on="2026-09-30")
+    result = km.get_result(db.get_lesson(lid))
+    assert result["kind"] == "unit_test"
+    assert result["percent"] == 85.0
+    assert result["attempts"] == 2
+    assert result["on"] == "2026-09-30"
+    assert km.result_percent(db.get_lesson(lid)) == 85.0
+
+
+def test_record_result_clamps_and_drops_a_blank_attempt(db, student):
+    lid = _card(db, student)
+    km.record_result(db, lid, kind="quiz", percent=140)   # over 100
+    result = km.get_result(db.get_lesson(lid))
+    assert result["percent"] == 100.0
+    assert "attempts" not in result                        # none given -> not stored
+
+
+def test_record_result_rejects_an_unknown_kind(db, student):
+    lid = _card(db, student)
+    with pytest.raises(ValueError):
+        km.record_result(db, lid, kind="pop_quiz", percent=50)
+
+
+def test_clear_result_removes_it(db, student):
+    lid = _card(db, student)
+    km.record_result(db, lid, kind="practice", percent=70)
+    km.clear_result(db, lid)
+    assert km.get_result(db.get_lesson(lid)) is None
+
+
+def test_score_recorder_lists_finished_cards_and_shows_the_record(db, student, monkeypatch):
+    lid = _card(db, student, "Exponents")
+    db.set_lesson_status(lid, "completed")
+    km.record_result(db, lid, kind="unit_test", percent=90)
+    rec = _Rec()
+    monkeypatch.setattr(ui, "st", rec)
+    ui.render_khan_score_recorder(db, student)
+    page = "\n".join(rec.written)
+    assert "Exponents" in page
+    assert "On record" in page and "Unit test" in page   # the recorded score shows
+
+
+def test_score_recorder_is_empty_without_finished_cards(db, student, monkeypatch):
+    _card(db, student)  # created but not completed/submitted
+    rec = _Rec()
+    monkeypatch.setattr(ui, "st", rec)
+    ui.render_khan_score_recorder(db, student)
+    assert "No finished Khan cards yet" in "\n".join(rec.written)
+
+
 def test_unit_meter_shows_this_weeks_unit_and_progress(db, student, monkeypatch):
     today = date.today()
     ids = _unit(db, student, "Exponents & radicals", 5)

@@ -183,6 +183,18 @@ KHAN_MASTERY_XP = {
 KHAN_UNIT_MASTERY_TARGET = 0.8   # 80% of a unit's skills at Proficient+
 KHAN_UNIT_MASTERY_BONUS = 25     # XP for taking a unit to its mastery target
 
+# Khan's own scores live only in Khan's coach dashboard (no API), so a parent can
+# hand-record the *real* number off that dashboard onto a Khan card. What kind of
+# Khan check it was -- ordered least to most weighty -- shown when recording and
+# on the report card. The recorded percent then feeds the subject's Quiz grade in
+# place of Compass's own auto-quiz for that card (the real number wins).
+KHAN_RESULT_KINDS = ("practice", "quiz", "unit_test")
+KHAN_RESULT_LABELS = {
+    "practice": "Practice",
+    "quiz": "Quiz",
+    "unit_test": "Unit test",
+}
+
 # Default instructional minutes credited when a Big Project step or a coding
 # module is completed without hours logged by hand -- both are real, substantial
 # work that used to credit *nothing* toward the hour floor (reported: hours were

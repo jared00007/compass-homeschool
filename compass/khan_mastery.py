@@ -225,6 +225,79 @@ def reject_claim(db: Any, lesson_id: int) -> None:
     _write(db, lesson, record)
 
 
+# --- the real Khan score (recorded by hand off Khan's coach dashboard) --------
+#
+# Khan is the source of truth for actual scores/attempts, but there's no API to
+# read them, so a parent copies the real number off Khan's dashboard onto the
+# card. It's stored separately from the mastery ladder (which is about the tier)
+# and, once recorded, becomes the card's Quiz grade in place of any Compass
+# auto-quiz -- the real Khan number is the better signal.
+
+def is_valid_result_kind(kind: Any) -> bool:
+    return kind in config.KHAN_RESULT_KINDS
+
+
+def result_label(kind: Any) -> str:
+    return config.KHAN_RESULT_LABELS.get(kind, "Khan result")
+
+
+def get_result(lesson: dict[str, Any]) -> dict[str, Any] | None:
+    """The real Khan result recorded on a card, or None. Shape:
+    ``{"kind", "percent", "attempts"?, "note"?, "on"}``."""
+    result = (lesson.get("metadata") or {}).get("khan_result")
+    if isinstance(result, dict) and result.get("percent") is not None:
+        return result
+    return None
+
+
+def result_percent(lesson: dict[str, Any]) -> float | None:
+    """The recorded real-Khan percent for a card, if any (0-100)."""
+    result = get_result(lesson)
+    return float(result["percent"]) if result else None
+
+
+def record_result(
+    db: Any,
+    lesson_id: int,
+    *,
+    kind: str,
+    percent: float,
+    attempts: int | None = None,
+    note: str = "",
+    on: str | None = None,
+) -> dict[str, Any]:
+    """Record (or overwrite) the real Khan score a parent read off Khan's coach
+    dashboard. `percent` is clamped to 0-100; `attempts`, when given, is a count
+    >= 1. Returns the stored record. Raises ValueError for an unknown kind."""
+    if not is_valid_result_kind(kind):
+        raise ValueError(f"invalid Khan result kind: {kind!r}")
+    lesson = _require_khan_card(db, lesson_id)
+    pct = max(0.0, min(100.0, round(float(percent), 1)))
+    result: dict[str, Any] = {
+        "kind": kind,
+        "percent": pct,
+        "on": on or date.today().isoformat(),
+    }
+    if attempts is not None and int(attempts) >= 1:
+        result["attempts"] = int(attempts)
+    note = (note or "").strip()
+    if note:
+        result["note"] = note
+    metadata = dict(lesson.get("metadata") or {})
+    metadata["khan_result"] = result
+    db.update_lesson_content(lesson["id"], metadata=metadata)
+    return result
+
+
+def clear_result(db: Any, lesson_id: int) -> None:
+    """Remove a recorded real-Khan score from a card (its Compass auto-quiz, if
+    any, takes back over for that card's grade)."""
+    lesson = _require_khan_card(db, lesson_id)
+    metadata = dict(lesson.get("metadata") or {})
+    if metadata.pop("khan_result", None) is not None:
+        db.update_lesson_content(lesson["id"], metadata=metadata)
+
+
 # --- aggregates across all his Khan cards ------------------------------------
 
 def _khan_lessons(db: Any, student_id: int) -> list[dict[str, Any]]:
