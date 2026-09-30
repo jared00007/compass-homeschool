@@ -317,7 +317,7 @@ def build_khan_checkpoint_payload(
         covers_block = "\n\n**It covers:**\n" + "\n".join(f"- {c}" for c in covers)
     overview = (
         f"{course_line}"
-        f"✅ **Checkpoint — Khan {kind_label}.**\n\n"
+        f"📝 **Checkpoint — Khan {kind_label}.**\n\n"
         f"▶️ **[Open in Khan Academy]({url})**\n\n"
         f"Take this {kind_label.lower()} over on Khan, then come back and turn it in. "
         f"Your parent records your real Khan score, which counts toward your grade."
@@ -538,7 +538,7 @@ def create_course(
                 subject, label, url, minutes, kind=entry["kind"],
                 covers=entry["covers"], course=course,
             )
-            title = f"{index}. ✅ {label}"
+            title = f"{index}. 📝 {label}"
             payload["title"] = title
             metadata["khan_checkpoint"] = True
             metadata["khan_checkpoint_kind"] = entry["kind"]

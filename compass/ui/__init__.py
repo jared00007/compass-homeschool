@@ -2267,8 +2267,8 @@ def board_card_tag(kind: str, item: dict[str, Any]) -> tuple[str, str, str]:
             # check, not another lesson.
             check_kind = meta.get("khan_checkpoint_kind")
             check_tag = (
-                " · ✅ Unit test" if check_kind == "unit_test"
-                else " · ✅ Quiz" if check_kind == "quiz" else ""
+                " · 📝 Unit test" if check_kind == "unit_test"
+                else " · 📝 Quiz" if check_kind == "quiz" else ""
             )
             return (
                 SUBJECT_TAG_COLORS.get(subject, _BOARD_TAG_FALLBACK_COLOR),
@@ -5107,7 +5107,7 @@ def render_khan_due_cards(db: Database, student: dict[str, Any]) -> None:
         )
         if any((c.get("metadata") or {}).get("khan_checkpoint") for c in actionable):
             st.info(
-                "🏅 On a **✅ Quiz / Unit test** card, enter your Khan score when you turn it in — "
+                "🏅 On a **📝 Quiz / Unit test** card, enter your Khan score when you turn it in — "
                 "your parent approves it and it counts toward your grade."
             )
     for card in actionable:

@@ -585,7 +585,7 @@ def test_create_course_from_outline_makes_checkpoint_cards(db, student):
     assert quiz_card["metadata"]["khan_checkpoint"] is True
     assert quiz_card["metadata"]["khan_covers"] == [
         "Repeating decimals", "Square roots & cube roots"]
-    assert "✅" in quiz_card["title"] and "Quiz 1" in quiz_card["title"]  # unit prefix stripped
+    assert "📝" in quiz_card["title"] and "Quiz 1" in quiz_card["title"]  # unit prefix stripped
     assert "Checkpoint" in quiz_card["payload"]["overview"]
     assert "It covers" in quiz_card["payload"]["overview"]
     assert quiz_card["payload"]["quiz"] == []          # a checkpoint carries no Compass quiz
