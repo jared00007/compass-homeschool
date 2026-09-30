@@ -965,16 +965,32 @@ def render_board_backlog(
         # so the panel opens as a short list of headers ("Khan Academy (5)")
         # to expand one at a time, not a wall of every card at once.
         with _ui.st.expander(f"{icon} {epic} ({len(items)})", expanded=False):
-            with _ui.st.container(key=f"{key_prefix}_backlog_row_{epic.replace(' ', '_')}"):
-                backlog_columns = _ui.st.columns(min(len(items), 4))
-                for position, (kind, item) in enumerate(items):
-                    with backlog_columns[position % len(backlog_columns)]:
-                        render_board_card(
-                            db, kind, item,
-                            today_iso=today_iso,
-                            board_week_start=board_week_start,
-                            interactive=interactive,
-                        )
+            safe_epic = epic.replace(" ", "_")
+
+            def _render_cards(cards, row_key):
+                with _ui.st.container(key=row_key):
+                    columns = _ui.st.columns(min(len(cards), 4))
+                    for position, (kind, item) in enumerate(cards):
+                        with columns[position % len(columns)]:
+                            render_board_card(
+                                db, kind, item,
+                                today_iso=today_iso,
+                                board_week_start=board_week_start,
+                                interactive=interactive,
+                            )
+
+            if epic == "Khan Academy":
+                # Khan cards cluster by their unit, in lesson order, so a big
+                # loaded course reads as tidy per-unit runs instead of one long
+                # pile (requested: "group and organize that backlog by unit with
+                # numerical ordering").
+                for u_index, (unit, unit_items) in enumerate(
+                    weekly.group_khan_backlog_by_unit(items)
+                ):
+                    _ui.st.markdown(f"**{md(unit)}** ({len(unit_items)})")
+                    _render_cards(unit_items, f"{key_prefix}_backlog_row_{safe_epic}_{u_index}")
+            else:
+                _render_cards(items, f"{key_prefix}_backlog_row_{safe_epic}")
 
 
 # --- per-subject week view: the same day board, scoped to one agent ------------
