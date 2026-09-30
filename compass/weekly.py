@@ -468,6 +468,47 @@ def group_khan_backlog_by_unit(
     return [(unit, units[unit]) for unit in sorted(units, key=lambda u: (first_id[u], u))]
 
 
+def _khan_course_label(item: dict[str, Any]) -> str:
+    return (item.get("metadata") or {}).get("khan_course_name") or "Other Khan cards"
+
+
+def _khan_unit_label(item: dict[str, Any]) -> str:
+    return (item.get("metadata") or {}).get("khan_course") or "Other"
+
+
+def group_khan_backlog_by_course_unit(
+    items: list[tuple[str, dict[str, Any]]],
+) -> list[tuple[str, list[tuple[str, list[tuple[str, dict[str, Any]]]]]]]:
+    """Group the Khan backlog into a course -> unit -> cards hierarchy. Courses
+    (``khan_course_name``, e.g. "8th grade math essentials") and the units within
+    them come back in load order (earliest card id first); each unit's cards are
+    in lesson order (``khan_part``). Cards with no course name fall under "Other
+    Khan cards". Powers the Backlog's course/unit grouping and filters."""
+    courses: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = {}
+    course_first: dict[str, int] = {}
+    unit_first: dict[tuple[str, str], int] = {}
+    for kind, item in items:
+        course = _khan_course_label(item)
+        unit = _khan_unit_label(item)
+        cid = item.get("id") or 0
+        courses.setdefault(course, {}).setdefault(unit, []).append((kind, item))
+        course_first[course] = min(course_first.get(course, cid), cid)
+        unit_first[(course, unit)] = min(unit_first.get((course, unit), cid), cid)
+
+    out: list[tuple[str, list[tuple[str, list[tuple[str, dict[str, Any]]]]]]] = []
+    for course in sorted(courses, key=lambda c: (course_first[c], c)):
+        units = courses[course]
+        unit_list = []
+        for unit in sorted(units, key=lambda u: (unit_first[(course, u)], u)):
+            cards = sorted(
+                units[unit],
+                key=lambda pair: (pair[1].get("metadata") or {}).get("khan_part") or 0,
+            )
+            unit_list.append((unit, cards))
+        out.append((course, unit_list))
+    return out
+
+
 def group_backlog_by_epic(
     backlog: list[tuple[str, dict[str, Any]]],
 ) -> dict[str, list[tuple[str, dict[str, Any]]]]:

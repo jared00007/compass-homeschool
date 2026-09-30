@@ -562,6 +562,23 @@ def test_a_lesson_cards_checklist_shows_on_the_card(db, student):
     assert "Intro to square roots" in card["payload"]["overview"]
 
 
+def test_create_course_from_outline_stores_the_course_name(db, student):
+    """Each card carries the top-level course name (from the Course: line) so the
+    Backlog can group and filter by course, not just unit."""
+    khan_card.create_course_from_outline(
+        db, student, subject="math", minutes=30, text=(
+            "Course: 8th grade math essentials\n"
+            "Unit: Numbers and operations\n"
+            "Lesson: Repeating decimals\n"
+            "Unit: Geometry\n"
+            "Lesson: Triangle angles\n"
+        ),
+    )
+    names = {(c.get("metadata") or {}).get("khan_course_name")
+             for c in db.list_lessons(student["id"], agent="khan")}
+    assert names == {"8th grade math essentials"}
+
+
 def test_create_course_from_outline_makes_checkpoint_cards(db, student):
     khan_card.create_course_from_outline(
         db, student, subject="math", minutes=30, text=(

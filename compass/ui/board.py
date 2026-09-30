@@ -980,15 +980,48 @@ def render_board_backlog(
                             )
 
             if epic == "Khan Academy":
-                # Khan cards cluster by their unit, in lesson order, so a big
-                # loaded course reads as tidy per-unit runs instead of one long
-                # pile (requested: "group and organize that backlog by unit with
-                # numerical ordering").
-                for u_index, (unit, unit_items) in enumerate(
-                    weekly.group_khan_backlog_by_unit(items)
-                ):
-                    _ui.st.markdown(f"**{md(unit)}** ({len(unit_items)})")
-                    _render_cards(unit_items, f"{key_prefix}_backlog_row_{safe_epic}_{u_index}")
+                # Khan cards cluster by course -> unit, in lesson order, so a big
+                # loaded course reads as tidy per-unit runs -- and, on the parent
+                # board, filterable by course and unit (requested: "see them by
+                # course and unit and filterable on those").
+                hierarchy = weekly.group_khan_backlog_by_course_unit(items)
+                course_pick, unit_pick = "All courses", "All units"
+                if interactive:
+                    course_names = [course for course, _ in hierarchy]
+                    fcols = _ui.st.columns(2)
+                    course_pick = fcols[0].selectbox(
+                        "Course", ["All courses"] + course_names,
+                        key=f"{key_prefix}_khan_course_filter",
+                    )
+                    if course_pick == "All courses":
+                        unit_opts = [u for _, units in hierarchy for u, _ in units]
+                    else:
+                        unit_opts = [
+                            u for course, units in hierarchy if course == course_pick
+                            for u, _ in units
+                        ]
+                    # Key includes the course so switching course resets the unit
+                    # pick cleanly (no stale value from another course's units).
+                    unit_pick = fcols[1].selectbox(
+                        "Unit", ["All units"] + unit_opts,
+                        key=f"{key_prefix}_khan_unit_filter_{course_pick}",
+                    )
+                row = 0
+                for course, units in hierarchy:
+                    if course_pick != "All courses" and course != course_pick:
+                        continue
+                    shown = [
+                        (u, cards) for u, cards in units
+                        if unit_pick == "All units" or u == unit_pick
+                    ]
+                    if not shown:
+                        continue
+                    total = sum(len(cards) for _, cards in shown)
+                    _ui.st.markdown(f"#### 📚 {md(course)} ({total})")
+                    for unit, cards in shown:
+                        _ui.st.markdown(f"**{md(unit)}** ({len(cards)})")
+                        _render_cards(cards, f"{key_prefix}_backlog_row_{safe_epic}_{row}")
+                        row += 1
             else:
                 _render_cards(items, f"{key_prefix}_backlog_row_{safe_epic}")
 

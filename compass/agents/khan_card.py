@@ -477,11 +477,16 @@ def create_course(
     lessons: list[Any],
     minutes: int,
     generate_quiz: bool = False,
+    course_name: str = "",
     on_progress: Callable[[int, int, str | None], None] | None = None,
 ) -> dict[str, list[Any]]:
     """Load a whole Khan course from an ordered lesson list -- one card per
     lesson, numbered in order ("1. …", "2. …"), all tagged with a shared course
     id and parked in the Backlog to assign out day by day.
+
+    `course` is the UNIT the cards belong to; `course_name` (optional) is the
+    top-level Khan course the unit sits under (e.g. "8th grade math essentials"),
+    stored so the Backlog can group and filter by course as well as unit.
 
     Each entry in ``lessons`` is one card, in order, and is either:
       * a plain name (``str``) or ``{"name", "items"}`` dict -> a LESSON card
@@ -529,6 +534,8 @@ def create_course(
             "khan_course": course, "khan_course_id": course_id,
             "khan_part": index, "khan_course_total": total, "held_back": True,
         }
+        if course_name.strip():
+            metadata["khan_course_name"] = course_name.strip()
         if entry["kind"] in ("quiz", "unit_test"):
             label = name
             prefix = f"{course}: "
@@ -753,6 +760,7 @@ def create_course_from_outline(
         result = create_course(
             db, student, subject=subject, course=unit["unit"],
             lessons=unit["entries"], minutes=minutes, generate_quiz=generate_quiz,
+            course_name=parsed["course"],
         )
         created.append({"unit": unit["unit"], "ids": result["created"]})
     if on_progress is not None:

@@ -680,3 +680,23 @@ def test_khan_backlog_groups_by_unit_in_lesson_order():
     # Numerical order within each unit, by khan_part.
     assert [item["id"] for _, item in grouped[0][1]] == [2, 1]
     assert [item["id"] for _, item in grouped[1][1]] == [4, 5]
+
+
+def test_khan_backlog_groups_by_course_then_unit():
+    """The Khan backlog nests course -> unit -> cards, courses and units in load
+    order, cards in lesson order; uncoursed cards fall under 'Other Khan cards'."""
+    from compass.weekly import group_khan_backlog_by_course_unit
+
+    items = [
+        ("lesson", {"id": 2, "metadata": {"khan_course_name": "Math", "khan_course": "Numbers", "khan_part": 1}}),
+        ("lesson", {"id": 3, "metadata": {"khan_course_name": "Math", "khan_course": "Geometry", "khan_part": 1}}),
+        ("lesson", {"id": 1, "metadata": {"khan_course_name": "Math", "khan_course": "Numbers", "khan_part": 2}}),
+        ("lesson", {"id": 10, "metadata": {"khan_course_name": "English", "khan_course": "Vocabulary", "khan_part": 1}}),
+        ("lesson", {"id": 50, "metadata": {}}),  # no course -> "Other Khan cards"
+    ]
+    grouped = group_khan_backlog_by_course_unit(items)
+    assert [course for course, _ in grouped] == ["Math", "English", "Other Khan cards"]
+    math_units = grouped[0][1]
+    assert [u for u, _ in math_units] == ["Numbers", "Geometry"]      # unit load order
+    assert [c[1]["id"] for c in math_units[0][1]] == [2, 1]           # lesson order in unit
+    assert grouped[2][0] == "Other Khan cards"
