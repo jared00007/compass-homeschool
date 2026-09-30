@@ -52,7 +52,7 @@ from compass.ui import (
     render_khan_course_importer,
     render_khan_clear_control,
     render_khan_course_tracker,
-    render_khan_courses,
+    render_khan_spinoff_tool,
     render_khan_mastery_confirmations,
     render_khan_review_card_form,
     render_khan_score_recorder,
@@ -765,14 +765,10 @@ if mc_view == "plan":
         render_khan_course_importer(db, student)
 
         st.divider()
-        st.markdown("#### 📊 Course tracker")
-        st.caption("Every course by unit — progress, real scores, and what needs you.")
+        st.markdown("#### 📊 Course tracker — progress & scheduling")
+        st.caption("Every course by unit: progress, real scores, what needs you — and "
+                   "schedule a unit (or everything) right from here.")
         render_khan_course_tracker(db, student)
-
-        st.divider()
-        st.markdown("#### 📚 Your Khan units")
-        st.caption("Schedule a unit (or the whole load) across days, and spin off companions.")
-        render_khan_courses(db, student)
 
         st.divider()
         st.markdown("#### 🧹 Start fresh")
@@ -783,6 +779,8 @@ if mc_view == "plan":
         # (load → track → schedule → reset) stays uncluttered.
         st.divider()
         if st.checkbox("⚙️ More Khan tools", key="khan_more_tools"):
+            st.markdown("**✨ Spin off a Compass lesson** from a Khan skill")
+            render_khan_spinoff_tool(db, student)
             st.markdown("**📊 Record a score by hand** (override, e.g. after the fact)")
             st.caption("Normally Landon logs his score and you approve it in Review.")
             render_khan_score_recorder(db, student)

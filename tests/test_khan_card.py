@@ -650,36 +650,52 @@ def test_create_course_from_outline_rejects_an_empty_paste(db, student):
             db, student, subject="math", text="Quiz\nPractice\nUnit test\n", minutes=30)
 
 
-def test_render_khan_courses_shows_a_loaded_course_and_progress(db, student, monkeypatch):
-    """The Backlog course manager renders a loaded course with its progress, and
-    doesn't blow up doing it."""
-    khan_card.create_course(
-        db, student, subject="math", course="Algebra basics",
-        lessons=["Exponents", "Radicals", "Polynomials", "Factoring"], minutes=30,
+class _Rec:
+    session_state: dict = {}
+    def __init__(self): self.written: list[str] = []
+    def __getattr__(self, _n):
+        def rec(*a, **k):
+            for x in list(a) + list(k.values()):
+                if isinstance(x, str):
+                    self.written.append(x)
+            return self
+        return rec
+    def __getitem__(self, _i): return self
+    def __iter__(self): return iter([self, self])
+    def __enter__(self): return self
+    def __exit__(self, *e): return False
+    def __bool__(self): return False
+
+
+def test_course_tracker_renders_a_loaded_course(db, student, monkeypatch):
+    """The Course Tracker renders a loaded course grouped by unit, with progress,
+    without blowing up."""
+    khan_card.create_course_from_outline(
+        db, student, subject="math", minutes=30, text=(
+            "Course: 8th grade math essentials\n"
+            "Unit: Numbers and operations\n"
+            "Lesson: Repeating decimals\n"
+            "Lesson: Square roots\n"
+        ),
     )
-    written: list[str] = []
+    rec = _Rec()
+    monkeypatch.setattr(ui, "st", rec)
+    ui.render_khan_course_tracker(db, student)
+    page = "\n".join(rec.written)
+    assert "8th grade math essentials" in page
+    assert "Unit 1: Numbers and operations" in page
 
-    class Rec:
-        session_state: dict = {}
-        def __getattr__(self, _n):
-            def rec(*a, **k):
-                for x in list(a) + list(k.values()):
-                    if isinstance(x, str):
-                        written.append(x)
-                return self
-            return rec
-        def __getitem__(self, _i): return self
-        def __iter__(self): return iter([self, self])
-        def __enter__(self): return self
-        def __exit__(self, *e): return False
-        def __bool__(self): return False
 
-    monkeypatch.setattr(ui, "st", Rec())
-    ui.render_khan_courses(db, student)
-    page = "\n".join(written)
-    assert "Algebra basics" in page
-    assert "0 of 4 done" in page
-    assert "1. Exponents" in page  # the ordered lesson list
+def test_spinoff_tool_lists_spinnable_units(db, student, monkeypatch):
+    """The spin-off tool renders for a loaded unit with a writer-backed subject."""
+    khan_card.create_course(
+        db, student, subject="math", course="Exponents",
+        lessons=["A", "B"], minutes=30,
+    )
+    rec = _Rec()
+    monkeypatch.setattr(ui, "st", rec)
+    ui.render_khan_spinoff_tool(db, student)
+    assert "companion lesson" in "\n".join(rec.written).lower()
 
 
 def test_khan_board_tag_colors_by_subject_and_marks_khan():

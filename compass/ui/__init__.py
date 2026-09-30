@@ -4325,9 +4325,32 @@ def render_khan_course_tracker(db: Database, student: dict[str, Any]) -> None:
         "⚠️ Needs attention only", key="track_attention_filter",
         help="Only units with an 'I need help' flag or a score waiting on your approval.",
     )
+    # Fall back to unfiltered when no live selection (a non-interactive render).
+    if course_pick not in (["All courses"] + course_names):
+        course_pick = "All courses"
+    if status_pick not in _STATUS:
+        status_pick = "all"
 
     def _needs_attention(u):
         return u["needs_help"] > 0 or u["pending_scores"] > 0
+
+    # Lay every loaded unit's remaining lessons across school days in one go.
+    with st.form("khan_sched_all_tracker", clear_on_submit=False):
+        acols = st.columns([2, 2, 2])
+        a_start = acols[0].date_input("Start", value=date.today(), key="khan_sched_all_start")
+        a_per = acols[1].number_input("Lessons/day", 1, 8, 2, key="khan_sched_all_perday")
+        book_all = acols[2].form_submit_button("📅 Schedule ALL remaining", width="stretch")
+    if book_all:
+        try:
+            r = khan_card.schedule_all_units(db, student, start_day=a_start, per_day=int(a_per))
+        except ValueError as exc:
+            st.warning(str(exc))
+        else:
+            st.success(
+                f"📅 Scheduled {r['scheduled']} lessons across {r['units']} units / "
+                f"{r['days']} days, through {r['last_day'].strftime('%a %b %-d')}."
+            )
+            st.rerun()
 
     shown_any = False
     for course in tracker:
@@ -4353,14 +4376,17 @@ def render_khan_course_tracker(db: Database, student: dict[str, Any]) -> None:
         st.markdown(head + (f"  ·  {' · '.join(badges)}" if badges else ""))
         st.progress(pct / 100 if course["total"] else 0.0)
         for u in units:
-            _render_tracker_unit_row(u)
+            _render_tracker_unit_row(db, student, u)
 
     if not shown_any:
         st.caption("Nothing matches those filters.")
 
 
-def _render_tracker_unit_row(u: dict[str, Any]) -> None:
-    """One unit's line in the course tracker."""
+def _render_tracker_unit_row(db: Database, student: dict[str, Any], u: dict[str, Any]) -> None:
+    """One unit's line in the course tracker: its standing plus an inline
+    'schedule this unit' control."""
+    from compass.agents import khan_card
+
     _STATUS_TAG = {
         "done": "✅ Done", "in_progress": "⏳ In progress", "not_started": "⬜ Not started",
     }
@@ -4389,200 +4415,83 @@ def _render_tracker_unit_row(u: dict[str, Any]) -> None:
             st.caption("⚠️ " + " · ".join(attention))
         if u["next_card"]:
             st.caption(f"➡️ Next up: {md(u['next_card']['title'])}")
+        # Schedule this unit across school days, right from its row.
+        if u["backlog"]:
+            cid = u["course_id"]
+            with st.form(f"track_sched_{cid}", clear_on_submit=False):
+                scols = st.columns([2, 2, 2])
+                s_start = scols[0].date_input("Start", value=date.today(), key=f"track_sday_{cid}")
+                s_per = scols[1].number_input("Lessons/day", 1, 8, 2, key=f"track_sper_{cid}")
+                go = scols[2].form_submit_button("📅 Schedule unit", width="stretch")
+            if go:
+                try:
+                    r = khan_card.schedule_unit(db, student, cid, start_day=s_start, per_day=int(s_per))
+                except ValueError as exc:
+                    st.warning(str(exc))
+                else:
+                    st.success(f"📅 Scheduled {r['scheduled']} across {r['days']} day(s).")
+                    st.rerun()
 
 
-def render_khan_courses(db: Database, student: dict[str, Any]) -> None:
-    """Parent-facing: your loaded Khan units. For each, the ordered lesson list
-    with progress, and a form to assign the *next* unassigned card to a day (its
-    quiz is generated then). Assign them out until the unit is done. Each unit
-    can also spin off a Compass companion lesson from any of its skills."""
+def render_khan_spinoff_tool(db: Database, student: dict[str, Any]) -> None:
+    """Spin off a Compass companion lesson from a Khan skill: pick the unit and
+    skill, tweak the seeded prompt, and generate a short taught lesson linked back
+    to that Khan card. Khan runs the drill; Compass layers the teaching."""
     from compass.agents import LessonGenerationError, api_available, khan_card, lightning
 
     summaries = khan_card.course_summaries(db, student["id"])
-    if not summaries:
-        st.caption("No Khan units loaded yet — load one above to assign it out.")
+    spinnable = [
+        c for c in summaries
+        if lightning.agent_for_subject(c["subject"]) and c["cards"]
+    ]
+    if not spinnable:
+        st.caption(
+            "Load a Khan course first — then you can spin a companion lesson off any skill."
+        )
         return
     api_ok, api_msg = api_available()
-
-    # Which Khan cards already have a Compass spin-off pointing back at them --
-    # the "second layer" made visible (a ✨ on the skill). One scan for the whole
-    # manager rather than per-unit.
-    spun_off_ids: set[int] = set()
-    for lesson in db.list_lessons(student["id"], limit=500):
-        source = (lesson.get("metadata") or {}).get("spun_off_from") or {}
-        if source.get("khan_lesson_id"):
-            spun_off_ids.add(source["khan_lesson_id"])
-
-    # 📅 Book the whole load: schedule EVERY loaded unit's remaining lessons
-    # across school days at one pace, in one click.
-    with st.form("khan_schedule_all", clear_on_submit=False):
-        st.caption("📅 Schedule ALL units at once")
-        all_cols = st.columns(2)
-        all_start = all_cols[0].date_input(
-            "Start day", value=date.today(), key="khan_sched_all_start"
-        )
-        all_per_day = all_cols[1].number_input(
-            "Lessons per day", min_value=1, max_value=8, value=2, key="khan_sched_all_perday"
-        )
-        book_all = st.form_submit_button("📅 Schedule everything", width="stretch")
-    if book_all:
+    course_ids = [c["course_id"] for c in spinnable]
+    cid = st.selectbox(
+        "Unit", course_ids,
+        format_func=lambda i: next((c["course"] for c in spinnable if c["course_id"] == i), str(i)),
+        key="spinoff_unit",
+    )
+    if cid not in course_ids:
+        cid = course_ids[0]  # no live selection (or a non-interactive render)
+    course = next(c for c in spinnable if c["course_id"] == cid)
+    skills = [c.get("topic") or "" for c in course["cards"]]
+    pick = st.selectbox(
+        "Skill", range(len(skills)),
+        format_func=lambda i: f"{i + 1}. {md(skills[i])}", key=f"spinoff_skill_{cid}",
+    )
+    if not isinstance(pick, int):
+        pick = 0
+    prompt = st.text_area(
+        "Prompt — edit to steer it",
+        value=lightning.spinoff_seed_prompt(skills[pick]),
+        key=f"spinoff_prompt_{cid}_{pick}", height=90,
+    )
+    if st.button(
+        "✨ Generate companion lesson", disabled=not api_ok, key=f"spinoff_go_{cid}",
+    ):
+        source = course["cards"][pick]
         try:
-            done_all = khan_card.schedule_all_units(
-                db, student, start_day=all_start, per_day=int(all_per_day)
-            )
-        except ValueError as exc:
+            with st.spinner("Writing a companion lesson…"):
+                lightning.generate_lightning_lesson(
+                    db, student, lightning.agent_for_subject(course["subject"]),
+                    topic=skills[pick], instructions=prompt,
+                    link={
+                        "khan_lesson_id": source["id"], "skill": skills[pick],
+                        "unit": course["course"], "course_id": cid,
+                    },
+                )
+        except (LessonGenerationError, ValueError) as exc:
             st.error(str(exc))
         else:
-            st.success(
-                f"📅 Scheduled {done_all['scheduled']} lessons across "
-                f"{done_all['units']} units and {done_all['days']} days, through "
-                f"{done_all['last_day'].strftime('%a %b %-d')}."
-            )
+            st.success(f"✨ Spun off from “{md(skills[pick])}” into the Backlog.")
             st.rerun()
-
-    for course in summaries:
-        cid = course["course_id"]
-        subject_label = subjects.label(course["subject"])
-        done, total = course["done"], course["total"]
-        spun_here = sum(1 for c in course["cards"] if c["id"] in spun_off_ids)
-        with st.container(border=True):
-            header = f"**📋 {md(course['course'])}** · {subject_label}"
-            if spun_here:
-                header += f" · ✨ {spun_here}"
-            st.markdown(header)
-            st.progress(
-                (done / total) if total else 0.0,
-                text=f"{done} of {total} done · {course['unassigned']} left to assign",
-            )
-            # The ordered lesson list, with each card's state at a glance and a
-            # ✨ on any skill that already has a Compass spin-off.
-            lines = []
-            for card in course["cards"]:
-                part = (card.get("metadata") or {}).get("khan_part")
-                topic = card.get("topic") or ""
-                if card["status"] == "completed":
-                    state = "✅ done"
-                elif (card.get("metadata") or {}).get("held_back"):
-                    state = "⬜ in backlog"
-                else:
-                    planned = (card.get("metadata") or {}).get("planned_for") or ""
-                    state = f"📅 {planned}" if planned else "📤 assigned"
-                spark = " ✨" if card["id"] in spun_off_ids else ""
-                lines.append(f"{part}. {md(topic)} — *{state}*{spark}")
-            st.markdown("\n".join(f"- {line}" for line in lines))
-
-            # 📅 Schedule the whole unit at a pace, instead of one card at a time:
-            # pick a start day and lessons/day, and Compass lays the unit's
-            # remaining lessons across school days in order (skipping weekends).
-            with st.form(f"khan_schedule_{cid}", clear_on_submit=False):
-                st.caption("📅 Schedule this unit across days")
-                sched_cols = st.columns(2)
-                sched_start = sched_cols[0].date_input(
-                    "Start day", value=date.today(), key=f"khan_sched_start_{cid}"
-                )
-                sched_per_day = sched_cols[1].number_input(
-                    "Lessons per day", min_value=1, max_value=8, value=2,
-                    key=f"khan_sched_perday_{cid}",
-                )
-                lay_it_out = st.form_submit_button(
-                    "📅 Schedule this unit", type="primary", width="stretch"
-                )
-            if lay_it_out:
-                try:
-                    sched = khan_card.schedule_unit(
-                        db, student, cid, start_day=sched_start, per_day=int(sched_per_day),
-                    )
-                except ValueError as exc:
-                    st.error(str(exc))
-                else:
-                    st.success(
-                        f"📅 Scheduled {sched['scheduled']} lesson"
-                        f"{'s' if sched['scheduled'] != 1 else ''} across "
-                        f"{sched['days']} day{'s' if sched['days'] != 1 else ''}, "
-                        f"through {sched['last_day'].strftime('%a %b %-d')}."
-                    )
-                    st.rerun()
-
-            # ✨ Spin off a Compass companion lesson from any skill in this unit:
-            # Khan runs the practice, Compass layers a taught lesson on the same
-            # skill. Reuses the Lightning generator, seeded from the skill and
-            # editable, and links the result back to its Khan card.
-            spin_agent = lightning.agent_for_subject(course["subject"])
-            skills = [c.get("topic") or "" for c in course["cards"]]
-            if spin_agent and skills:
-                st.markdown("**✨ Spin off a Compass lesson**")
-                pick = st.selectbox(
-                    "Spin off from which skill?",
-                    range(len(skills)),
-                    format_func=lambda i: f"{i + 1}. {md(skills[i])}",
-                    key=f"spinoff_pick_{cid}", label_visibility="collapsed",
-                )
-                if not isinstance(pick, int):
-                    pick = 0  # no selection yet (or a non-live render)
-                prompt = st.text_area(
-                    "Prompt — edit to steer it",
-                    value=lightning.spinoff_seed_prompt(skills[pick]),
-                    key=f"spinoff_prompt_{cid}_{pick}", height=90,
-                )
-                if st.button(
-                    "✨ Generate companion lesson", key=f"spinoff_btn_{cid}",
-                    disabled=not api_ok,
-                ):
-                    source = course["cards"][pick]
-                    try:
-                        with st.spinner("Writing a companion lesson…"):
-                            lightning.generate_lightning_lesson(
-                                db, student, spin_agent, topic=skills[pick],
-                                instructions=prompt,
-                                link={
-                                    "khan_lesson_id": source["id"],
-                                    "skill": skills[pick],
-                                    "unit": course["course"],
-                                    "course_id": cid,
-                                },
-                            )
-                    except (LessonGenerationError, ValueError) as exc:
-                        st.error(str(exc))
-                    else:
-                        st.success(
-                            f"✨ Spun off a Compass lesson from “{md(skills[pick])}” "
-                            "into the Backlog."
-                        )
-                        st.rerun()
-                if not api_ok:
-                    st.caption(f"⚠️ Generation unavailable: {api_msg}")
-
-            nxt = course["next_unassigned"]
-            if nxt is None:
-                st.caption("✅ Every lesson is assigned.")
-                continue
-            part = (nxt.get("metadata") or {}).get("khan_part")
-            with st.form(f"khan_assign_{cid}", clear_on_submit=True):
-                st.caption(f"Assign the next lesson — {part}. {md(nxt.get('topic') or '')}")
-                assign_cols = st.columns(2)
-                day = assign_cols[0].date_input(
-                    "Assign to day", value=date.today(), key=f"khan_assign_day_{cid}"
-                )
-                make_quiz = assign_cols[1].checkbox(
-                    "Generate its quiz", value=False, key=f"khan_assign_quiz_{cid}",
-                    help="Off by default. Turn on to generate this card's quiz now.",
-                )
-                if not api_ok:
-                    st.caption(f"⚠️ Quiz generation unavailable: {api_msg}")
-                assign = st.form_submit_button("➕ Assign to day", type="primary")
-            if not assign:
-                continue
-            with st.spinner("Assigning…"):
-                try:
-                    khan_card.assign_course_card(
-                        db, student, nxt["id"], day_iso=day.isoformat(),
-                        generate_quiz=bool(make_quiz and api_ok),
-                    )
-                except (LessonGenerationError, ValueError) as exc:
-                    st.error(str(exc))
-                    continue
-            st.success(f"Assigned “{md(nxt.get('topic') or '')}” → {day.strftime('%a %b %-d')}. ✅")
-            st.rerun()
+    if not api_ok:
+        st.caption(f"⚠️ Generation unavailable: {api_msg}")
 
 
 def render_khan_score_recorder(db: Database, student: dict[str, Any]) -> None:
