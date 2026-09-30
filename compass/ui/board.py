@@ -926,6 +926,41 @@ div[class*="st-key-"][class*="_backlog_row_"] div[data-testid="stColumn"] {
 """
 
 
+def _render_unit_schedule_form(
+    db: Database,
+    student: dict[str, Any],
+    cards: list[tuple[str, dict[str, Any]]],
+    *,
+    key: str,
+) -> None:
+    """Right in the Backlog, under a unit's parked cards: pick a start day and a
+    lessons-per-day pace and schedule the whole unit across school days -- the
+    spot a parent asked to schedule from. Only shows for a Khan unit (cards that
+    share a khan_course_id)."""
+    from compass.agents import khan_card
+
+    course_id = (cards[0][1].get("metadata") or {}).get("khan_course_id") if cards else None
+    if not course_id:
+        return
+    with _ui.st.form(key):
+        cols = _ui.st.columns([2, 2, 1])
+        start = cols[0].date_input("Start day", value=_ui.date.today(), key=f"{key}_day")
+        per_day = cols[1].number_input("Lessons/day", 1, 8, 2, key=f"{key}_per")
+        go = cols[2].form_submit_button("📅 Schedule unit")
+    if go:
+        try:
+            result = khan_card.schedule_unit(
+                db, student, course_id, start_day=start, per_day=int(per_day)
+            )
+        except ValueError as exc:
+            _ui.st.warning(str(exc))
+        else:
+            _ui.st.success(
+                f"Scheduled {result['scheduled']} card(s) across {result['days']} school day(s)."
+            )
+            _ui.st.rerun()
+
+
 def render_board_backlog(
     db: Database,
     student: dict[str, Any],
@@ -1021,6 +1056,10 @@ def render_board_backlog(
                     for unit, cards in shown:
                         _ui.st.markdown(f"**{md(unit)}** ({len(cards)})")
                         _render_cards(cards, f"{key_prefix}_backlog_row_{safe_epic}_{row}")
+                        if interactive:
+                            _render_unit_schedule_form(
+                                db, student, cards, key=f"{key_prefix}_sched_{row}"
+                            )
                         row += 1
             else:
                 _render_cards(items, f"{key_prefix}_backlog_row_{safe_epic}")

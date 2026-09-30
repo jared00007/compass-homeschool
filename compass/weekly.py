@@ -447,27 +447,6 @@ def epic_for(kind: str, item: dict[str, Any]) -> str:
     return _KIND_EPIC.get(kind, kind.replace("_", " ").title())
 
 
-def group_khan_backlog_by_unit(
-    items: list[tuple[str, dict[str, Any]]],
-) -> list[tuple[str, list[tuple[str, dict[str, Any]]]]]:
-    """Sub-group the Khan Academy epic's backlog items by their unit
-    (``khan_course``), each unit's cards in lesson order (``khan_part``). Units
-    come back in load order (earliest card id first) so Unit 1 leads; Khan cards
-    with no unit fall under a trailing "Other Khan cards" group. Powers the
-    Backlog panel's per-unit, numerically-ordered Khan grouping."""
-    units: dict[str, list[tuple[str, dict[str, Any]]]] = {}
-    first_id: dict[str, int] = {}
-    for kind, item in items:
-        meta = item.get("metadata") or {}
-        unit = (meta.get("khan_course") or "").strip() or "Other Khan cards"
-        units.setdefault(unit, []).append((kind, item))
-        cid = item.get("id") or 0
-        first_id[unit] = min(first_id.get(unit, cid), cid)
-    for group in units.values():
-        group.sort(key=lambda pair: (pair[1].get("metadata") or {}).get("khan_part") or 0)
-    return [(unit, units[unit]) for unit in sorted(units, key=lambda u: (first_id[u], u))]
-
-
 def _khan_course_label(item: dict[str, Any]) -> str:
     return (item.get("metadata") or {}).get("khan_course_name") or "Other Khan cards"
 

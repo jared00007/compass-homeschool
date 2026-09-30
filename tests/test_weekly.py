@@ -662,26 +662,6 @@ def test_khan_cards_get_their_own_epic_so_the_backlog_shows_them():
     assert sum(len(grouped.get(e, [])) for e in EPIC_ORDER) == 2
 
 
-def test_khan_backlog_groups_by_unit_in_lesson_order():
-    """The Khan epic sub-groups by unit, each unit's cards in lesson order
-    (khan_part), and units come back in load order (earliest card first)."""
-    from compass.weekly import group_khan_backlog_by_unit
-
-    items = [
-        ("lesson", {"id": 5, "metadata": {"khan_course": "Geometry", "khan_part": 2}}),
-        ("lesson", {"id": 1, "metadata": {"khan_course": "Numbers and operations", "khan_part": 3}}),
-        ("lesson", {"id": 2, "metadata": {"khan_course": "Numbers and operations", "khan_part": 1}}),
-        ("lesson", {"id": 4, "metadata": {"khan_course": "Geometry", "khan_part": 1}}),
-        ("lesson", {"id": 9, "metadata": {}}),  # no unit -> "Other Khan cards", last
-    ]
-    grouped = group_khan_backlog_by_unit(items)
-    assert [unit for unit, _ in grouped] == [
-        "Numbers and operations", "Geometry", "Other Khan cards"]
-    # Numerical order within each unit, by khan_part.
-    assert [item["id"] for _, item in grouped[0][1]] == [2, 1]
-    assert [item["id"] for _, item in grouped[1][1]] == [4, 5]
-
-
 def test_khan_backlog_groups_by_course_then_unit():
     """The Khan backlog nests course -> unit -> cards, courses and units in load
     order, cards in lesson order; uncoursed cards fall under 'Other Khan cards'."""
