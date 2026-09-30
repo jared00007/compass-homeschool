@@ -900,6 +900,18 @@ def clear_unfinished_cards(db: Any, student: dict[str, Any]) -> int:
     return len(cards)
 
 
+def clear_all_cards(db: Any, student: dict[str, Any]) -> int:
+    """Delete EVERY Khan card, approved ones included -- the full reset before
+    loading a first real course, so even "Your Khan units" comes back empty. Any
+    hours already logged survive the delete (``activities.lesson_id`` is ``ON
+    DELETE SET NULL``), so the school-year hours record is kept even though the
+    cards themselves are gone. Returns how many cards were deleted."""
+    cards = db.list_lessons(student["id"], agent=AGENT_KEY, limit=2000)
+    for card in cards:
+        db.delete_lesson(card["id"])
+    return len(cards)
+
+
 def course_summaries(db: Any, student_id: int) -> list[dict[str, Any]]:
     """A student's Khan courses, grouped by course id with progress -- the data
     behind the Backlog course manager. Newest course first. Each carries the

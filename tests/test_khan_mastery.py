@@ -337,7 +337,7 @@ def test_score_recorder_is_empty_without_finished_cards(db, student, monkeypatch
     assert "No finished Khan cards yet" in "\n".join(rec.written)
 
 
-def test_clear_control_counts_clearable_vs_kept(db, student, monkeypatch):
+def test_clear_control_counts_board_and_approved(db, student, monkeypatch):
     board = _card(db, student, "Exponents")
     db.set_lesson_status(board, "planned")
     approved = _card(db, student, "Radicals")
@@ -346,17 +346,29 @@ def test_clear_control_counts_clearable_vs_kept(db, student, monkeypatch):
     monkeypatch.setattr(ui, "st", rec)
     ui.render_khan_clear_control(db, student)
     page = "\n".join(rec.written)
-    assert "1** Khan card(s) on the board" in page   # one clearable
-    assert "1** approved card(s)" in page             # one kept
+    # Default scope (board + backlog): 1 to clear, 1 approved kept.
+    assert "1** card(s) on the board or in the backlog" in page
+    assert "1** approved card(s) stay" in page
 
 
-def test_clear_control_says_nothing_to_clear_when_all_approved(db, student, monkeypatch):
+def test_clear_control_offers_a_full_reset_when_all_approved(db, student, monkeypatch):
     lid = _card(db, student)
     db.set_lesson_status(lid, "completed")
     rec = _Rec()
     monkeypatch.setattr(ui, "st", rec)
     ui.render_khan_clear_control(db, student)
-    assert "Nothing to clear" in "\n".join(rec.written)
+    page = "\n".join(rec.written)
+    # There IS a card (approved), so it's not the "starting clean" message; the
+    # board+backlog scope has nothing, but a full reset is still offered.
+    assert "starting clean" not in page
+    assert "Nothing matches that scope" in page
+
+
+def test_clear_control_starting_clean_with_no_cards(db, student, monkeypatch):
+    rec = _Rec()
+    monkeypatch.setattr(ui, "st", rec)
+    ui.render_khan_clear_control(db, student)
+    assert "starting clean" in "\n".join(rec.written)
 
 
 def test_unit_meter_shows_this_weeks_unit_and_progress(db, student, monkeypatch):

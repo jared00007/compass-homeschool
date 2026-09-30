@@ -436,6 +436,30 @@ def test_clear_unfinished_cards_keeps_logged_hours(db, student):
     assert any(a["minutes"] == 35 and a["primary_subject"] == "math" for a in acts)
 
 
+def test_clear_all_cards_wipes_approved_too_but_keeps_hours(db, student):
+    from datetime import date
+
+    ids = khan_card.create_course(
+        db, student, subject="math", course="Exponents",
+        lessons=["A", "B"], minutes=30)["created"]
+    khan_card.assign_course_card(db, student, ids[0], day_iso=date.today().isoformat(),
+                                 generate_quiz=False)
+    db.log_activity(
+        student_id=student["id"], title="Khan work", tier="core",
+        primary_subject="math", minutes=40, subject_credits={"math": 40},
+        lesson_id=ids[0],
+    )
+    db.set_lesson_status(ids[0], "completed")   # approved / in the record
+
+    cleared = khan_card.clear_all_cards(db, student)
+    assert cleared == 2                           # BOTH the approved and the other go
+    assert db.list_lessons(student["id"], agent="khan", limit=100) == []
+    assert khan_card.course_summaries(db, student["id"]) == []   # "Your Khan units" empties
+    # The logged hours survive the delete (school-year record kept).
+    acts = db.list_activities(student["id"])
+    assert any(a["minutes"] == 40 and a["primary_subject"] == "math" for a in acts)
+
+
 def _course_id(db, lesson_id):
     return db.get_lesson(lesson_id)["metadata"]["khan_course_id"]
 

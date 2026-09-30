@@ -4789,32 +4789,54 @@ def render_khan_score_recorder(db: Database, student: dict[str, Any]) -> None:
 
 
 def render_khan_clear_control(db: Database, student: dict[str, Any]) -> None:
-    """Parent maintenance: wipe every Khan card on the board or in the backlog for
-    a clean slate before reloading courses, keeping approved (completed) cards in
-    the record. Guarded behind an explicit confirm so a stray click can't fire it;
-    hours already logged survive the delete."""
+    """Parent maintenance: wipe Khan cards for a clean slate before loading a real
+    course. Two scopes -- board+backlog only (keeps approved cards in the record),
+    or EVERYTHING including approved (so even "Your Khan units" empties, while the
+    logged hours survive the delete). Guarded behind an explicit confirm."""
     from compass.agents import khan_card
 
     all_cards = db.list_lessons(student["id"], agent="khan", limit=2000)
-    clearable = [c for c in all_cards if c["status"] != "completed"]
-    kept = len(all_cards) - len(clearable)
-    if not clearable:
-        st.caption("Nothing to clear — no Khan cards on the board or in the backlog.")
+    active = [c for c in all_cards if c["status"] != "completed"]
+    approved = len(all_cards) - len(active)
+    if not all_cards:
+        st.caption("Nothing to clear — no Khan cards at all. You're starting clean.")
         return
-    st.caption(
-        f"This deletes the **{len(clearable)}** Khan card(s) on the board or in the "
-        f"backlog. **{kept}** approved card(s) in the official record stay put, and "
-        "any hours already logged are kept."
+
+    scopes = {
+        "active": f"Board + backlog only — keep the {approved} approved card(s)",
+        "everything": f"Everything, incl. the {approved} approved — full reset (hours are kept)",
+    }
+    scope = st.radio(
+        "What should this clear?",
+        options=list(scopes),
+        format_func=lambda k: scopes[k],
+        key="khan_clear_scope",
     )
+    if scope == "everything":
+        st.caption(
+            f"This deletes **all {len(all_cards)}** Khan card(s), approved ones included, so "
+            "**Your Khan units** empties too. Any hours already logged stay on the school-year "
+            "record — only the cards go."
+        )
+        count, action = len(all_cards), khan_card.clear_all_cards
+    else:
+        st.caption(
+            f"This deletes the **{len(active)}** card(s) on the board or in the backlog. "
+            f"The **{approved}** approved card(s) stay in the record, and logged hours are kept."
+        )
+        count, action = len(active), khan_card.clear_unfinished_cards
+
+    if count == 0:
+        st.caption("Nothing matches that scope right now.")
+        return
     confirm = st.checkbox(
         "Yes, clear them — I want a clean slate.", key="khan_clear_confirm"
     )
     if st.button(
-        "🧹 Clear board & backlog Khan cards", type="secondary",
-        disabled=not confirm, key="khan_clear_btn",
+        "🧹 Clear Khan cards", type="secondary", disabled=not confirm, key="khan_clear_btn",
     ):
-        cleared = khan_card.clear_unfinished_cards(db, student)
-        st.success(f"Cleared {cleared} Khan card(s). Load your courses fresh above. 🧹")
+        cleared = action(db, student)
+        st.success(f"Cleared {cleared} Khan card(s). Load your course fresh above. 🧹")
         st.rerun()
 
 
