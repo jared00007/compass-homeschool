@@ -780,8 +780,11 @@ def assign_course_card(
     lesson = db.get_lesson(lesson_id)
     if lesson is None or (lesson.get("metadata") or {}).get("source") != "khan":
         raise ValueError("That isn't a Khan card.")
+    # A checkpoint IS the Khan quiz -- it never gets a Compass auto-quiz, even if
+    # quiz generation is on for the batch it's scheduled with.
+    is_checkpoint = bool((lesson.get("metadata") or {}).get("khan_checkpoint"))
     payload = lesson["payload"]
-    if not payload.get("quiz"):
+    if not payload.get("quiz") and not is_checkpoint:
         if quiz is None and generate_quiz:
             quiz = generate_khan_quiz(student, lesson["subject"], lesson["topic"])
         if quiz:

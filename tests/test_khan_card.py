@@ -436,6 +436,34 @@ def test_clear_unfinished_cards_keeps_logged_hours(db, student):
     assert any(a["minutes"] == 35 and a["primary_subject"] == "math" for a in acts)
 
 
+def test_assigning_a_checkpoint_never_generates_a_compass_quiz(db, student, monkeypatch):
+    """A checkpoint IS the Khan quiz, so scheduling it -- even with quiz
+    generation on -- must not attach a Compass auto-quiz (and must not call the
+    generator)."""
+    from datetime import date
+
+    khan_card.create_course_from_outline(
+        db, student, subject="math", minutes=30, text=(
+            "Unit: U\n"
+            "Lesson: A\n"
+            "Numbers and operations: Quiz 1 - Quiz · 5 questions\n"
+        ),
+    )
+    check = [
+        c for c in db.list_lessons(student["id"], agent="khan")
+        if (c.get("metadata") or {}).get("khan_checkpoint")
+    ][0]
+
+    def _boom(*a, **k):
+        raise AssertionError("a checkpoint must never call the quiz generator")
+    monkeypatch.setattr(khan_card, "generate_khan_quiz", _boom)
+
+    khan_card.assign_course_card(
+        db, student, check["id"], day_iso=date.today().isoformat(), generate_quiz=True,
+    )
+    assert db.get_lesson(check["id"])["payload"]["quiz"] == []   # still no Compass quiz
+
+
 def test_clear_all_cards_wipes_approved_too_but_keeps_hours(db, student):
     from datetime import date
 
