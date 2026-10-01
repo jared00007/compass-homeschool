@@ -548,6 +548,23 @@ def series_day_title(item: dict[str, Any]) -> str:
     return f"Day {number}/{total} — {md(clean)}"
 
 
+def _board_card_status_tag(item: dict[str, Any], today_iso: str) -> str:
+    """A short status pill for a lesson card's collapsed header -- what needs
+    attention at a glance: waiting on the parent, sent back, overdue, or a Khan
+    'I need help' flag. Empty when there's nothing to flag (a plain planned card)."""
+    status = item.get("status")
+    meta = item.get("metadata") or {}
+    needs_help = (meta.get("khan_reflection") or {}).get("went") == "need_help"
+    if status == "submitted":
+        return "🙋 Needs help" if needs_help else "📤 For you"
+    if status == "needs_revision":
+        return "↩️ Back to him"
+    planned = str(meta.get("planned_for") or "")[:10]
+    if planned and planned < today_iso and status in ("planned", "needs_revision"):
+        return "⏰ Overdue"
+    return ""
+
+
 def render_board_card(
     db: Database,
     kind: str,
@@ -625,7 +642,14 @@ def render_board_card(
             icon = SUBJECT_ICONS.get(item["agent"], "📘")
             done = bool((item.get("metadata") or {}).get("student_done_on"))
             marker = "✅" if done else "⬜"
-            with _ui.st.expander(f"{marker} {icon} **{series_day_title(item)}**", expanded=False):
+            # A status pill on the COLLAPSED header, so a parent reads a day's state
+            # (what's overdue, waiting on them, or flagged for help) without opening
+            # each card.
+            status_tag = _board_card_status_tag(item, today_iso)
+            label = f"{marker} {icon} **{series_day_title(item)}**"
+            if status_tag:
+                label += f" · {status_tag}"
+            with _ui.st.expander(label, expanded=False):
                 _ui.st.caption(f"{item['agent'].replace('_', ' ').title()} agent")
                 status_note = {
                     "submitted": "📤 waiting on you to review",

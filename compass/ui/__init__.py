@@ -4311,6 +4311,15 @@ def render_khan_course_importer(db: Database, student: dict[str, Any]) -> None:
     st.rerun()
 
 
+def _text_progress_bar(done: int, total: int, width: int = 8) -> str:
+    """A compact unicode progress bar ("▰▰▰▱▱▱▱▱") for a collapsed header, where a
+    real st.progress can't go. Empty when there's nothing to show (no total)."""
+    if not total:
+        return ""
+    filled = max(0, min(width, round(width * done / total)))
+    return "▰" * filled + "▱" * (width - filled)
+
+
 def render_khan_course_tracker(db: Database, student: dict[str, Any]) -> None:
     """Parent-facing course tracker: every loaded Khan course rolled up by
     course -> unit, with progress, the average approved Khan score, what needs the
@@ -4584,9 +4593,20 @@ def _render_tracker_unit_row(
     # which unit it is." Each unit is its own collapsed expander so a long course
     # reads as a scannable list of unit headers to open one at a time.
     num = f"Unit {u['unit_number']}: " if u.get("unit_number") else ""
+    # A text progress bar + attention pills on the COLLAPSED header, so a long
+    # course reads as a scannable status list without opening every unit.
+    bar = _text_progress_bar(u["done"], u["total"])
+    pills = []
+    if u["overdue"]:
+        pills.append(f"⏰{u['overdue']}")
+    if u["needs_help"]:
+        pills.append(f"🙋{u['needs_help']}")
+    if u["pending_scores"]:
+        pills.append(f"🏅{u['pending_scores']}")
+    pill_str = ("  ·  " + " ".join(pills)) if pills else ""
     header = (
-        f"**{md(num + u['unit'])}** — {u['done']}/{u['total']} · "
-        f"{_STATUS_TAG.get(u['status'], '')}"
+        f"**{md(num + u['unit'])}**  {bar} {u['done']}/{u['total']} · "
+        f"{_STATUS_TAG.get(u['status'], '')}{pill_str}"
     )
     with st.expander(header, expanded=False):
         bits = []

@@ -884,6 +884,33 @@ class _Rec:
     def __bool__(self): return False
 
 
+def test_text_progress_bar_renders_at_a_glance():
+    """The collapsed-header progress bar fills proportionally and is blank with no
+    total (nothing to show)."""
+    assert ui._text_progress_bar(0, 0) == ""
+    assert ui._text_progress_bar(3, 6, width=8) == "▰▰▰▰▱▱▱▱"
+    assert ui._text_progress_bar(6, 6, width=4) == "▰▰▰▰"
+    assert ui._text_progress_bar(0, 5, width=4) == "▱▱▱▱"
+
+
+def test_board_card_status_tag_flags_what_needs_attention():
+    """The collapsed board-card pill names the state: waiting on the parent, sent
+    back, overdue, or an 'I need help' flag; empty for a plain planned card."""
+    from compass.ui import board
+    today = "2026-10-01"
+    assert board._board_card_status_tag({"status": "submitted", "metadata": {}}, today) == "📤 For you"
+    assert board._board_card_status_tag(
+        {"status": "submitted", "metadata": {"khan_reflection": {"went": "need_help"}}}, today
+    ) == "🙋 Needs help"
+    assert board._board_card_status_tag({"status": "needs_revision", "metadata": {}}, today) == "↩️ Back to him"
+    assert board._board_card_status_tag(
+        {"status": "planned", "metadata": {"planned_for": "2026-09-20"}}, today
+    ) == "⏰ Overdue"
+    assert board._board_card_status_tag(
+        {"status": "planned", "metadata": {"planned_for": "2026-10-05"}}, today
+    ) == ""
+
+
 def test_parent_note_gate_blocks_until_acknowledged(db, student, monkeypatch):
     """A parent note on a card blocks turn-in until the student acknowledges it;
     no note (or an acknowledged one) leaves the gate open."""
