@@ -353,6 +353,32 @@ def test_next_open_schedule_day_falls_back_to_today_when_nothing_booked(db, stud
     assert khan_card.next_open_schedule_day(db, student, today=saturday) == date(2026, 10, 5)
 
 
+def test_rename_unit_rewrites_the_name_across_every_card(db, student):
+    """Renaming a unit sets khan_unit on every card sharing its course_id, so a name
+    typed with its own "Unit N" prefix can be fixed after loading."""
+    ids = khan_card.create_course(
+        db, student, subject="reading", course="Unit 1 Critical thinking",
+        lessons=["A", "B", "C"], minutes=20)["created"]
+    cid = _course_id(db, ids[0])
+    n = khan_card.rename_unit(db, student, cid, name="Critical thinking")
+    assert n == 3
+    for i in ids:
+        assert (db.get_lesson(i)["metadata"]["khan_unit"]) == "Critical thinking"
+
+
+def test_rename_unit_can_set_and_clear_the_unit_number(db, student):
+    """Passing a number stores khan_unit_number; passing a falsy number clears it
+    (so the automatic load-order index takes over again)."""
+    ids = khan_card.create_course(
+        db, student, subject="reading", course="Fallacies",
+        lessons=["A", "B"], minutes=20)["created"]
+    cid = _course_id(db, ids[0])
+    khan_card.rename_unit(db, student, cid, number=2)
+    assert db.get_lesson(ids[0])["metadata"]["khan_unit_number"] == 2
+    khan_card.rename_unit(db, student, cid, number=0)
+    assert "khan_unit_number" not in db.get_lesson(ids[0])["metadata"]
+
+
 def test_schedule_all_units_chains_every_unit_back_to_back(db, student):
     from datetime import date, timedelta
 

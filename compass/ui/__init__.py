@@ -4407,6 +4407,38 @@ def render_khan_course_tracker(db: Database, student: dict[str, Any]) -> None:
         st.caption("Nothing matches those filters.")
 
 
+def render_khan_unit_editor(
+    db: Database,
+    student: dict[str, Any],
+    course_id: str,
+    current_name: str,
+    *,
+    key: str,
+) -> None:
+    """A compact inline rename for a loaded Khan unit -- rewrites ``khan_unit``
+    across every card in the unit. The displayed "Unit N:" number is added
+    automatically, so the field holds the topic only (a parent who typed
+    "Unit 1 Critical thinking" can fix it to just "Critical thinking" here, instead
+    of living with a doubled "Unit 1: Unit 1 Critical thinking")."""
+    from compass.agents import khan_card
+
+    with st.form(f"{key}_rename", clear_on_submit=False):
+        cols = st.columns([4, 1])
+        new_name = cols[0].text_input(
+            "Rename this unit", value=current_name, key=f"{key}_name",
+            help="Just the topic — the “Unit N:” number is added for you.",
+        )
+        save = cols[1].form_submit_button("✏️ Rename", width="stretch")
+    if save:
+        clean = (new_name or "").strip()
+        if not clean:
+            st.warning("Give the unit a name.")
+        elif clean != current_name:
+            n = khan_card.rename_unit(db, student, course_id, name=clean)
+            st.success(f"Renamed to “{clean}” across {n} card(s).")
+            st.rerun()
+
+
 def _render_tracker_unit_row(
     db: Database,
     student: dict[str, Any],
@@ -4457,6 +4489,11 @@ def _render_tracker_unit_row(
             st.caption("⚠️ " + " · ".join(attention))
         if u["next_card"]:
             st.caption(f"➡️ Next up: {md(u['next_card']['title'])}")
+        # Rename the unit right here -- fixes a name typed with its own "Unit N"
+        # prefix, or any wording a parent wants to change after loading.
+        render_khan_unit_editor(
+            db, student, u["course_id"], u["unit"], key=f"track_unit_{u['course_id']}"
+        )
         # Schedule this unit across school days, right from its row. Defaults chain
         # after already-booked work, and a line shows when scheduling this unit at
         # the planning pace would finish.

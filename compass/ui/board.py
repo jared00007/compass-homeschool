@@ -1064,6 +1064,17 @@ def render_board_backlog(
                     with _ui.st.expander(f"📗 {md(unit)} ({len(cards)})", expanded=False):
                         _render_cards(cards, f"{key_prefix}_backlog_row_{safe_epic}_{row}")
                         if interactive:
+                            # Rename the unit right where you see it -- fixes a name
+                            # typed with its own "Unit N" prefix, or any wording to
+                            # change after loading.
+                            first_meta = (cards[0][1].get("metadata") or {}) if cards else {}
+                            cid = first_meta.get("khan_course_id")
+                            raw_name = first_meta.get("khan_unit") or first_meta.get("khan_course")
+                            if cid and raw_name:
+                                _ui.render_khan_unit_editor(
+                                    db, student, cid, raw_name,
+                                    key=f"{key_prefix}_backlog_unit_{row}",
+                                )
                             _render_unit_schedule_form(
                                 db, student, cards, key=f"{key_prefix}_sched_{row}"
                             )

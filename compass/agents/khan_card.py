@@ -921,6 +921,39 @@ def next_open_schedule_day(
     return _next_school_day(base)
 
 
+def rename_unit(
+    db: Any,
+    student: dict[str, Any],
+    course_id: str,
+    *,
+    name: str | None = None,
+    number: int | None = None,
+) -> int:
+    """Edit a loaded unit's record: set its ``khan_unit`` name and/or its
+    ``khan_unit_number`` across EVERY card that shares ``course_id`` (approved cards
+    included, so the record stays consistent). Pass ``number`` as a falsy value to
+    clear a stored number and fall back to the automatic load-order index. Returns
+    how many cards were updated. Name it by topic only -- the tracker/backlog add
+    the "Unit N:" prefix themselves, so storing "Unit 1 Critical thinking" is what
+    produces a doubled "Unit 1: Unit 1 Critical thinking"."""
+    updated = 0
+    for card in db.list_lessons(student["id"], agent=AGENT_KEY, limit=2000):
+        meta = card.get("metadata") or {}
+        if meta.get("khan_course_id") != course_id:
+            continue
+        new_meta = dict(meta)
+        if name is not None:
+            new_meta["khan_unit"] = name
+        if number is not None:
+            if number:
+                new_meta["khan_unit_number"] = int(number)
+            else:
+                new_meta.pop("khan_unit_number", None)
+        db.update_lesson_content(card["id"], metadata=new_meta)
+        updated += 1
+    return updated
+
+
 def schedule_unit(
     db: Any,
     student: dict[str, Any],
