@@ -27,7 +27,13 @@ from compass import config
 from compass.agents import LessonGenerationError, course_summary
 from compass.export import course_filename, course_to_docx
 from compass.subjects import SUBJECT_KEYS, label
-from compass.ui import api_status_banner, md, page_setup, parent_only
+from compass.ui import (
+    api_status_banner,
+    md,
+    page_setup,
+    parent_only,
+    render_khan_course_tracker,
+)
 
 db, student = page_setup("Course records", icon="🎓")
 
@@ -43,6 +49,17 @@ if not parent_only("Course records are for your parent."):
     st.stop()
 
 api_ok = api_status_banner()
+
+# Live Khan course progress -- "see each course and progression" in one place,
+# above the grades 6-12 credit packets below.
+st.subheader("📊 Course progress")
+st.caption(
+    "Every loaded course by unit: progress, real scores, what needs you — filter by "
+    "subject/course, and schedule a unit (or everything) right from here."
+)
+render_khan_course_tracker(db, student)
+st.divider()
+st.subheader("🎓 Credit documentation")
 
 courses = db.list_courses(student["id"])
 list_tab, add_tab = st.tabs(["Courses", "Add a course"])

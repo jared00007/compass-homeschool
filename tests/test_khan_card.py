@@ -686,6 +686,22 @@ def test_course_tracker_renders_a_loaded_course(db, student, monkeypatch):
     assert "Unit 1: Numbers and operations" in page
 
 
+def test_course_tracker_groups_by_subject_when_course_name_missing(db, student):
+    """Cards loaded before the course-name field (no khan_course_name) still group
+    by their subject -- Math / Science -- so the tracker stays filterable."""
+    khan_card.create_course(db, student, subject="math", course="Numbers",
+                            lessons=["A", "B"], minutes=30)
+    khan_card.create_course(db, student, subject="science", course="Earth",
+                            lessons=["C"], minutes=30)
+    db.conn.execute(
+        "UPDATE lessons SET metadata = json_remove(metadata, '$.khan_course_name') "
+        "WHERE agent = 'khan'"
+    )
+    db.conn.commit()
+    names = {c["course"] for c in khan_card.course_tracker(db, student)}
+    assert names == {"Math", "Science"}
+
+
 def test_spinoff_tool_lists_spinnable_units(db, student, monkeypatch):
     """The spin-off tool renders for a loaded unit with a writer-backed subject."""
     khan_card.create_course(

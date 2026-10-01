@@ -51,7 +51,6 @@ from compass.ui import (
     render_enrichment_generator,
     render_khan_course_importer,
     render_khan_clear_control,
-    render_khan_course_tracker,
     render_khan_spinoff_tool,
     render_khan_mastery_confirmations,
     render_khan_review_card_form,
@@ -764,11 +763,9 @@ if mc_view == "plan":
         st.caption("Paste a whole course at once — its units and lessons become cards.")
         render_khan_course_importer(db, student)
 
-        st.divider()
-        st.markdown("#### 📊 Course tracker — progress & scheduling")
-        st.caption("Every course by unit: progress, real scores, what needs you — and "
-                   "schedule a unit (or everything) right from here.")
-        render_khan_course_tracker(db, student)
+        st.caption(
+            "📊 Track progress & schedule units in **🎓 Course records** (button up top)."
+        )
 
         st.divider()
         st.markdown("#### 🧹 Start fresh")

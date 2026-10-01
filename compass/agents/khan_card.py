@@ -812,7 +812,14 @@ def course_tracker(db: Any, student: dict[str, Any], today: date | None = None) 
         cid = meta.get("khan_course_id")
         if not cid:
             continue
-        course = meta.get("khan_course_name") or "Other Khan cards"
+        # Group by the top-level course name when it's stored; otherwise fall back
+        # to the card's subject (every card has one) so courses loaded before the
+        # course-name field still group as Math / English / Science, filterable.
+        course = (
+            meta.get("khan_course_name")
+            or (subjects.label(card.get("subject")) if card.get("subject") else None)
+            or "Other Khan cards"
+        )
         courses.setdefault(course, {}).setdefault(cid, []).append(card)
         i = card["id"]
         course_first[course] = min(course_first.get(course, i), i)
