@@ -661,6 +661,12 @@ def render_board_card(
                         ),
                         delete=lambda lid=item["id"]: db.delete_lesson(lid),
                     )
+                if interactive:
+                    # Leave a note on this card for him -- he has to acknowledge it
+                    # before he can turn the card in.
+                    _ui.render_parent_note_editor(
+                        db, item, key=f"board_note_{item['id']}"
+                    )
                 _render_board_deep_link(kind, item, db=db)
 
         elif kind == "life_skill":

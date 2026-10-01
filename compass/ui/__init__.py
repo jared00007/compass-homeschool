@@ -2105,11 +2105,12 @@ def student_lesson_view(
             agent=agent_key,
         )
         ready, why_not = _lesson_ready_to_submit(current)
+        note_ok = render_parent_note_gate(db, current, key=f"cur_{current['id']}")
         if st.button(
             "📬 Turn it in for review",
             key=f"submit_lesson_{current['id']}",
             type="primary",
-            disabled=not ready,
+            disabled=not ready or not note_ok,
         ):
             db.submit_lesson(current["id"])
             st.rerun()
@@ -4417,6 +4418,72 @@ def render_khan_course_tracker(db: Database, student: dict[str, Any]) -> None:
         st.caption("Nothing matches those filters.")
 
 
+def get_parent_note(lesson: dict[str, Any]) -> dict[str, Any] | None:
+    """A parent's note left on this card for the student, or None. Shape:
+    ``{"text", "on", "ack_on"?}`` -- ``ack_on`` is set once the student reads it."""
+    note = (lesson.get("metadata") or {}).get("parent_note")
+    return note if isinstance(note, dict) and note.get("text") else None
+
+
+def render_parent_note_editor(db: Database, lesson: dict[str, Any], *, key: str) -> None:
+    """Parent-facing: leave (or edit) a note on this card for the student -- e.g.
+    "do this one on paper so we can go over it together." He has to acknowledge it
+    before he can turn the card in, and editing the text clears a prior ack so he
+    re-reads it. Clearing the text removes the note."""
+    note = get_parent_note(lesson)
+    with st.form(f"{key}_pnote", clear_on_submit=False):
+        text = st.text_area(
+            "📝 Note to him on this card",
+            value=(note or {}).get("text", ""),
+            placeholder="e.g. Do this one on paper so we can review it together.",
+            key=f"{key}_pnote_text", height=70,
+        )
+        save = st.form_submit_button("💾 Save note")
+    if save:
+        meta = dict(lesson.get("metadata") or {})
+        clean = (text or "").strip()
+        if clean:
+            prev = meta.get("parent_note") or {}
+            # Keep the ack only when the text is unchanged; an edited note needs a
+            # fresh acknowledgement so he actually re-reads it.
+            ack = prev.get("ack_on") if prev.get("text") == clean else None
+            meta["parent_note"] = {
+                "text": clean, "on": date.today().isoformat(), "ack_on": ack,
+            }
+        else:
+            meta.pop("parent_note", None)
+        db.update_lesson_content(lesson["id"], metadata=meta)
+        st.rerun()
+    if note and note.get("ack_on"):
+        st.caption(f"✅ He acknowledged this on {note['ack_on']}.")
+    elif note:
+        st.caption("⏳ On the card — he hasn't acknowledged it yet.")
+
+
+def render_parent_note_gate(
+    db: Database, lesson: dict[str, Any], *, key: str
+) -> bool:
+    """Student-facing: show any parent note on this card prominently, and require a
+    one-time acknowledgement before the card can be turned in. Returns True when
+    there's no note or it's already acknowledged (so the caller can enable submit),
+    False while an unread note is blocking."""
+    note = get_parent_note(lesson)
+    if not note:
+        return True
+    st.warning(f"📝 **A note from your parent:** {md(note['text'])}")
+    if note.get("ack_on"):
+        return True
+    if st.checkbox("✅ Got it — I read this", key=f"{key}_noteack"):
+        meta = dict(lesson.get("metadata") or {})
+        pn = dict(meta.get("parent_note") or {})
+        pn["ack_on"] = date.today().isoformat()
+        meta["parent_note"] = pn
+        db.update_lesson_content(lesson["id"], metadata=meta)
+        st.rerun()
+    st.caption("Check the box above to turn this card in.")
+    return False
+
+
 def render_khan_unit_editor(
     db: Database,
     student: dict[str, Any],
@@ -4988,7 +5055,8 @@ def _render_one_khan_due_card(
             needs.append("pick how hard it was and how it went")
         if is_checkpoint and score is None:
             needs.append("enter your Khan score")
-        can_submit = ready and not needs
+        note_ok = render_parent_note_gate(db, card, key=f"khan_{card['id']}")
+        can_submit = ready and not needs and note_ok
         if st.button(
             "📬 Turn it in for review", key=f"submit_khan_{card['id']}",
             type="primary", disabled=not can_submit,

@@ -884,6 +884,27 @@ class _Rec:
     def __bool__(self): return False
 
 
+def test_parent_note_gate_blocks_until_acknowledged(db, student, monkeypatch):
+    """A parent note on a card blocks turn-in until the student acknowledges it;
+    no note (or an acknowledged one) leaves the gate open."""
+    rec = _Rec()
+    monkeypatch.setattr(ui, "st", rec)
+    lid = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="L", payload={"title": "L", "activities": []},
+    )
+    # No note -> gate open.
+    assert ui.render_parent_note_gate(db, db.get_lesson(lid), key="k") is True
+    # Unacknowledged note -> gate closed.
+    db.update_lesson_content(lid, metadata={"parent_note": {"text": "do on paper", "on": "2026-01-01"}})
+    assert ui.render_parent_note_gate(db, db.get_lesson(lid), key="k") is False
+    # Acknowledged note -> gate open again.
+    db.update_lesson_content(
+        lid, metadata={"parent_note": {"text": "do on paper", "on": "2026-01-01", "ack_on": "2026-01-02"}}
+    )
+    assert ui.render_parent_note_gate(db, db.get_lesson(lid), key="k") is True
+
+
 def test_course_tracker_renders_a_loaded_course(db, student, monkeypatch):
     """The Course Tracker renders a loaded course grouped by unit, with progress,
     without blowing up."""
