@@ -677,7 +677,8 @@ def test_khan_backlog_groups_by_course_then_unit():
     grouped = group_khan_backlog_by_course_unit(items)
     assert [course for course, _ in grouped] == ["Math", "English", "Other Khan cards"]
     math_units = grouped[0][1]
-    assert [u for u, _ in math_units] == ["Numbers", "Geometry"]      # unit load order
+    # Units are numbered by load order when no khan_unit_number is stored.
+    assert [u for u, _ in math_units] == ["Unit 1: Numbers", "Unit 2: Geometry"]
     assert [c[1]["id"] for c in math_units[0][1]] == [2, 1]           # lesson order in unit
     assert grouped[2][0] == "Other Khan cards"
 

@@ -462,13 +462,6 @@ def _khan_course_label(item: dict[str, Any]) -> str:
     return "Other Khan cards"
 
 
-def _khan_unit_label(item: dict[str, Any]) -> str:
-    meta = item.get("metadata") or {}
-    name = meta.get("khan_unit") or meta.get("khan_course") or "Other"
-    number = meta.get("khan_unit_number")
-    return f"Unit {number}: {name}" if number else name
-
-
 def group_khan_backlog_by_course_unit(
     items: list[tuple[str, dict[str, Any]]],
 ) -> list[tuple[str, list[tuple[str, list[tuple[str, dict[str, Any]]]]]]]:
@@ -476,28 +469,47 @@ def group_khan_backlog_by_course_unit(
     (``khan_course_name``, e.g. "8th grade math essentials") and the units within
     them come back in load order (earliest card id first); each unit's cards are
     in lesson order (``khan_part``). Cards with no course name fall under "Other
-    Khan cards". Powers the Backlog's course/unit grouping and filters."""
+    Khan cards". Powers the Backlog's course/unit grouping and filters.
+
+    Every unit's label is numbered -- "Unit N: name" -- so a parent can always
+    tell which unit is which. The number is the stored ``khan_unit_number`` when
+    there is one, otherwise the unit's 1-based position in load order, so courses
+    loaded before that field was captured still read Unit 1, Unit 2, … Units are
+    keyed by ``khan_course_id`` (stable even if two units share a name), falling
+    back to the raw name for cards that predate course ids."""
+    # course -> {unit_key -> [cards]}; unit_key groups one unit's cards.
     courses: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = {}
     course_first: dict[str, int] = {}
     unit_first: dict[tuple[str, str], int] = {}
+    unit_name: dict[tuple[str, str], str] = {}
+    unit_number: dict[tuple[str, str], int] = {}
     for kind, item in items:
+        meta = item.get("metadata") or {}
         course = _khan_course_label(item)
-        unit = _khan_unit_label(item)
+        name = meta.get("khan_unit") or meta.get("khan_course") or "Other"
+        ukey = meta.get("khan_course_id") or name
         cid = item.get("id") or 0
-        courses.setdefault(course, {}).setdefault(unit, []).append((kind, item))
+        courses.setdefault(course, {}).setdefault(ukey, []).append((kind, item))
         course_first[course] = min(course_first.get(course, cid), cid)
-        unit_first[(course, unit)] = min(unit_first.get((course, unit), cid), cid)
+        unit_first[(course, ukey)] = min(unit_first.get((course, ukey), cid), cid)
+        unit_name[(course, ukey)] = name
+        if meta.get("khan_unit_number"):
+            unit_number[(course, ukey)] = int(meta["khan_unit_number"])
 
     out: list[tuple[str, list[tuple[str, list[tuple[str, dict[str, Any]]]]]]] = []
     for course in sorted(courses, key=lambda c: (course_first[c], c)):
         units = courses[course]
         unit_list = []
-        for unit in sorted(units, key=lambda u: (unit_first[(course, u)], u)):
+        for position, ukey in enumerate(
+            sorted(units, key=lambda u: unit_first[(course, u)])
+        ):
+            number = unit_number.get((course, ukey)) or (position + 1)
+            label = f"Unit {number}: {unit_name[(course, ukey)]}"
             cards = sorted(
-                units[unit],
+                units[ukey],
                 key=lambda pair: (pair[1].get("metadata") or {}).get("khan_part") or 0,
             )
-            unit_list.append((unit, cards))
+            unit_list.append((label, cards))
         out.append((course, unit_list))
     return out
 
