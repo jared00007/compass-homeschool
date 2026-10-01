@@ -1067,13 +1067,15 @@ def render_board_backlog(
                             # Rename the unit right where you see it -- fixes a name
                             # typed with its own "Unit N" prefix, or any wording to
                             # change after loading.
-                            first_meta = (cards[0][1].get("metadata") or {}) if cards else {}
+                            first_card = cards[0][1] if cards else {}
+                            first_meta = first_card.get("metadata") or {}
                             cid = first_meta.get("khan_course_id")
                             raw_name = first_meta.get("khan_unit") or first_meta.get("khan_course")
                             if cid and raw_name:
                                 _ui.render_khan_unit_editor(
                                     db, student, cid, raw_name,
                                     key=f"{key_prefix}_backlog_unit_{row}",
+                                    current_subject=first_card.get("subject"),
                                 )
                             _render_unit_schedule_form(
                                 db, student, cards, key=f"{key_prefix}_sched_{row}"

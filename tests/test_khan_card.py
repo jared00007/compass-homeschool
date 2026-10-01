@@ -379,6 +379,62 @@ def test_rename_unit_can_set_and_clear_the_unit_number(db, student):
     assert "khan_unit_number" not in db.get_lesson(ids[0])["metadata"]
 
 
+def test_parse_outline_reads_a_per_unit_subject_tag():
+    """A '[subject]' tag on a Unit line is parsed off the name and resolved to a
+    subject key; an untagged unit carries no subject (uses the load default)."""
+    parsed = khan_card.parse_course_outline(
+        "Course: Pixar in a Box\n"
+        "Unit: Simulation [math]\n"
+        "Hair simulation 101\n"
+        "Unit: The art of lighting [Art & Music]\n"
+        "Introduction to lighting\n"
+        "Unit: Orientation\n"
+        "Overview\n"
+    )
+    by_name = {u["unit"]: u for u in parsed["units"]}
+    assert by_name["Simulation"]["subject"] == "math"
+    assert by_name["The art of lighting"]["subject"] == "art_and_music"
+    assert by_name["Orientation"]["subject"] == ""
+
+
+def test_create_from_outline_credits_each_tagged_unit_to_its_subject(db, student):
+    """One paste, one course name, but each unit's cards carry their tagged subject
+    (and the untagged unit falls back to the form default)."""
+    result = khan_card.create_course_from_outline(
+        db, student, subject="art_and_music", minutes=30, text=(
+            "Course: Pixar in a Box\n"
+            "Unit: Simulation [math]\n"
+            "Hair simulation 101\n"
+            "Code your own simulation\n"
+            "Unit: The art of lighting\n"
+            "Introduction to lighting\n"
+        ),
+    )
+    assert result["course"] == "Pixar in a Box"
+    by_subject = {}
+    for card in db.list_lessons(student["id"], agent="khan", limit=100):
+        by_subject.setdefault(card["subject"], 0)
+        by_subject[card["subject"]] += 1
+    assert by_subject["math"] == 2          # tagged unit
+    assert by_subject["art_and_music"] == 1  # untagged -> form default
+
+
+def test_recredit_unit_moves_hours_subject_on_the_cards(db, student):
+    """Recrediting a unit rewrites both the subject column and the payload's
+    subject_credits (what the approval actually posts hours to)."""
+    ids = khan_card.create_course(
+        db, student, subject="art_and_music", course="Simulation",
+        lessons=["A", "B"], minutes=30)["created"]
+    cid = _course_id(db, ids[0])
+    n = khan_card.recredit_unit(db, student, cid, "math")
+    assert n == 2
+    for i in ids:
+        card = db.get_lesson(i)
+        assert card["subject"] == "math"
+        assert card["payload"]["subject_credits"][0]["subject"] == "math"
+        assert card["payload"]["subject_credits"][0]["minutes"] == 30
+
+
 def test_delete_unit_removes_every_card_and_lets_others_renumber(db, student):
     """Deleting a unit removes all its cards; a remaining unit then renumbers to
     Unit 1 by load order (the 'delete the stray split, promote the real one' flow)."""

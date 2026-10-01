@@ -4223,6 +4223,12 @@ def render_khan_course_importer(db: Database, student: dict[str, Any]) -> None:
         "is its own card.) Khan's own *Quiz*, *Unit test*, *Practice* and mastery %s are "
         "skipped automatically. Preview first, then load."
     )
+    st.caption(
+        "**Cross-subject course?** Tag a unit with its own subject in brackets — "
+        "`Unit: Simulation [math]`, `Unit: The art of lighting [art_and_music]` — and that "
+        "unit's hours credit there instead of the Subject below (the default for untagged "
+        "units). You can also change any unit's credit later in Course records."
+    )
     with st.form("khan_course_import_form", clear_on_submit=False):
         cols = st.columns(2)
         subject = cols[0].selectbox(
@@ -4271,7 +4277,11 @@ def render_khan_course_importer(db: Database, student: dict[str, Any]) -> None:
     for unit in parsed["units"]:
         lessons, checks = _counts(unit)
         extra = f", {checks} checkpoint{'s' if checks != 1 else ''}" if checks else ""
-        st.markdown(f"- **{md(unit['unit'])}** ({lessons} lessons{extra})")
+        # Show where each unit's hours will credit: its own [subject] tag, or the
+        # Subject picked above as the default for untagged units.
+        unit_subject = unit.get("subject") or subject
+        credit = f" · 🎯 {subject_labels.get(unit_subject, unit_subject)}"
+        st.markdown(f"- **{md(unit['unit'])}** ({lessons} lessons{extra}){credit}")
     if not submitted:
         st.caption("Looks right? Hit **Load the whole course**.")
         return
@@ -4414,28 +4424,44 @@ def render_khan_unit_editor(
     current_name: str,
     *,
     key: str,
+    current_subject: str | None = None,
 ) -> None:
-    """A compact inline rename for a loaded Khan unit -- rewrites ``khan_unit``
-    across every card in the unit. The displayed "Unit N:" number is added
-    automatically, so the field holds the topic only (a parent who typed
-    "Unit 1 Critical thinking" can fix it to just "Critical thinking" here, instead
-    of living with a doubled "Unit 1: Unit 1 Critical thinking")."""
+    """Inline editor for a loaded Khan unit: rename it, and change which subject its
+    hours credit toward. Both apply across every card in the unit. The displayed
+    "Unit N:" number is added automatically, so the name field holds the topic only
+    (a parent who typed "Unit 1 Critical thinking" can fix it to just "Critical
+    thinking"). The subject picker is how a cross-disciplinary course (Pixar in a
+    Box) gets each unit crediting the right subject after a one-time load."""
     from compass.agents import khan_card
 
-    with st.form(f"{key}_rename", clear_on_submit=False):
-        cols = st.columns([4, 1])
-        new_name = cols[0].text_input(
+    subject_keys = [k for k, _ in khan_card.KHAN_SUBJECTS]
+    subject_labels = dict(khan_card.KHAN_SUBJECTS)
+    with st.form(f"{key}_edit", clear_on_submit=False):
+        new_name = st.text_input(
             "Rename this unit", value=current_name, key=f"{key}_name",
             help="Just the topic — the “Unit N:” number is added for you.",
         )
-        save = cols[1].form_submit_button("✏️ Rename", width="stretch")
+        subj_index = subject_keys.index(current_subject) if current_subject in subject_keys else 0
+        new_subject = st.selectbox(
+            "Credit its hours to", subject_keys, index=subj_index,
+            format_func=lambda k: subject_labels.get(k, k), key=f"{key}_subj",
+            help="Which subject this whole unit's hours count toward.",
+        )
+        save = st.form_submit_button("💾 Save unit", width="stretch")
     if save:
         clean = (new_name or "").strip()
+        changed = False
         if not clean:
             st.warning("Give the unit a name.")
-        elif clean != current_name:
-            n = khan_card.rename_unit(db, student, course_id, name=clean)
-            st.success(f"Renamed to “{clean}” across {n} card(s).")
+            return
+        if clean != current_name:
+            khan_card.rename_unit(db, student, course_id, name=clean)
+            changed = True
+        if current_subject and new_subject != current_subject:
+            n = khan_card.recredit_unit(db, student, course_id, new_subject)
+            st.success(f"Now crediting {subject_labels.get(new_subject)} across {n} card(s).")
+            changed = True
+        if changed:
             st.rerun()
 
     # Delete the whole unit -- for a load that split or duplicated a unit. Behind a
@@ -4506,7 +4532,8 @@ def _render_tracker_unit_row(
         # Rename the unit right here -- fixes a name typed with its own "Unit N"
         # prefix, or any wording a parent wants to change after loading.
         render_khan_unit_editor(
-            db, student, u["course_id"], u["unit"], key=f"track_unit_{u['course_id']}"
+            db, student, u["course_id"], u["unit"], key=f"track_unit_{u['course_id']}",
+            current_subject=u.get("subject"),
         )
         # Schedule this unit across school days, right from its row. Defaults chain
         # after already-booked work, and a line shows when scheduling this unit at

@@ -2759,14 +2759,16 @@ class Database:
         *,
         title: str | None = None,
         topic: str | None = None,
+        subject: str | None = None,
         payload: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> None:
         """Overwrite selected fields of an existing lesson row -- used to turn a
-        Khan course 'shell' in the backlog into a real, filled-in card. Only the
-        fields passed are changed; student, agent, subject, status and timestamps
-        stay. `metadata`/`payload` replace the stored dict wholesale, so a caller
-        reads it, mutates, and passes the whole thing back."""
+        Khan course 'shell' in the backlog into a real, filled-in card, and to
+        re-credit a Khan unit to a different subject. Only the fields passed are
+        changed; student, agent, status and timestamps stay. `metadata`/`payload`
+        replace the stored dict wholesale, so a caller reads it, mutates, and
+        passes the whole thing back."""
         sets: list[str] = []
         params: list[Any] = []
         if title is not None:
@@ -2775,6 +2777,9 @@ class Database:
         if topic is not None:
             sets.append("topic = ?")
             params.append(topic)
+        if subject is not None:
+            sets.append("subject = ?")
+            params.append(subject)
         if payload is not None:
             sets.append("payload = ?")
             params.append(json.dumps(payload))

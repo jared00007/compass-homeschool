@@ -563,6 +563,36 @@ _NOISE_LINE_RE = re.compile(
 )
 
 
+# A trailing "[subject]" tag on a Unit line names where that unit's hours credit,
+# e.g. "Unit: Simulation [math]" -- so one paste can spread a cross-disciplinary
+# course (Pixar in a Box) across subjects while staying one course.
+_UNIT_SUBJECT_RE = re.compile(r"^(.*?)\s*\[([^\]]+)\]\s*$")
+
+
+def resolve_subject_key(text: str) -> str | None:
+    """Turn a free-form subject tag ("math", "Art & Music", "ELA") into a valid
+    subject key, or None when it matches nothing. Matches a key directly, a
+    KHAN_SUBJECTS label (ignoring emoji/punctuation), or a few common aliases."""
+    if not text:
+        return None
+    raw = text.strip().lower()
+    norm = lambda s: re.sub(r"[^a-z0-9]", "", s.lower())
+    nt = norm(raw)
+    for key, label in KHAN_SUBJECTS:
+        if raw == key or nt == norm(key) or nt == norm(label):
+            return key
+    aliases = {
+        "ela": "reading", "english": "reading", "languagearts": "reading",
+        "la": "reading", "art": "art_and_music", "artmusic": "art_and_music",
+        "music": "art_and_music", "pe": "health", "fitness": "health",
+        "pehealth": "health", "cte": "occupational_education",
+        "occ": "occupational_education", "occed": "occupational_education",
+        "cs": "occupational_education", "socialstudies": "social_studies",
+        "grammar": "language",
+    }
+    return aliases.get(nt)
+
+
 def parse_course_outline(text: str) -> dict[str, Any]:
     """Parse a pasted Khan course/unit outline into ``{course, units}`` where each
     unit is ``{"unit": name, "entries": [...]}`` and every entry is one card, in
@@ -589,7 +619,17 @@ def parse_course_outline(text: str) -> dict[str, Any]:
 
     def _start_unit(name: str) -> None:
         nonlocal current_unit, current_lesson, lesson_is_explicit
-        current_unit = {"unit": name.strip() or f"Unit {len(units) + 1}", "entries": []}
+        name = name.strip()
+        subject = ""
+        tag_match = _UNIT_SUBJECT_RE.match(name)
+        if tag_match is not None:
+            resolved = resolve_subject_key(tag_match.group(2))
+            if resolved is not None:
+                name = tag_match.group(1).strip()
+                subject = resolved
+        current_unit = {
+            "unit": name or f"Unit {len(units) + 1}", "entries": [], "subject": subject,
+        }
         current_lesson = None
         lesson_is_explicit = False
         units.append(current_unit)
@@ -672,7 +712,10 @@ def parse_course_outline(text: str) -> dict[str, Any]:
             else:  # quiz
                 entry["covers"] = list(since)
                 since = []
-        clean_units.append({"unit": unit["unit"], "entries": entries})
+        clean_units.append({
+            "unit": unit["unit"], "entries": entries,
+            "subject": unit.get("subject", ""),
+        })
     return {"course": course, "units": clean_units}
 
 
@@ -699,12 +742,20 @@ def create_course_from_outline(
     for index, unit in enumerate(parsed["units"]):
         if on_progress is not None:
             on_progress(index, total_units, unit["unit"])
+        # A per-unit "[subject]" tag wins; otherwise the whole paste shares the
+        # form's default subject. This is what lets one cross-disciplinary course
+        # credit different units to different subjects in a single load.
+        unit_subject = unit.get("subject") or subject
+        if not is_supported_subject(unit_subject):
+            unit_subject = subject
         result = create_course(
-            db, student, subject=subject, course=unit["unit"],
+            db, student, subject=unit_subject, course=unit["unit"],
             lessons=unit["entries"], minutes=minutes, generate_quiz=generate_quiz,
             course_name=parsed["course"], unit_number=index + 1,
         )
-        created.append({"unit": unit["unit"], "ids": result["created"]})
+        created.append(
+            {"unit": unit["unit"], "subject": unit_subject, "ids": result["created"]}
+        )
     if on_progress is not None:
         on_progress(total_units, total_units, None)
     return {
@@ -950,6 +1001,39 @@ def rename_unit(
             else:
                 new_meta.pop("khan_unit_number", None)
         db.update_lesson_content(card["id"], metadata=new_meta)
+        updated += 1
+    return updated
+
+
+def recredit_unit(db: Any, student: dict[str, Any], course_id: str, subject: str) -> int:
+    """Change which subject a loaded unit's hours credit toward -- updates every
+    card in the unit (all sharing ``course_id``): its ``subject`` column (what the
+    gradebook and tracker group by) and its payload ``subject_credits`` (what the
+    hours actually post to when the card is approved). Minutes are kept. Returns how
+    many cards were updated. Raises ValueError for an unknown subject."""
+    if not is_supported_subject(subject):
+        raise ValueError(f"'{subject}' isn't a valid subject for a Khan card.")
+    label = subjects.label(subject)
+    updated = 0
+    for card in db.list_lessons(student["id"], agent=AGENT_KEY, limit=2000):
+        meta = card.get("metadata") or {}
+        if meta.get("khan_course_id") != course_id:
+            continue
+        payload = dict(card.get("payload") or {})
+        existing = payload.get("subject_credits") or []
+        minutes = (
+            existing[0].get("minutes")
+            if existing else payload.get("estimated_minutes")
+        ) or 0
+        unit = card.get("topic") or card.get("title") or "this skill"
+        payload["subject_credits"] = [{
+            "subject": subject,
+            "minutes": minutes,
+            "justification": (
+                f"Completed the assigned Khan Academy skill '{unit}' for {label}."
+            ),
+        }]
+        db.update_lesson_content(card["id"], subject=subject, payload=payload)
         updated += 1
     return updated
 
