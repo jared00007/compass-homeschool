@@ -193,6 +193,33 @@ def generate_khan_quiz(
     return quiz
 
 
+_KHAN_REF_MARKER = "📚 **Khan reference**"
+
+
+def khan_reference_line(course_name: str, unit: str, subject_key: str) -> str:
+    """The one-line "what to open on Khan and where it credits" header that leads a
+    Khan card -- Course · Subject · Unit. Always starts with `_KHAN_REF_MARKER` so it
+    can be found and rebuilt in place when a unit is renamed or re-credited."""
+    bits = []
+    if course_name.strip():
+        bits.append(f"**{course_name.strip()}**")
+    if subject_key:
+        bits.append(f"🎯 {subjects.label(subject_key)}")
+    if unit.strip():
+        bits.append(f"📗 Unit: {unit.strip()}")
+    return f"{_KHAN_REF_MARKER} — " + " · ".join(bits)
+
+
+def _overview_with_reference(overview: str, reference: str) -> str:
+    """Put `reference` as the first paragraph of `overview`, replacing an existing
+    reference line (so a rename/re-credit refreshes it in place) or prepending it."""
+    parts = overview.split("\n\n", 1)
+    if parts and parts[0].startswith(_KHAN_REF_MARKER):
+        rest = parts[1] if len(parts) > 1 else ""
+        return f"{reference}\n\n{rest}" if rest else reference
+    return f"{reference}\n\n{overview}" if overview else reference
+
+
 def build_khan_card_payload(
     subject_key: str,
     unit: str,
@@ -202,6 +229,7 @@ def build_khan_card_payload(
     quiz: list[dict[str, Any]] | None = None,
     note: str = "",
     course: str = "",
+    course_name: str = "",
     items: list[str] | None = None,
 ) -> dict[str, Any]:
     """The ordinary-lesson payload for a Khan card -- pure, no model call, so the
@@ -224,9 +252,9 @@ def build_khan_card_payload(
     # the quiz is what scores it. No graded activity, so the parent's review is
     # one tap (see review._render_khan_review).
     items = [str(i).strip() for i in (items or []) if str(i).strip()]
-    course_line = f"📚 **Unit:** {course}\n\n" if course else ""
+    reference = khan_reference_line(course_name, course, credit_subject)
     overview = (
-        f"{course_line}"
+        f"{reference}\n\n"
         f"Do this one on Khan Academy:\n\n"
         f"▶️ **[Open in Khan Academy]({url})**\n\n"
         f"Work the skill all the way through over there, then come back and take "
@@ -284,6 +312,7 @@ def build_khan_checkpoint_payload(
     kind: str,
     covers: list[str] | None = None,
     course: str = "",
+    course_name: str = "",
 ) -> dict[str, Any]:
     """The payload for a Khan CHECKPOINT card -- a quiz or unit test he takes on
     Khan. It carries no Compass quiz (it IS the quiz); he takes it on Khan, turns
@@ -296,12 +325,12 @@ def build_khan_checkpoint_payload(
     covers = [str(c).strip() for c in (covers or []) if str(c).strip()]
     kind_label = "Unit test" if kind == "unit_test" else "Quiz"
 
-    course_line = f"📚 **Unit:** {course}\n\n" if course else ""
+    reference = khan_reference_line(course_name, course, subject_key)
     covers_block = ""
     if covers:
         covers_block = "\n\n**It covers:**\n" + "\n".join(f"- {c}" for c in covers)
     overview = (
-        f"{course_line}"
+        f"{reference}\n\n"
         f"📝 **Checkpoint — Khan {kind_label}.**\n\n"
         f"▶️ **[Open in Khan Academy]({url})**\n\n"
         f"Take this {kind_label.lower()} over on Khan, then come back and turn it in. "
@@ -485,7 +514,7 @@ def create_course(
                 label = label[len(prefix):]           # "Numbers and operations: Quiz 1" -> "Quiz 1"
             payload = build_khan_checkpoint_payload(
                 subject, label, url, minutes, kind=entry["kind"],
-                covers=entry["covers"], course=course,
+                covers=entry["covers"], course=course, course_name=course_name.strip(),
             )
             title = f"{index}. 📝 {label}"
             payload["title"] = title
@@ -503,7 +532,8 @@ def create_course(
                 except LessonGenerationError:
                     result["quiz_failed"].append(name)
             payload = build_khan_card_payload(
-                subject, name, url, minutes, quiz=quiz, course=course, items=items
+                subject, name, url, minutes, quiz=quiz, course=course,
+                course_name=course_name.strip(), items=items,
             )
             title = f"{index}. {name}"
             payload["title"] = title
@@ -526,8 +556,10 @@ def create_course(
 # --- bulk import: a whole course (many units) from one pasted outline ----------
 
 _COURSE_LINE_RE = re.compile(r"^\s*course\s*[:\-]\s*(.+)$", re.I)
-# "Unit 3: Polynomials", "Unit: Exponents", "## Unit 2 — Radicals" ...
-_UNIT_LINE_RE = re.compile(r"^\s*#{0,6}\s*unit\b[ \t]*\d*[ \t]*[:\-.—]?[ \t]*(.*)$", re.I)
+# "Unit 3: Polynomials", "Unit: Exponents", "## Unit 2 — Radicals" ... group 1 is the
+# real Khan unit number (kept, not discarded, so "Unit 2: …" stays Unit 2 even when
+# an earlier unit is finished); group 2 is the name.
+_UNIT_LINE_RE = re.compile(r"^\s*#{0,6}\s*unit\b[ \t]*(\d*)[ \t]*[:\-.—]?[ \t]*(.*)$", re.I)
 # "Lesson: Repeating decimals" -- Khan's grouping *inside* a unit. Each becomes
 # one card; the video/exercise lines under it become that card's checklist.
 _LESSON_LINE_RE = re.compile(r"^\s*#{0,6}\s*lesson\b[ \t]*\d*[ \t]*[:\-.]?[ \t]*(.*)$", re.I)
@@ -617,7 +649,7 @@ def parse_course_outline(text: str) -> dict[str, Any]:
     current_lesson: dict[str, Any] | None = None
     lesson_is_explicit = False  # was the current lesson opened by a "Lesson:" line?
 
-    def _start_unit(name: str) -> None:
+    def _start_unit(name: str, number: str = "") -> None:
         nonlocal current_unit, current_lesson, lesson_is_explicit
         name = name.strip()
         subject = ""
@@ -629,6 +661,10 @@ def parse_course_outline(text: str) -> dict[str, Any]:
                 subject = resolved
         current_unit = {
             "unit": name or f"Unit {len(units) + 1}", "entries": [], "subject": subject,
+            # The real Khan unit number from the paste ("Unit 2: …" -> 2), kept so a
+            # finished earlier unit never renumbers the rest. None -> numbered by
+            # load order at creation.
+            "number": int(number) if str(number).strip().isdigit() else None,
         }
         current_lesson = None
         lesson_is_explicit = False
@@ -673,7 +709,7 @@ def parse_course_outline(text: str) -> dict[str, Any]:
             continue  # other Khan page chrome
         unit_match = _UNIT_LINE_RE.match(line)
         if unit_match is not None:
-            _start_unit(unit_match.group(1))
+            _start_unit(unit_match.group(2), unit_match.group(1))
             continue
         lesson_match = _LESSON_LINE_RE.match(line)
         if lesson_match is not None:
@@ -714,7 +750,7 @@ def parse_course_outline(text: str) -> dict[str, Any]:
                 since = []
         clean_units.append({
             "unit": unit["unit"], "entries": entries,
-            "subject": unit.get("subject", ""),
+            "subject": unit.get("subject", ""), "number": unit.get("number"),
         })
     return {"course": course, "units": clean_units}
 
@@ -748,10 +784,13 @@ def create_course_from_outline(
         unit_subject = unit.get("subject") or subject
         if not is_supported_subject(unit_subject):
             unit_subject = subject
+        # Keep the real Khan unit number from the paste when it had one; only fall
+        # back to load order for an untagged "Unit:" line.
+        unit_number = unit.get("number") or (index + 1)
         result = create_course(
             db, student, subject=unit_subject, course=unit["unit"],
             lessons=unit["entries"], minutes=minutes, generate_quiz=generate_quiz,
-            course_name=parsed["course"], unit_number=index + 1,
+            course_name=parsed["course"], unit_number=unit_number,
         )
         created.append(
             {"unit": unit["unit"], "subject": unit_subject, "ids": result["created"]}
@@ -993,14 +1032,22 @@ def rename_unit(
         if meta.get("khan_course_id") != course_id:
             continue
         new_meta = dict(meta)
+        payload = None
         if name is not None:
             new_meta["khan_unit"] = name
+            # Keep the card's own "Course · Subject · Unit" reference line current.
+            payload = dict(card.get("payload") or {})
+            if payload.get("overview"):
+                ref = khan_reference_line(
+                    new_meta.get("khan_course_name", ""), name, card.get("subject", "")
+                )
+                payload["overview"] = _overview_with_reference(payload["overview"], ref)
         if number is not None:
             if number:
                 new_meta["khan_unit_number"] = int(number)
             else:
                 new_meta.pop("khan_unit_number", None)
-        db.update_lesson_content(card["id"], metadata=new_meta)
+        db.update_lesson_content(card["id"], metadata=new_meta, payload=payload)
         updated += 1
     return updated
 
@@ -1033,6 +1080,12 @@ def recredit_unit(db: Any, student: dict[str, Any], course_id: str, subject: str
                 f"Completed the assigned Khan Academy skill '{unit}' for {label}."
             ),
         }]
+        # Keep the card's "Course · Subject · Unit" reference line current.
+        if payload.get("overview"):
+            ref = khan_reference_line(
+                meta.get("khan_course_name", ""), meta.get("khan_unit") or unit, subject
+            )
+            payload["overview"] = _overview_with_reference(payload["overview"], ref)
         db.update_lesson_content(card["id"], subject=subject, payload=payload)
         updated += 1
     return updated

@@ -379,6 +379,58 @@ def test_rename_unit_can_set_and_clear_the_unit_number(db, student):
     assert "khan_unit_number" not in db.get_lesson(ids[0])["metadata"]
 
 
+def test_parse_outline_keeps_the_real_khan_unit_number():
+    """A 'Unit 2: …' line keeps its number (2), so a finished Unit 1 never makes
+    the rest renumber. An untagged 'Unit:' line carries no number (load order)."""
+    parsed = khan_card.parse_course_outline(
+        "Course: Reading\n"
+        "Unit 2: Key ideas and details\n"
+        "Citing evidence\n"
+        "Unit: Vocabulary\n"
+        "Prefixes\n"
+    )
+    by_name = {u["unit"]: u for u in parsed["units"]}
+    assert by_name["Key ideas and details"]["number"] == 2
+    assert by_name["Vocabulary"]["number"] is None
+
+
+def test_create_from_outline_stores_the_pasted_unit_number(db, student):
+    """The pasted Khan unit number survives load as khan_unit_number, so the unit
+    reads 'Unit 2' even though it was the first (and only) unit pasted."""
+    khan_card.create_course_from_outline(
+        db, student, subject="reading", minutes=30, text=(
+            "Course: Reading\n"
+            "Unit 2: Key ideas and details\n"
+            "Citing evidence\n"
+        ),
+    )
+    card = db.list_lessons(student["id"], agent="khan", limit=10)[0]
+    assert card["metadata"]["khan_unit_number"] == 2
+
+
+def test_migrate_freezes_unit_numbers_by_load_order(db, student, tmp_path):
+    """Cards loaded without a unit number get one frozen by load order on the next
+    open, so a finished earlier unit can't renumber a later one."""
+    # Two units, loaded in order, with NO stored unit numbers (create_course,
+    # unit_number defaulting to 0).
+    first = khan_card.create_course(
+        db, student, subject="reading", course="Vocabulary",
+        lessons=["A"], minutes=30)["created"]
+    second = khan_card.create_course(
+        db, student, subject="reading", course="Key ideas and details",
+        lessons=["B", "C"], minutes=30)["created"]
+    # Neither has a stored number yet.
+    assert "khan_unit_number" not in (db.get_lesson(second[0])["metadata"])
+    db.close()
+
+    # Re-open: the migration runs and freezes numbers by load order.
+    from compass.storage.db import Database
+    db2 = Database(tmp_path / "khan.db")
+    assert db2.get_lesson(first[0])["metadata"]["khan_unit_number"] == 1
+    assert db2.get_lesson(second[0])["metadata"]["khan_unit_number"] == 2
+    db2.close()
+
+
 def test_parse_outline_reads_a_per_unit_subject_tag():
     """A '[subject]' tag on a Unit line is parsed off the name and resolved to a
     subject key; an untagged unit carries no subject (uses the load default)."""
@@ -417,6 +469,29 @@ def test_create_from_outline_credits_each_tagged_unit_to_its_subject(db, student
         by_subject[card["subject"]] += 1
     assert by_subject["math"] == 2          # tagged unit
     assert by_subject["art_and_music"] == 1  # untagged -> form default
+
+
+def test_rename_and_recredit_refresh_the_card_reference_line(db, student):
+    """The card's "Course · Subject · Unit" reference line stays current when the
+    unit is renamed or re-credited (not left showing the old name/subject)."""
+    ids = khan_card.create_course_from_outline(
+        db, student, subject="art_and_music", minutes=30, text=(
+            "Course: Pixar in a Box\n"
+            "Unit: Simulation\n"
+            "Hair simulation 101\n"
+        ),
+    )["units"][0]["ids"]
+    cid = _course_id(db, ids[0])
+    # Reference starts with the loaded course + subject + unit.
+    ov0 = db.get_lesson(ids[0])["payload"]["overview"]
+    assert "Pixar in a Box" in ov0 and "Art & Music" in ov0 and "Unit: Simulation" in ov0
+
+    khan_card.rename_unit(db, student, cid, name="Physics of hair")
+    khan_card.recredit_unit(db, student, cid, "math")
+    ov1 = db.get_lesson(ids[0])["payload"]["overview"]
+    assert "Unit: Physics of hair" in ov1
+    assert "🎯 Math" in ov1
+    assert "Simulation" not in ov1 and "Art & Music" not in ov1
 
 
 def test_recredit_unit_moves_hours_subject_on_the_cards(db, student):
@@ -886,9 +961,13 @@ def test_khan_card_states_its_unit_on_the_card():
     """When a card comes from a loaded unit, the unit name is stated in the
     lesson body so it's visible when the card is opened, not just on the bar."""
     payload = khan_card.build_khan_card_payload(
-        "math", "Multiplying powers", "https://khan", 30, course="Exponents & radicals",
+        "math", "Multiplying powers", "https://khan", 30,
+        course="Exponents & radicals", course_name="8th grade math",
     )
-    assert "**Unit:** Exponents & radicals" in payload["overview"]
+    # The reference line leads with Course · Subject · Unit.
+    assert "Unit: Exponents & radicals" in payload["overview"]
+    assert "8th grade math" in payload["overview"]
+    assert "Math" in payload["overview"]
     # A standalone card (no unit) has no unit line.
     plain = khan_card.build_khan_card_payload("math", "Multiplying powers", "https://khan", 30)
     assert "Unit:" not in plain["overview"]
@@ -901,4 +980,4 @@ def test_create_course_puts_the_unit_name_on_every_card(db, student):
         lessons=["Multiply powers", "Divide powers"], minutes=30,
     )
     for card in db.list_lessons(student["id"], agent="khan"):
-        assert "**Unit:** Exponents & radicals" in card["payload"]["overview"]
+        assert "Unit: Exponents & radicals" in card["payload"]["overview"]

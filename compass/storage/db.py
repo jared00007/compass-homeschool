@@ -1600,6 +1600,7 @@ class Database:
         self._reconcile_stale_math_mastery()
         self._migrate_grade_weights_two_surface()
         self._migrate_khan_checkpoint_icon()
+        self._migrate_khan_unit_numbers()
         self._prune_retired_seed_rewards()
 
     def _migrate_khan_checkpoint_icon(self) -> None:
@@ -1620,6 +1621,52 @@ class Database:
             "AND payload LIKE '%✅%'"
         )
         self.conn.commit()
+
+    def _migrate_khan_unit_numbers(self) -> None:
+        """One-time: freeze a stable ``khan_unit_number`` on every Khan card that
+        lacks one, by the course's own load order (the earliest card id in each
+        unit). Without a stored number the tracker/backlog numbered units by their
+        position among the ones still showing, so finishing Unit 1 made Unit 2
+        renumber to 1 -- reported directly. Freezing the number stops that; a parent
+        can still set a unit's number by hand. Idempotent: units that already carry
+        a number (or have no missing cards) are left untouched."""
+        rows = _rows(self.conn.execute(
+            "SELECT id, subject, metadata FROM lessons WHERE agent = 'khan' ORDER BY id"
+        ))
+        # course group -> {course_id -> {min_id, has_number, missing:[card ids]}}
+        groups: dict[str, dict[str, dict[str, Any]]] = {}
+        for row in rows:
+            try:
+                meta = json.loads(row["metadata"] or "{}")
+            except (ValueError, TypeError):
+                continue
+            cid = meta.get("khan_course_id")
+            if not cid:
+                continue
+            group_key = meta.get("khan_course_name") or f"subject:{row['subject']}"
+            unit = groups.setdefault(group_key, {}).setdefault(
+                cid, {"min_id": row["id"], "has_number": False, "missing": []}
+            )
+            unit["min_id"] = min(unit["min_id"], row["id"])
+            if meta.get("khan_unit_number"):
+                unit["has_number"] = True
+            else:
+                unit["missing"].append(row["id"])
+        changed = False
+        for units in groups.values():
+            ordered = sorted(units.items(), key=lambda kv: kv[1]["min_id"])
+            for index, (_cid, unit) in enumerate(ordered, start=1):
+                if unit["has_number"] or not unit["missing"]:
+                    continue
+                for card_id in unit["missing"]:
+                    self.conn.execute(
+                        "UPDATE lessons SET metadata = "
+                        "json_set(metadata, '$.khan_unit_number', ?) WHERE id = ?",
+                        (index, card_id),
+                    )
+                changed = True
+        if changed:
+            self.conn.commit()
 
     def _migrate_grade_weights_two_surface(self) -> None:
         """One-time, flag-guarded: collapse any stored four-lane grade weights

@@ -4425,21 +4425,29 @@ def render_khan_unit_editor(
     *,
     key: str,
     current_subject: str | None = None,
+    current_number: int | None = None,
 ) -> None:
-    """Inline editor for a loaded Khan unit: rename it, and change which subject its
-    hours credit toward. Both apply across every card in the unit. The displayed
-    "Unit N:" number is added automatically, so the name field holds the topic only
-    (a parent who typed "Unit 1 Critical thinking" can fix it to just "Critical
-    thinking"). The subject picker is how a cross-disciplinary course (Pixar in a
-    Box) gets each unit crediting the right subject after a one-time load."""
+    """Inline editor for a loaded Khan unit: rename it, set its unit number, and
+    change which subject its hours credit toward. All apply across every card in the
+    unit. The "Unit N:" number is whatever's set here (frozen at load from the paste,
+    editable by hand), so a parent can fix a number that doesn't match Khan. The
+    name field holds the topic only. The subject picker is how a cross-disciplinary
+    course (Pixar in a Box) gets each unit crediting the right subject."""
     from compass.agents import khan_card
 
     subject_keys = [k for k, _ in khan_card.KHAN_SUBJECTS]
     subject_labels = dict(khan_card.KHAN_SUBJECTS)
     with st.form(f"{key}_edit", clear_on_submit=False):
-        new_name = st.text_input(
+        top = st.columns([3, 1])
+        new_name = top[0].text_input(
             "Rename this unit", value=current_name, key=f"{key}_name",
-            help="Just the topic — the “Unit N:” number is added for you.",
+            help="Just the topic — the “Unit N:” number is the field beside it.",
+        )
+        new_number = top[1].number_input(
+            "Unit #", min_value=0, max_value=99,
+            value=int(current_number) if current_number else 0,
+            step=1, key=f"{key}_num",
+            help="Its real Khan unit number. 0 = auto (load order).",
         )
         subj_index = subject_keys.index(current_subject) if current_subject in subject_keys else 0
         new_subject = st.selectbox(
@@ -4450,12 +4458,17 @@ def render_khan_unit_editor(
         save = st.form_submit_button("💾 Save unit", width="stretch")
     if save:
         clean = (new_name or "").strip()
-        changed = False
         if not clean:
             st.warning("Give the unit a name.")
             return
-        if clean != current_name:
-            khan_card.rename_unit(db, student, course_id, name=clean)
+        changed = False
+        num_val = int(new_number) if isinstance(new_number, (int, float)) else 0
+        if clean != current_name or num_val != (current_number or 0):
+            khan_card.rename_unit(
+                db, student, course_id,
+                name=clean if clean != current_name else None,
+                number=num_val if num_val != (current_number or 0) else None,
+            )
             changed = True
         if current_subject and new_subject != current_subject:
             n = khan_card.recredit_unit(db, student, course_id, new_subject)
@@ -4533,7 +4546,7 @@ def _render_tracker_unit_row(
         # prefix, or any wording a parent wants to change after loading.
         render_khan_unit_editor(
             db, student, u["course_id"], u["unit"], key=f"track_unit_{u['course_id']}",
-            current_subject=u.get("subject"),
+            current_subject=u.get("subject"), current_number=u.get("unit_number"),
         )
         # Schedule this unit across school days, right from its row. Defaults chain
         # after already-booked work, and a line shows when scheduling this unit at

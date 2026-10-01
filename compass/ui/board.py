@@ -801,11 +801,14 @@ div[class*="st-key-"][class*="_days_row"] {
 }
 div[class*="st-key-"][class*="_days_row"] div[data-testid="stHorizontalBlock"] {
   flex-wrap: nowrap !important;
-  min-width: max-content !important;
 }
+/* The five day columns grow to share the full width of the board on a wide
+   screen (reported: "it should stretch wider"), with a 220px floor so they drop
+   into a horizontal scroll on a narrow one instead of squeezing a title to a
+   sliver. */
 div[class*="st-key-"][class*="_days_row"] div[data-testid="stColumn"] {
   min-width: 220px !important;
-  flex: 0 0 220px !important;
+  flex: 1 1 220px !important;
 }
 /* Same floor height on every card so a row of them reads as one even band
    across the week, short titles and long ones alike. */
@@ -1076,6 +1079,7 @@ def render_board_backlog(
                                     db, student, cid, raw_name,
                                     key=f"{key_prefix}_backlog_unit_{row}",
                                     current_subject=first_card.get("subject"),
+                                    current_number=first_meta.get("khan_unit_number"),
                                 )
                             _render_unit_schedule_form(
                                 db, student, cards, key=f"{key_prefix}_sched_{row}"
