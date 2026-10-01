@@ -954,6 +954,22 @@ def rename_unit(
     return updated
 
 
+def delete_unit(db: Any, student: dict[str, Any], course_id: str) -> int:
+    """Delete every card in a loaded unit (all cards sharing ``course_id``) -- the
+    one-click 'remove this whole unit' a parent needs when a load split or
+    duplicated a unit. Hours already logged survive the delete
+    (``activities.lesson_id`` is ``ON DELETE SET NULL``), and the remaining units
+    renumber themselves by load order. Returns how many cards were deleted."""
+    cards = [
+        card
+        for card in db.list_lessons(student["id"], agent=AGENT_KEY, limit=2000)
+        if (card.get("metadata") or {}).get("khan_course_id") == course_id
+    ]
+    for card in cards:
+        db.delete_lesson(card["id"])
+    return len(cards)
+
+
 def schedule_unit(
     db: Any,
     student: dict[str, Any],

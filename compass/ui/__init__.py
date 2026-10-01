@@ -4438,6 +4438,20 @@ def render_khan_unit_editor(
             st.success(f"Renamed to “{clean}” across {n} card(s).")
             st.rerun()
 
+    # Delete the whole unit -- for a load that split or duplicated a unit. Behind a
+    # confirm since it's destructive; any remaining units renumber by load order, so
+    # deleting a stray "Unit 1" promotes the next one to Unit 1 on its own.
+    confirm = st.checkbox(
+        "🗑️ Delete this whole unit", key=f"{key}_del_confirm",
+        help="Removes every card in the unit. Hours already logged are kept.",
+    )
+    if st.button(
+        "Delete unit", key=f"{key}_del_btn", disabled=not confirm, type="secondary"
+    ):
+        n = khan_card.delete_unit(db, student, course_id)
+        st.success(f"Deleted the unit ({n} card(s)).")
+        st.rerun()
+
 
 def _render_tracker_unit_row(
     db: Database,

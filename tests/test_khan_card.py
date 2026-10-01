@@ -379,6 +379,26 @@ def test_rename_unit_can_set_and_clear_the_unit_number(db, student):
     assert "khan_unit_number" not in db.get_lesson(ids[0])["metadata"]
 
 
+def test_delete_unit_removes_every_card_and_lets_others_renumber(db, student):
+    """Deleting a unit removes all its cards; a remaining unit then renumbers to
+    Unit 1 by load order (the 'delete the stray split, promote the real one' flow)."""
+    stray = khan_card.create_course(
+        db, student, subject="reading", course="Happiness",
+        lessons=["only card"], minutes=20)["created"]
+    real = khan_card.create_course(
+        db, student, subject="reading", course="Happiness",
+        lessons=["a", "b", "c"], minutes=20)["created"]
+    stray_cid = _course_id(db, stray[0])
+    n = khan_card.delete_unit(db, student, stray_cid)
+    assert n == 1
+    assert len(db.list_lessons(student["id"], agent="khan", limit=100)) == 3
+    # The real unit survived and is now the only Happiness unit -> Unit 1.
+    tracker = khan_card.course_tracker(db, student)
+    happiness = [c for c in tracker if c["course"] == "Reading"][0]
+    units = happiness["units"]
+    assert len(units) == 1 and units[0]["unit_number"] == 1 and units[0]["total"] == 3
+
+
 def test_schedule_all_units_chains_every_unit_back_to_back(db, student):
     from datetime import date, timedelta
 
