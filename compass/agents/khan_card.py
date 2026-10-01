@@ -833,11 +833,17 @@ def course_tracker(db: Any, student: dict[str, Any], today: date | None = None) 
         units_out: list[dict[str, Any]] = []
         c_total = c_done = c_help = c_pending = 0
         c_scores: list[float] = []
-        for cid in sorted(courses[course], key=lambda u: unit_first[(course, u)]):
+        # Every unit gets a number so the tracker can always label it "Unit N" --
+        # the stored khan_unit_number when there is one, otherwise its 1-based
+        # position in load order (courses loaded before that field was captured
+        # still read Unit 1, Unit 2, … instead of an unnumbered list).
+        for position, cid in enumerate(
+            sorted(courses[course], key=lambda u: unit_first[(course, u)])
+        ):
             stats = _unit_stats(courses[course][cid], today_iso)
             stats["course_id"] = cid
             stats["unit"] = unit_name[(course, cid)]
-            stats["unit_number"] = unit_number.get((course, cid))
+            stats["unit_number"] = unit_number.get((course, cid)) or (position + 1)
             stats["subject"] = courses[course][cid][0].get("subject", "")
             units_out.append(stats)
             c_total += stats["total"]; c_done += stats["done"]

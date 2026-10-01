@@ -4390,11 +4390,16 @@ def _render_tracker_unit_row(db: Database, student: dict[str, Any], u: dict[str,
     _STATUS_TAG = {
         "done": "✅ Done", "in_progress": "⏳ In progress", "not_started": "⬜ Not started",
     }
+    # Every unit carries a number now (course_tracker falls back to load order),
+    # so the header always reads "Unit N: …" -- a parent asked to "clearly tell
+    # which unit it is." Each unit is its own collapsed expander so a long course
+    # reads as a scannable list of unit headers to open one at a time.
     num = f"Unit {u['unit_number']}: " if u.get("unit_number") else ""
-    with st.container(border=True):
-        st.markdown(
-            f"**{md(num + u['unit'])}** — {u['done']}/{u['total']} · {_STATUS_TAG.get(u['status'], '')}"
-        )
+    header = (
+        f"**{md(num + u['unit'])}** — {u['done']}/{u['total']} · "
+        f"{_STATUS_TAG.get(u['status'], '')}"
+    )
+    with st.expander(header, expanded=False):
         bits = []
         if u["scheduled"]:
             bits.append(f"📅 {u['scheduled']} scheduled")

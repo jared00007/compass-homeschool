@@ -825,15 +825,16 @@ if mc_view == "records":
         "place. The formal credit-documentation packets are linked at the bottom."
     )
 
-    # Course progress leads, collapsed by default so the view opens compact and a
-    # parent can scan the headers. render_khan_course_tracker uses no expanders of
-    # its own, so wrapping it in one here is safe (Streamlit forbids nesting).
-    with st.expander("📈 Course progress — every loaded course by unit", expanded=False):
-        st.caption(
-            "Progress, real Khan scores, and what needs you — filter by course, and "
-            "schedule a unit (or everything) right from here."
-        )
-        render_khan_course_tracker(db, student)
+    # Course progress leads. Each unit inside the tracker is now its own
+    # collapsible expander, so this section is a plain header rather than an outer
+    # expander -- Streamlit forbids an expander inside an expander.
+    st.markdown("### 📈 Course progress")
+    st.caption(
+        "Every loaded course by unit: progress, real Khan scores, and what needs you — "
+        "filter by course, and schedule a unit (or everything) right from here. Each "
+        "unit collapses on its own; open one to schedule it."
+    )
+    render_khan_course_tracker(db, student)
 
     st.divider()
     st.markdown("### 📊 Report card")
