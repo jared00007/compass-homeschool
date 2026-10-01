@@ -990,78 +990,89 @@ def render_board_backlog(
     if not sum(len(items) for items in by_epic.values()):
         _ui.st.caption("Nothing parked.")
         return
+    def _render_cards(cards, row_key):
+        with _ui.st.container(key=row_key):
+            columns = _ui.st.columns(min(len(cards), 4))
+            for position, (kind, item) in enumerate(cards):
+                with columns[position % len(columns)]:
+                    render_board_card(
+                        db, kind, item,
+                        today_iso=today_iso,
+                        board_week_start=board_week_start,
+                        interactive=interactive,
+                    )
+
     for epic in weekly.EPIC_ORDER:
         items = by_epic.get(epic, [])
         if not items:
             continue
         icon = EPIC_ICONS.get(epic, "📘")
-        # Each epic group starts collapsed -- the backlog can hold a lot of
-        # parked stories, and a parent asked for the groups closed by default
-        # so the panel opens as a short list of headers ("Khan Academy (5)")
-        # to expand one at a time, not a wall of every card at once.
-        with _ui.st.expander(f"{icon} {epic} ({len(items)})", expanded=False):
-            safe_epic = epic.replace(" ", "_")
+        safe_epic = epic.replace(" ", "_")
 
-            def _render_cards(cards, row_key):
-                with _ui.st.container(key=row_key):
-                    columns = _ui.st.columns(min(len(cards), 4))
-                    for position, (kind, item) in enumerate(cards):
-                        with columns[position % len(columns)]:
-                            render_board_card(
-                                db, kind, item,
-                                today_iso=today_iso,
-                                board_week_start=board_week_start,
-                                interactive=interactive,
-                            )
-
-            if epic == "Khan Academy":
-                # Khan cards cluster by course -> unit, in lesson order, so a big
-                # loaded course reads as tidy per-unit runs -- and, on the parent
-                # board, filterable by course and unit (requested: "see them by
-                # course and unit and filterable on those").
-                hierarchy = weekly.group_khan_backlog_by_course_unit(items)
-                course_pick, unit_pick = "All courses", "All units"
-                if interactive:
-                    course_names = [course for course, _ in hierarchy]
-                    fcols = _ui.st.columns(2)
-                    course_pick = fcols[0].selectbox(
-                        "Course", ["All courses"] + course_names,
-                        key=f"{key_prefix}_khan_course_filter",
-                    )
-                    if course_pick == "All courses":
-                        unit_opts = [u for _, units in hierarchy for u, _ in units]
-                    else:
-                        unit_opts = [
-                            u for course, units in hierarchy if course == course_pick
-                            for u, _ in units
-                        ]
-                    # Key includes the course so switching course resets the unit
-                    # pick cleanly (no stale value from another course's units).
-                    unit_pick = fcols[1].selectbox(
-                        "Unit", ["All units"] + unit_opts,
-                        key=f"{key_prefix}_khan_unit_filter_{course_pick}",
-                    )
-                row = 0
-                for course, units in hierarchy:
-                    if course_pick != "All courses" and course != course_pick:
-                        continue
-                    shown = [
-                        (u, cards) for u, cards in units
-                        if unit_pick == "All units" or u == unit_pick
+        if epic == "Khan Academy":
+            # Khan is the one epic NOT folded under a single outer expander: a
+            # loaded course can run to a hundred cards across a dozen units, so
+            # each UNIT is its own collapsible expander instead. Collapse them
+            # all and the panel reads as a scannable list of unit headers
+            # ("📗 Unit 3: … (6)") to open one at a time -- requested directly:
+            # "have them all collapsed to easily see all units planned."
+            # Streamlit forbids an expander inside an expander, so the epic
+            # itself stays a plain header rather than a wrapping expander.
+            #
+            # Khan cards cluster by course -> unit, in lesson order, and on the
+            # parent board the whole set is filterable by course and unit
+            # (requested: "see them by course and unit and filterable on those").
+            _ui.st.markdown(f"#### {icon} {epic} ({len(items)})")
+            hierarchy = weekly.group_khan_backlog_by_course_unit(items)
+            course_pick, unit_pick = "All courses", "All units"
+            if interactive:
+                course_names = [course for course, _ in hierarchy]
+                fcols = _ui.st.columns(2)
+                course_pick = fcols[0].selectbox(
+                    "Course", ["All courses"] + course_names,
+                    key=f"{key_prefix}_khan_course_filter",
+                )
+                if course_pick == "All courses":
+                    unit_opts = [u for _, units in hierarchy for u, _ in units]
+                else:
+                    unit_opts = [
+                        u for course, units in hierarchy if course == course_pick
+                        for u, _ in units
                     ]
-                    if not shown:
-                        continue
-                    total = sum(len(cards) for _, cards in shown)
-                    _ui.st.markdown(f"#### 📚 {md(course)} ({total})")
-                    for unit, cards in shown:
-                        _ui.st.markdown(f"**{md(unit)}** ({len(cards)})")
+                # Key includes the course so switching course resets the unit
+                # pick cleanly (no stale value from another course's units).
+                unit_pick = fcols[1].selectbox(
+                    "Unit", ["All units"] + unit_opts,
+                    key=f"{key_prefix}_khan_unit_filter_{course_pick}",
+                )
+            row = 0
+            for course, units in hierarchy:
+                if course_pick != "All courses" and course != course_pick:
+                    continue
+                shown = [
+                    (u, cards) for u, cards in units
+                    if unit_pick == "All units" or u == unit_pick
+                ]
+                if not shown:
+                    continue
+                total = sum(len(cards) for _, cards in shown)
+                _ui.st.markdown(f"##### 📚 {md(course)} ({total})")
+                for unit, cards in shown:
+                    # Each unit collapses on its own, default collapsed, so a big
+                    # course is a short list of unit headers rather than a wall
+                    # of cards -- the whole point of the per-unit fold.
+                    with _ui.st.expander(f"📗 {md(unit)} ({len(cards)})", expanded=False):
                         _render_cards(cards, f"{key_prefix}_backlog_row_{safe_epic}_{row}")
                         if interactive:
                             _render_unit_schedule_form(
                                 db, student, cards, key=f"{key_prefix}_sched_{row}"
                             )
-                        row += 1
-            else:
+                    row += 1
+        else:
+            # Every other epic stays a single collapsed expander -- a parent
+            # asked for the groups closed by default so the panel opens as a
+            # short list of headers to expand one at a time.
+            with _ui.st.expander(f"{icon} {epic} ({len(items)})", expanded=False):
                 _render_cards(items, f"{key_prefix}_backlog_row_{safe_epic}")
 
 
