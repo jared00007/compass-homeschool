@@ -448,7 +448,18 @@ def epic_for(kind: str, item: dict[str, Any]) -> str:
 
 
 def _khan_course_label(item: dict[str, Any]) -> str:
-    return (item.get("metadata") or {}).get("khan_course_name") or "Other Khan cards"
+    # Prefer the stored top-level course name; fall back to the card's subject
+    # (every card has one) so courses loaded before that field still group and
+    # filter as Math / English / Science instead of all "Other Khan cards".
+    meta = item.get("metadata") or {}
+    name = meta.get("khan_course_name")
+    if name:
+        return name
+    subject = item.get("subject")
+    if subject:
+        from compass import subjects
+        return subjects.label(subject)
+    return "Other Khan cards"
 
 
 def _khan_unit_label(item: dict[str, Any]) -> str:

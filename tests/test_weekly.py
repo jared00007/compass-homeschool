@@ -680,3 +680,15 @@ def test_khan_backlog_groups_by_course_then_unit():
     assert [u for u, _ in math_units] == ["Numbers", "Geometry"]      # unit load order
     assert [c[1]["id"] for c in math_units[0][1]] == [2, 1]           # lesson order in unit
     assert grouped[2][0] == "Other Khan cards"
+
+
+def test_khan_backlog_falls_back_to_subject_without_a_course_name():
+    """Cards with no khan_course_name group by subject, so the backlog filter
+    still works for courses loaded before that field existed."""
+    from compass.weekly import group_khan_backlog_by_course_unit
+
+    items = [
+        ("lesson", {"id": 1, "subject": "math", "metadata": {"khan_unit": "Numbers", "khan_part": 1}}),
+        ("lesson", {"id": 2, "subject": "science", "metadata": {"khan_unit": "Earth", "khan_part": 1}}),
+    ]
+    assert [c for c, _ in group_khan_backlog_by_course_unit(items)] == ["Math", "Science"]
