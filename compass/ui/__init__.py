@@ -4334,11 +4334,27 @@ def render_khan_course_tracker(db: Database, student: dict[str, Any]) -> None:
     def _needs_attention(u):
         return u["needs_help"] > 0 or u["pending_scores"] > 0
 
+    # New units chain *after* whatever is already booked, instead of piling onto
+    # days that are already full -- the schedule forms default to this day, and the
+    # finish-date estimates below assume you schedule from here at the planning pace.
+    next_open = khan_card.next_open_schedule_day(db, student)
+    _pace_raw = st.number_input(
+        "📆 Planning pace — lessons/day", 1, 8, 2, key="track_plan_pace",
+        help="Drives the finish-date estimates below, and the default pace for the "
+             "schedule forms.",
+    )
+    pace = int(_pace_raw) if isinstance(_pace_raw, (int, float)) else 2
+    st.caption(
+        f"Estimates and schedule forms start from **{next_open.strftime('%a %b %-d')}** "
+        "— the next open school day after your last booked day, so a newly scheduled "
+        "unit lands after what's already on the board, not on top of it."
+    )
+
     # Lay every loaded unit's remaining lessons across school days in one go.
     with st.form("khan_sched_all_tracker", clear_on_submit=False):
         acols = st.columns([2, 2, 2])
-        a_start = acols[0].date_input("Start", value=date.today(), key="khan_sched_all_start")
-        a_per = acols[1].number_input("Lessons/day", 1, 8, 2, key="khan_sched_all_perday")
+        a_start = acols[0].date_input("Start", value=next_open, key="khan_sched_all_start")
+        a_per = acols[1].number_input("Lessons/day", 1, 8, pace, key="khan_sched_all_perday")
         book_all = acols[2].form_submit_button("📅 Schedule ALL remaining", width="stretch")
     if book_all:
         try:
@@ -4373,19 +4389,40 @@ def render_khan_course_tracker(db: Database, student: dict[str, Any]) -> None:
             badges.append(f"🙋 {course['needs_help']} need help")
         if course["pending_scores"]:
             badges.append(f"🏅 {course['pending_scores']} to approve")
+        # How much of THIS course is still unscheduled, and when scheduling the
+        # rest from the next open day at the planning pace would finish.
+        remaining = sum(u["backlog"] for u in units)
+        if remaining:
+            proj = khan_card.project_finish(next_open, remaining, pace)
+            if proj["last_day"]:
+                badges.append(
+                    f"🗓️ {remaining} to schedule → done ~{proj['last_day'].strftime('%b %-d')}"
+                )
         st.markdown(head + (f"  ·  {' · '.join(badges)}" if badges else ""))
         st.progress(pct / 100 if course["total"] else 0.0)
         for u in units:
-            _render_tracker_unit_row(db, student, u)
+            _render_tracker_unit_row(db, student, u, next_open=next_open, pace=pace)
 
     if not shown_any:
         st.caption("Nothing matches those filters.")
 
 
-def _render_tracker_unit_row(db: Database, student: dict[str, Any], u: dict[str, Any]) -> None:
+def _render_tracker_unit_row(
+    db: Database,
+    student: dict[str, Any],
+    u: dict[str, Any],
+    *,
+    next_open: date | None = None,
+    pace: int = 2,
+) -> None:
     """One unit's line in the course tracker: its standing plus an inline
-    'schedule this unit' control."""
+    'schedule this unit' control. `next_open` is the chained start day (the next
+    open school day after already-booked work) and `pace` the planning pace -- used
+    for the finish estimate and as the schedule form's defaults."""
     from compass.agents import khan_card
+
+    if next_open is None:
+        next_open = khan_card.next_open_schedule_day(db, student)
 
     _STATUS_TAG = {
         "done": "✅ Done", "in_progress": "⏳ In progress", "not_started": "⬜ Not started",
@@ -4420,13 +4457,22 @@ def _render_tracker_unit_row(db: Database, student: dict[str, Any], u: dict[str,
             st.caption("⚠️ " + " · ".join(attention))
         if u["next_card"]:
             st.caption(f"➡️ Next up: {md(u['next_card']['title'])}")
-        # Schedule this unit across school days, right from its row.
+        # Schedule this unit across school days, right from its row. Defaults chain
+        # after already-booked work, and a line shows when scheduling this unit at
+        # the planning pace would finish.
         if u["backlog"]:
             cid = u["course_id"]
+            proj = khan_card.project_finish(next_open, u["backlog"], pace)
+            if proj["last_day"]:
+                st.caption(
+                    f"🗓️ {u['backlog']} to schedule — about {proj['days']} school "
+                    f"day(s) at {pace}/day, done ~{proj['last_day'].strftime('%b %-d')} "
+                    f"if started {next_open.strftime('%b %-d')}."
+                )
             with st.form(f"track_sched_{cid}", clear_on_submit=False):
                 scols = st.columns([2, 2, 2])
-                s_start = scols[0].date_input("Start", value=date.today(), key=f"track_sday_{cid}")
-                s_per = scols[1].number_input("Lessons/day", 1, 8, 2, key=f"track_sper_{cid}")
+                s_start = scols[0].date_input("Start", value=next_open, key=f"track_sday_{cid}")
+                s_per = scols[1].number_input("Lessons/day", 1, 8, pace, key=f"track_sper_{cid}")
                 go = scols[2].form_submit_button("📅 Schedule unit", width="stretch")
             if go:
                 try:

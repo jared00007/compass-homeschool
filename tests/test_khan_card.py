@@ -313,6 +313,46 @@ def test_schedule_unit_skips_done_cards_and_errors_when_empty(db, student):
                                 start_day=date.today(), per_day=2)
 
 
+def test_project_finish_matches_the_schedule_walk():
+    """project_finish is the read-only twin of schedule_unit's day walk: 5 cards at
+    2/day from a Friday land across Fri/Mon/Tue (weekend skipped) = 3 school days."""
+    from datetime import date
+
+    friday = date(2026, 10, 2)
+    assert friday.weekday() == 4
+    proj = khan_card.project_finish(friday, 5, 2)
+    assert proj["days"] == 3
+    assert proj["last_day"] == date(2026, 10, 6)  # Tuesday
+    # Nothing to place -> no days, no finish day.
+    empty = khan_card.project_finish(friday, 0, 2)
+    assert empty == {"days": 0, "last_day": None}
+
+
+def test_next_open_schedule_day_chains_after_booked_work(db, student):
+    """next_open_schedule_day returns the school day AFTER the last already-booked
+    Khan day, so a newly scheduled unit chains on instead of piling up."""
+    from datetime import date
+
+    ids = khan_card.create_course(
+        db, student, subject="math", course="Exponents",
+        lessons=["A", "B", "C", "D", "E"], minutes=30)["created"]
+    friday = date(2026, 10, 2)
+    khan_card.schedule_unit(db, student, _course_id(db, ids[0]), start_day=friday, per_day=2)
+    # Last booked day is Tuesday 2026-10-06; the next open school day is Wednesday.
+    assert khan_card.last_booked_day(db, student) == date(2026, 10, 6)
+    assert khan_card.next_open_schedule_day(db, student) == date(2026, 10, 7)
+
+
+def test_next_open_schedule_day_falls_back_to_today_when_nothing_booked(db, student):
+    """With nothing scheduled, it's just the next school day from today -- a weekend
+    today rolls forward to Monday."""
+    from datetime import date
+
+    assert khan_card.last_booked_day(db, student) is None
+    saturday = date(2026, 10, 3)
+    assert khan_card.next_open_schedule_day(db, student, today=saturday) == date(2026, 10, 5)
+
+
 def test_schedule_all_units_chains_every_unit_back_to_back(db, student):
     from datetime import date, timedelta
 

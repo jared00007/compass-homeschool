@@ -866,6 +866,61 @@ def _next_school_day(day: date) -> date:
     return day
 
 
+def project_finish(start_day: date, count: int, per_day: int) -> dict[str, Any]:
+    """Where `count` cards would land if scheduled `per_day` per school day from
+    `start_day` -- the read-only twin of `schedule_unit`'s day walk, so the tracker
+    can show a finish date before anything is committed. Returns
+    {"days": k, "last_day": date|None}; count <= 0 gives 0 days and no last day."""
+    per_day = max(1, int(per_day))
+    count = int(count)
+    if count <= 0:
+        return {"days": 0, "last_day": None}
+    day = _next_school_day(start_day)
+    placed = 0
+    days_used = 1
+    for _ in range(count):
+        if placed >= per_day:
+            day = _next_school_day(day + timedelta(days=1))
+            placed = 0
+            days_used += 1
+        placed += 1
+    return {"days": days_used, "last_day": day}
+
+
+def last_booked_day(db: Any, student: dict[str, Any]) -> date | None:
+    """The latest school day any Khan card is already scheduled for -- the max
+    ``planned_for`` across cards that are on the board (planned / needs_revision /
+    submitted), ignoring backlog and finished cards. None when nothing is booked."""
+    latest: date | None = None
+    for card in db.list_lessons(student["id"], agent=AGENT_KEY, limit=2000):
+        if card["status"] not in ("planned", "needs_revision", "submitted"):
+            continue
+        meta = card.get("metadata") or {}
+        if meta.get("held_back"):
+            continue
+        planned = str(meta.get("planned_for") or "")[:10]
+        if planned:
+            try:
+                d = date.fromisoformat(planned)
+            except ValueError:
+                continue
+            if latest is None or d > latest:
+                latest = d
+    return latest
+
+
+def next_open_schedule_day(
+    db: Any, student: dict[str, Any], today: date | None = None
+) -> date:
+    """The next school day to schedule into so new units chain *after* whatever is
+    already booked, instead of piling onto days that are already full. The school
+    day after the last booked Khan day, or today when nothing is booked yet."""
+    today = today or date.today()
+    last = last_booked_day(db, student)
+    base = (last + timedelta(days=1)) if last else today
+    return _next_school_day(base)
+
+
 def schedule_unit(
     db: Any,
     student: dict[str, Any],
