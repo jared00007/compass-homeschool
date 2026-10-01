@@ -620,6 +620,41 @@ def test_history_stays_hidden_until_the_checkbox_is_checked(monkeypatch, tmp_pat
     assert any("Finished lesson" in (e.label or "") for e in at.expander)
 
 
+def test_the_record_filters_by_type(monkeypatch, tmp_path):
+    """The instructional record is filterable by type (the activity's source) --
+    reported: "i cant even filter by anything ... filter by ... lesson type like
+    lesson or activiy or quiz or test." Picking a type narrows the list."""
+    db_path = tmp_path / "rec.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    today = date.today().isoformat()
+    db.log_activity(
+        student_id=student["id"], title="Khan math card", tier=config.TIER_CORE,
+        primary_subject="math", minutes=35, subject_credits={"math": 35},
+        occurred_on=today, source="khan",
+    )
+    db.log_activity(
+        student_id=student["id"], title="A science quiz", tier=config.TIER_CORE,
+        primary_subject="science", minutes=20, subject_credits={"science": 20},
+        occurred_on=today, source="quiz",
+    )
+    db.close()
+
+    at, _ = _open_review_tab(monkeypatch, db_path)
+    _switch_view(at, "records")
+    # The Type filter is built dynamically from the sources actually present.
+    type_sel = [s for s in at.selectbox if s.key == "rec_type"][0]
+    assert "📗 Khan lesson" in type_sel.options and "📝 Quiz / test" in type_sel.options
+
+    # set_value takes the underlying option value, while .options shows the
+    # format_func label.
+    type_sel.set_value("quiz").run()
+    assert not at.exception, [e.message for e in at.exception]
+    markdowns = " ".join(m.value for m in at.markdown)
+    assert "A science quiz" in markdowns
+    assert "Khan math card" not in markdowns
+
+
 # --- the Backlog, folded into the Board -----------------------------------------
 #
 # The separate Backlog tab is gone: parked work now lives in the Board view's

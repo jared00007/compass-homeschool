@@ -67,6 +67,29 @@ from compass.ui import (
     series_day_title,
 )
 
+# Friendly names for an activity's `source` -- its "type" in the record filter and
+# the badge on each row. Unknown sources fall back to a title-cased version, so the
+# filter stays correct even for a source added later that isn't listed here.
+_RECORD_SOURCE_LABELS = {
+    "khan": "📗 Khan lesson",
+    "quiz": "📝 Quiz / test",
+    "manual": "✍️ Logged by hand",
+    "quick_log": "⚡ Quick-log",
+    "reading": "📖 Reading",
+    "free_reading": "📖 Free reading",
+    "life_skills": "🛠️ Life skill",
+    "coding": "💻 Coding",
+    "big_projects": "🏗️ Big project",
+    "travel_journal": "🧭 Travel journal",
+    "morning_routine": "☀️ Morning routine",
+    "resource": "🔗 Lesson resource",
+}
+
+
+def _record_source_label(source: str) -> str:
+    return _RECORD_SOURCE_LABELS.get(source, (source or "other").replace("_", " ").title())
+
+
 db, student = page_setup("Mission Control", icon="🚀")
 
 st.title("🚀 Mission Control")
@@ -910,18 +933,71 @@ if mc_view == "records":
                 st.success("Logged.")
                 st.rerun()
 
-    columns = st.columns([1, 1, 2])
-    start = columns[0].date_input("From", value=date.today() - timedelta(days=30))
-    end = columns[1].date_input("To", value=date.today())
+    st.markdown("#### 🔎 Review the record")
+    st.caption("Filter by dates, subject, and type, then scan or delete any entry.")
 
-    activities = db.list_activities(student["id"], start=start.isoformat(), end=end.isoformat())
+    # Default to the whole school year so the record opens as the full picture to
+    # narrow, not a 30-day slice. Date range drives which entries the subject/type
+    # filters are built from, so the options always match what's on screen.
+    _sy_start, _sy_end = db.school_year_bounds()
+    date_cols = st.columns(2)
+    start = date_cols[0].date_input(
+        "From", value=date.fromisoformat(_sy_start), key="rec_from"
+    )
+    end = date_cols[1].date_input("To", value=date.today(), key="rec_to")
+
+    in_range = db.list_activities(
+        student["id"], start=start.isoformat(), end=end.isoformat()
+    )
+
+    # Subject and type options are built from what's actually in the range, so a
+    # parent never picks a filter that returns nothing.
+    subject_set: set[str] = set()
+    for activity in in_range:
+        subject_set.update(activity["credits"].keys())
+        if activity.get("primary_subject"):
+            subject_set.add(activity["primary_subject"])
+    subject_options = ["All subjects"] + sorted(subject_set, key=label)
+    source_options = ["All types"] + sorted({a["source"] for a in in_range if a.get("source")})
+
+    filter_cols = st.columns(2)
+    subject_pick = filter_cols[0].selectbox(
+        "Subject", subject_options,
+        format_func=lambda s: s if s == "All subjects" else label(s),
+        key="rec_subject",
+    )
+    type_pick = filter_cols[1].selectbox(
+        "Type", source_options,
+        format_func=lambda s: s if s == "All types" else _record_source_label(s),
+        key="rec_type",
+    )
+    # A live selection can outlive the option that produced it (change the dates and
+    # the old pick may be gone); fall back to "all" so the list never blanks out.
+    if subject_pick not in subject_options:
+        subject_pick = "All subjects"
+    if type_pick not in source_options:
+        type_pick = "All types"
+
+    def _matches(activity: dict) -> bool:
+        if subject_pick != "All subjects":
+            subs = set(activity["credits"].keys())
+            if activity.get("primary_subject"):
+                subs.add(activity["primary_subject"])
+            if subject_pick not in subs:
+                return False
+        if type_pick != "All types" and activity.get("source") != type_pick:
+            return False
+        return True
+
+    activities = [a for a in in_range if _matches(a)]
 
     if not activities:
-        st.info("Nothing logged in this range.")
+        st.info("Nothing matches these filters.")
     else:
         total = sum(a["minutes"] for a in activities)
         metrics = st.columns(3)
-        metrics[0].metric("Activities", len(activities))
+        filtered_note = "" if len(activities) == len(in_range) else f" of {len(in_range)}"
+        metrics[0].metric(f"Activities{filtered_note}", len(activities))
         metrics[1].metric("Hours", round(total / 60, 1))
         metrics[2].metric("Days", len({a["occurred_on"] for a in activities}))
 
@@ -934,8 +1010,8 @@ if mc_view == "records":
                     f"({activity['minutes']} min){where}"
                 )
                 columns[0].caption(
-                    f"{config.tier_label(activity['tier'], student['name'])} · "
-                    f"source: {activity['source']}"
+                    f"{_record_source_label(activity['source'])} · "
+                    f"{config.tier_label(activity['tier'], student['name'])}"
                 )
                 if activity["description"]:
                     columns[0].caption(md(activity["description"]))
