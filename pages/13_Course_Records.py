@@ -32,7 +32,6 @@ from compass.ui import (
     md,
     page_setup,
     parent_only,
-    render_khan_course_tracker,
 )
 
 db, student = page_setup("Course records", icon="🎓")
@@ -50,15 +49,13 @@ if not parent_only("Course records are for your parent."):
 
 api_ok = api_status_banner()
 
-# Live Khan course progress -- "see each course and progression" in one place,
-# above the grades 6-12 credit packets below.
-st.subheader("📊 Course progress")
+# Day-to-day course progress (every loaded Khan course by unit) lives on Mission
+# Control's "Course records" view now; this page is just the heavier grades-6-12
+# credit-documentation packets a diploma needs.
 st.caption(
-    "Every loaded course by unit: progress, real scores, what needs you — filter by "
-    "subject/course, and schedule a unit (or everything) right from here."
+    "Looking for live course progress and scores? That's on **Mission Control → "
+    "📕 Course records**. This page is the formal credit paperwork."
 )
-render_khan_course_tracker(db, student)
-st.divider()
 st.subheader("🎓 Credit documentation")
 
 courses = db.list_courses(student["id"])

@@ -1,7 +1,8 @@
 """Mission Control -- the parent's home base. Five views, chosen by a button
 row: Review (his turned-in work), Board (every subject's stories on one week),
 Plan a lesson (pick a subject and topic, generate the whole thing as a
-multi-day series), Record (the hours ledger), and Grades.
+multi-day series), Course records (progress, the report card, and the hours
+ledger), and Setup (set-once settings plus the parent-admin pages).
 
 The old day-by-day "Plan next week" batch planner was removed in full
 (reported: "remove that 100%"). Planning is now the per-subject Plan-a-lesson
@@ -50,6 +51,7 @@ from compass.ui import (
     render_day_target_editor,
     render_enrichment_generator,
     render_khan_course_importer,
+    render_khan_course_tracker,
     render_khan_clear_control,
     render_khan_spinoff_tool,
     render_khan_mastery_confirmations,
@@ -71,25 +73,18 @@ st.title("🚀 Mission Control")
 st.caption(
     "The parent's home base: review what he's turned in, see the week laid out on the "
     "board, plan a lesson (pick a topic and it generates the whole thing as a day-by-day "
-    "series), keep the record, and read his grades."
+    "series), keep the course records (grades, hours & progress), and set things up."
 )
 
 if not parent_only("Weekly planning is for your parent."):
     st.stop()
 
-# Parent-admin pages fold in here instead of cluttering the sidebar, reached by
-# a button (not another tab). Everything a parent (and only a parent) manages
-# now hangs off this one hub, so the sidebar is just the student's own subjects.
-_hub_links = st.columns(4)
-if _hub_links[0].button("🎓 Course records", width="stretch", key="hub_courses"):
-    st.switch_page("pages/13_Course_Records.py")
-if _hub_links[1].button("🧑‍🎓 Profile", width="stretch", key="hub_profile"):
-    st.switch_page("pages/12_Student_Profile.py")
-if _hub_links[2].button("📋 Compliance", width="stretch", key="hub_compliance"):
-    st.switch_page("pages/11_Compliance.py")
-if _hub_links[3].button("💵 Spend", width="stretch", key="hub_costs"):
-    st.switch_page("pages/15_Model_Costs.py")
-st.divider()
+# The old top "parent-admin hub" row is gone -- it mixed daily surfaces with
+# set-once admin and made the page feel cluttered ("mission control is not well
+# put together"). Course records is now one of the workflow view buttons below,
+# and the set-once admin pages (Profile, Compliance, Spend) are gathered under
+# the Setup view. The parent-admin pages stay folded out of the sidebar; they're
+# reached from inside Mission Control instead.
 
 # --- the review queue: reading his work and acting on it ------------------------
 
@@ -468,7 +463,7 @@ _MC_VIEWS = [
     ("review", f"✅ Review ({needs_review_count})"),
     ("board", f"📋 Board · Backlog ({backlog_count})"),
     ("plan", "✍️ Plan"),
-    ("grades", "📊 Grades & Record"),
+    ("records", "📕 Course records"),
     ("setup", "⚙️ Setup"),
 ]
 if "mc_view" not in st.session_state:
@@ -813,13 +808,34 @@ if mc_view == "plan":
         render_week_planner(db, student)
 
 
-# --- Grades & Record: the report card, then the hours ledger --------------------
+# --- Course records: progress, the report card, then the hours ledger -----------
 #
-# Merged: the report card (his numbers, editable) and the instructional record
-# (the hours ledger + hand-logging) are both "the results," so they share one
-# tab instead of two. Report card leads; the ledger follows.
+# Everything about "how is he doing and what has he done" lives here now, in one
+# view reached from the button row (reported: "course records should be in the
+# lower grouping of buttons and grades and records should live in there"):
+#   1. Course progress -- every loaded Khan course by unit, collapsible.
+#   2. Report card -- his numbers, editable, each subject its own collapsible row.
+#   3. The instructional record -- the hours ledger + hand-logging.
+# The formal grades-6-12 credit-documentation packets (transcripts, docx export)
+# are their own heavier page, linked at the bottom.
 
-if mc_view == "grades":
+if mc_view == "records":
+    st.caption(
+        "Grades, the hours record, and every loaded course's progress — all in one "
+        "place. The formal credit-documentation packets are linked at the bottom."
+    )
+
+    # Course progress leads, collapsed by default so the view opens compact and a
+    # parent can scan the headers. render_khan_course_tracker uses no expanders of
+    # its own, so wrapping it in one here is safe (Streamlit forbids nesting).
+    with st.expander("📈 Course progress — every loaded course by unit", expanded=False):
+        st.caption(
+            "Progress, real Khan scores, and what needs you — filter by course, and "
+            "schedule a unit (or everything) right from here."
+        )
+        render_khan_course_tracker(db, student)
+
+    st.divider()
     st.markdown("### 📊 Report card")
     st.caption(
         "The same numbers he sees. Open a subject to read every graded item that "
@@ -941,16 +957,37 @@ if mc_view == "grades":
         for lesson in history:
             _render_review_card(lesson, today_iso)
 
+    st.divider()
+    st.caption(
+        "Need the formal grades-6-12 paperwork — a course description, goals, the "
+        "150-hour-per-credit log, and a downloadable transcript packet?"
+    )
+    if st.button("🎓 Credit documentation & transcripts →", key="records_to_credit_docs"):
+        st.switch_page("pages/13_Course_Records.py")
+
 
 # --- Setup: the settings and occasional tools, out of the daily way ------------
 #
 # Everything configuration-y that used to clutter the Review view lives here now:
-# set it once and forget it. Keeps the daily surfaces (Review, Board, Grades) to
-# just what a parent acts on every day.
+# set it once and forget it. Keeps the daily surfaces (Review, Board, Course
+# records) to just what a parent acts on every day. The set-once admin pages
+# that used to sit in the top hub row (Profile, Compliance, Spend) are gathered
+# here too, since they're all "set it and forget it" rather than daily work.
 
 if mc_view == "setup":
     st.markdown("### ⚙️ Setup")
     st.caption("Settings and occasional tools — mostly set-once-and-forget.")
+
+    st.markdown("#### 🗂️ Parent pages")
+    st.caption("The set-once admin pages, out of the sidebar and gathered here.")
+    _admin_cols = st.columns(3)
+    if _admin_cols[0].button("🧑‍🎓 Profile", width="stretch", key="setup_profile"):
+        st.switch_page("pages/12_Student_Profile.py")
+    if _admin_cols[1].button("📋 Compliance", width="stretch", key="setup_compliance"):
+        st.switch_page("pages/11_Compliance.py")
+    if _admin_cols[2].button("💵 Spend", width="stretch", key="setup_costs"):
+        st.switch_page("pages/15_Model_Costs.py")
+    st.divider()
 
     with st.expander("🎁 Weekly reward — set the goal, reward & holiday weeks"):
         render_xp_reward_editor(db)

@@ -81,10 +81,11 @@ def _md(tab):
 
 
 def test_mission_control_hub_gathers_the_parent_admin_pages(monkeypatch, tmp_path):
-    """Every parent-admin page folds off the sidebar into a button on Mission
-    Control, and each is hidden from the sidebar for both of you -- the sidebar
-    is just the student's own subjects now, and the parent reaches the rest
-    through this one hub."""
+    """Every parent-admin page folds off the sidebar into Mission Control, and
+    each is hidden from the sidebar for both of you -- the sidebar is just the
+    student's own subjects now. The old top "hub" row is gone: Course records is
+    a workflow view button, and the set-once admin pages (Profile, Compliance,
+    Spend) are gathered under the Setup view."""
     db_path = tmp_path / "hub.db"
     db = Database(db_path)
     db.ensure_default_student()
@@ -92,8 +93,13 @@ def test_mission_control_hub_gathers_the_parent_admin_pages(monkeypatch, tmp_pat
 
     at, _ = _open_review_tab(monkeypatch, db_path)
     button_keys = {b.key or "" for b in at.button}
-    for key in ("hub_courses", "hub_profile", "hub_compliance", "hub_costs"):
-        assert key in button_keys, f"no {key} button on Mission Control"
+    # Course records is one of the workflow view buttons now.
+    assert "mc_viewbtn_records" in button_keys, "no Course records view button"
+    # Profile / Compliance / Spend live under Setup now.
+    setup = _switch_view(at, "setup")
+    setup_keys = {b.key or "" for b in setup.button}
+    for key in ("setup_profile", "setup_compliance", "setup_costs"):
+        assert key in setup_keys, f"no {key} button under Setup"
     for slug in ("Course_Records", "Student_Profile", "Compliance", "Model_Costs"):
         assert slug in ui._FOLDED_IN_PAGES, f"{slug} must be hidden from the sidebar"
     # Mission Control itself stays reachable in the sidebar (parent-only).
@@ -116,9 +122,9 @@ def test_grades_are_a_view_in_mission_control_with_the_override_editor(monkeypat
     db.close()
 
     at, _ = _open_review_tab(monkeypatch, db_path)
-    assert any((b.key or "") == "mc_viewbtn_grades" for b in at.button), "no Grades view button"
+    assert any((b.key or "") == "mc_viewbtn_records" for b in at.button), "no Course records view button"
 
-    grades = _switch_view(at, "grades")
+    grades = _switch_view(at, "records")
     markdowns = " ".join(m.value for m in grades.markdown)
     assert "Report card" in markdowns
     # The subject-level override form (how a parent edits a grade) is present.
@@ -141,7 +147,7 @@ def test_a_parent_can_re_grade_a_hand_in_from_the_grades_view(monkeypatch, tmp_p
     db.close()
 
     at, _ = _open_review_tab(monkeypatch, db_path)
-    _switch_view(at, "grades")
+    _switch_view(at, "records")
 
     verdict_key = f"grade_item_verdict_english_{lid}"
     sel = [s for s in at.selectbox if s.key == verdict_key]
@@ -177,7 +183,7 @@ def test_a_parent_can_re_grade_one_activity_from_the_grades_view(monkeypatch, tm
     db.close()
 
     at, _ = _open_review_tab(monkeypatch, db_path)
-    _switch_view(at, "grades")
+    _switch_view(at, "records")
 
     # Activity 0's item keys in the activity index; bump it up to solid.
     verdict_key = f"grade_item_verdict_english_{lid}_0"
@@ -607,7 +613,7 @@ def test_history_stays_hidden_until_the_checkbox_is_checked(monkeypatch, tmp_pat
 
     # The completed/skipped history lives on the merged Grades & Record view now,
     # hidden until the checkbox there is checked.
-    record = _switch_view(at, "grades")
+    record = _switch_view(at, "records")
     checkbox = [c for c in record.checkbox if c.label.startswith("Also show")][0]
     checkbox.set_value(True).run()
 
