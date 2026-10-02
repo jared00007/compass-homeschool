@@ -163,16 +163,16 @@ KHAN_MASTERY_EMOJI = {
     "mastered": "🏆",
 }
 # XP for *reaching* each tier, earned once as he climbs. The values are
-# increments, so passing all three is 2 + 3 + 5 = 10 total -- half a lesson's
-# worth, on top of the +10 for doing the Khan card the first time. Deliberately
-# modest: mastery is a bonus for going back and retaining, not the main way to
-# earn -- and since he can climb *every* skill, over-paying it lets a reward be
-# won on mastery grinding alone (reported: "he can crush it on that... that's
-# overweight"). Retention stays worthwhile without swamping the base work.
+# increments, so passing all three is 0 + 1 + 2 = 3 total, on top of the +10 for
+# doing the Khan card the first time. Deliberately small: since he masters nearly
+# every skill, a bigger ladder effectively *doubled* every card's value, so one
+# fully-mastered unit swamped the week (reported: "if he can master each lesson in
+# a unit that's a ton of points ... overvalued"). Mastery stays a visible reward
+# for going back and retaining, but doing the work is clearly the main driver.
 KHAN_MASTERY_XP = {
-    "familiar": 2,
-    "proficient": 3,
-    "mastered": 5,
+    "familiar": 0,
+    "proficient": 1,
+    "mastered": 2,
 }
 # The weekly "master the unit by Friday" bonus. A Khan unit is usually a whole
 # week's work for a big core class, so it doubles as the week's mastery target:
@@ -181,7 +181,7 @@ KHAN_MASTERY_XP = {
 # like every mastery reward. Trimmed with the tiers above so mastering a unit is
 # a nice bump, not most of a week's reward on its own.
 KHAN_UNIT_MASTERY_TARGET = 0.8   # 80% of a unit's skills at Proficient+
-KHAN_UNIT_MASTERY_BONUS = 25     # XP for taking a unit to its mastery target
+KHAN_UNIT_MASTERY_BONUS = 10     # XP for taking a unit to its mastery target
 
 # Khan's own scores live only in Khan's coach dashboard (no API), so a parent can
 # hand-record the *real* number off that dashboard onto a Khan card. What kind of

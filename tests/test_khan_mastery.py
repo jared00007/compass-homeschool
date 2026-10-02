@@ -94,9 +94,9 @@ def test_confirm_climbs_every_tier_and_awards_their_xp(db, student):
     assert km.confirmed_level(lesson) == "proficient"
     assert km.pending_claim(lesson) is None            # claim satisfied, cleared
     assert km.card_xp(lesson) == awarded
-    # Both tiers passed through are dated the confirm day, for the weekly strip.
+    # Each tier that PAYS XP is dated the confirm day, for the weekly strip.
+    # Familiar is worth 0 now, so it carries no bump; Proficient does.
     assert km.card_bumps(lesson) == [
-        ("2026-09-23", config.KHAN_MASTERY_XP["familiar"]),
         ("2026-09-23", config.KHAN_MASTERY_XP["proficient"]),
     ]
 
@@ -151,10 +151,12 @@ def test_only_khan_cards_take_mastery(db, student):
 def test_total_and_bumps_span_all_cards(db, student):
     a, b = _card(db, student, "Exponents"), _card(db, student, "Radicals")
     km.confirm_mastery(db, a, "mastered", on="2026-09-22")
-    km.confirm_mastery(db, b, "familiar", on="2026-09-23")
+    km.confirm_mastery(db, b, "proficient", on="2026-09-23")
     full = sum(config.KHAN_MASTERY_XP.values())
-    assert km.total_mastery_xp(db, student["id"]) == full + config.KHAN_MASTERY_XP["familiar"]
-    # Bumps carry their confirm dates for weekly attribution.
+    b_xp = config.KHAN_MASTERY_XP["familiar"] + config.KHAN_MASTERY_XP["proficient"]
+    assert km.total_mastery_xp(db, student["id"]) == full + b_xp
+    # Bumps carry their confirm dates for weekly attribution (one per card, since
+    # each has a tier that pays XP).
     dates = {d for d, _ in km.mastery_bumps(db, student["id"])}
     assert dates == {"2026-09-22", "2026-09-23"}
 
@@ -272,7 +274,11 @@ def test_confirmations_list_the_queue_with_the_award(db, student, monkeypatch):
     page = "\n".join(rec.written)
     assert "Mastery to confirm" in page
     award = km.xp_to_reach(None, "proficient")
-    assert f"Confirm Proficient (+{award})" in page
+    # The skill's claimed level is named in the row; the per-item button and the
+    # one-tap "Confirm all" carry the award.
+    assert "Proficient" in page
+    assert f"Confirm (+{award})" in page
+    assert f"Confirm all 1 (+{award} XP)" in page
 
 
 def test_confirmations_render_nothing_with_an_empty_queue(db, student, monkeypatch):

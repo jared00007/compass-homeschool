@@ -4877,17 +4877,27 @@ def _render_one_mastery_row(db: Database, card: dict[str, Any]) -> None:
         cols[1].caption("🏆 Mastered — top of the ladder!")
         return
     options = [lvl for lvl in km.LEVELS if km.level_index(lvl) > km.level_index(confirmed)]
-    with cols[1].form(f"km_claim_{card['id']}", clear_on_submit=True):
-        pick = st.selectbox(
-            "How far did you get on Khan?",
-            options,
-            format_func=lambda l: f"{km.level_emoji(l)} {km.level_label(l)} (+{km.xp_to_reach(confirmed, l)} XP)",
-            key=f"km_pick_{card['id']}",
-        )
-        if st.form_submit_button("Mark it", type="primary"):
-            km.claim_mastery(db, card["id"], pick)
-            st.success("Sent to your parent to confirm. 🏆")
+    # One tap for the usual case -- he's going for the top. The top level is the
+    # big primary button; anything less sits in a small "only got partway" popover,
+    # so marking a mastered skill is a single click, not a dropdown + submit.
+    top = options[-1]
+    with cols[1]:
+        if st.button(
+            f"🏆 I reached {km.level_label(top)} (+{km.xp_to_reach(confirmed, top)})",
+            key=f"km_claim_top_{card['id']}", type="primary", width="stretch",
+        ):
+            km.claim_mastery(db, card["id"], top)
             st.rerun()
+        lowers = options[:-1]
+        if lowers:
+            with st.popover("Only got partway?"):
+                for lvl in lowers:
+                    if st.button(
+                        f"{km.level_emoji(lvl)} {km.level_label(lvl)} (+{km.xp_to_reach(confirmed, lvl)})",
+                        key=f"km_claim_{lvl}_{card['id']}", width="stretch",
+                    ):
+                        km.claim_mastery(db, card["id"], lvl)
+                        st.rerun()
 
 
 def render_khan_mastery_boost(db: Database, student: dict[str, Any]) -> None:
@@ -4935,44 +4945,53 @@ def render_khan_mastery_confirmations(db: Database, student: dict[str, Any]) -> 
     if not queue:
         return
     st.markdown("#### 🏆 Mastery to confirm")
+    total_award = sum(km.xp_to_reach(i["confirmed"], i["claim"]) for i in queue)
     st.caption(
         f"Landon marked {len(queue)} Khan skill{'s' if len(queue) != 1 else ''} as leveled "
-        "up. Confirm to award the bonus XP, or dismiss it."
+        "up. Confirm all in one tap, or handle them one at a time below."
     )
+    # The common case: he aced the whole batch, so clear it in one tap.
+    if st.button(
+        f"✅ Confirm all {len(queue)} (+{total_award} XP)",
+        key="km_confirm_all", type="primary", width="stretch",
+    ):
+        for item in queue:
+            km.confirm_mastery(db, item["lesson"]["id"])
+        st.success(f"Confirmed {len(queue)} — +{total_award} XP. 🏆")
+        st.rerun()
     for item in queue:
         lesson, claim, confirmed = item["lesson"], item["claim"], item["confirmed"]
         award = km.xp_to_reach(confirmed, claim)
         with st.container(border=True):
             now = km.level_label(confirmed) if confirmed else "not rated"
-            st.markdown(
-                f"**{md(lesson['title'])}**  \n"
-                f"He says he reached {km.level_emoji(claim)} **{km.level_label(claim)}** "
-                f"(currently {now})"
+            cols = st.columns([4, 2, 1])
+            cols[0].markdown(
+                f"**{md(lesson['title'])}** — reached "
+                f"{km.level_emoji(claim)} **{km.level_label(claim)}** (was {now})"
             )
-            cols = st.columns(3)
-            if cols[0].button(
-                f"✅ Confirm {km.level_label(claim)} (+{award})",
-                key=f"km_conf_{lesson['id']}", type="primary",
+            if cols[1].button(
+                f"✅ Confirm (+{award})", key=f"km_conf_{lesson['id']}", type="primary",
+                width="stretch",
             ):
                 km.confirm_mastery(db, lesson["id"])
-                st.success(f"Confirmed — +{award} XP. 🏆")
                 st.rerun()
+            # A lower level, if he over-claimed, tucked in a compact popover so the
+            # row stays a single clean confirm.
             middle = [
                 lvl for lvl in km.LEVELS
                 if km.level_index(confirmed) < km.level_index(lvl) < km.level_index(claim)
             ]
-            if middle:
-                adj = cols[1].selectbox(
-                    "or confirm a lower level", middle,
-                    format_func=km.level_label, index=None, placeholder="lower…",
-                    key=f"km_adj_pick_{lesson['id']}",
-                )
-                if adj and cols[1].button("Confirm that", key=f"km_adj_{lesson['id']}"):
-                    km.confirm_mastery(db, lesson["id"], adj)
+            with cols[2].popover("▾"):
+                for lvl in middle:
+                    if st.button(
+                        f"Confirm {km.level_label(lvl)} instead", key=f"km_adj_{lvl}_{lesson['id']}",
+                        width="stretch",
+                    ):
+                        km.confirm_mastery(db, lesson["id"], lvl)
+                        st.rerun()
+                if st.button("✕ Dismiss", key=f"km_dismiss_{lesson['id']}", width="stretch"):
+                    km.reject_claim(db, lesson["id"])
                     st.rerun()
-            if cols[2].button("✕ Dismiss", key=f"km_dismiss_{lesson['id']}"):
-                km.reject_claim(db, lesson["id"])
-                st.rerun()
 
 
 def render_khan_unit_mastery_meter(
