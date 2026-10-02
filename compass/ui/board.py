@@ -1085,8 +1085,11 @@ def render_board_backlog(
                     "Unit", ["All units"] + unit_opts,
                     key=f"{key_prefix}_khan_unit_filter_{course_pick}",
                 )
-            row = 0
-            for course, units in hierarchy:
+            # A filter that narrows to one course (or one unit) forces the
+            # matching course open so its results are actually visible even
+            # though courses default collapsed.
+            force_open = course_pick != "All courses" or unit_pick != "All units"
+            for course_idx, (course, units) in enumerate(hierarchy):
                 if course_pick != "All courses" and course != course_pick:
                     continue
                 shown = [
@@ -1096,13 +1099,40 @@ def render_board_backlog(
                 if not shown:
                     continue
                 total = sum(len(cards) for _, cards in shown)
-                _ui.st.markdown(f"##### 📚 {md(course)} ({total})")
-                for unit, cards in shown:
+
+                # The COURSE collapses too, not just its units -- with a dozen
+                # courses loaded the panel otherwise ran on forever, so a parent
+                # asked for the courses to fold as well ("i want the backlog
+                # courses to be collapsable too. so easier to navigate").
+                # Streamlit forbids an expander inside an expander and the units
+                # below are already expanders, so the course fold is a manual
+                # toggle (a full-width button acting as the header, its open
+                # state in session_state) rather than a wrapping st.expander.
+                # Default collapsed, so the panel opens as a clean list of course
+                # names to open one at a time -- same "closed until you need it"
+                # rhythm as the units themselves.
+                open_key = f"{key_prefix}_khan_course_open_{course_idx}"
+                is_open = _ui.st.session_state.get(open_key, False) or force_open
+                caret = "▼" if is_open else "▶"
+                if _ui.st.button(
+                    f"{caret} 📚 {md(course)} ({total})",
+                    key=f"{open_key}_btn",
+                    use_container_width=True,
+                ):
+                    _ui.st.session_state[open_key] = not _ui.st.session_state.get(open_key, False)
+                    _ui.st.rerun()
+                if not is_open:
+                    continue
+                for unit_idx, (unit, cards) in enumerate(shown):
+                    # Keys fold in the stable course/unit index (not a running
+                    # counter) so collapsing one course never shifts another
+                    # course's widget keys out from under its half-typed state.
+                    row_suffix = f"{course_idx}_{unit_idx}"
                     # Each unit collapses on its own, default collapsed, so a big
                     # course is a short list of unit headers rather than a wall
                     # of cards -- the whole point of the per-unit fold.
                     with _ui.st.expander(f"📗 {md(unit)} ({len(cards)})", expanded=False):
-                        _render_cards(cards, f"{key_prefix}_backlog_row_{safe_epic}_{row}")
+                        _render_cards(cards, f"{key_prefix}_backlog_row_{safe_epic}_{row_suffix}")
                         if interactive:
                             # Rename the unit right where you see it -- fixes a name
                             # typed with its own "Unit N" prefix, or any wording to
@@ -1114,14 +1144,13 @@ def render_board_backlog(
                             if cid and raw_name:
                                 _ui.render_khan_unit_editor(
                                     db, student, cid, raw_name,
-                                    key=f"{key_prefix}_backlog_unit_{row}",
+                                    key=f"{key_prefix}_backlog_unit_{row_suffix}",
                                     current_subject=first_card.get("subject"),
                                     current_number=first_meta.get("khan_unit_number"),
                                 )
                             _render_unit_schedule_form(
-                                db, student, cards, key=f"{key_prefix}_sched_{row}"
+                                db, student, cards, key=f"{key_prefix}_sched_{row_suffix}"
                             )
-                    row += 1
         else:
             # Every other epic stays a single collapsed expander -- a parent
             # asked for the groups closed by default so the panel opens as a
