@@ -311,7 +311,13 @@ def board_for_week(
     # columns (a past/future week's board shows that week's plan, not today's
     # ad-hoc work).
     seen_undated_agents: set[str] = set()
-    for lesson in db.list_lessons(student_id, limit=200):
+    # High cap, not a small page: this sweep is what puts every parked lesson in
+    # the backlog, and a family can load several Khan courses (hundreds of cards).
+    # A low limit returned only the newest cards, so an earlier-loaded course (e.g.
+    # Math) fell off the end and vanished from the board/backlog entirely while
+    # still showing in Course progress -- reported directly: "where did my math
+    # course go? its not in my backlog."
+    for lesson in db.list_lessons(student_id, limit=5000):
         if lesson["id"] in backlogged_ids.get("lesson", set()):
             continue
         metadata = lesson.get("metadata") or {}

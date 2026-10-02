@@ -361,6 +361,28 @@ def board_student(board_db):
     return student
 
 
+def test_board_backlog_includes_older_parked_cards_past_a_small_page(board_db, board_student):
+    """A family that loads several Khan courses can have hundreds of parked cards.
+    The backlog sweep must not cap at a small page -- the EARLIEST-loaded card (an
+    older course like Math) still has to surface, not fall off the end. Regression
+    for: 'where did my math course go? its not in my backlog.'"""
+    sid = board_student["id"]
+    first_id = None
+    for i in range(260):  # well past the old 200-row cap
+        lid = board_db.save_lesson(
+            student_id=sid, agent="khan", subject="math", topic=f"skill {i}",
+            title=f"{i}. skill", payload={"activities": []},
+            metadata={"held_back": True, "source": "khan", "khan_course_id": "c1"},
+        )
+        if first_id is None:
+            first_id = lid  # the oldest (lowest id) -- the one a low cap would drop
+
+    board = board_for_week(board_db, board_student, week_start())
+    backlog_ids = {item["id"] for _, item in board["backlog"]}
+    assert len(backlog_ids) >= 260
+    assert first_id in backlog_ids
+
+
 def test_board_buckets_every_story_type_by_its_own_day(board_db, board_student):
     """One of each story type, each on a different weekday -- confirms
     every branch of the aggregator reads its own item correctly, not just
