@@ -549,6 +549,26 @@ CREATE TABLE IF NOT EXISTS enrichment_photos (
 );
 
 -- ---------------------------------------------------------------------------
+-- Saved art prompts -- a parent's own library of reusable art-card briefs
+-- (e.g. a 60-minute "line work + pop of color" session with locked gates and
+-- a mandatory deliverable). One per (student, name); saving under an existing
+-- name updates it. The art-card generator loads one as the editable starting
+-- point and, when used, it drives the whole brief rather than being appended
+-- as a tweak -- so a parent's disciplined prompt isn't fighting the default
+-- "keep it rough" framing.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS art_prompts (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    name       TEXT NOT NULL,
+    body       TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (student_id, name)
+);
+
+-- ---------------------------------------------------------------------------
 -- Morning routine log -- which stretch/breathing/mindfulness routine
 -- (compass/morning_routines.py) he did to start the day. One per student per
 -- day: unlike Check-In, a morning routine is fundamentally a single event,

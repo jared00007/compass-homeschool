@@ -139,6 +139,53 @@ def test_art_reflection_lands_in_the_instructional_record(db, student):
     assert "add wheels" in act["description"]
 
 
+def test_save_list_and_delete_art_prompts(db, student):
+    """The parent's reusable art-prompt library: save, list (name order), update
+    in place under the same name, and delete."""
+    sid = student["id"]
+    assert db.list_art_prompts(sid) == []
+    db.save_art_prompt(sid, "Linework", "body v1")
+    db.save_art_prompt(sid, "Comics", "panels")
+    assert [p["name"] for p in db.list_art_prompts(sid)] == ["Comics", "Linework"]
+
+    db.save_art_prompt(sid, "Linework", "body v2")  # same name -> update, no new row
+    got = {p["name"]: p["body"] for p in db.list_art_prompts(sid)}
+    assert got["Linework"] == "body v2"
+    assert len(db.list_art_prompts(sid)) == 2
+
+    db.delete_art_prompt(sid, "Comics")
+    assert [p["name"] for p in db.list_art_prompts(sid)] == ["Linework"]
+
+
+def test_art_prompt_examples_ship_a_schema_aware_starter():
+    """A built-in starter exists and is written to map onto the card's fields
+    (so its headings don't just pile into one block)."""
+    assert enrichment.ART_PROMPT_EXAMPLES
+    body = next(iter(enrichment.ART_PROMPT_EXAMPLES.values()))
+    assert "POP OF COLOR" in body
+    assert "what_to_do" in body  # the field-mapping guidance
+
+
+def test_replace_mode_lets_a_saved_brief_govern_the_prompt(db, student):
+    """In replace mode the parent's brief IS the system prompt and the default
+    'rough is the point' maker framing is dropped, so a disciplined prompt wins."""
+    seen = {}
+
+    def _fake(system, user_prompt, schema, effort):
+        seen["system"] = system
+        return an_activity_payload()
+
+    with patch("compass.agents.enrichment.generate_lesson", side_effect=_fake):
+        enrichment.generate_activity(
+            db, student, "art_music",
+            instructions="POP OF COLOR RULE: only a glowing lightsaber.",
+            instructions_mode="replace",
+        )
+    assert "POP OF COLOR RULE" in seen["system"]
+    assert "overrides any default framing" in seen["system"]
+    assert "ROUGH IS THE POINT" not in seen["system"]
+
+
 def test_art_photo_saves_and_reads_back(db, student):
     """The optional photo of what he made round-trips, and re-uploading replaces
     it rather than stacking a second row."""

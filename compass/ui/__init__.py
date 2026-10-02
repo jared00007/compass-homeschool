@@ -5281,21 +5281,24 @@ def render_enrichment_activities(db: Database, student: dict[str, Any], today: s
 
 
 def render_art_card_generator(db: Database, student: dict[str, Any]) -> None:
-    """Parent-facing: make a one-off ART card -- a maker / sketch / build / storyboard
-    challenge, rough-is-the-point. Tweak the shell prompt, optionally seed it off a
-    Pixar in a Box (or any Art & Music) skill he's doing, and generate; it lands on his
-    Home with a one-line reflection turn-in and credits Art & Music."""
+    """Parent-facing: make a one-off ART card. Start from a saved prompt, a
+    built-in example, a Khan-skill seed, or the default maker shell; edit it
+    freely; and save your own prompts to reuse. A full brief (a saved or example
+    prompt) governs the whole design (replace mode) so a disciplined, technical
+    prompt isn't fighting the default 'keep it rough' voice; the default/seed
+    shells are light nudges (append mode). It lands on his Home with a one-line
+    reflection turn-in and credits Art & Music."""
     from compass.agents import api_available, enrichment
 
     st.caption(
-        "A quick maker/sketch/build challenge — tweak the prompt (optionally base it "
-        "on a Pixar in a Box skill), and it lands on his Home. Rough is the point; he "
-        "turns it in with one line on what he made."
+        "Start from a saved prompt, an example, or the default — edit it, generate, "
+        "and save your own prompts to reuse. A full saved/example brief drives the "
+        "whole card; the default and skill-seed are lighter nudges."
     )
     api_ok, api_message = api_available()
 
-    # Optional seed: any Art & Music Khan skill he's loaded (Pixar in a Box lives
-    # here), so an art card can ride on what he's already doing.
+    # Any Art & Music Khan skill he's loaded (Pixar in a Box lives here), so an
+    # art card can ride on what he's already doing.
     art_skills: list[str] = []
     for card in db.list_lessons(student["id"], agent="khan", limit=500):
         meta = card.get("metadata") or {}
@@ -5303,23 +5306,43 @@ def render_art_card_generator(db: Database, student: dict[str, Any]) -> None:
             topic = (card.get("topic") or "").strip()
             if topic and topic not in art_skills:
                 art_skills.append(topic)
-    seed_opts = ["(no seed)"] + art_skills
-    seed = st.selectbox(
-        "Base it on a skill? (optional)", seed_opts, key="art_card_seed",
-        help="Seeds the prompt off a Pixar in a Box / Art skill he's loaded.",
-    )
-    if seed not in seed_opts:
-        seed = "(no seed)"
-    seed_skill = "" if seed == "(no seed)" else seed
+
+    # Four kinds of starting point in one "Start from" picker, each tagged so
+    # it's clear which is which: the default shell, the parent's own saved
+    # prompts (⭐, editable + deletable), built-in examples (📄), and a Khan-skill
+    # seed (🅰️). Saved/example briefs are full prompts (replace mode); the
+    # default and seed are nudges (append mode).
+    saved = {f"⭐ {p['name']}": p for p in db.list_art_prompts(student["id"])}
+    examples = {f"📄 {name}": body for name, body in enrichment.ART_PROMPT_EXAMPLES.items()}
+    seeds = {f"🅰️ Seed off: {s}": s for s in art_skills}
+    default_label = "✨ Default maker prompt"
+    options = [default_label] + list(saved) + list(examples) + list(seeds)
+    choice = st.selectbox("Start from", options, key="art_card_source")
+    if choice not in options:
+        choice = default_label
+
+    if choice in saved:
+        source_text, mode, saved_name = saved[choice]["body"], "replace", saved[choice]["name"]
+    elif choice in examples:
+        source_text, mode, saved_name = examples[choice], "replace", ""
+    elif choice in seeds:
+        source_text, mode, saved_name = enrichment.art_card_seed_prompt(seeds[choice]), "append", ""
+    else:
+        source_text, mode, saved_name = enrichment.art_card_seed_prompt(""), "append", ""
+
+    # Keyed on the choice so switching source reloads the box with that source's
+    # text (a fixed key would keep showing the first source's text).
     prompt = st.text_area(
-        "Art prompt — tweak it to steer the card",
-        value=enrichment.art_card_seed_prompt(seed_skill),
-        key=f"art_card_prompt_{seed}", height=90,
+        "Art prompt — edit it freely", value=source_text,
+        key=f"art_card_prompt_{choice}", height=260,
     )
+
     if st.button("🎨 Make an art card", key="art_card_make", disabled=not api_ok, type="primary"):
         with st.spinner("Dreaming up an art challenge…"):
             try:
-                enrichment.generate_activity(db, student, "art_music", instructions=prompt)
+                enrichment.generate_activity(
+                    db, student, "art_music", instructions=prompt, instructions_mode=mode
+                )
             except LessonGenerationError as exc:
                 st.error(str(exc))
             else:
@@ -5327,6 +5350,26 @@ def render_art_card_generator(db: Database, student: dict[str, Any]) -> None:
                 st.rerun()
     if not api_ok:
         st.caption(f"⚠️ Generation unavailable: {api_message}")
+
+    # Save the current text as a reusable prompt, or delete the saved one you're
+    # on. Name prefills with the saved prompt's name when you're editing one, so
+    # saving again updates it in place.
+    with st.expander("💾 Save / manage prompts"):
+        name_val = st.text_input(
+            "Prompt name", value=saved_name, key=f"art_prompt_name_{choice}",
+            placeholder="e.g. Line work + pop of color",
+        )
+        cols = st.columns(2)
+        if cols[0].button(
+            "💾 Save prompt", key="art_prompt_save", disabled=not name_val.strip()
+        ):
+            db.save_art_prompt(student["id"], name_val.strip(), prompt)
+            st.success(f"Saved “{name_val.strip()}.”")
+            st.rerun()
+        if choice in saved and cols[1].button("🗑️ Delete this prompt", key="art_prompt_delete"):
+            db.delete_art_prompt(student["id"], saved[choice]["name"])
+            st.toast("Deleted.")
+            st.rerun()
 
 
 def render_art_gallery(db: Database, student: dict[str, Any], *, limit: int = 12) -> None:

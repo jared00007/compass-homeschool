@@ -4215,6 +4215,36 @@ class Database:
             )
         )
 
+    # -- saved art prompts (a parent's reusable art-card briefs) ----------------
+
+    def save_art_prompt(self, student_id: int, name: str, body: str) -> None:
+        """Store (or update) a reusable art-card prompt under `name`. Saving under
+        an existing name replaces its body -- one current copy per (student, name),
+        so editing and re-saving is how a prompt is revised."""
+        self.conn.execute(
+            "INSERT INTO art_prompts (student_id, name, body) VALUES (?, ?, ?) "
+            "ON CONFLICT(student_id, name) DO UPDATE SET "
+            "body = excluded.body, updated_at = datetime('now')",
+            (student_id, name.strip(), body),
+        )
+        self.conn.commit()
+
+    def list_art_prompts(self, student_id: int) -> list[dict[str, Any]]:
+        """The parent's saved art prompts, by name."""
+        return _rows(
+            self.conn.execute(
+                "SELECT * FROM art_prompts WHERE student_id = ? ORDER BY name COLLATE NOCASE",
+                (student_id,),
+            )
+        )
+
+    def delete_art_prompt(self, student_id: int, name: str) -> None:
+        self.conn.execute(
+            "DELETE FROM art_prompts WHERE student_id = ? AND name = ?",
+            (student_id, name.strip()),
+        )
+        self.conn.commit()
+
     def complete_enrichment_activity(
         self, lesson_id: int, student_id: int, occurred_on: str | None = None,
         reflection: str = "",

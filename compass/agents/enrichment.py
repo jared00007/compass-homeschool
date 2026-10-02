@@ -74,6 +74,55 @@ _TRACK_PROMPTS = {
 SYSTEM_PROMPT = "{track_intro}\n\nReturn the activity as the structured fields only."
 
 
+# Built-in starter prompts the art-card generator offers alongside a parent's own
+# saved ones -- loadable, tweakable, and savable under a new name, but not
+# deletable (they're code, not the parent's library). The first is a polished,
+# schema-aware version of a disciplined "line work + pop of color" brief.
+_ART_EXAMPLE_LINEWORK = """\
+Design a disciplined 60-minute technical line-art session for an 8th grader. This \
+is a focused drawing class, NOT a loose doodle break -- objective tone, no \
+"keep it rough" framing.
+
+PICK ONE theme for today suited to his interests (e.g. a Minecraft isometric \
+build, a one-point-perspective video-game corridor, a mech or lightsaber hero \
+pose). State the chosen theme up front.
+
+STRICT CONSTRAINTS:
+1. POP OF COLOR RULE: Focus on raw line work, but allow minimal, high-impact color \
+(a glowing lightsaber, neon game wires, a single energy blast, glowing eyes). No \
+heavy backgrounds, no full-page coloring.
+2. MINUTE-BY-MINUTE ARCHITECTURE: Break the 60 minutes into strict, sequential \
+increments totaling exactly 60. Open with a 5-minute technical warm-up drill.
+3. SEQUENTIAL GATES: Don't present the steps as one block. Break them into \
+numbered, locked gates; end each gate with a bold "STOP -- finish this before the \
+next gate" line.
+4. MANDATORY DELIVERABLE: Close with a handwritten, numbered exercise or \
+structural-labeling task that proves completion and organization.
+5. NO FLUFF: Direct, objective, non-patronizing. No intro or outro filler.
+
+REQUIRED RESOURCES -- integrate these exact links where they fit:
+- Minecraft / 3D geometric shapes -> DailySTEM printable isometric dot paper: \
+https://dailystem.com/2018/12/14/isometric-drawing-aka-non-digital-minecraft/
+- Room depth, action panels, corridors -> Instructables one-point-perspective \
+guide: https://www.instructables.com/How-To-Draw-A-Room-Using-One-Point-Perspective/
+- Standard drawing mechanics / technical line work -> The Arty Teacher: \
+https://theartyteacher.com/websites-every-art-teacher-should-know/
+
+FIELD MAPPING (so it fits the card cleanly, no duplication):
+- title: the lesson title + theme.
+- overview: ONE direct line on what today's session is.
+- materials: the tools needed, INCLUDING the resource links above.
+- what_to_do: the full body as markdown -- the 60-minute schedule, the sequential \
+gates (using the linked guides), and the mandatory handwritten deliverable, under \
+clear headings.
+- estimated_minutes: 60.
+"""
+
+ART_PROMPT_EXAMPLES: dict[str, str] = {
+    "Line work + pop of color (60 min)": _ART_EXAMPLE_LINEWORK,
+}
+
+
 def art_card_seed_prompt(seed_skill: str = "") -> str:
     """The editable 'shell' prompt the parent tweaks when making an art card -- a
     starting direction, not the whole system prompt. Seeds off a Pixar in a Box (or
@@ -92,28 +141,49 @@ def art_card_seed_prompt(seed_skill: str = "") -> str:
 
 
 def generate_activity(
-    db: Any, student: dict[str, Any], track: str, instructions: str = ""
+    db: Any, student: dict[str, Any], track: str, instructions: str = "",
+    instructions_mode: str = "append",
 ) -> int:
     """Draft one light enrichment activity for `track` ('art_music' or
     'movement'), persist it as a lesson under that agent key, and return its id.
     One on-demand model call, logged for cost tracking. `instructions` is the
-    parent's optional steering prompt (e.g. the tweaked art-card shell). Raises
-    ValueError on an unknown track."""
+    parent's optional steering prompt (e.g. a saved art-card brief).
+
+    `instructions_mode` decides how that prompt is used:
+    - "append" (default): the prompt is a tweak layered on top of the track's
+      own framing -- a light nudge ("base it on perspective drawing").
+    - "replace": the prompt IS the brief -- it governs the whole design and
+      overrides the default framing (so a disciplined, technical prompt isn't
+      fighting the track's built-in "keep it rough" voice). Only the student
+      context (name, age, interests) and the subject are kept around it.
+
+    Raises ValueError on an unknown track."""
     spec = config.ENRICHMENT_TRACKS.get(track)
     if spec is None:
         raise ValueError(f"Unknown enrichment track: {track}")
     minutes = spec["minutes"]
-    track_intro = _TRACK_PROMPTS[track].format(
-        age=student.get("age") or 13,
-        name=student.get("name") or "the student",
-        minutes=minutes,
-        interests=db.interests_text(student["id"]) or "a range of things",
-    )
-    if instructions.strip():
-        track_intro += (
-            f"\n\nUse this specific direction from the parent for THIS activity: "
-            f"{instructions.strip()}"
+    name = student.get("name") or "the student"
+    age = student.get("age") or 13
+    interests = db.interests_text(student["id"]) or "a range of things"
+    instr = instructions.strip()
+    if instr and instructions_mode == "replace":
+        subject_word = "ART & MAKING" if track == "art_music" else spec["label"].upper()
+        track_intro = (
+            f"You design a {subject_word} activity for a homeschooled {age}-year-old "
+            f"named {name} (interests: {interests}). Follow the parent's full design "
+            f"brief below exactly -- it governs the style, structure, timing, and "
+            f"constraints for this activity, and overrides any default framing.\n\n"
+            f"PARENT'S BRIEF:\n{instr}"
         )
+    else:
+        track_intro = _TRACK_PROMPTS[track].format(
+            age=age, name=name, minutes=minutes, interests=interests,
+        )
+        if instr:
+            track_intro += (
+                f"\n\nUse this specific direction from the parent for THIS activity: "
+                f"{instr}"
+            )
     payload = generate_lesson(
         system=SYSTEM_PROMPT.format(track_intro=track_intro),
         user_prompt="Design the activity now.",
