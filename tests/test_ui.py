@@ -1450,6 +1450,34 @@ def test_board_card_tag_falls_back_for_an_unknown_identity():
     assert label == "Astronomy"
 
 
+# --- _lesson_subject_banner: the big "what class is this" badge on the dialog ---
+
+
+def test_lesson_subject_banner_shouts_a_khan_cards_real_subject():
+    """A Khan math card's dialog banner names MATH (its WA subject), not "Khan",
+    colored by the subject, with a smaller Khan Academy + unit line underneath."""
+    from compass.ui import board
+
+    html = board._lesson_subject_banner(
+        {"agent": "khan", "subject": "math",
+         "metadata": {"khan_unit_number": 3, "khan_unit": "Linear equations"}}
+    )
+    assert "MATH" in html
+    assert ui.SUBJECT_TAG_COLORS["math"] in html
+    assert "Khan Academy" in html and "Unit 3" in html
+    assert "📐" in html
+
+
+def test_lesson_subject_banner_names_a_core_lessons_agent():
+    from compass.ui import board
+
+    html = board._lesson_subject_banner({"agent": "science", "metadata": {}})
+    assert "SCIENCE" in html
+    assert ui.BOARD_TAG_COLORS["science"] in html
+    # No Khan sub-line on a core lesson.
+    assert "Khan Academy" not in html
+
+
 # --- board_item_minutes / format_board_minutes: the per-card + per-day time gauge ---
 
 

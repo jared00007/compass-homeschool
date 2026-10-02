@@ -10,15 +10,19 @@ from functools import partial
 from typing import Any, Callable
 
 import compass.ui as _ui
-from compass import config, theme as theming, weekly
+from compass import config, subjects, theme as theming, weekly
 from compass.export import lesson_to_pdf, suggested_pdf_filename
 from compass.storage.db import Database
 from compass.ui import (
     BOARD_KIND_ICONS,
+    BOARD_TAG_COLORS,
+    BOARD_TAG_LABELS,
     EPIC_ICONS,
     KHAN_ACCENT_COLOR,
     SUBJECT_ICONS,
+    SUBJECT_TAG_COLORS,
     _BOARD_ROW_ORDER,
+    _BOARD_TAG_FALLBACK_COLOR,
     _board_identity,
     board_card_tag,
     hand_in_summary,
@@ -192,6 +196,55 @@ _BOARD_DEEP_LINK: dict[str, tuple[str, str, str]] = {
 }
 
 
+# A distinct emoji per WA subject for the big lesson-dialog banner -- the core
+# four match SUBJECT_ICONS, the rest get their own so a Khan card of any subject
+# reads at a glance.
+_SUBJECT_BANNER_EMOJI = {
+    "math": "📐", "science": "🔬", "reading": "📖", "writing": "✍️",
+    "spelling": "🔤", "language": "🗣️", "social_studies": "🌎",
+    "history": "🏛️", "health": "❤️", "occupational_education": "🛠️",
+    "art_and_music": "🎨",
+}
+
+
+def _lesson_subject_banner(item: dict[str, Any]) -> str:
+    """A big, subject-colored badge for the full-lesson dialog, anchored
+    top-right -- the first thing to read is "what class is this." Reported
+    directly against the lesson view: it "still doesn't scream MATH CLASS.
+    Maybe something in the top right corner?"
+
+    A Khan card colors and names by its real WA subject (so a Khan math card
+    shouts MATH, not "Khan"), with a smaller "Khan Academy · Unit N" line
+    under it; a core lesson names its agent. Returns the HTML string (the
+    caller renders it with unsafe_allow_html)."""
+    agent = item.get("agent", "")
+    meta = item.get("metadata") or {}
+    if agent == "khan":
+        subject = item.get("subject", "") or ""
+        color = SUBJECT_TAG_COLORS.get(subject, _BOARD_TAG_FALLBACK_COLOR)
+        emoji = _SUBJECT_BANNER_EMOJI.get(subject, "🅰️")
+        name = subjects.label(subject).upper() if subjects.is_valid(subject) else "KHAN"
+        unit_number = meta.get("khan_unit_number")
+        sub = "🅰️ Khan Academy" + (f" · Unit {unit_number}" if unit_number else "")
+    else:
+        color = BOARD_TAG_COLORS.get(agent, _BOARD_TAG_FALLBACK_COLOR)
+        emoji = _SUBJECT_BANNER_EMOJI.get(agent, SUBJECT_ICONS.get(agent, "📘"))
+        name = (BOARD_TAG_LABELS.get(agent) or agent.replace("_", " ").title() or "LESSON").upper()
+        sub = ""
+    sub_html = (
+        f'<div style="font-size:11px; font-weight:800; color:{color}; margin-top:4px; '
+        f'text-transform:uppercase; letter-spacing:.06em;">{sub}</div>'
+        if sub else ""
+    )
+    return (
+        f'<div style="text-align:right; margin:-8px 0 12px;">'
+        f'<span style="display:inline-block; background:{color}; color:#fff; '
+        f'padding:7px 18px; border-radius:11px; font-weight:900; font-size:21px; '
+        f'letter-spacing:.04em; box-shadow:0 1px 4px rgba(0,0,0,.22);">'
+        f"{emoji} {name}</span>{sub_html}</div>"
+    )
+
+
 def _render_board_deep_link(
     kind: str, item: dict[str, Any] | None = None, *, db: Database | None = None
 ) -> None:
@@ -206,6 +259,10 @@ def _render_board_deep_link(
 
         @_ui.st.dialog(f"📘 {item['title']}", width="large")
         def _show_full_lesson() -> None:
+            # A big subject badge, top-right, so the very first thing you read is
+            # what class this is (reported: the lesson view "still doesn't scream
+            # MATH CLASS. Maybe something in the top right corner?").
+            _ui.st.markdown(_lesson_subject_banner(item), unsafe_allow_html=True)
             # for_parent is left unset so render_lesson falls back to
             # is_parent() -- on Landon's own board the assessment and answer
             # key stay hidden, exactly as they do in his normal lesson view.
