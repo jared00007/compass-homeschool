@@ -646,7 +646,14 @@ def render_board_card(
             # (what's overdue, waiting on them, or flagged for help) without opening
             # each card.
             status_tag = _board_card_status_tag(item, today_iso)
-            label = f"{marker} {icon} **{series_day_title(item)}**"
+            # A compact "U2" unit badge on a Khan card's collapsed header, so the
+            # unit it belongs to reads at a glance (the tag bar already gives the
+            # subject; the full unit name is on the card body).
+            meta = item.get("metadata") or {}
+            unit_badge = ""
+            if item.get("agent") == "khan" and meta.get("khan_unit_number"):
+                unit_badge = f"`U{meta['khan_unit_number']}` "
+            label = f"{marker} {icon} {unit_badge}**{series_day_title(item)}**"
             if status_tag:
                 label += f" · {status_tag}"
             with _ui.st.expander(label, expanded=False):
