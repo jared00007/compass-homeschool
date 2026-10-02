@@ -104,6 +104,41 @@ def test_unknown_track_raises(db, student):
         enrichment.generate_activity(db, student, "underwater_basket_weaving")
 
 
+def test_art_card_seed_prompt_seeds_off_a_skill():
+    """The editable art-card shell mentions a seed skill when given, and is the
+    generic maker prompt otherwise."""
+    base = enrichment.art_card_seed_prompt()
+    assert "MAKE" in base.upper() and "polish" in base.lower()
+    seeded = enrichment.art_card_seed_prompt("Storyboarding")
+    assert "Storyboarding" in seeded
+
+
+def test_generate_activity_passes_the_parent_instructions(db, student):
+    """A tweaked prompt is threaded into the generation's system prompt."""
+    seen = {}
+
+    def _fake(system, user_prompt, schema, effort):
+        seen["system"] = system
+        return an_activity_payload()
+
+    with patch("compass.agents.enrichment.generate_lesson", side_effect=_fake):
+        enrichment.generate_activity(
+            db, student, "art_music", instructions="Base it on perspective drawing."
+        )
+    assert "perspective drawing" in seen["system"]
+
+
+def test_art_reflection_lands_in_the_instructional_record(db, student):
+    """An art card's one-line reflection is folded into its logged activity's
+    description, so the parent sees it in the record."""
+    art = _generate(db, student, "art_music")
+    db.complete_enrichment_activity(
+        art, student["id"], reflection="Drew 3 chairs; next time I'd add wheels."
+    )
+    act = [a for a in db.list_activities(student["id"]) if a["source"] == "art_music"][0]
+    assert "add wheels" in act["description"]
+
+
 def test_completing_credits_the_subject_and_counts_as_enrichment(db, student):
     today = date.today().isoformat()
     art = _generate(db, student, "art_music")
@@ -204,7 +239,8 @@ def test_mission_control_generates_an_enrichment_activity(monkeypatch, tmp_path)
     # Enrichment lives on the Setup view now.
     [b for b in at.button if (b.key or "") == "mc_viewbtn_setup"][0].click().run()
     with patch("compass.agents.enrichment.generate_lesson", return_value=an_activity_payload()):
-        at.button(key="gen_enrich_art_music").click().run()
+        # Art has its own generator now (editable prompt + Pixar seed).
+        at.button(key="art_card_make").click().run()
     assert not at.exception, [e.message for e in at.exception]
 
     db2 = Database(db_path)

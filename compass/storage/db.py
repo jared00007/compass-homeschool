@@ -4187,13 +4187,16 @@ class Database:
         return rows
 
     def complete_enrichment_activity(
-        self, lesson_id: int, student_id: int, occurred_on: str | None = None
+        self, lesson_id: int, student_id: int, occurred_on: str | None = None,
+        reflection: str = "",
     ) -> None:
         """He finished a light enrichment activity (art/music or movement): log
         its time to the WA subject it covers, mark it done, and complete it. Logs
         once per activity (guarded on the activity title+source), so re-opening it
         never stacks hours. The logged `source` (the track key) is what the daily
-        enrichment count and the compliance dashboard read."""
+        enrichment count and the compliance dashboard read. `reflection` (his
+        one-line 'what I made / what I'd change' on an art card) is folded into the
+        logged activity's description, so it shows in the instructional record."""
         lesson = self.get_lesson(lesson_id)
         if lesson is None:
             return
@@ -4211,6 +4214,11 @@ class Database:
             (student_id, track, title),
         ).fetchone()
         if not already:
+            label = spec.get("label", "Enrichment")
+            description = (
+                f"{label}: {reflection.strip()}" if reflection.strip()
+                else f"{label} activity."
+            )
             self.log_activity(
                 student_id=student_id,
                 title=title,
@@ -4219,7 +4227,7 @@ class Database:
                 minutes=minutes,
                 subject_credits={subject: minutes},
                 occurred_on=when,
-                description=f"{spec.get('label', 'Enrichment')} activity.",
+                description=description,
                 source=track,
             )
         self.mark_student_done(lesson_id)

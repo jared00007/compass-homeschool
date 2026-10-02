@@ -5218,7 +5218,30 @@ def _render_one_enrichment(
         materials = payload.get("materials") or []
         if materials:
             st.caption("You'll need: " + ", ".join(md(m) for m in materials))
-        if st.button("✅ I did it", key=f"enrich_done_{activity['id']}", type="primary"):
+        # Art cards turn in with a one-line reflection (the "process over polish"
+        # signal) instead of a bare "I did it"; everything else stays one tap.
+        if activity.get("agent") == "art_music":
+            st.caption(
+                "✏️ Rough is the point — the idea and the attempt is the win, no need "
+                "to make it pretty."
+            )
+            reflection = st.text_input(
+                "One line: what did you make, and one thing you'd change?",
+                key=f"enrich_reflect_{activity['id']}",
+            )
+            ready = bool(reflection.strip())
+            if st.button(
+                "📬 Turn it in", key=f"enrich_done_{activity['id']}", type="primary",
+                disabled=not ready,
+            ):
+                db.complete_enrichment_activity(
+                    activity["id"], student["id"], reflection=reflection.strip()
+                )
+                st.toast("Nice work — logged it! 🎨")
+                st.rerun()
+            if not ready:
+                st.caption("Add your one line to turn it in.")
+        elif st.button("✅ I did it", key=f"enrich_done_{activity['id']}", type="primary"):
             db.complete_enrichment_activity(activity["id"], student["id"])
             st.toast("Nice — logged it! 🎉")
             st.rerun()
@@ -5240,22 +5263,74 @@ def render_enrichment_activities(db: Database, student: dict[str, Any], today: s
             _render_one_enrichment(db, student, activity, spec)
 
 
+def render_art_card_generator(db: Database, student: dict[str, Any]) -> None:
+    """Parent-facing: make a one-off ART card -- a maker / sketch / build / storyboard
+    challenge, rough-is-the-point. Tweak the shell prompt, optionally seed it off a
+    Pixar in a Box (or any Art & Music) skill he's doing, and generate; it lands on his
+    Home with a one-line reflection turn-in and credits Art & Music."""
+    from compass.agents import api_available, enrichment
+
+    st.caption(
+        "A quick maker/sketch/build challenge — tweak the prompt (optionally base it "
+        "on a Pixar in a Box skill), and it lands on his Home. Rough is the point; he "
+        "turns it in with one line on what he made."
+    )
+    api_ok, api_message = api_available()
+
+    # Optional seed: any Art & Music Khan skill he's loaded (Pixar in a Box lives
+    # here), so an art card can ride on what he's already doing.
+    art_skills: list[str] = []
+    for card in db.list_lessons(student["id"], agent="khan", limit=500):
+        meta = card.get("metadata") or {}
+        if card.get("subject") == "art_and_music" and not meta.get("khan_checkpoint"):
+            topic = (card.get("topic") or "").strip()
+            if topic and topic not in art_skills:
+                art_skills.append(topic)
+    seed_opts = ["(no seed)"] + art_skills
+    seed = st.selectbox(
+        "Base it on a skill? (optional)", seed_opts, key="art_card_seed",
+        help="Seeds the prompt off a Pixar in a Box / Art skill he's loaded.",
+    )
+    if seed not in seed_opts:
+        seed = "(no seed)"
+    seed_skill = "" if seed == "(no seed)" else seed
+    prompt = st.text_area(
+        "Art prompt — tweak it to steer the card",
+        value=enrichment.art_card_seed_prompt(seed_skill),
+        key=f"art_card_prompt_{seed}", height=90,
+    )
+    if st.button("🎨 Make an art card", key="art_card_make", disabled=not api_ok, type="primary"):
+        with st.spinner("Dreaming up an art challenge…"):
+            try:
+                enrichment.generate_activity(db, student, "art_music", instructions=prompt)
+            except LessonGenerationError as exc:
+                st.error(str(exc))
+            else:
+                st.success("🎨 Art card ready — it's on his Home.")
+                st.rerun()
+    if not api_ok:
+        st.caption(f"⚠️ Generation unavailable: {api_message}")
+
+
 def render_enrichment_generator(db: Database, student: dict[str, Any]) -> None:
-    """Parent-facing: generate a light art/music or movement activity. The
-    non-academic parts of a real week -- one quick AI activity that lands on his
-    Home and counts as enrichment toward a full day."""
+    """Parent-facing: generate a light movement/PE activity. (Art has its own richer
+    generator, render_art_card_generator, with an editable prompt + Pixar seed.) The
+    non-academic parts of a real week -- one quick AI activity that lands on his Home
+    and counts as enrichment toward a full day."""
     from compass.agents import api_available, enrichment
 
     st.caption(
         "The non-academic parts of a real week. One quick AI activity each — it lands "
         "on his Home, he does it and taps 'I did it,' and it counts as a day's "
-        "enrichment (and toward Art/Music or Health on the compliance dashboard)."
+        "enrichment (and toward Health on the compliance dashboard)."
     )
     api_ok, api_message = api_available()
     if not api_ok:
         st.caption(f"⚠️ Generation unavailable: {api_message}")
-    cols = st.columns(len(config.ENRICHMENT_TRACKS))
-    for i, (track, spec) in enumerate(config.ENRICHMENT_TRACKS.items()):
+    # Art is handled by its own generator above; this one covers the rest (movement).
+    tracks = [(k, v) for k, v in config.ENRICHMENT_TRACKS.items() if k != "art_music"]
+    cols = st.columns(len(tracks))
+    for i, (track, spec) in enumerate(tracks):
         pending = len(db.list_enrichment_activities(student["id"], track, include_done=False))
         with cols[i]:
             st.markdown(f"**{spec['emoji']} {spec['label']}**")

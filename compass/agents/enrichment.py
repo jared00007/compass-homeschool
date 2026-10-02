@@ -49,12 +49,16 @@ ACTIVITY_SCHEMA = _object(
 
 _TRACK_PROMPTS = {
     "art_music": (
-        "You design quick ART & MUSIC activities for a homeschooled {age}-year-old "
-        "named {name}. This is his art/music/creativity time -- a break from academics, "
-        "not a lesson. Give him ONE light, genuinely fun thing to make, draw, build, "
-        "listen to and react to, or create -- finishable in about {minutes} minutes with "
-        "stuff a family has around. Lean on his interests ({interests}) where it fits. No "
-        "grading, no worked example, no quiz -- just a cool thing to do."
+        "You design quick, hands-on ART & MAKING challenges for a homeschooled "
+        "{age}-year-old named {name}. This is his creative time -- a break from "
+        "academics. Give him ONE thing to MAKE, SKETCH, BUILD, or STORYBOARD: an "
+        "invention to draw, a quick comic or storyboard, a paper/cardboard build, a "
+        "design challenge, a re-imagining of an everyday object -- finishable in about "
+        "{minutes} minutes with stuff around the house. ROUGH IS THE POINT: reward the "
+        "idea and the attempt, never a polished, colored, or finely-finished result. No "
+        "coloring-book busywork, no 'make it pretty.' Lean on his interests "
+        "({interests}) where it fits. No grading, no right answer -- just a cool thing "
+        "to make."
     ),
     "movement": (
         "You design quick MOVEMENT / PE / HEALTH activities for a homeschooled "
@@ -70,11 +74,31 @@ _TRACK_PROMPTS = {
 SYSTEM_PROMPT = "{track_intro}\n\nReturn the activity as the structured fields only."
 
 
-def generate_activity(db: Any, student: dict[str, Any], track: str) -> int:
+def art_card_seed_prompt(seed_skill: str = "") -> str:
+    """The editable 'shell' prompt the parent tweaks when making an art card -- a
+    starting direction, not the whole system prompt. Seeds off a Pixar in a Box (or
+    any art) skill when one is passed, so an art card can ride on what he's doing."""
+    if seed_skill.strip():
+        return (
+            f"A quick art challenge inspired by the Pixar in a Box idea "
+            f"“{seed_skill.strip()}” — a sketch, storyboard, design, or build in that "
+            f"spirit. Rough is the point: ideas over polish, no coloring or finishing."
+        )
+    return (
+        "A quick MAKE / SKETCH / BUILD challenge — something to draw, invent, build, "
+        "or storyboard in about 25 minutes with stuff around the house. Rough is the "
+        "point: reward the idea and the attempt, not a polished or colored finish."
+    )
+
+
+def generate_activity(
+    db: Any, student: dict[str, Any], track: str, instructions: str = ""
+) -> int:
     """Draft one light enrichment activity for `track` ('art_music' or
     'movement'), persist it as a lesson under that agent key, and return its id.
-    One on-demand model call, logged for cost tracking. Raises ValueError on an
-    unknown track."""
+    One on-demand model call, logged for cost tracking. `instructions` is the
+    parent's optional steering prompt (e.g. the tweaked art-card shell). Raises
+    ValueError on an unknown track."""
     spec = config.ENRICHMENT_TRACKS.get(track)
     if spec is None:
         raise ValueError(f"Unknown enrichment track: {track}")
@@ -85,6 +109,11 @@ def generate_activity(db: Any, student: dict[str, Any], track: str) -> int:
         minutes=minutes,
         interests=db.interests_text(student["id"]) or "a range of things",
     )
+    if instructions.strip():
+        track_intro += (
+            f"\n\nUse this specific direction from the parent for THIS activity: "
+            f"{instructions.strip()}"
+        )
     payload = generate_lesson(
         system=SYSTEM_PROMPT.format(track_intro=track_intro),
         user_prompt="Design the activity now.",
