@@ -785,20 +785,20 @@ if mc_view == "plan":
             "📊 Track progress & schedule units in **🎓 Course records** (button up top)."
         )
 
-        st.divider()
-        st.markdown("#### 🧹 Start fresh")
-        st.caption("Clear the board + backlog Khan cards so you can reload courses clean.")
-        render_khan_clear_control(db, student)
-
-        # Secondary/override tools, tucked behind a toggle so the primary flow
-        # (load → track → schedule → reset) stays uncluttered.
+        # Occasional / override tools, hidden behind a toggle so the everyday view
+        # is just "load a course." Once courses are loaded these are rarely needed
+        # (reported: "start fresh ... can be hidden ... we're fully loaded and won't
+        # be clearing it out").
         st.divider()
         if st.checkbox("⚙️ More Khan tools", key="khan_more_tools"):
             st.markdown("**✨ Spin off a Compass lesson** from a Khan skill")
             render_khan_spinoff_tool(db, student)
+            st.divider()
             st.markdown("**📊 Record a score by hand** (override, e.g. after the fact)")
-            st.caption("Normally Landon logs his score and you approve it in Review.")
             render_khan_score_recorder(db, student)
+            st.divider()
+            st.markdown("**🧹 Start fresh** — clear the board + backlog to reload clean")
+            render_khan_clear_control(db, student)
 
     # ── ✍️ Write a Compass lesson: AI-written lessons, full or lightning-quick. ──
     with st.expander("✍️ Write a Compass lesson"):

@@ -374,7 +374,7 @@ def test_clear_result_removes_it(db, student):
     assert km.get_result(db.get_lesson(lid)) is None
 
 
-def test_score_recorder_lists_finished_cards_and_shows_the_record(db, student, monkeypatch):
+def test_score_recorder_offers_a_single_pick_one_override(db, student, monkeypatch):
     lid = _card(db, student, "Exponents")
     db.set_lesson_status(lid, "completed")
     km.record_result(db, lid, kind="unit_test", percent=90)
@@ -382,8 +382,9 @@ def test_score_recorder_lists_finished_cards_and_shows_the_record(db, student, m
     monkeypatch.setattr(ui, "st", rec)
     ui.render_khan_score_recorder(db, student)
     page = "\n".join(rec.written)
-    assert "Exponents" in page
-    assert "On record" in page and "Unit test" in page   # the recorded score shows
+    # One pick-a-card control, framed as an override (not a pile of approvals).
+    assert "Which card?" in page
+    assert "needs approving" in page
 
 
 def test_score_recorder_is_empty_without_finished_cards(db, student, monkeypatch):

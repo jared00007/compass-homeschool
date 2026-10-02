@@ -4679,18 +4679,48 @@ def render_khan_spinoff_tool(db: Database, student: dict[str, Any]) -> None:
         )
         return
     api_ok, api_msg = api_available()
-    course_ids = [c["course_id"] for c in spinnable]
-    cid = st.selectbox(
-        "Unit", course_ids,
-        format_func=lambda i: next((c["course"] for c in spinnable if c["course_id"] == i), str(i)),
-        key="spinoff_unit",
+    from compass import subjects as _subjects
+
+    def _course_name(summary: dict[str, Any]) -> str:
+        meta = (summary["cards"][0].get("metadata") or {}) if summary["cards"] else {}
+        name = meta.get("khan_course_name")
+        if name:
+            return name
+        return _subjects.label(summary["subject"]) if summary.get("subject") else "Other Khan cards"
+
+    def _unit_label(summary: dict[str, Any]) -> str:
+        meta = (summary["cards"][0].get("metadata") or {}) if summary["cards"] else {}
+        num = meta.get("khan_unit_number")
+        return f"Unit {num}: {summary['course']}" if num else summary["course"]
+
+    # Each spinnable entry is one UNIT; group them under their top-level course so
+    # you navigate Course -> Unit -> Lesson instead of one flat unit list.
+    courses_order: list[str] = []
+    by_course_name: dict[str, list[dict[str, Any]]] = {}
+    for s in spinnable:
+        cn = _course_name(s)
+        if cn not in by_course_name:
+            by_course_name[cn] = []
+            courses_order.append(cn)
+        by_course_name[cn].append(s)
+
+    fcols = st.columns(2)
+    course_name = fcols[0].selectbox("Course", courses_order, key="spinoff_course")
+    if course_name not in courses_order:  # non-interactive render / stale pick
+        course_name = courses_order[0]
+    units = by_course_name[course_name]
+    unit_ids = [u["course_id"] for u in units]
+    cid = fcols[1].selectbox(
+        "Unit", unit_ids,
+        format_func=lambda i: _unit_label(next(u for u in units if u["course_id"] == i)),
+        key=f"spinoff_unit_{course_name}",
     )
-    if cid not in course_ids:
-        cid = course_ids[0]  # no live selection (or a non-interactive render)
-    course = next(c for c in spinnable if c["course_id"] == cid)
+    if cid not in unit_ids:
+        cid = unit_ids[0]
+    course = next(u for u in units if u["course_id"] == cid)
     skills = [c.get("topic") or "" for c in course["cards"]]
     pick = st.selectbox(
-        "Skill", range(len(skills)),
+        "Lesson", range(len(skills)),
         format_func=lambda i: f"{i + 1}. {md(skills[i])}", key=f"spinoff_skill_{cid}",
     )
     if not isinstance(pick, int):
@@ -4724,11 +4754,12 @@ def render_khan_spinoff_tool(db: Database, student: dict[str, Any]) -> None:
 
 
 def render_khan_score_recorder(db: Database, student: dict[str, Any]) -> None:
-    """Parent-facing: record the REAL Khan score (off Khan's coach dashboard) on
-    each Khan card he's done. Khan is the source of truth for actual scores and
-    attempts, but there's no API to read them -- so the parent copies the number
-    in here, and it becomes that card's Quiz grade in place of Compass's auto-quiz.
-    Lists his finished Khan cards, newest first, capped so the list stays short."""
+    """Parent-facing OVERRIDE: hand-record (or correct) the REAL Khan score on ONE
+    finished card. The day-to-day path is Landon logging his score and you approving
+    it in Review -- this is only the escape hatch for an after-the-fact fix. It's a
+    single pick-a-card control, not a form per card, so it never reads as a pile of
+    pending approvals (reported: "do i need to approve these? i thought i already
+    approved the cards")."""
     from compass import khan_mastery as km
 
     cards = [
@@ -4744,62 +4775,78 @@ def render_khan_score_recorder(db: Database, student: dict[str, Any]) -> None:
         reverse=True,
     )
     st.caption(
-        "Read his real number off Khan's coach dashboard and drop it in — it replaces "
-        "Compass's auto-quiz for that card's grade and shows on the report card."
+        "Nothing here needs approving — that's done in Review. This is just an "
+        "override: pick a card and drop in his real Khan number (off the coach "
+        "dashboard) to set or correct that card's grade after the fact."
     )
-    for card in cards[:25]:
+
+    by_id = {c["id"]: c for c in cards}
+
+    def _label(cid: int) -> str:
+        card = by_id[cid]
+        meta = card.get("metadata") or {}
+        unit = meta.get("khan_unit") or meta.get("khan_course")
         existing = km.get_result(card)
-        unit = (card.get("metadata") or {}).get("khan_unit") or (card.get("metadata") or {}).get("khan_course")
-        with st.container(border=True):
-            head = f"**{md(card['title'])}**"
-            if unit:
-                head += f"  \nKhan · {md(unit)}"
-            st.markdown(head)
-            if existing:
-                bits = f"{km.result_label(existing['kind'])} · **{round(existing['percent'])}%**"
-                if existing.get("attempts"):
-                    bits += f" · {existing['attempts']} attempt" + (
-                        "s" if existing["attempts"] != 1 else ""
-                    )
-                st.caption(f"📊 On record: {bits}")
-            with st.form(f"khan_score_{card['id']}", clear_on_submit=False):
-                cols = st.columns([2, 1, 1])
-                default_kind = (existing["kind"] if existing else None) or (
-                    (card.get("metadata") or {}).get("khan_checkpoint_kind")
-                )
-                kind = cols[0].selectbox(
-                    "What was it?", options=config.KHAN_RESULT_KINDS,
-                    format_func=km.result_label,
-                    index=(config.KHAN_RESULT_KINDS.index(default_kind)
-                           if default_kind in config.KHAN_RESULT_KINDS else 1),
-                    key=f"khan_score_kind_{card['id']}",
-                )
-                pct = cols[1].number_input(
-                    "Score %", min_value=0, max_value=100,
-                    value=int(existing["percent"]) if existing else None,
-                    step=1, key=f"khan_score_pct_{card['id']}",
-                )
-                att = cols[2].number_input(
-                    "Attempts", min_value=1, max_value=99,
-                    value=int(existing["attempts"]) if existing and existing.get("attempts") else None,
-                    step=1, key=f"khan_score_att_{card['id']}",
-                )
-                btns = st.columns(2)
-                save = btns[0].form_submit_button("💾 Save score", type="primary")
-                clear = btns[1].form_submit_button("✕ Clear") if existing else False
-            if save:
-                if pct is None:
-                    st.warning("Enter a score % to save.")
-                else:
-                    km.record_result(
-                        db, card["id"], kind=kind, percent=float(pct),
-                        attempts=int(att) if att is not None else None,
-                    )
-                    st.success("Saved. 📊")
-                    st.rerun()
-            elif clear:
-                km.clear_result(db, card["id"])
-                st.rerun()
+        prefix = f"{unit} · " if unit else ""
+        tail = f" — 📊 {round(existing['percent'])}%" if existing else ""
+        return f"{prefix}{card['title']}{tail}"
+
+    pick = st.selectbox(
+        "Which card?", options=[c["id"] for c in cards], format_func=_label,
+        index=None, placeholder="Pick a finished Khan card to score…", key="khan_score_pick",
+    )
+    card = by_id.get(pick) if pick is not None else None
+    if card is None:
+        return
+
+    existing = km.get_result(card)
+    if existing:
+        bits = f"{km.result_label(existing['kind'])} · **{round(existing['percent'])}%**"
+        if existing.get("attempts"):
+            bits += f" · {existing['attempts']} attempt" + (
+                "s" if existing["attempts"] != 1 else ""
+            )
+        st.caption(f"📊 On record: {bits}")
+    with st.form(f"khan_score_{card['id']}", clear_on_submit=False):
+        cols = st.columns([2, 1, 1])
+        default_kind = (existing["kind"] if existing else None) or (
+            (card.get("metadata") or {}).get("khan_checkpoint_kind")
+        )
+        kind = cols[0].selectbox(
+            "What was it?", options=config.KHAN_RESULT_KINDS,
+            format_func=km.result_label,
+            # Default to the card's own kind (checkpoints) or Practice for a plain
+            # skill, never a blanket "Quiz".
+            index=(config.KHAN_RESULT_KINDS.index(default_kind)
+                   if default_kind in config.KHAN_RESULT_KINDS else 0),
+            key=f"khan_score_kind_{card['id']}",
+        )
+        pct = cols[1].number_input(
+            "Score %", min_value=0, max_value=100,
+            value=int(existing["percent"]) if existing else None,
+            step=1, key=f"khan_score_pct_{card['id']}",
+        )
+        att = cols[2].number_input(
+            "Attempts", min_value=1, max_value=99,
+            value=int(existing["attempts"]) if existing and existing.get("attempts") else None,
+            step=1, key=f"khan_score_att_{card['id']}",
+        )
+        btns = st.columns(2)
+        save = btns[0].form_submit_button("💾 Save score", type="primary")
+        clear = btns[1].form_submit_button("✕ Clear") if existing else False
+    if save:
+        if pct is None:
+            st.warning("Enter a score % to save.")
+        else:
+            km.record_result(
+                db, card["id"], kind=kind, percent=float(pct),
+                attempts=int(att) if att is not None else None,
+            )
+            st.success("Saved. 📊")
+            st.rerun()
+    elif clear:
+        km.clear_result(db, card["id"])
+        st.rerun()
 
 
 def render_khan_clear_control(db: Database, student: dict[str, Any]) -> None:
