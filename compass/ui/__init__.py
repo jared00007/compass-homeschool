@@ -5229,13 +5229,30 @@ def _render_one_enrichment(
                 "One line: what did you make, and one thing you'd change?",
                 key=f"enrich_reflect_{activity['id']}",
             )
+            # An OPTIONAL snapshot of what he made -- a photo of the sketch/build
+            # is a nicer record than words alone, but it's never required (rough
+            # is the point, and he can turn in on the one line even with no camera
+            # handy). It lands in the parent's art gallery.
+            photo_file = st.file_uploader(
+                "📸 Add a photo of it (optional)",
+                type=["png", "jpg", "jpeg", "webp", "gif"],
+                key=f"enrich_photo_{activity['id']}",
+            )
             ready = bool(reflection.strip())
             if st.button(
                 "📬 Turn it in", key=f"enrich_done_{activity['id']}", type="primary",
                 disabled=not ready,
             ):
+                photo = None
+                if photo_file is not None:
+                    photo = (
+                        photo_file.name,
+                        photo_file.getvalue(),
+                        photo_file.type or "image/jpeg",
+                    )
                 db.complete_enrichment_activity(
-                    activity["id"], student["id"], reflection=reflection.strip()
+                    activity["id"], student["id"],
+                    reflection=reflection.strip(), photo=photo,
                 )
                 st.toast("Nice work — logged it! 🎨")
                 st.rerun()
@@ -5310,6 +5327,40 @@ def render_art_card_generator(db: Database, student: dict[str, Any]) -> None:
                 st.rerun()
     if not api_ok:
         st.caption(f"⚠️ Generation unavailable: {api_message}")
+
+
+def render_art_gallery(db: Database, student: dict[str, Any], *, limit: int = 12) -> None:
+    """Parent-facing: the art he's actually made -- finished art cards, newest
+    first, each with his one-line reflection and, when he snapped one, the photo
+    of what he made. This is the parent-visible surface for the optional photo
+    turn-in; a card with no photo still shows here on its reflection alone, so
+    the gallery doubles as a running record of his art work."""
+    done = [
+        a for a in db.list_enrichment_activities(student["id"], "art_music", include_done=True)
+        if a.get("status") == "completed"
+    ]
+    if not done:
+        st.caption("🖼️ His finished art cards will show here — with a photo when he adds one.")
+        return
+    st.markdown("##### 🖼️ Art he's made")
+    cols = st.columns(3)
+    for i, activity in enumerate(done[:limit]):
+        payload = activity.get("payload") or {}
+        title = md(payload.get("title") or "Art card")
+        reflection = (activity.get("metadata") or {}).get("reflection") or ""
+        photo = db.get_enrichment_photo(activity["id"])
+        with cols[i % 3]:
+            with st.container(border=True):
+                if photo:
+                    st.image(bytes(photo["content"]), use_container_width=True)
+                st.markdown(f"**{title}**")
+                # The reflection is folded into the logged activity's description;
+                # pull it straight off the lesson metadata here so the gallery shows
+                # his own words even before the activity row is queried.
+                if reflection:
+                    st.caption(f"✏️ {md(reflection)}")
+                elif not photo:
+                    st.caption("Turned in — no photo or note added.")
 
 
 def render_enrichment_generator(db: Database, student: dict[str, Any]) -> None:

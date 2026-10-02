@@ -530,6 +530,25 @@ CREATE TABLE IF NOT EXISTS district_documents (
 );
 
 -- ---------------------------------------------------------------------------
+-- Enrichment photos -- an OPTIONAL snapshot of what he actually made for an
+-- art card, stored right in the family's own database (same reasoning as
+-- district_documents: no separate uploads folder to track). One photo per
+-- enrichment lesson (re-uploading replaces it), keyed by the lesson it
+-- belongs to so the parent gallery can show it next to his one-line
+-- reflection. The photo is never required to turn a card in -- rough is the
+-- point, and a kid without a camera handy still finishes on the reflection
+-- alone.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS enrichment_photos (
+    lesson_id    INTEGER PRIMARY KEY REFERENCES lessons(id) ON DELETE CASCADE,
+    filename     TEXT NOT NULL,
+    content_type TEXT NOT NULL DEFAULT 'image/jpeg',
+    content      BLOB NOT NULL,
+    uploaded_on  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ---------------------------------------------------------------------------
 -- Morning routine log -- which stretch/breathing/mindfulness routine
 -- (compass/morning_routines.py) he did to start the day. One per student per
 -- day: unlike Check-In, a morning routine is fundamentally a single event,

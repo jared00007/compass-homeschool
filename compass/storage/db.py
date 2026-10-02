@@ -4186,9 +4186,39 @@ class Database:
             row["metadata"] = json.loads(row["metadata"])
         return rows
 
+    def save_enrichment_photo(
+        self,
+        lesson_id: int,
+        filename: str,
+        content: bytes,
+        content_type: str = "image/jpeg",
+    ) -> None:
+        """Store (or replace) the OPTIONAL snapshot of what he made for an art
+        card -- one photo per enrichment lesson, so re-uploading swaps it rather
+        than piling up. The parent gallery reads it back next to his reflection."""
+        self.conn.execute(
+            "INSERT INTO enrichment_photos "
+            "(lesson_id, filename, content_type, content) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(lesson_id) DO UPDATE SET "
+            "filename = excluded.filename, content_type = excluded.content_type, "
+            "content = excluded.content, uploaded_on = datetime('now')",
+            (lesson_id, filename, content_type, content),
+        )
+        self.conn.commit()
+
+    def get_enrichment_photo(self, lesson_id: int) -> dict[str, Any] | None:
+        """The stored photo for an art card, or None when he turned it in without
+        one (the common case -- the photo is always optional)."""
+        return _row(
+            self.conn.execute(
+                "SELECT * FROM enrichment_photos WHERE lesson_id = ?", (lesson_id,)
+            )
+        )
+
     def complete_enrichment_activity(
         self, lesson_id: int, student_id: int, occurred_on: str | None = None,
         reflection: str = "",
+        photo: tuple[str, bytes, str] | None = None,
     ) -> None:
         """He finished a light enrichment activity (art/music or movement): log
         its time to the WA subject it covers, mark it done, and complete it. Logs
@@ -4196,10 +4226,15 @@ class Database:
         never stacks hours. The logged `source` (the track key) is what the daily
         enrichment count and the compliance dashboard read. `reflection` (his
         one-line 'what I made / what I'd change' on an art card) is folded into the
-        logged activity's description, so it shows in the instructional record."""
+        logged activity's description, so it shows in the instructional record.
+        `photo` -- an OPTIONAL `(filename, bytes, content_type)` snapshot of what he
+        made -- is stored for the parent gallery; a card always turns in fine with
+        no photo (rough is the point)."""
         lesson = self.get_lesson(lesson_id)
         if lesson is None:
             return
+        if photo is not None:
+            self.save_enrichment_photo(lesson_id, photo[0], photo[1], photo[2])
         meta = lesson.get("metadata") or {}
         track = meta.get("track") or lesson.get("agent") or "movement"
         subject = meta.get("credit_subject") or "health"
@@ -4230,6 +4265,16 @@ class Database:
                 description=description,
                 source=track,
             )
+        # Keep his one-line reflection on the lesson metadata too (not only in
+        # the logged activity's description), so the parent art gallery can read
+        # it straight off the lesson without matching activity rows back by title.
+        if reflection.strip():
+            meta["reflection"] = reflection.strip()
+            self.conn.execute(
+                "UPDATE lessons SET metadata = ? WHERE id = ?",
+                (json.dumps(meta), lesson_id),
+            )
+            self.conn.commit()
         self.mark_student_done(lesson_id)
         self.set_lesson_status(lesson_id, "completed")
 

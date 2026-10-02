@@ -139,6 +139,67 @@ def test_art_reflection_lands_in_the_instructional_record(db, student):
     assert "add wheels" in act["description"]
 
 
+def test_art_photo_saves_and_reads_back(db, student):
+    """The optional photo of what he made round-trips, and re-uploading replaces
+    it rather than stacking a second row."""
+    art = _generate(db, student, "art_music")
+    db.save_enrichment_photo(art, "sketch.png", b"\x89PNG-fake", "image/png")
+    photo = db.get_enrichment_photo(art)
+    assert photo is not None
+    assert photo["filename"] == "sketch.png"
+    assert bytes(photo["content"]) == b"\x89PNG-fake"
+
+    db.save_enrichment_photo(art, "redo.jpg", b"jpeg-bytes", "image/jpeg")
+    photo2 = db.get_enrichment_photo(art)
+    assert photo2["filename"] == "redo.jpg"
+    assert bytes(photo2["content"]) == b"jpeg-bytes"
+
+
+def test_completing_with_a_photo_stores_it_and_the_reflection(db, student):
+    """Turning an art card in with a photo stores the image and keeps the
+    reflection on the lesson metadata (so the gallery reads it straight off)."""
+    art = _generate(db, student, "art_music")
+    db.complete_enrichment_activity(
+        art, student["id"],
+        reflection="Built a cardboard robot.",
+        photo=("robot.jpg", b"img-bytes", "image/jpeg"),
+    )
+    photo = db.get_enrichment_photo(art)
+    assert photo is not None and bytes(photo["content"]) == b"img-bytes"
+    assert db.get_lesson(art)["metadata"]["reflection"] == "Built a cardboard robot."
+
+
+def test_turning_in_with_no_photo_still_completes(db, student):
+    """The photo is always optional -- a card turns in fine on the reflection
+    alone, with no photo stored."""
+    art = _generate(db, student, "art_music")
+    db.complete_enrichment_activity(art, student["id"], reflection="Just a doodle.")
+    assert db.get_lesson(art)["status"] == "completed"
+    assert db.get_enrichment_photo(art) is None
+
+
+def test_art_gallery_shows_a_finished_card_with_its_reflection(db, student, monkeypatch):
+    """The parent gallery lists finished art cards with his one-line reflection;
+    an unfinished card (or none) shows only the empty-state hint."""
+    written: list[str] = []
+    monkeypatch.setattr(ui, "st", _Rec(written))
+    ui.render_art_gallery(db, student)
+    assert "finished art cards will show here" in "\n".join(written)
+
+    monkeypatch.undo()
+    art = _generate(db, student, "art_music", an_activity_payload(title="Robot sketch"))
+    db.complete_enrichment_activity(
+        art, student["id"], reflection="Cardboard robot!",
+        photo=("r.png", b"png", "image/png"),
+    )
+    written = []
+    monkeypatch.setattr(ui, "st", _Rec(written))
+    ui.render_art_gallery(db, student)
+    page = "\n".join(written)
+    assert "Robot sketch" in page
+    assert "Cardboard robot!" in page
+
+
 def test_completing_credits_the_subject_and_counts_as_enrichment(db, student):
     today = date.today().isoformat()
     art = _generate(db, student, "art_music")
