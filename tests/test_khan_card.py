@@ -482,14 +482,14 @@ def test_rename_and_recredit_refresh_the_card_reference_line(db, student):
         ),
     )["units"][0]["ids"]
     cid = _course_id(db, ids[0])
-    # Reference starts with the loaded course + subject + unit.
+    # Reference starts with the loaded course + subject + numbered unit.
     ov0 = db.get_lesson(ids[0])["payload"]["overview"]
-    assert "Pixar in a Box" in ov0 and "Art & Music" in ov0 and "Unit: Simulation" in ov0
+    assert "Pixar in a Box" in ov0 and "Art & Music" in ov0 and "Unit 1: Simulation" in ov0
 
     khan_card.rename_unit(db, student, cid, name="Physics of hair")
     khan_card.recredit_unit(db, student, cid, "math")
     ov1 = db.get_lesson(ids[0])["payload"]["overview"]
-    assert "Unit: Physics of hair" in ov1
+    assert "Unit 1: Physics of hair" in ov1
     assert "🎯 Math" in ov1
     assert "Simulation" not in ov1 and "Art & Music" not in ov1
 

@@ -511,8 +511,10 @@ def _render_khan_review(
         kind = score_cols[0].selectbox(
             "What was it?", options=config.KHAN_RESULT_KINDS,
             format_func=km.result_label,
+            # Default to Practice for a plain skill card (what most Khan cards are);
+            # a checkpoint carries its own quiz/unit-test kind in default_kind.
             index=(config.KHAN_RESULT_KINDS.index(default_kind)
-                   if default_kind in config.KHAN_RESULT_KINDS else 1),
+                   if default_kind in config.KHAN_RESULT_KINDS else 0),
             key=f"{key_prefix}_khres_kind_{lesson['id']}",
         )
         real_score = score_cols[1].number_input(

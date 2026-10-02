@@ -196,17 +196,21 @@ def generate_khan_quiz(
 _KHAN_REF_MARKER = "📚 **Khan reference**"
 
 
-def khan_reference_line(course_name: str, unit: str, subject_key: str) -> str:
+def khan_reference_line(
+    course_name: str, unit: str, subject_key: str, unit_number: int | None = None
+) -> str:
     """The one-line "what to open on Khan and where it credits" header that leads a
-    Khan card -- Course · Subject · Unit. Always starts with `_KHAN_REF_MARKER` so it
-    can be found and rebuilt in place when a unit is renamed or re-credited."""
+    Khan card -- Course · Subject · Unit N: name. Always starts with
+    `_KHAN_REF_MARKER` so it can be found and rebuilt in place when a unit is
+    renamed, renumbered, or re-credited."""
     bits = []
     if course_name.strip():
         bits.append(f"**{course_name.strip()}**")
     if subject_key:
         bits.append(f"🎯 {subjects.label(subject_key)}")
     if unit.strip():
-        bits.append(f"📗 Unit: {unit.strip()}")
+        num = f"Unit {int(unit_number)}: " if unit_number else "Unit: "
+        bits.append(f"📗 {num}{unit.strip()}")
     return f"{_KHAN_REF_MARKER} — " + " · ".join(bits)
 
 
@@ -230,6 +234,7 @@ def build_khan_card_payload(
     note: str = "",
     course: str = "",
     course_name: str = "",
+    unit_number: int | None = None,
     items: list[str] | None = None,
 ) -> dict[str, Any]:
     """The ordinary-lesson payload for a Khan card -- pure, no model call, so the
@@ -252,7 +257,7 @@ def build_khan_card_payload(
     # the quiz is what scores it. No graded activity, so the parent's review is
     # one tap (see review._render_khan_review).
     items = [str(i).strip() for i in (items or []) if str(i).strip()]
-    reference = khan_reference_line(course_name, course, credit_subject)
+    reference = khan_reference_line(course_name, course, credit_subject, unit_number)
     overview = (
         f"{reference}\n\n"
         f"Do this one on Khan Academy:\n\n"
@@ -313,6 +318,7 @@ def build_khan_checkpoint_payload(
     covers: list[str] | None = None,
     course: str = "",
     course_name: str = "",
+    unit_number: int | None = None,
 ) -> dict[str, Any]:
     """The payload for a Khan CHECKPOINT card -- a quiz or unit test he takes on
     Khan. It carries no Compass quiz (it IS the quiz); he takes it on Khan, turns
@@ -325,7 +331,7 @@ def build_khan_checkpoint_payload(
     covers = [str(c).strip() for c in (covers or []) if str(c).strip()]
     kind_label = "Unit test" if kind == "unit_test" else "Quiz"
 
-    reference = khan_reference_line(course_name, course, subject_key)
+    reference = khan_reference_line(course_name, course, subject_key, unit_number)
     covers_block = ""
     if covers:
         covers_block = "\n\n**It covers:**\n" + "\n".join(f"- {c}" for c in covers)
@@ -515,6 +521,7 @@ def create_course(
             payload = build_khan_checkpoint_payload(
                 subject, label, url, minutes, kind=entry["kind"],
                 covers=entry["covers"], course=course, course_name=course_name.strip(),
+                unit_number=unit_number or None,
             )
             title = f"{index}. 📝 {label}"
             payload["title"] = title
@@ -533,7 +540,7 @@ def create_course(
                     result["quiz_failed"].append(name)
             payload = build_khan_card_payload(
                 subject, name, url, minutes, quiz=quiz, course=course,
-                course_name=course_name.strip(), items=items,
+                course_name=course_name.strip(), unit_number=unit_number or None, items=items,
             )
             title = f"{index}. {name}"
             payload["title"] = title
@@ -1032,21 +1039,26 @@ def rename_unit(
         if meta.get("khan_course_id") != course_id:
             continue
         new_meta = dict(meta)
-        payload = None
         if name is not None:
             new_meta["khan_unit"] = name
-            # Keep the card's own "Course · Subject · Unit" reference line current.
-            payload = dict(card.get("payload") or {})
-            if payload.get("overview"):
-                ref = khan_reference_line(
-                    new_meta.get("khan_course_name", ""), name, card.get("subject", "")
-                )
-                payload["overview"] = _overview_with_reference(payload["overview"], ref)
         if number is not None:
             if number:
                 new_meta["khan_unit_number"] = int(number)
             else:
                 new_meta.pop("khan_unit_number", None)
+        # Rebuild the card's "Course · Subject · Unit N: name" reference line from
+        # the updated metadata whenever the name or number changed.
+        payload = None
+        if name is not None or number is not None:
+            payload = dict(card.get("payload") or {})
+            if payload.get("overview"):
+                ref = khan_reference_line(
+                    new_meta.get("khan_course_name", ""),
+                    new_meta.get("khan_unit") or "",
+                    card.get("subject", ""),
+                    new_meta.get("khan_unit_number"),
+                )
+                payload["overview"] = _overview_with_reference(payload["overview"], ref)
         db.update_lesson_content(card["id"], metadata=new_meta, payload=payload)
         updated += 1
     return updated
@@ -1083,7 +1095,8 @@ def recredit_unit(db: Any, student: dict[str, Any], course_id: str, subject: str
         # Keep the card's "Course · Subject · Unit" reference line current.
         if payload.get("overview"):
             ref = khan_reference_line(
-                meta.get("khan_course_name", ""), meta.get("khan_unit") or unit, subject
+                meta.get("khan_course_name", ""), meta.get("khan_unit") or unit, subject,
+                meta.get("khan_unit_number"),
             )
             payload["overview"] = _overview_with_reference(payload["overview"], ref)
         db.update_lesson_content(card["id"], subject=subject, payload=payload)
