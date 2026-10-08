@@ -227,6 +227,39 @@ def test_a_submitted_lesson_surfaces_open_in_waiting_on_you(monkeypatch, tmp_pat
     assert waiting, [e.label for e in review_tab.expander]
 
 
+def test_a_submitted_card_can_be_sent_back_not_hard_deleted(monkeypatch, tmp_path):
+    """Reported: a Khan card submitted by mistake (never actually worked on) was
+    hard-deleted via "Remove" and lost for good. A submitted card now offers a
+    non-destructive "send back to him" (-> needs_revision), and the hard delete
+    sits behind a confirm checkbox so it can't be a one-tap slip."""
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lid = db.save_lesson(
+        student_id=student["id"], agent="khan", subject="health", topic="Happiness",
+        title="Happiness — Wireless Philosophy",
+        payload={"title": "Happiness — Wireless Philosophy", "activities": []},
+        metadata={"source": "khan"},
+    )
+    db.submit_lesson(lid)
+    db.close()
+
+    at, _ = _open_review_tab(monkeypatch, db_path)
+    button_keys = {b.key or "" for b in at.button}
+    checkbox_keys = {c.key or "" for c in at.checkbox}
+    assert f"sendback_{lid}" in button_keys, "a submitted card should offer send-back"
+    assert f"remove_confirm_{lid}" in checkbox_keys, "the delete should be confirm-gated"
+
+    at.button(key=f"sendback_{lid}").click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db2 = Database(db_path)
+    got = db2.get_lesson(lid)
+    db2.close()
+    assert got is not None, "send-back must NOT delete the card"
+    assert got["status"] == "needs_revision", "send-back returns it to him for a redo"
+
+
 def test_the_waiting_bar_summarizes_hand_ins_and_quiz(monkeypatch, tmp_path):
     """The collapsed bar has to be worth scanning: it carries a quick read of
     what's inside -- how many hand-ins wait, and the quiz score -- so a parent

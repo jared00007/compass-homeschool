@@ -279,13 +279,38 @@ def _render_review_card_body(lesson: dict, today_iso: str) -> None:
         )
     if lesson["status"] in ("planned", "submitted", "needs_revision"):
         st.divider()
-        skip_col, remove_col = st.columns(2)
-        if skip_col.button("Mark skipped instead", key=f"skip_{lesson['id']}"):
+        # A card he turned in by mistake -- or submitted without actually doing
+        # the work -- should go BACK to him, not be destroyed. Reported: a Khan
+        # card was submitted without being worked on; the parent hit "Remove" to
+        # clear it from the queue and it was hard-deleted with no way to get it
+        # back. So a submitted card gets a plain, non-destructive "send it back,"
+        # and the irreversible delete now sits behind a confirm (tucked away, and
+        # labelled for accidental duplicates only) so it can't be a one-tap slip.
+        if lesson["status"] == "submitted":
+            if st.button(
+                "↩️ Send back to him (he'll redo it)",
+                key=f"sendback_{lesson['id']}", width="stretch",
+            ):
+                db.set_lesson_status(lesson["id"], "needs_revision")
+                st.rerun()
+        if st.button("⏭️ Mark skipped instead", key=f"skip_{lesson['id']}"):
             db.set_lesson_status(lesson["id"], "skipped")
             st.rerun()
-        if remove_col.button("Remove", key=f"remove_lesson_{lesson['id']}"):
-            db.delete_lesson(lesson["id"])
-            st.rerun()
+        with st.expander("🗑️ Delete this card for good"):
+            st.caption(
+                "Permanently deletes the card — nothing to undo. Use this only for "
+                "an accidental duplicate. To get a mistakenly-submitted card back "
+                "to him, use **Send back to him** above instead."
+            )
+            confirm = st.checkbox(
+                "Yes, delete it for good", key=f"remove_confirm_{lesson['id']}"
+            )
+            if st.button(
+                "🗑️ Delete", key=f"remove_lesson_{lesson['id']}",
+                disabled=not confirm, type="primary",
+            ):
+                db.delete_lesson(lesson["id"])
+                st.rerun()
         # A lesson sent back for a redo is still an open story that might
         # genuinely need a later day. Not offered for 'submitted': it's
         # already turned in and waiting on a decision, not something to
