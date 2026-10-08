@@ -1,9 +1,17 @@
 # streamlit floor is 1.52.0, not the older 1.40.0: that's when st.download_button
 # started accepting a callable for `data`, which the lesson-export download
 # buttons rely on to avoid building every lesson's .docx eagerly on every rerun.
+#
+# Upper caps are deliberate: CI installs these fresh on every run, so an
+# unpinned `>=` floor silently pulls whatever released most recently -- and
+# streamlit 1.65.0 changed st.AppTest's form-submit behavior, red-ing ~11 of
+# our widget-interaction tests (and pandas 3.0 shifted behavior the same way).
+# 1.64.0 is the last green streamlit; cap below the breakers so a new upstream
+# release can never turn the deploy pipeline red on its own. Bump the caps
+# deliberately, with the suite green, not by accident.
 anthropic>=0.116.0
-streamlit>=1.52.0
-pandas>=2.0.0
+streamlit>=1.52.0,<1.65
+pandas>=2.0.0,<3
 python-docx>=1.1.0
 # Per-lesson "print to PDF" export (compass/export.py:lesson_to_pdf). Pure
 # Python, no LibreOffice needed; the Unicode font it uses is bundled under
