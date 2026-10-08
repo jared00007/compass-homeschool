@@ -299,6 +299,35 @@ def test_a_planned_lesson_shows_on_the_board_with_a_move_control(monkeypatch, tm
     assert any("Locking In the Coordinate Plane" in s.value for s in at.subheader)
 
 
+def test_a_submitted_khan_card_can_still_be_rescheduled(monkeypatch, tmp_path):
+    """Reported: a Khan card he'd moved to today had no 📅 move control to bump
+    it to tomorrow, because he'd already tapped turn-in -- status 'submitted' --
+    and the control was gated to planned/needs_revision only. A parent must be
+    able to reschedule any card he hasn't *finished*, including one he's turned
+    in but you haven't reviewed yet."""
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="khan", subject="math", topic="Linear equations",
+        title="Khan Academy: Graphing proportional relationships",
+        payload={"title": "Graphing proportional relationships", "activities": []},
+        metadata={
+            "planned_for": TARGET_MONDAY.isoformat(),
+            "week_start": TARGET_MONDAY.isoformat(),
+            "source": "khan", "khan_unit": "Linear equations", "khan_unit_number": 1,
+        },
+    )
+    db.submit_lesson(lesson_id)  # he's turned it in -> status 'submitted'
+    db.close()
+
+    _, board_tab = _open_board_tab(monkeypatch, db_path)
+    backlog_key = f"move_board_lesson_{lesson_id}_send_to_backlog"
+    assert any(b.key == backlog_key for b in board_tab.button), (
+        "a submitted Khan card should still offer the parent move control"
+    )
+
+
 def test_the_board_day_header_shows_a_per_day_time_total(monkeypatch, tmp_path):
     """A parent asked to see "the total time for each and quick sum of total
     for the day... to ensure balance and not too heavy or too light days." Two

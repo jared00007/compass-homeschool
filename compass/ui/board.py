@@ -727,7 +727,16 @@ def render_board_card(
                     handins = hand_in_summary(item.get("payload") or {})
                     _ui.st.caption(handins if handins else "📝 No written hand-ins")
                     _render_board_estimate_editor(db, kind, item)
-                if interactive and item["status"] in ("planned", "needs_revision"):
+                if interactive and item["status"] in (
+                    "planned", "needs_revision", "submitted"
+                ):
+                    # The parent can reschedule any card he hasn't *finished* --
+                    # including one he's already turned in ("submitted") that's
+                    # sitting in the review queue. Reported: a Khan card moved to
+                    # today had no 📅 button to bump it to tomorrow, because he'd
+                    # already tapped turn-in (status "submitted") and the move
+                    # control was gated to planned/needs_revision only. Only a
+                    # completed or skipped card (truly done) stays unmovable.
                     # No collision check on the target day: a day can hold more
                     # than one lesson of the same subject on purpose (a fresh
                     # lesson plus one from a prior day still waiting on his
