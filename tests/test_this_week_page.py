@@ -772,3 +772,104 @@ def test_the_board_columns_are_monday_through_friday_only_no_sixth_backlog_colum
     # the panel's own "📋 Product Backlog" heading instead.
     assert not any(m.value == "**🗄️ Backlog**" for m in board_tab.markdown)
     assert any(m.value == "**📋 Product Backlog**" for m in board_tab.markdown)
+
+
+def test_backlog_bulk_scheduler_moves_selected_cards_in_one_click(monkeypatch, tmp_path):
+    """The multi-select backlog mover: tick several parked cards, pick one day,
+    and a single click reschedules them all (and clears held_back) -- the fix for
+    the clunky per-card 'open popover, pick a day, confirm' flow. Only the ticked
+    cards move; the rest stay parked."""
+    from compass.ui import board
+
+    db = Database(tmp_path / "bulk.db")
+    student = db.ensure_default_student()
+    sid = student["id"]
+    ids = []
+    for i in range(3):
+        lid = db.save_lesson(
+            student_id=sid, agent="khan", subject="math", topic="U1",
+            title=f"Khan Academy: Skill {i}",
+            payload={"title": f"Skill {i}", "activities": []},
+            metadata={"source": "khan", "khan_course_id": "c1", "khan_unit": "U1"},
+        )
+        db.send_to_backlog(lid)
+        ids.append(lid)
+    cards = [("lesson", db.get_lesson(l)) for l in ids]
+    target = (date.today() + timedelta(days=9)).isoformat()
+
+    class _Stop(Exception):
+        pass
+
+    class _Col:
+        def date_input(self, *a, **k):
+            return date.fromisoformat(target)
+        def button(self, *a, **k):
+            return str(k.get("key", "")).endswith("_move")
+        def __getattr__(self, _n):
+            return lambda *a, **k: None
+
+    class _FakeSt:
+        def __init__(self, picks):
+            self.session_state = dict(picks)
+        def columns(self, spec, *a, **k):
+            n = spec if isinstance(spec, int) else len(spec)
+            return [_Col() for _ in range(n)]
+        def date_input(self, *a, **k):
+            return date.fromisoformat(target)
+        def button(self, *a, **k):
+            return str(k.get("key", "")).endswith("_move")
+        def checkbox(self, *a, **k):
+            return bool(self.session_state.get(k.get("key")))
+        def rerun(self):
+            raise _Stop()
+        def __getattr__(self, _n):
+            return lambda *a, **k: None
+
+    # Tick the first two of the three parked cards.
+    picks = {f"bulkkey_pick_{ids[0]}": True, f"bulkkey_pick_{ids[1]}": True}
+    monkeypatch.setattr(board._ui, "st", _FakeSt(picks))
+    try:
+        board._render_unit_bulk_scheduler(
+            db, student, cards, key="bulkkey",
+            board_week_start=weekly.week_start(date.today()),
+        )
+    except _Stop:
+        pass
+
+    for lid in ids[:2]:
+        meta = db.get_lesson(lid)["metadata"]
+        assert meta.get("planned_for") == target, "ticked card should move to the picked day"
+        assert "held_back" not in meta, "moving a card takes it out of the backlog"
+    assert db.get_lesson(ids[2])["metadata"].get("held_back") is True, "unticked card stays parked"
+    db.close()
+
+
+def test_the_backlog_bulk_mover_renders_when_a_unit_is_open(monkeypatch, tmp_path):
+    """End-to-end: a parked Khan card, course + unit toggles opened, renders the
+    multi-select mover (its date picker, Move button, and a checkbox per card)
+    with no exception -- the manual course/unit toggles replace the native
+    expanders so the view holds its place across a move."""
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lid = db.save_lesson(
+        student_id=student["id"], agent="khan", subject="math", topic="U1",
+        title="Khan Academy: Graphing proportional relationships",
+        payload={"title": "Graphing proportional relationships", "activities": []},
+        metadata={"source": "khan", "khan_course_id": "c1", "khan_unit": "U1"},
+    )
+    db.send_to_backlog(lid)
+    db.close()
+
+    at, _ = _open_board_tab(monkeypatch, db_path)
+    # Open the course and unit folds (manual toggles backed by session_state).
+    at.session_state["board_khan_course_open_0"] = True
+    at.session_state["board_khan_unit_open_0_0"] = True
+    at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+    assert any((b.key or "") == "board_bulk_0_0_move" for b in at.button), (
+        "the bulk move button should render when the unit is open"
+    )
+    assert any((c.key or "") == f"board_bulk_0_0_pick_{lid}" for c in at.checkbox), (
+        "each parked card should render a selectable checkbox"
+    )

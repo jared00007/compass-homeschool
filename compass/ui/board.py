@@ -1067,6 +1067,76 @@ def _render_unit_schedule_form(
             _ui.st.rerun()
 
 
+def _render_unit_bulk_scheduler(
+    db: Database,
+    student: dict[str, Any],
+    cards: list[tuple[str, dict[str, Any]]],
+    *,
+    key: str,
+    board_week_start: _ui.date,
+) -> None:
+    """Multi-select scheduling for a unit's parked cards: tick the ones to move,
+    pick ONE day, and schedule them all in a single click.
+
+    Replaces the old per-card flow -- open the card, open its date popover, tick
+    'assign', pick a day, confirm -- which a parent called "clunking": it was
+    several clicks per card AND re-collapsed the whole course/unit on every move
+    so you lost your place. Reported: "they should be able to multi select too.
+    make the movement much more efficient and clean." The unit it sits in is a
+    manual toggle (see render_board_backlog) that stays open across the rerun, so
+    the list holds still while you work down it."""
+    lesson_cards = [(k, it) for k, it in cards if k == "lesson"]
+    if not lesson_cards:
+        return
+
+    def _pick_key(lid: Any) -> str:
+        return f"{key}_pick_{lid}"
+
+    # Count ticked cards from last run's state, before the checkboxes re-render,
+    # so the move button can show the count and gate on it.
+    picked = [it["id"] for _, it in lesson_cards if _ui.st.session_state.get(_pick_key(it["id"]))]
+    n = len(picked)
+
+    bar = _ui.st.columns([3, 3, 1, 1])
+    day = bar[0].date_input(
+        "Move to day", value=_ui.date.today(), key=f"{key}_day",
+        label_visibility="collapsed",
+    )
+    move = bar[1].button(
+        f"📅 Move {n} selected → this day" if n else "📅 Tick cards to move",
+        key=f"{key}_move", disabled=not n, type="primary", use_container_width=True,
+    )
+    if bar[2].button("All", key=f"{key}_all", use_container_width=True, help="Select all"):
+        for _, it in lesson_cards:
+            _ui.st.session_state[_pick_key(it["id"])] = True
+        _ui.st.rerun()
+    if bar[3].button("None", key=f"{key}_none", use_container_width=True, help="Clear"):
+        for _, it in lesson_cards:
+            _ui.st.session_state[_pick_key(it["id"])] = False
+        _ui.st.rerun()
+    if move:
+        # Each move is wrapped so a card sent to a day in another week leaves a
+        # one-line "that's on next week's board" note instead of just vanishing
+        # from this view (same wrapper the per-card control used).
+        for lid in picked:
+            _board_schedule(
+                lambda d, _lid=lid: db.reschedule_lesson(_lid, d), board_week_start
+            )(day.isoformat())
+            _ui.st.session_state.pop(_pick_key(lid), None)
+        _ui.st.rerun()
+
+    for _, it in lesson_cards:
+        lid = it["id"]
+        meta = it.get("metadata") or {}
+        badge = f"`U{meta['khan_unit_number']}` " if meta.get("khan_unit_number") else ""
+        title = it.get("title") or "Card"
+        for prefix in ("📖 ", "🅰️ "):
+            if title.startswith(prefix):
+                title = title[len(prefix):]
+        title = title.replace("Khan Academy: ", "").replace("Khan Academy — ", "")
+        _ui.st.checkbox(f"{badge}{md(title)}", key=_pick_key(lid))
+
+
 def render_board_backlog(
     db: Database,
     student: dict[str, Any],
@@ -1194,15 +1264,45 @@ def render_board_backlog(
                     # counter) so collapsing one course never shifts another
                     # course's widget keys out from under its half-typed state.
                     row_suffix = f"{course_idx}_{unit_idx}"
-                    # Each unit collapses on its own, default collapsed, so a big
-                    # course is a short list of unit headers rather than a wall
-                    # of cards -- the whole point of the per-unit fold.
-                    with _ui.st.expander(f"📗 {md(unit)} ({len(cards)})", expanded=False):
-                        _render_cards(cards, f"{key_prefix}_backlog_row_{safe_epic}_{row_suffix}")
-                        if interactive:
-                            # Rename the unit right where you see it -- fixes a name
-                            # typed with its own "Unit N" prefix, or any wording to
-                            # change after loading.
+                    if not interactive:
+                        # Landon's read-only board: a simple collapsible list of
+                        # the unit's cards, no scheduling or editing controls.
+                        with _ui.st.expander(f"📗 {md(unit)} ({len(cards)})", expanded=False):
+                            _render_cards(cards, f"{key_prefix}_backlog_row_{safe_epic}_{row_suffix}")
+                        continue
+                    # Parent board: the unit is a MANUAL toggle (button +
+                    # session_state), not a native st.expander, so it stays open
+                    # across the rerun a move fires. A native expander silently
+                    # re-collapsed on every move, so a parent lost their place and
+                    # had to re-find the unit each time (reported: "the whole
+                    # containers im viewing. course, unit etc collapses and i have
+                    # to find again"). A narrowing unit filter forces it open.
+                    uopen_key = f"{key_prefix}_khan_unit_open_{row_suffix}"
+                    u_open = (
+                        _ui.st.session_state.get(uopen_key, False)
+                        or unit_pick != "All units"
+                    )
+                    ucaret = "▼" if u_open else "▶"
+                    if _ui.st.button(
+                        f"{ucaret} 📗 {md(unit)} ({len(cards)})",
+                        key=f"{uopen_key}_btn", use_container_width=True,
+                    ):
+                        _ui.st.session_state[uopen_key] = not _ui.st.session_state.get(uopen_key, False)
+                        _ui.st.rerun()
+                    if not u_open:
+                        continue
+                    with _ui.st.container(border=True):
+                        # The fast path: tick cards, pick a day, move them all at once.
+                        _render_unit_bulk_scheduler(
+                            db, student, cards,
+                            key=f"{key_prefix}_bulk_{row_suffix}",
+                            board_week_start=board_week_start,
+                        )
+                        # The occasional unit-level tools, tucked away so the
+                        # scheduler stays the focus.
+                        with _ui.st.expander(
+                            "⚙️ Unit tools — rename, re-credit, or schedule the whole unit"
+                        ):
                             first_card = cards[0][1] if cards else {}
                             first_meta = first_card.get("metadata") or {}
                             cid = first_meta.get("khan_course_id")
