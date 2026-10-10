@@ -797,33 +797,47 @@ def test_backlog_bulk_scheduler_moves_selected_cards_in_one_click(monkeypatch, t
     cards = [("lesson", db.get_lesson(l)) for l in ids]
     week_start = weekly.week_start(date.today())
     # The move targets are this week's weekdays; tick two cards and "click" Monday.
-    target = weekly.week_dates(week_start, include_friday=True)[0].isoformat()
+    monday = weekly.week_dates(week_start, include_friday=True)[0]
+    target = monday.isoformat()
+    target_label = monday.strftime("%a %-d")
 
     class _Stop(Exception):
         pass
 
+    class _Ctx:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+
     class _Col:
-        def button(self, *a, **k):
-            return str(k.get("key", "")).endswith(f"_qd_{target}")
+        def form_submit_button(self, label=None, *a, **k):
+            return label == target_label
+        def date_input(self, *a, **k):
+            return date.fromisoformat(target)
         def __getattr__(self, _n):
             return lambda *a, **k: None
 
     class _FakeSt:
         def __init__(self, picks):
             self.session_state = dict(picks)
+        def form(self, *a, **k):
+            return _Ctx()
         def columns(self, spec, *a, **k):
             n = spec if isinstance(spec, int) else len(spec)
             return [_Col() for _ in range(n)]
         def checkbox(self, *a, **k):
             return bool(self.session_state.get(k.get("key")))
-        def button(self, *a, **k):
-            return str(k.get("key", "")).endswith(f"_qd_{target}")
+        def form_submit_button(self, label=None, *a, **k):
+            return label == target_label
+        def date_input(self, *a, **k):
+            return date.fromisoformat(target)
         def rerun(self):
             raise _Stop()
         def __getattr__(self, _n):
             return lambda *a, **k: None
 
-    # Tick the first two of the three parked cards.
+    # Tick the first two of the three parked cards (select-all left off).
     picks = {f"bulkkey_pick_{ids[0]}": True, f"bulkkey_pick_{ids[1]}": True}
     monkeypatch.setattr(board._ui, "st", _FakeSt(picks))
     try:
@@ -843,9 +857,9 @@ def test_backlog_bulk_scheduler_moves_selected_cards_in_one_click(monkeypatch, t
 
 def test_the_backlog_bulk_mover_renders_when_a_unit_is_open(monkeypatch, tmp_path):
     """End-to-end: a parked Khan card, course + unit toggles opened, renders the
-    select-all + per-card checklist, and ticking a card reveals the weekday
-    quick-move buttons -- no exception. The manual course/unit toggles replace
-    the native expanders so the view holds its place across a move."""
+    bulk-move form -- a select-all checkbox and a per-card checkbox -- with no
+    exception. The whole thing is one st.form, so ticking a card doesn't rerun
+    (no glitchy view restart); only clicking a day submits and moves."""
     db_path = tmp_path / "week.db"
     db = Database(db_path)
     student = db.ensure_default_student()
@@ -865,14 +879,5 @@ def test_the_backlog_bulk_mover_renders_when_a_unit_is_open(monkeypatch, tmp_pat
     at.run(timeout=30)
     assert not at.exception, [e.message for e in at.exception]
     cb_keys = {c.key or "" for c in at.checkbox}
-    btn_keys = {b.key or "" for b in at.button}
-    assert "board_bulk_0_0_selall" in btn_keys, "a select-all toggle should render"
+    assert "board_bulk_0_0_selall" in cb_keys, "a select-all checkbox should render"
     assert f"board_bulk_0_0_pick_{lid}" in cb_keys, "each parked card should render a checkbox"
-
-    # Tick the card -> the weekday quick-move buttons appear.
-    at.session_state[f"board_bulk_0_0_pick_{lid}"] = True
-    at.run(timeout=30)
-    assert not at.exception, [e.message for e in at.exception]
-    assert any((b.key or "").startswith("board_bulk_0_0_qd_") for b in at.button), (
-        "weekday quick-move buttons should appear once a card is selected"
-    )

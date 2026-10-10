@@ -1116,72 +1116,59 @@ def _render_unit_bulk_scheduler(
     """Move a unit's parked cards onto days: tick the ones you want, then click
     the weekday to drop them on -- no calendar, no per-card popover.
 
-    The flow reads top-to-bottom: a 'select all', the card checklist, then (once
-    anything's ticked) a row of this week's weekday buttons plus an 'other day'
-    fallback. One click moves every ticked card to that day. The unit it sits in
-    is a manual toggle (see render_board_backlog) that holds its place across the
-    rerun, so the list doesn't collapse out from under you on each move.
+    The whole thing is ONE st.form, which is what makes picking smooth: ticking
+    checkboxes inside a form does NOT rerun the app, so nothing moves or jumps
+    while you select (reported: "picking a card and then moving it and it being
+    glitchy restarting view"). Only clicking a day (a form-submit) reruns, once,
+    and the unit it sits in is a persistent toggle that holds its place -- so the
+    view no longer collapses or flickers on every tick. Works for one card or
+    many: tick a single card and click any day to move just that one; the 'Other
+    day' date covers any day in any week.
 
     Replaces the first cut of this, which a parent (rightly) called clunky and
-    unorganized: the move controls sat ABOVE the cards (backwards), the day was a
-    calendar dropdown, and 'All/None' were extra buttons -- all reworked here."""
+    unorganized (controls above the cards, a calendar dropdown, All/None buttons)
+    and then the second cut, which still reran on every tick."""
     lesson_cards = [(k, it) for k, it in cards if k == "lesson"]
     if not lesson_cards:
         return
     ids = [it["id"] for _, it in lesson_cards]
-
-    def _pick_key(lid: Any) -> str:
-        return f"{key}_pick_{lid}"
-
-    def _move(targets: list[Any], iso: str) -> None:
-        # Each move is wrapped so a card sent to a day in another week leaves a
-        # one-line "that's on next week's board" note instead of just vanishing.
-        for lid in targets:
-            _board_schedule(
-                lambda d, _lid=lid: db.reschedule_lesson(_lid, d), board_week_start
-            )(iso)
-            _ui.st.session_state.pop(_pick_key(lid), None)
-        _ui.st.session_state.pop(f"{key}_selall", None)
-        _ui.st.rerun()
-
-    # One select-all / clear-all toggle, as a button rather than a checkbox: a
-    # checkbox that both mirrors the rows and controls them races with its own
-    # stored state (ticking one card would make it silently clear the rest). The
-    # label reflects the current state, and a click flips every card at once.
-    all_on = bool(ids) and all(_ui.st.session_state.get(_pick_key(i)) for i in ids)
-    if _ui.st.button(
-        ("☑ Clear all" if all_on else "☐ Select all") + f" · {len(ids)}",
-        key=f"{key}_selall",
-    ):
-        for i in ids:
-            _ui.st.session_state[_pick_key(i)] = not all_on
-        _ui.st.rerun()
-
-    for _, it in lesson_cards:
-        _ui.st.checkbox(md(_clean_card_title(it)), key=_pick_key(it["id"]))
-
-    picked = [i for i in ids if _ui.st.session_state.get(_pick_key(i))]
-    n = len(picked)
-
-    _ui.st.divider()
-    if not n:
-        _ui.st.caption("Tick cards above, then choose a day to move them onto.")
-        return
-    # The move action, right under the selection: this week's weekdays as one-tap
-    # targets (no calendar), with an 'other day' popover for anything else.
-    _ui.st.caption(f"**{n} selected** — move to:")
     days = weekly.week_dates(board_week_start, include_friday=True)
-    day_cols = _ui.st.columns(len(days) + 1)
-    for i, d in enumerate(days):
-        if day_cols[i].button(
-            d.strftime("%a %-d"), key=f"{key}_qd_{d.isoformat()}",
-            use_container_width=True,
-        ):
-            _move(picked, d.isoformat())
-    with day_cols[-1].popover("📅 Other", use_container_width=True):
-        other = _ui.st.date_input("Any day", value=_ui.date.today(), key=f"{key}_other")
-        if _ui.st.button("Move here", key=f"{key}_othermove", type="primary"):
-            _move(picked, other.isoformat())
+
+    chosen_iso: str | None = None
+    with _ui.st.form(f"{key}_form", border=False):
+        _ui.st.caption(
+            "Tick cards (one or many), then click the day to move them onto — "
+            "or set a day under **Other day** for any other week."
+        )
+        select_all = _ui.st.checkbox("Select every card in this unit", key=f"{key}_selall")
+        checks = {
+            it["id"]: _ui.st.checkbox(md(_clean_card_title(it)), key=f"{key}_pick_{it['id']}")
+            for _, it in lesson_cards
+        }
+        day_cols = _ui.st.columns(len(days))
+        for i, d in enumerate(days):
+            if day_cols[i].form_submit_button(d.strftime("%a %-d"), use_container_width=True):
+                chosen_iso = d.isoformat()
+        other_cols = _ui.st.columns([2, 1])
+        other = other_cols[0].date_input("Other day", value=_ui.date.today(), key=f"{key}_other")
+        if other_cols[1].form_submit_button("📅 Move to other day", use_container_width=True):
+            chosen_iso = other.isoformat()
+
+    if chosen_iso is None:
+        return
+    targets = ids if select_all else [i for i in ids if checks.get(i)]
+    if not targets:
+        _ui.st.warning("Tick at least one card first, then click a day.")
+        return
+    # Each move is wrapped so a card sent to a day in another week leaves a
+    # one-line "that's on next week's board" note instead of just vanishing.
+    for lid in targets:
+        _board_schedule(
+            lambda d, _lid=lid: db.reschedule_lesson(_lid, d), board_week_start
+        )(chosen_iso)
+        _ui.st.session_state.pop(f"{key}_pick_{lid}", None)
+    _ui.st.session_state.pop(f"{key}_selall", None)
+    _ui.st.rerun()
 
 
 def render_board_backlog(
