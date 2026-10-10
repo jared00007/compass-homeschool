@@ -795,16 +795,16 @@ def test_backlog_bulk_scheduler_moves_selected_cards_in_one_click(monkeypatch, t
         db.send_to_backlog(lid)
         ids.append(lid)
     cards = [("lesson", db.get_lesson(l)) for l in ids]
-    target = (date.today() + timedelta(days=9)).isoformat()
+    week_start = weekly.week_start(date.today())
+    # The move targets are this week's weekdays; tick two cards and "click" Monday.
+    target = weekly.week_dates(week_start, include_friday=True)[0].isoformat()
 
     class _Stop(Exception):
         pass
 
     class _Col:
-        def date_input(self, *a, **k):
-            return date.fromisoformat(target)
         def button(self, *a, **k):
-            return str(k.get("key", "")).endswith("_move")
+            return str(k.get("key", "")).endswith(f"_qd_{target}")
         def __getattr__(self, _n):
             return lambda *a, **k: None
 
@@ -814,12 +814,10 @@ def test_backlog_bulk_scheduler_moves_selected_cards_in_one_click(monkeypatch, t
         def columns(self, spec, *a, **k):
             n = spec if isinstance(spec, int) else len(spec)
             return [_Col() for _ in range(n)]
-        def date_input(self, *a, **k):
-            return date.fromisoformat(target)
-        def button(self, *a, **k):
-            return str(k.get("key", "")).endswith("_move")
         def checkbox(self, *a, **k):
             return bool(self.session_state.get(k.get("key")))
+        def button(self, *a, **k):
+            return str(k.get("key", "")).endswith(f"_qd_{target}")
         def rerun(self):
             raise _Stop()
         def __getattr__(self, _n):
@@ -830,15 +828,14 @@ def test_backlog_bulk_scheduler_moves_selected_cards_in_one_click(monkeypatch, t
     monkeypatch.setattr(board._ui, "st", _FakeSt(picks))
     try:
         board._render_unit_bulk_scheduler(
-            db, student, cards, key="bulkkey",
-            board_week_start=weekly.week_start(date.today()),
+            db, student, cards, key="bulkkey", board_week_start=week_start,
         )
     except _Stop:
         pass
 
     for lid in ids[:2]:
         meta = db.get_lesson(lid)["metadata"]
-        assert meta.get("planned_for") == target, "ticked card should move to the picked day"
+        assert meta.get("planned_for") == target, "ticked card should move to the clicked day"
         assert "held_back" not in meta, "moving a card takes it out of the backlog"
     assert db.get_lesson(ids[2])["metadata"].get("held_back") is True, "unticked card stays parked"
     db.close()
@@ -846,9 +843,9 @@ def test_backlog_bulk_scheduler_moves_selected_cards_in_one_click(monkeypatch, t
 
 def test_the_backlog_bulk_mover_renders_when_a_unit_is_open(monkeypatch, tmp_path):
     """End-to-end: a parked Khan card, course + unit toggles opened, renders the
-    multi-select mover (its date picker, Move button, and a checkbox per card)
-    with no exception -- the manual course/unit toggles replace the native
-    expanders so the view holds its place across a move."""
+    select-all + per-card checklist, and ticking a card reveals the weekday
+    quick-move buttons -- no exception. The manual course/unit toggles replace
+    the native expanders so the view holds its place across a move."""
     db_path = tmp_path / "week.db"
     db = Database(db_path)
     student = db.ensure_default_student()
@@ -867,9 +864,15 @@ def test_the_backlog_bulk_mover_renders_when_a_unit_is_open(monkeypatch, tmp_pat
     at.session_state["board_khan_unit_open_0_0"] = True
     at.run(timeout=30)
     assert not at.exception, [e.message for e in at.exception]
-    assert any((b.key or "") == "board_bulk_0_0_move" for b in at.button), (
-        "the bulk move button should render when the unit is open"
-    )
-    assert any((c.key or "") == f"board_bulk_0_0_pick_{lid}" for c in at.checkbox), (
-        "each parked card should render a selectable checkbox"
+    cb_keys = {c.key or "" for c in at.checkbox}
+    btn_keys = {b.key or "" for b in at.button}
+    assert "board_bulk_0_0_selall" in btn_keys, "a select-all toggle should render"
+    assert f"board_bulk_0_0_pick_{lid}" in cb_keys, "each parked card should render a checkbox"
+
+    # Tick the card -> the weekday quick-move buttons appear.
+    at.session_state[f"board_bulk_0_0_pick_{lid}"] = True
+    at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+    assert any((b.key or "").startswith("board_bulk_0_0_qd_") for b in at.button), (
+        "weekday quick-move buttons should appear once a card is selected"
     )

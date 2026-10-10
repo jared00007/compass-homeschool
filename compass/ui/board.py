@@ -1028,6 +1028,34 @@ div[class*="st-key-"][class*="_backlog_row_"] div[data-testid="stColumn"] {
   min-width: 220px !important;
   flex: 0 0 220px !important;
 }
+/* The course/unit fold toggles read as a clean indented outline, not a stack of
+   default buttons: left-aligned, borderless, with the unit rows nudged in under
+   their course. */
+div[class*="st-key-"][class*="_khan_course_open_"] button,
+div[class*="st-key-"][class*="_khan_unit_open_"] button {
+  justify-content: flex-start !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+div[class*="st-key-"][class*="_khan_course_open_"] button > div,
+div[class*="st-key-"][class*="_khan_unit_open_"] button > div {
+  width: 100% !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
+}
+div[class*="st-key-"][class*="_khan_course_open_"] button p,
+div[class*="st-key-"][class*="_khan_unit_open_"] button p {
+  text-align: left !important;
+  width: 100% !important;
+}
+div[class*="st-key-"][class*="_khan_course_open_"] button:hover,
+div[class*="st-key-"][class*="_khan_unit_open_"] button:hover {
+  background: rgba(127, 127, 127, .09) !important;
+}
+div[class*="st-key-"][class*="_khan_course_open_"] button p { font-weight: 800 !important; }
+div[class*="st-key-"][class*="_khan_unit_open_"] { margin-left: 16px; }
+div[class*="st-key-"][class*="_khan_unit_open_"] button p { font-weight: 600 !important; opacity: .9; }
 </style>
 """
 
@@ -1067,6 +1095,16 @@ def _render_unit_schedule_form(
             _ui.st.rerun()
 
 
+def _clean_card_title(item: dict[str, Any]) -> str:
+    """A card's title with the repetitive 'Khan Academy:' / leading-emoji chrome
+    stripped, for a compact checklist row."""
+    title = item.get("title") or "Card"
+    for prefix in ("📖 ", "🅰️ ", "📗 "):
+        if title.startswith(prefix):
+            title = title[len(prefix):]
+    return title.replace("Khan Academy: ", "").replace("Khan Academy — ", "")
+
+
 def _render_unit_bulk_scheduler(
     db: Database,
     student: dict[str, Any],
@@ -1075,66 +1113,75 @@ def _render_unit_bulk_scheduler(
     key: str,
     board_week_start: _ui.date,
 ) -> None:
-    """Multi-select scheduling for a unit's parked cards: tick the ones to move,
-    pick ONE day, and schedule them all in a single click.
+    """Move a unit's parked cards onto days: tick the ones you want, then click
+    the weekday to drop them on -- no calendar, no per-card popover.
 
-    Replaces the old per-card flow -- open the card, open its date popover, tick
-    'assign', pick a day, confirm -- which a parent called "clunking": it was
-    several clicks per card AND re-collapsed the whole course/unit on every move
-    so you lost your place. Reported: "they should be able to multi select too.
-    make the movement much more efficient and clean." The unit it sits in is a
-    manual toggle (see render_board_backlog) that stays open across the rerun, so
-    the list holds still while you work down it."""
+    The flow reads top-to-bottom: a 'select all', the card checklist, then (once
+    anything's ticked) a row of this week's weekday buttons plus an 'other day'
+    fallback. One click moves every ticked card to that day. The unit it sits in
+    is a manual toggle (see render_board_backlog) that holds its place across the
+    rerun, so the list doesn't collapse out from under you on each move.
+
+    Replaces the first cut of this, which a parent (rightly) called clunky and
+    unorganized: the move controls sat ABOVE the cards (backwards), the day was a
+    calendar dropdown, and 'All/None' were extra buttons -- all reworked here."""
     lesson_cards = [(k, it) for k, it in cards if k == "lesson"]
     if not lesson_cards:
         return
+    ids = [it["id"] for _, it in lesson_cards]
 
     def _pick_key(lid: Any) -> str:
         return f"{key}_pick_{lid}"
 
-    # Count ticked cards from last run's state, before the checkboxes re-render,
-    # so the move button can show the count and gate on it.
-    picked = [it["id"] for _, it in lesson_cards if _ui.st.session_state.get(_pick_key(it["id"]))]
-    n = len(picked)
-
-    bar = _ui.st.columns([3, 3, 1, 1])
-    day = bar[0].date_input(
-        "Move to day", value=_ui.date.today(), key=f"{key}_day",
-        label_visibility="collapsed",
-    )
-    move = bar[1].button(
-        f"📅 Move {n} selected → this day" if n else "📅 Tick cards to move",
-        key=f"{key}_move", disabled=not n, type="primary", use_container_width=True,
-    )
-    if bar[2].button("All", key=f"{key}_all", use_container_width=True, help="Select all"):
-        for _, it in lesson_cards:
-            _ui.st.session_state[_pick_key(it["id"])] = True
-        _ui.st.rerun()
-    if bar[3].button("None", key=f"{key}_none", use_container_width=True, help="Clear"):
-        for _, it in lesson_cards:
-            _ui.st.session_state[_pick_key(it["id"])] = False
-        _ui.st.rerun()
-    if move:
+    def _move(targets: list[Any], iso: str) -> None:
         # Each move is wrapped so a card sent to a day in another week leaves a
-        # one-line "that's on next week's board" note instead of just vanishing
-        # from this view (same wrapper the per-card control used).
-        for lid in picked:
+        # one-line "that's on next week's board" note instead of just vanishing.
+        for lid in targets:
             _board_schedule(
                 lambda d, _lid=lid: db.reschedule_lesson(_lid, d), board_week_start
-            )(day.isoformat())
+            )(iso)
             _ui.st.session_state.pop(_pick_key(lid), None)
+        _ui.st.session_state.pop(f"{key}_selall", None)
+        _ui.st.rerun()
+
+    # One select-all / clear-all toggle, as a button rather than a checkbox: a
+    # checkbox that both mirrors the rows and controls them races with its own
+    # stored state (ticking one card would make it silently clear the rest). The
+    # label reflects the current state, and a click flips every card at once.
+    all_on = bool(ids) and all(_ui.st.session_state.get(_pick_key(i)) for i in ids)
+    if _ui.st.button(
+        ("☑ Clear all" if all_on else "☐ Select all") + f" · {len(ids)}",
+        key=f"{key}_selall",
+    ):
+        for i in ids:
+            _ui.st.session_state[_pick_key(i)] = not all_on
         _ui.st.rerun()
 
     for _, it in lesson_cards:
-        lid = it["id"]
-        meta = it.get("metadata") or {}
-        badge = f"`U{meta['khan_unit_number']}` " if meta.get("khan_unit_number") else ""
-        title = it.get("title") or "Card"
-        for prefix in ("📖 ", "🅰️ "):
-            if title.startswith(prefix):
-                title = title[len(prefix):]
-        title = title.replace("Khan Academy: ", "").replace("Khan Academy — ", "")
-        _ui.st.checkbox(f"{badge}{md(title)}", key=_pick_key(lid))
+        _ui.st.checkbox(md(_clean_card_title(it)), key=_pick_key(it["id"]))
+
+    picked = [i for i in ids if _ui.st.session_state.get(_pick_key(i))]
+    n = len(picked)
+
+    _ui.st.divider()
+    if not n:
+        _ui.st.caption("Tick cards above, then choose a day to move them onto.")
+        return
+    # The move action, right under the selection: this week's weekdays as one-tap
+    # targets (no calendar), with an 'other day' popover for anything else.
+    _ui.st.caption(f"**{n} selected** — move to:")
+    days = weekly.week_dates(board_week_start, include_friday=True)
+    day_cols = _ui.st.columns(len(days) + 1)
+    for i, d in enumerate(days):
+        if day_cols[i].button(
+            d.strftime("%a %-d"), key=f"{key}_qd_{d.isoformat()}",
+            use_container_width=True,
+        ):
+            _move(picked, d.isoformat())
+    with day_cols[-1].popover("📅 Other", use_container_width=True):
+        other = _ui.st.date_input("Any day", value=_ui.date.today(), key=f"{key}_other")
+        if _ui.st.button("Move here", key=f"{key}_othermove", type="primary"):
+            _move(picked, other.isoformat())
 
 
 def render_board_backlog(
