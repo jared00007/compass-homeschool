@@ -582,6 +582,27 @@ CREATE TABLE IF NOT EXISTS business_profile (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Business jobs -- the money/bookkeeping side of the project: one row per job
+-- he does (date, customer, what he did, what he charged, what he spent, how
+-- long it took). Money is stored in whole cents to keep the arithmetic exact.
+-- `activity_id` links the hours this job logs to Occupational Education, so the
+-- work counts as school; deleting the job removes that activity too.
+CREATE TABLE IF NOT EXISTS business_jobs (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id    INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    job_date      TEXT NOT NULL,
+    customer      TEXT NOT NULL DEFAULT '',
+    description   TEXT NOT NULL DEFAULT '',
+    earned_cents  INTEGER NOT NULL DEFAULT 0,
+    expense_cents INTEGER NOT NULL DEFAULT 0,
+    minutes       INTEGER NOT NULL DEFAULT 0,
+    activity_id   INTEGER,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_business_jobs_student
+    ON business_jobs (student_id, job_date DESC, id DESC);
+
 -- ---------------------------------------------------------------------------
 -- Morning routine log -- which stretch/breathing/mindfulness routine
 -- (compass/morning_routines.py) he did to start the day. One per student per

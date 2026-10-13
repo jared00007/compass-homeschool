@@ -4314,6 +4314,98 @@ class Database:
         )
         self.conn.commit()
 
+    # -- business jobs (the money / bookkeeping side) ---------------------------
+
+    @staticmethod
+    def _dollars(cents: int) -> float:
+        return round(int(cents) / 100, 2)
+
+    def add_business_job(
+        self,
+        student_id: int,
+        *,
+        job_date: str,
+        customer: str = "",
+        description: str = "",
+        earned: float = 0.0,
+        expense: float = 0.0,
+        minutes: int = 0,
+    ) -> int:
+        """Record one job he did. `earned`/`expense` are dollars (stored as whole
+        cents). When `minutes` > 0 the time is logged to Occupational Education so
+        the work counts as school, and that activity is linked to the job so
+        deleting the job removes it too. Returns the job id."""
+        minutes = max(0, int(minutes))
+        activity_id: int | None = None
+        if minutes > 0:
+            who = (customer or "").strip()
+            activity_id = self.log_activity(
+                student_id=student_id,
+                title=f"Yard job — {who}" if who else "Yard job",
+                tier=config.TIER_CORE,
+                primary_subject="occupational_education",
+                minutes=minutes,
+                subject_credits={"occupational_education": minutes},
+                occurred_on=job_date,
+                description=(description or "").strip(),
+                source="business",
+            )
+        cur = self.conn.execute(
+            "INSERT INTO business_jobs "
+            "(student_id, job_date, customer, description, earned_cents, "
+            " expense_cents, minutes, activity_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                student_id, job_date, (customer or "").strip(), (description or "").strip(),
+                round(float(earned) * 100), round(float(expense) * 100), minutes, activity_id,
+            ),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def list_business_jobs(self, student_id: int) -> list[dict[str, Any]]:
+        """His jobs, newest first, with money as dollars (earned/expense/profit)."""
+        rows = _rows(self.conn.execute(
+            "SELECT * FROM business_jobs WHERE student_id = ? "
+            "ORDER BY job_date DESC, id DESC",
+            (student_id,),
+        ))
+        for row in rows:
+            row["earned"] = self._dollars(row["earned_cents"])
+            row["expense"] = self._dollars(row["expense_cents"])
+            row["profit"] = self._dollars(row["earned_cents"] - row["expense_cents"])
+        return rows
+
+    def delete_business_job(self, job_id: int) -> None:
+        """Remove a job and the Occupational-Education hours it logged."""
+        row = _row(self.conn.execute(
+            "SELECT activity_id FROM business_jobs WHERE id = ?", (job_id,)
+        ))
+        if row and row["activity_id"] is not None:
+            self.delete_activity(int(row["activity_id"]))
+        self.conn.execute("DELETE FROM business_jobs WHERE id = ?", (job_id,))
+        self.conn.commit()
+
+    def business_totals(self, student_id: int) -> dict[str, Any]:
+        """Running totals across all his jobs: earned, spent, profit (dollars),
+        number of jobs, and total minutes worked."""
+        row = _row(self.conn.execute(
+            "SELECT COUNT(*) AS jobs, "
+            "COALESCE(SUM(earned_cents), 0) AS earned, "
+            "COALESCE(SUM(expense_cents), 0) AS expense, "
+            "COALESCE(SUM(minutes), 0) AS minutes "
+            "FROM business_jobs WHERE student_id = ?",
+            (student_id,),
+        )) or {}
+        earned_c = int(row.get("earned") or 0)
+        expense_c = int(row.get("expense") or 0)
+        return {
+            "jobs": int(row.get("jobs") or 0),
+            "earned": self._dollars(earned_c),
+            "expense": self._dollars(expense_c),
+            "profit": self._dollars(earned_c - expense_c),
+            "minutes": int(row.get("minutes") or 0),
+        }
+
     def complete_enrichment_activity(
         self, lesson_id: int, student_id: int, occurred_on: str | None = None,
         reflection: str = "",

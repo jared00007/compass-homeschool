@@ -18,16 +18,18 @@ from __future__ import annotations
 import html
 from typing import Any
 
-# The starter menu of services, as (key, emoji, label) -- concrete, checkbox-
-# able, leaf-season first. He ticks the ones he offers and sets a price for
-# each; two free-text custom slots let him add his own (see the builder UI).
-PRESET_SERVICES: tuple[tuple[str, str, str], ...] = (
-    ("rake", "🍂", "Rake leaves"),
-    ("bag", "🗑️", "Bag & haul the leaves"),
-    ("walkways", "🧹", "Clear leaves off walkways & drive"),
-    ("branches", "🌿", "Haul branches & sticks"),
-    ("beds", "🌱", "Tidy garden beds"),
-    ("winter", "❄️", "Winter yard prep"),
+# The starter menu of services, as (key, emoji, label, baseline_price) --
+# concrete, checkbox-able, leaf-season first. He ticks the ones he offers; each
+# price box starts pre-filled with a reasonable baseline (a starting point for a
+# young teen in a typical neighborhood) that he can change. Two free-text custom
+# slots let him add his own (see the builder UI).
+PRESET_SERVICES: tuple[tuple[str, str, str, str], ...] = (
+    ("rake", "🍂", "Rake leaves", "$25"),
+    ("bag", "🗑️", "Bag & haul the leaves", "$15"),
+    ("walkways", "🧹", "Clear leaves off walkways & drive", "$10"),
+    ("branches", "🌿", "Haul branches & sticks", "$20"),
+    ("beds", "🌱", "Tidy garden beds", "$15"),
+    ("winter", "❄️", "Winter yard prep", "$20"),
 )
 
 # A few slogans he can borrow if he's stuck -- examples, not required. Kept at

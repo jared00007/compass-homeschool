@@ -138,3 +138,58 @@ def test_the_page_saves_a_business_and_renders_its_flyer(monkeypatch, tmp_path):
     # The flyer renders on the page (the apostrophe is HTML-escaped in the flyer).
     assert any("Leaf Crew" in (m.value or "") for m in at.markdown)
     assert any("Rake leaves" in (m.value or "") for m in at.markdown)
+
+
+# --- the money / job log --------------------------------------------------------
+
+
+def test_jobs_track_money_and_totals(db, student):
+    sid = student["id"]
+    assert db.business_totals(sid)["jobs"] == 0
+    db.add_business_job(sid, job_date="2026-10-13", customer="Mrs. Lee",
+                        description="Raked front yard", earned=25.0, expense=3.5, minutes=60)
+    db.add_business_job(sid, job_date="2026-10-14", customer="Mr. Ortiz",
+                        earned=40.0, expense=0.0, minutes=90)
+    jobs = db.list_business_jobs(sid)
+    assert len(jobs) == 2
+    assert jobs[0]["job_date"] == "2026-10-14"  # newest first
+    totals = db.business_totals(sid)
+    assert totals == {"jobs": 2, "earned": 65.0, "expense": 3.5, "profit": 61.5, "minutes": 150}
+
+
+def test_a_job_logs_occupational_education_hours_and_delete_removes_them(db, student):
+    sid = student["id"]
+    job_id = db.add_business_job(sid, job_date="2026-10-13", customer="Mrs. Lee",
+                                 earned=25.0, minutes=60)
+    acts = [a for a in db.list_activities(sid) if a["source"] == "business"]
+    assert len(acts) == 1 and acts[0]["minutes"] == 60
+    cur = db.conn.execute(
+        "SELECT subject, SUM(minutes) m FROM activity_subject_credits GROUP BY subject"
+    )
+    credits = {r["subject"]: r["m"] for r in cur.fetchall()}
+    assert credits.get("occupational_education") == 60
+    # Deleting the job removes its logged hours too.
+    db.delete_business_job(job_id)
+    assert [a for a in db.list_activities(sid) if a["source"] == "business"] == []
+
+
+def test_a_zero_minute_job_tracks_money_without_logging_hours(db, student):
+    sid = student["id"]
+    db.add_business_job(sid, job_date="2026-10-13", earned=10.0, minutes=0)
+    assert db.business_totals(sid)["earned"] == 10.0
+    assert [a for a in db.list_activities(sid) if a["source"] == "business"] == []
+
+
+def test_the_page_logs_a_job_and_updates_totals(monkeypatch, tmp_path):
+    db_path = tmp_path / "biz.db"
+    Database(db_path).close()
+    at = _open(monkeypatch, db_path)
+    at.number_input(key="bizjob_charged").set_value(30.0)
+    [b for b in at.button if "Add this job" in (b.label or "")][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    totals = db.business_totals(student["id"])
+    db.close()
+    assert totals["jobs"] == 1 and totals["earned"] == 30.0
+    assert totals["minutes"] == 60  # default minutes logged as Occupational Ed

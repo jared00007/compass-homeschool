@@ -5558,13 +5558,16 @@ def render_business_builder(db: Database, student: dict[str, Any]) -> None:
 
         st.markdown("**What do you offer? Tick each one and set a price.**")
         chosen: list[dict[str, str]] = []
-        for key, emoji, label in business.PRESET_SERVICES:
+        for key, emoji, label, baseline in business.PRESET_SERVICES:
             row = st.columns([3, 1])
             on = row[0].checkbox(
                 f"{emoji} {label}", value=(label in existing), key=f"biz_svc_{key}",
             )
+            # Pre-fill a baseline price as a starting point he can change; once he
+            # has saved this service, his own price (even a blank one) wins.
+            price_default = existing[label].get("price", "") if label in existing else baseline
             price = row[1].text_input(
-                "Price", value=existing.get(label, {}).get("price", ""),
+                "Price", value=price_default,
                 key=f"biz_price_{key}", label_visibility="collapsed", placeholder="$",
             )
             if on:
@@ -5613,6 +5616,73 @@ def render_business_builder(db: Database, student: dict[str, Any]) -> None:
         st.caption("Open the downloaded file and press Print (⌘P) for a clean one-page flyer.")
     else:
         st.info("Add your business name and at least one service above, then your flyer shows up here.")
+
+
+def render_business_log(db: Database, student: dict[str, Any]) -> None:
+    """Student-facing: the money/bookkeeping side of his business. He logs each
+    job -- date, customer, what he did, what he charged, what he spent, how long
+    it took -- and sees running totals (earned, spent, profit, hours). Each job
+    with minutes logs time to Occupational Education, so the work counts as
+    school. This is the real math of the project, kept to simple dollar inputs."""
+    sid = student["id"]
+    totals = db.business_totals(sid)
+    goal = (db.get_business_profile(sid).get("goal") or "").strip()
+
+    st.markdown("### 💵 My jobs & money")
+    cols = st.columns(4)
+    cols[0].metric("Earned", f"${totals['earned']:,.2f}")
+    cols[1].metric("Spent", f"${totals['expense']:,.2f}")
+    cols[2].metric("Profit", f"${totals['profit']:,.2f}")
+    cols[3].metric("Hours", f"{round(totals['minutes'] / 60, 1)}")
+    if goal and totals["profit"] > 0:
+        # Escape the $ so Streamlit's markdown doesn't read it as LaTeX math.
+        st.caption(f"💪 \\${totals['profit']:,.2f} saved toward **{md(goal)}** — keep it up!")
+
+    with st.form("business_job_form", clear_on_submit=True):
+        st.markdown("**Log a job you did:**")
+        row1 = st.columns([1, 2, 2])
+        job_date = row1[0].date_input("Date", value=date.today(), key="bizjob_date")
+        customer = row1[1].text_input("Customer / house", key="bizjob_customer",
+                                      placeholder="e.g. Mrs. Lee")
+        description = row1[2].text_input("What you did", key="bizjob_desc",
+                                         placeholder="e.g. Raked & bagged front yard")
+        row2 = st.columns(3)
+        charged = row2[0].number_input("Charged ($)", min_value=0.0, step=5.0, value=0.0,
+                                       key="bizjob_charged")
+        spent = row2[1].number_input("Spent on supplies ($)", min_value=0.0, step=1.0,
+                                     value=0.0, key="bizjob_spent")
+        minutes = row2[2].number_input("Minutes worked", min_value=0, step=15, value=60,
+                                       key="bizjob_minutes",
+                                       help="Counts as Occupational Education school time.")
+        add = st.form_submit_button("➕ Add this job", type="primary", width="stretch")
+    if add:
+        db.add_business_job(
+            sid, job_date=job_date.isoformat(), customer=customer, description=description,
+            earned=float(charged), expense=float(spent), minutes=int(minutes),
+        )
+        st.success("Logged! Your totals updated. 💵")
+        st.rerun()
+
+    jobs = db.list_business_jobs(sid)
+    if not jobs:
+        st.caption("No jobs logged yet — add your first one above after you do it.")
+        return
+    st.caption("Your jobs — newest first:")
+    for job in jobs:
+        row = st.columns([5, 1])
+        bits = [job["job_date"]]
+        if job["customer"]:
+            bits.append(md(job["customer"]))
+        if job["description"]:
+            bits.append(md(job["description"]))
+        # Escape $ so a pair of amounts isn't read as LaTeX math by markdown.
+        earned = f"**\\${job['earned']:,.2f}**"
+        if job["expense"]:
+            earned += f" (−\\${job['expense']:,.2f} supplies)"
+        row[0].write(" · ".join(bits) + " — " + earned)
+        if row[1].button("🗑", key=f"bizjob_del_{job['id']}", help="Delete this job"):
+            db.delete_business_job(job["id"])
+            st.rerun()
 
 
 def render_quick_log(db: Database, student: dict[str, Any]) -> None:
