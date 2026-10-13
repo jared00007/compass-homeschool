@@ -57,6 +57,7 @@ from compass.ui import (
     render_khan_clear_control,
     render_khan_spinoff_tool,
     render_khan_mastery_confirmations,
+    render_khan_grade_logger,
     render_khan_review_card_form,
     render_khan_score_recorder,
     render_lightning_lesson_panel,
@@ -894,6 +895,9 @@ if mc_view == "records":
         "subject's grade by hand if a number needs overriding."
     )
     render_report_card(db, student, for_parent=True)
+
+    with st.expander("📊 Log a Khan quiz / test score into a grade"):
+        render_khan_grade_logger(db, student)
 
     st.divider()
     st.markdown("### 🗂️ The instructional record")

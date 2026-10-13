@@ -428,7 +428,7 @@ DEFAULT_SETTINGS: dict[str, str] = {
     # grades what he hands in). The English/Science/History numbers are the old
     # four-lane weights collapsed along exactly those lines -- reading added to
     # quizzes, writing added to assessment -- so each subject keeps its emphasis.
-    "grade_weights_math": "quizzes:45,mastery:35,assessment:20",
+    "grade_weights_math": "quizzes:80,assessment:20",
     "grade_weights_english": "quizzes:40,assessment:60",
     "grade_weights_science": "quizzes:55,assessment:45",
     "grade_weights_history": "quizzes:55,assessment:45",

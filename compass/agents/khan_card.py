@@ -376,6 +376,53 @@ def build_khan_checkpoint_payload(
     }
 
 
+def log_graded_score(
+    db: Any,
+    student: dict[str, Any],
+    *,
+    subject: str,
+    kind: str,
+    percent: float,
+    name: str = "",
+    on: str | None = None,
+) -> int:
+    """Record a Khan quiz or unit-test score straight into the gradebook.
+
+    The one-step way to put a score the parent read off Khan into a subject's
+    grade: creates a completed Khan card carrying the real `khan_result`, which
+    `gradebook` already counts as that subject's quiz score -- no checkpoint card
+    to find and no approval round-trip. `subject` is a WA subject key that folds
+    into a graded subject (math/science/reading|writing/history|social_studies);
+    `kind` is "quiz" or "unit_test"; `percent` is clamped to 0-100. Earns no XP
+    (it's a recorded result, not in-app work). Returns the new lesson id."""
+    kind = "unit_test" if kind == "unit_test" else "quiz"
+    pct = max(0.0, min(100.0, round(float(percent), 1)))
+    label = "Unit test" if kind == "unit_test" else "Quiz"
+    name = (name or "").strip()
+    title = f"📊 Khan {label}" + (f" — {name}" if name else "")
+    on = on or date.today().isoformat()
+    lesson_id = db.save_lesson(
+        student_id=student["id"],
+        agent=AGENT_KEY,
+        subject=subject,
+        topic=name or label,
+        title=title,
+        payload={"title": title, "activities": []},
+        strategy="parent_khan_score",
+        rationale="Parent logged a Khan quiz/test score into the gradebook.",
+        metadata={
+            "source": "khan",
+            "khan_checkpoint": True,
+            "khan_checkpoint_kind": kind,
+            "khan_result": {"kind": kind, "percent": pct, "on": on},
+            "score_log": True,
+            "no_xp": True,
+        },
+    )
+    db.set_lesson_status(lesson_id, "completed")
+    return lesson_id
+
+
 def create_khan_card(
     db: Any,
     student: dict[str, Any],

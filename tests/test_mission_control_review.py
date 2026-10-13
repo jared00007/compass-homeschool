@@ -967,3 +967,34 @@ def test_a_khan_card_is_approved_in_one_tap(monkeypatch, tmp_path):
     lesson = db.get_lesson(lid)
     db.close()
     assert lesson["status"] == "completed"  # one tap -> approved, hours logged
+
+
+def test_the_khan_grade_logger_drops_a_score_into_a_subject_grade(monkeypatch, tmp_path):
+    """Reported: driving Khan, grades were stuck because his quiz/test 100s had
+    nowhere to land. The Course-records 'Log a Khan quiz/test score' form posts a
+    score straight into the subject grade -- here a 100 submitted for Math."""
+    import compass.gradebook as gradebook
+
+    db_path = tmp_path / "gradelog.db"
+    Database(db_path).close()
+
+    at, _ = _open_review_tab(monkeypatch, db_path)
+    _switch_view(at, "records")
+
+    submit = [b for b in at.button if "Add to his grade" in (b.label or "")]
+    assert submit, "the Khan grade-logger form should render in Course records"
+    submit[0].click().run()  # defaults: Math / Quiz / 100%
+    assert not at.exception, [e.message for e in at.exception]
+
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    logged = [
+        lesson for lesson in db.list_lessons(student["id"], agent="khan", limit=50)
+        if (lesson.get("metadata") or {}).get("score_log")
+    ]
+    math = gradebook.subject_grade(db, student["id"], "math")
+    db.close()
+    assert len(logged) == 1, "the logged score should create one Khan result card"
+    assert math.graded and round(
+        [c for c in math.components if c.key == "quizzes"][0].percent
+    ) == 100

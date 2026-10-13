@@ -4753,6 +4753,70 @@ def render_khan_spinoff_tool(db: Database, student: dict[str, Any]) -> None:
         st.caption(f"⚠️ Generation unavailable: {api_msg}")
 
 
+_GRADE_LOG_SUBJECTS = (
+    ("Math", "math"),
+    ("Science", "science"),
+    ("English", "reading"),
+    ("History", "history"),
+)
+
+
+def render_khan_grade_logger(db: Database, student: dict[str, Any]) -> None:
+    """Parent-facing: drop a Khan quiz or unit-test score straight into a
+    subject's grade, in one step.
+
+    Reported: driving Khan, grades were stuck because his Khan quiz/test 100s had
+    nowhere to land in the gradebook. This records the score as a completed Khan
+    result, which the gradebook already counts as that subject's quiz score -- no
+    checkpoint card to hunt down, no approval round-trip. Quizzes and tests count
+    the same (one 'Quiz' lane); the label is just for the record."""
+    from compass.agents import khan_card
+
+    st.caption(
+        "Put a Khan **quiz or unit-test score** — the % he got, read off Khan — "
+        "straight into his grade. It counts the moment you add it."
+    )
+    with st.form("khan_grade_log_form", clear_on_submit=True):
+        cols = st.columns([2, 2, 1])
+        subject_label = cols[0].selectbox(
+            "Subject", [s[0] for s in _GRADE_LOG_SUBJECTS], key="kgl_subject"
+        )
+        kind_label = cols[1].selectbox("Quiz or test", ["Quiz", "Unit test"], key="kgl_kind")
+        percent = cols[2].number_input("Score %", 0, 100, 100, step=1, key="kgl_pct")
+        name = st.text_input(
+            "What was it? (optional)", key="kgl_name",
+            placeholder="e.g. Unit 3 — Linear equations",
+        )
+        go = st.form_submit_button("➕ Add to his grade", type="primary", width="stretch")
+    if go:
+        subject_key = dict(_GRADE_LOG_SUBJECTS)[subject_label]
+        kind = "unit_test" if kind_label == "Unit test" else "quiz"
+        khan_card.log_graded_score(
+            db, student, subject=subject_key, kind=kind, percent=int(percent), name=name,
+        )
+        st.success(
+            f"Added a {int(percent)}% {kind_label.lower()} to his {subject_label} grade. 📊"
+        )
+        st.rerun()
+
+    logged = [
+        lesson for lesson in db.list_lessons(student["id"], agent="khan", limit=500)
+        if (lesson.get("metadata") or {}).get("score_log")
+    ]
+    if logged:
+        st.caption("Recently logged — delete one if it was a mistake:")
+        for lesson in logged[:10]:
+            result = (lesson.get("metadata") or {}).get("khan_result") or {}
+            row = st.columns([6, 1])
+            row[0].write(
+                f"{md(lesson['title'])} · {subjects.label(lesson['subject'])} · "
+                f"**{result.get('percent')}%**"
+            )
+            if row[1].button("🗑", key=f"kgl_del_{lesson['id']}", help="Remove this score"):
+                db.delete_lesson(lesson["id"])
+                st.rerun()
+
+
 def render_khan_score_recorder(db: Database, student: dict[str, Any]) -> None:
     """Parent-facing OVERRIDE: hand-record (or correct) the REAL Khan score on ONE
     finished card. The day-to-day path is Landon logging his score and you approving

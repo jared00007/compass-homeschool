@@ -287,7 +287,10 @@ def test_a_skipped_lesson_does_not_drag_the_grade(db, student):
 
 def test_math_mastery_is_measured_against_what_he_has_attempted(db, student):
     """Against attempted skills, not the whole graph -- otherwise he starts
-    the year at 0% for skills the curriculum hasn't reached."""
+    the year at 0% for skills the curriculum hasn't reached. Mastery only grades
+    when math carries a `mastery` weight (the default now drops it for Khan-driven
+    families), so this enables it explicitly to test the measurement."""
+    db.set_setting("grade_weights_math", "quizzes:45,mastery:35,assessment:20")
     db.set_mastery(student["id"], "integer-operations", "mastered", score=100)
     db.set_mastery(student["id"], "fraction-operations", "in_progress", score=60)
     result = gradebook.subject_grade(db, student["id"], "math")
@@ -351,6 +354,7 @@ def test_graded_items_lists_each_activity_grade_by_name(db, student):
 
 
 def test_graded_items_lists_math_skills_individually(db, student):
+    db.set_setting("grade_weights_math", "quizzes:45,mastery:35,assessment:20")
     db.set_mastery(student["id"], "integer-operations", "mastered", score=100)
     db.set_mastery(student["id"], "fraction-operations", "in_progress", score=60)
 
@@ -389,6 +393,7 @@ def test_only_hand_ins_and_math_skills_are_editable(db, student):
 
 
 def test_a_math_skill_item_is_editable_by_its_skill_id(db, student):
+    db.set_setting("grade_weights_math", "quizzes:45,mastery:35,assessment:20")
     db.set_mastery(student["id"], "integer-operations", "in_progress", score=60)
     items = gradebook.graded_items(db, student["id"], "math")
     skill = [i for i in items if i.component == "mastery"][0]
@@ -657,3 +662,44 @@ def test_a_khan_card_in_an_ungraded_subject_stays_out_of_the_letter_grades(db, s
     for agent in gradebook.GRADED_AGENTS:
         titles = [i.title for i in gradebook.graded_items(db, student["id"], agent)]
         assert not any("Khan Academy" in t for t in titles)
+
+
+# --- Khan-driven grading: mastery dropped, scores logged straight in ------------
+
+
+def test_math_mastery_is_not_graded_by_default_now(db, student):
+    """Default math grade drops the Compass-path mastery slice (reported: "math
+    grade is stuck ... we are really driving khan"). Even with skills mastered,
+    no 'mastery' component appears -- his quiz/test scores drive math instead."""
+    db.set_mastery(student["id"], "integer-operations", "mastered", score=100)
+    result = gradebook.subject_grade(db, student["id"], "math")
+    assert not any(c.key == "mastery" for c in result.components)
+    items = gradebook.graded_items(db, student["id"], "math")
+    assert not any(i.component == "mastery" for i in items)
+
+
+def test_a_logged_khan_quiz_score_lands_in_the_subject_grade(db, student):
+    """The one-step Khan-score logger drops a quiz/test % straight into a
+    subject's grade, no checkpoint card or approval needed."""
+    from compass.agents import khan_card
+
+    khan_card.log_graded_score(
+        db, student, subject="math", kind="quiz", percent=100, name="Unit 3"
+    )
+    khan_card.log_graded_score(
+        db, student, subject="science", kind="unit_test", percent=90, name="Cells"
+    )
+    math = gradebook.subject_grade(db, student["id"], "math")
+    assert math.graded
+    assert round([c for c in math.components if c.key == "quizzes"][0].percent) == 100
+    science = gradebook.subject_grade(db, student["id"], "science")
+    assert round([c for c in science.components if c.key == "quizzes"][0].percent) == 90
+
+
+def test_migration_folds_math_mastery_weight_into_quizzes(db):
+    """Existing databases: the one-time migration folds math's `mastery` weight
+    into `quizzes` so the slice stops freezing the grade."""
+    db.set_setting("grade_weights_math", "quizzes:45,mastery:35,assessment:20")
+    db.set_setting("_math_drop_mastery_v1", "")  # clear the guard so it runs again
+    db._migrate_math_drop_mastery_slice()
+    assert db.get_setting("grade_weights_math") == "quizzes:80,assessment:20"

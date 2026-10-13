@@ -1599,6 +1599,7 @@ class Database:
         self.conn.commit()
         self._reconcile_stale_math_mastery()
         self._migrate_grade_weights_two_surface()
+        self._migrate_math_drop_mastery_slice()
         self._migrate_khan_checkpoint_icon()
         self._migrate_khan_unit_numbers()
         self._prune_retired_seed_rewards()
@@ -1700,6 +1701,41 @@ class Database:
         self.conn.execute(
             "INSERT OR REPLACE INTO settings (key, value) "
             "VALUES ('_grade_weights_two_surface_v1', '1')"
+        )
+        self.conn.commit()
+
+    def _migrate_math_drop_mastery_slice(self) -> None:
+        """One-time, flag-guarded: fold math's `mastery` weight into `quizzes`.
+
+        The mastery slice graded only Compass's own math skill graph; for a
+        family driving Khan it never moved, freezing ~a third of the math grade
+        in place (reported: "landons math grade is stuck ... we are really
+        driving khan"). Khan quiz/test scores live in the `quizzes` lane, so
+        moving the weight there lets them drive the math grade. Folds the slice
+        rather than dropping it, so the subject's total stays 100. A parent who
+        has already removed mastery (no `mastery` key) is left untouched."""
+        if self.get_setting("_math_drop_mastery_v1"):
+            return
+        raw = self.get_setting("grade_weights_math")
+        if raw and "mastery" in raw:
+            merged: dict[str, int] = {}
+            for chunk in raw.split(","):
+                key, _, value = chunk.partition(":")
+                key = key.strip()
+                try:
+                    n = int(value.strip())
+                except ValueError:
+                    continue
+                target = "quizzes" if key == "mastery" else key
+                merged[target] = merged.get(target, 0) + n
+            if merged:
+                self.set_setting(
+                    "grade_weights_math",
+                    ",".join(f"{k}:{v}" for k, v in merged.items()),
+                )
+        self.conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) "
+            "VALUES ('_math_drop_mastery_v1', '1')"
         )
         self.conn.commit()
 

@@ -139,11 +139,21 @@ def subject_grade(db: Any, student_id: int, agent: str) -> grades.SubjectGrade:
         if verdict in config.ASSESSMENT_VERDICT_SCORES:
             assessment_percents.append(float(config.ASSESSMENT_VERDICT_SCORES[verdict]))
 
+    weights = _weights(db, agent)
+    # Math mastery (Compass's own skill graph) only grades when the subject
+    # actually carries a `mastery` weight. A Khan-driven family drops that slice
+    # (grade_weights_math has no `mastery` key), so the frozen Compass-path number
+    # no longer anchors the grade -- his Khan quiz/test scores drive it instead.
+    mastery_percent = (
+        _mastery_percent(db, student_id)
+        if agent == "math" and weights.get("mastery", 0) > 0
+        else None
+    )
     grade = grades.subject_grade(
         agent,
-        _weights(db, agent),
+        weights,
         quiz_percents=quiz_percents,
-        mastery_percent=_mastery_percent(db, student_id) if agent == "math" else None,
+        mastery_percent=mastery_percent,
         assessment_percents=assessment_percents,
     )
     return _apply_override(db, agent, grade)
@@ -308,8 +318,11 @@ def graded_items(db: Any, student_id: int, agent: str) -> list[GradedItem]:
             )
 
     # Math mastery is per-skill, not per-lesson -- each attempted skill is its
-    # own line so a parent can see exactly which ones haven't landed yet.
-    if agent == "math":
+    # own line so a parent can see exactly which ones haven't landed yet. Only
+    # listed when math actually carries a `mastery` weight; a Khan-driven family
+    # drops that slice, so the frozen Compass-path skills no longer show as
+    # grade items (kept in step with subject_grade, which also gates on weight).
+    if agent == "math" and _weights(db, agent).get("mastery", 0) > 0:
         mastery = db.mastery_map(student_id)
         for skill_id, row in mastery.items():
             skill = math_graph.MATH_GRAPH.get(skill_id)
