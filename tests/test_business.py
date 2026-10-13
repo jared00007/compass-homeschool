@@ -85,6 +85,85 @@ def test_flyer_document_is_a_standalone_printable_page():
     assert "Rake" in doc
 
 
+# --- door-knock script ----------------------------------------------------------
+
+
+def test_doorknock_script_is_built_from_his_details():
+    profile = {
+        "name": "Leaf Crew",
+        "goal": "a new bike",
+        "services": [
+            {"label": "Rake leaves"}, {"label": "Bag the leaves"}, {"label": "Clear walkways"},
+        ],
+    }
+    script = business.doorknock_script(profile, "Landon")
+    assert "Landon" in script
+    assert "Leaf Crew" in script
+    assert "rake leaves" in script  # lower-cased into the offer line
+    assert "a new bike" in script   # goal line only appears when set
+    assert "flyer" in script.lower()
+
+
+def test_doorknock_script_handles_a_bare_profile():
+    # No name, no services, no goal -- still a usable, friendly script.
+    script = business.doorknock_script({"name": "", "services": []})
+    assert "yard work" in script.lower()
+    assert "a new bike" not in script
+    assert script.strip()
+
+
+# --- receipt --------------------------------------------------------------------
+
+
+def test_receipt_shows_the_job_details_and_amount():
+    profile = {"name": "Leaf Crew", "contact": "(555) 111-2222"}
+    job = {"id": 7, "job_date": "2026-10-13", "customer": "Mrs. Lee",
+           "description": "Raked front yard", "earned": 25.0}
+    html = business.receipt_inner_html(profile, job, "Landon")
+    assert "Leaf Crew" in html
+    assert "Mrs. Lee" in html
+    assert "Raked front yard" in html
+    assert "$25.00" in html
+    assert "Receipt #7" in html
+    assert "(555) 111-2222" in html
+
+
+def test_receipt_escapes_user_input_and_survives_a_missing_amount():
+    job = {"job_date": "2026-10-13", "customer": "<b>hax</b>", "earned": None}
+    html = business.receipt_inner_html({"name": "X"}, job)
+    assert "<b>hax</b>" not in html
+    assert "&lt;b&gt;hax" in html
+    assert "$0.00" in html  # None earned falls back to zero, never crashes
+
+
+def test_receipt_document_is_a_standalone_printable_page():
+    doc = business.receipt_document(
+        {"name": "X"}, {"job_date": "2026-10-13", "description": "Rake", "earned": 20.0}
+    )
+    assert doc.startswith("<!doctype html>")
+    assert "</html>" in doc
+    assert "$20.00" in doc
+
+
+# --- "help me write it" request shape -------------------------------------------
+
+
+def test_copy_schema_requires_slogan_and_about():
+    assert business.COPY_SCHEMA["required"] == ["slogan", "about"]
+    assert business.COPY_SCHEMA["additionalProperties"] is False
+
+
+def test_copy_system_prompt_carries_his_details():
+    prompt = business.copy_system_prompt(
+        name="Leaf Crew", age=13, interests="Minecraft",
+        services=["Rake leaves", "Clear walkways"],
+    )
+    assert "Leaf Crew" in prompt
+    assert "Rake leaves" in prompt and "Clear walkways" in prompt
+    assert "Minecraft" in prompt
+    assert "13-year-old" in prompt
+
+
 # --- storage --------------------------------------------------------------------
 
 
@@ -171,6 +250,47 @@ def test_a_job_logs_occupational_education_hours_and_delete_removes_them(db, stu
     # Deleting the job removes its logged hours too.
     db.delete_business_job(job_id)
     assert [a for a in db.list_activities(sid) if a["source"] == "business"] == []
+
+
+# --- the My Business Big Project ------------------------------------------------
+
+
+def test_ensure_business_project_creates_a_steps_project_once(db, student):
+    sid = student["id"]
+    project_id = db.ensure_business_project(sid)
+    projects = [p for p in db.list_big_projects(sid) if p["kind"] == "business"]
+    assert len(projects) == 1
+    assert projects[0]["id"] == project_id
+    assert projects[0]["title"] == "My Yard Business"
+
+    steps = db.list_project_steps(project_id)
+    assert len(steps) >= 4
+    # First step is live (To Do); the rest start in Backlog.
+    assert steps[0]["active"] == 1
+    assert all(s["active"] == 0 for s in steps[1:])
+    # The work counts as real school time -- Occupational Education.
+    assert all(s["credit_subject"] == "occupational_education" for s in steps)
+
+    # Idempotent: a second call returns the same project and adds no steps.
+    again = db.ensure_business_project(sid)
+    assert again == project_id
+    assert len(db.list_project_steps(project_id)) == len(steps)
+
+
+def test_the_page_mirrors_the_business_onto_the_big_projects_board(monkeypatch, tmp_path):
+    db_path = tmp_path / "biz.db"
+    Database(db_path).close()
+    at = _open(monkeypatch, db_path)
+    [t for t in at.text_input if t.label == "Business name"][0].set_value("Landon's Leaf Crew")
+    at.checkbox(key="biz_svc_rake").check()
+    [b for b in at.button if "Save my business" in (b.label or "")][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    projects = [p for p in db.list_big_projects(student["id"]) if p["kind"] == "business"]
+    db.close()
+    assert len(projects) == 1  # saving a business seeds the project on the board
 
 
 def test_a_zero_minute_job_tracks_money_without_logging_hours(db, student):

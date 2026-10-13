@@ -16,6 +16,12 @@ from compass.ui import page_setup, render_business_builder, render_business_log
 
 db, student = page_setup("My Business", icon="🍂")
 
+# Once he's actually named his business, mirror it onto his Big Projects board
+# as a step-by-step plan (idempotent -- only ever one). Nothing appears there
+# until he's started, so an empty page never clutters the board.
+if (db.get_business_profile(student["id"]).get("name") or "").strip():
+    db.ensure_business_project(student["id"])
+
 st.title("🍂 My Business")
 render_business_builder(db, student)
 

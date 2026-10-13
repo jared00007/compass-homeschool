@@ -1535,6 +1535,7 @@ class Database:
         # before this column did was an ordinary fixed-order project, which
         # is exactly what 'linear' already means.
         self._ensure_column("big_projects", "mode", "TEXT NOT NULL DEFAULT 'linear'")
+        self._migrate_big_projects_drop_kind_check()
         self._ensure_column(
             "project_steps", "parent_step_id", "INTEGER REFERENCES project_steps(id) ON DELETE CASCADE"
         )
@@ -1944,6 +1945,59 @@ class Database:
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_activities_course ON activities (course_id)"
         )
+        self.conn.commit()
+        self.conn.execute("PRAGMA foreign_keys = ON")
+
+    def _migrate_big_projects_drop_kind_check(self) -> None:
+        """A database created fresh from an older schema.sql baked a
+        `CHECK (kind IN ('steps', 'travel_log'))` into `big_projects`, so
+        inserting the newer 'business' kind (Database.ensure_business_project)
+        fails outright. SQLite still can't ALTER a CHECK in place, so rebuild the
+        table without the kind CHECK -- matching the choice already made for
+        already-migrated databases, where `kind` was added via ALTER with no
+        CHECK at all (see migrate()) and validation lives in Python.
+
+        No-op unless that exact restrictive CHECK is present: a database that got
+        `kind` via the ALTER path (no CHECK) and one already rebuilt here both
+        skip, so this only ever runs once, on the databases that need it.
+
+        Same new-name-first, rename-into-the-vacated-name shape as the
+        `activities` rebuilds above, for the same reason: `project_steps`
+        references `big_projects` by that name (ON DELETE CASCADE), so building
+        `big_projects_new` and renaming it into the freed `big_projects` name
+        never disturbs that foreign key. Foreign keys are off across the swap so
+        dropping the old table can't cascade-delete the student's project steps;
+        the rows are preserved with their ids, so those references still line up."""
+        table = _row(
+            self.conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='big_projects'"
+            )
+        )
+        if table is None or "kind IN ('steps', 'travel_log')" not in (table["sql"] or ""):
+            return  # no table yet, got kind via ALTER (no CHECK), or already rebuilt
+        self.conn.commit()
+        self.conn.execute("PRAGMA foreign_keys = OFF")
+        self.conn.execute(
+            "CREATE TABLE big_projects_new ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,"
+            "title TEXT NOT NULL,"
+            "vision TEXT NOT NULL DEFAULT '',"
+            "sort_order INTEGER NOT NULL DEFAULT 0,"
+            "shelved INTEGER NOT NULL DEFAULT 0,"
+            "kind TEXT NOT NULL DEFAULT 'steps',"
+            "mode TEXT NOT NULL DEFAULT 'linear' CHECK (mode IN ('linear', 'choice')),"
+            "created_at TEXT NOT NULL DEFAULT (datetime('now'))"
+            ")"
+        )
+        self.conn.execute(
+            "INSERT INTO big_projects_new "
+            "(id, student_id, title, vision, sort_order, shelved, kind, mode, created_at) "
+            "SELECT id, student_id, title, vision, sort_order, shelved, kind, mode, created_at "
+            "FROM big_projects"
+        )
+        self.conn.execute("DROP TABLE big_projects")
+        self.conn.execute("ALTER TABLE big_projects_new RENAME TO big_projects")
         self.conn.commit()
         self.conn.execute("PRAGMA foreign_keys = ON")
 
@@ -5015,6 +5069,66 @@ class Database:
             "Every trip he's written up, all in one place.",
             kind="travel_log",
         )
+
+    # The step-by-step plan behind the "My Business" project -- bite-size, real,
+    # and ordered the way a kid would actually start a yard-work business. All
+    # credited to Occupational Education (the WA subject the work already logs
+    # to via the money log), so progress here is real school time. Kept concrete
+    # and few: a 13-year-old sees a short, finishable list, not a syllabus.
+    _BUSINESS_STEPS: tuple[tuple[str, str], ...] = (
+        ("Name your business & pick what you'll offer",
+         "Open the My Business page. Choose a business name and tick the jobs "
+         "you'll do (raking, bagging, clearing walkways). Set a fair price for "
+         "each one."),
+        ("Make your flyer",
+         "Fill in your slogan and a line about why you're good at this, then "
+         "download your flyer and print a stack of them."),
+        ("Practice your door-knock",
+         "Read your door-knock script out loud a few times until it feels easy. "
+         "Practice on a parent first."),
+        ("Get your first 3 customers",
+         "Hand out flyers and knock on doors in your area. Your goal: line up "
+         "three yards to do."),
+        ("Do the work & log every job",
+         "Do a great job on each yard. After each one, log it in My Business -- "
+         "the date, who it was for, what you charged -- and hand them a receipt."),
+        ("Count your money & plan what's next",
+         "Look at your totals: how much did you earn, spend, and keep? Decide "
+         "what to do with your profit and whether to add a new service."),
+    )
+
+    def ensure_business_project(self, student_id: int) -> int:
+        """Folds Landon's 'start a little business' project in as a real Big
+        Project on his board, so the hands-on work on the My Business page has a
+        visible step-by-step plan beside his academic projects. Uses
+        `kind='business'` -- it renders like an ordinary steps project (progress
+        bar, backlog, 'work on this one' pick) with none of the travel-log
+        special-casing, and stays out of the starter-catalog machinery, which
+        keys off `kind='steps'` and project title.
+
+        Idempotent by `kind` (a parent renaming it won't spawn a duplicate), and
+        seeds the kid-friendly step list once on first creation -- the first step
+        active (To Do), the rest in Backlog to pull up as he goes. Returns the
+        existing one's id if already present.
+        """
+        existing = self.conn.execute(
+            "SELECT id FROM big_projects WHERE student_id = ? AND kind = 'business'",
+            (student_id,),
+        ).fetchone()
+        if existing:
+            return int(existing["id"])
+        project_id = self.add_big_project(
+            student_id, "My Yard Business",
+            "Start and run a real neighborhood yard-work business, step by step.",
+            kind="business",
+        )
+        for i, (title, description) in enumerate(self._BUSINESS_STEPS):
+            self.add_project_step(
+                project_id, title, description=description,
+                credit_subject="occupational_education",
+                active=(i == 0),
+            )
+        return project_id
 
     def set_big_project_shelved(self, project_id: int, shelved: bool) -> None:
         """"Not an interest" -- a reversible parent-only back-burner, not a

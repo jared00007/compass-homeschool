@@ -232,6 +232,66 @@ def test_migrate_rebuilds_activities_to_allow_projects_tier(db, student):
         db.conn.commit()
 
 
+def test_migrate_rebuilds_big_projects_to_allow_business_kind(db, student):
+    """big_projects.kind had a CHECK listing only 'steps'/'travel_log' in an
+    older fresh schema, so inserting the newer 'business' kind failed. The
+    rebuild must drop that CHECK, keep existing projects (same ids, so
+    project_steps' foreign keys still resolve), and make a business project
+    actually insertable."""
+    db.conn.execute("PRAGMA foreign_keys = OFF")
+    db.conn.execute("DROP TABLE project_steps")
+    db.conn.execute("DROP TABLE big_projects")
+    db.conn.execute(
+        "CREATE TABLE big_projects (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "student_id INTEGER NOT NULL, title TEXT NOT NULL, vision TEXT NOT NULL DEFAULT '', "
+        "sort_order INTEGER NOT NULL DEFAULT 0, shelved INTEGER NOT NULL DEFAULT 0, "
+        "kind TEXT NOT NULL DEFAULT 'steps' CHECK (kind IN ('steps', 'travel_log')), "
+        "mode TEXT NOT NULL DEFAULT 'linear' CHECK (mode IN ('linear', 'choice')), "
+        "created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+    )
+    db.conn.execute("PRAGMA foreign_keys = ON")
+    old_id = db.conn.execute(
+        "INSERT INTO big_projects (student_id, title, kind) VALUES (?, ?, ?)",
+        (student["id"], "A regular project", "steps"),
+    ).lastrowid
+    db.conn.commit()
+    # Inserting 'business' is impossible against the old CHECK.
+    with pytest.raises(sqlite3.IntegrityError):
+        db.conn.execute(
+            "INSERT INTO big_projects (student_id, title, kind) VALUES (?, ?, ?)",
+            (student["id"], "Nope", "business"),
+        )
+    db.conn.rollback()
+
+    db.migrate()
+
+    kept = db.conn.execute(
+        "SELECT * FROM big_projects WHERE id = ?", (old_id,)
+    ).fetchone()
+    assert kept["title"] == "A regular project"  # the existing project survived
+    # The whole point: a 'business' project now actually creates.
+    biz_id = db.ensure_business_project(student["id"])
+    assert biz_id > 0
+    assert any(p["kind"] == "business" for p in db.list_big_projects(student["id"]))
+
+
+def test_migrate_leaves_a_big_projects_table_without_the_kind_check_alone(db, student):
+    """A database that got `kind` via the ALTER path has no CHECK at all; the
+    rebuild guard must key off the restrictive CHECK text, not run blindly, so
+    an already-permissive table (and the project ids in it) is left untouched."""
+    pid = db.add_big_project(student["id"], "Existing", kind="steps")
+    sql_before = db.conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='big_projects'"
+    ).fetchone()["sql"]
+    assert "kind IN ('steps', 'travel_log')" not in sql_before  # schema is already permissive
+
+    db.migrate()  # must be a no-op for this table
+
+    assert db.conn.execute(
+        "SELECT title FROM big_projects WHERE id = ?", (pid,)
+    ).fetchone()["title"] == "Existing"
+
+
 def test_migrate_upgrades_activities_already_allowing_projects_to_also_allow_wellness(db, student):
     """A database migrated mid-session (Big Projects added, Morning Routine
     not yet) has a CHECK constraint listing 'projects' but not 'wellness'.

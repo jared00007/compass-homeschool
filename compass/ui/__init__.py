@@ -5518,6 +5518,8 @@ def render_business_builder(db: Database, student: dict[str, Any]) -> None:
     example slogans to borrow, everything in one form so editing never jumps the
     page. The flyer renders live below once he has a name and one service."""
     from compass import business
+    from compass.agents import LessonGenerationError, api_available
+    from compass.agents.llm import generate_lesson
 
     profile = db.get_business_profile(student["id"])
     name_of = md(student.get("name") or "")
@@ -5526,20 +5528,59 @@ def render_business_builder(db: Database, student: dict[str, Any]) -> None:
         "do, and I'll make you a flyer you can print and hand to neighbors. 🍂"
     )
 
+    # Seed the three "wordy" fields into session_state so the "Help me write it"
+    # button (which must live outside the form) can fill them in and rerun.
+    for field in ("name", "slogan", "about"):
+        skey = f"biz_{field}"
+        if skey not in st.session_state:
+            st.session_state[skey] = profile.get(field, "")
+
+    # ✨ Help me write it -- the slogan + about line are where a 13-year-old
+    # freezes, so offer to draft them from what he's already entered. Outside the
+    # form (a form may only hold its own submit button) and gated on the API.
+    api_ok, api_msg = api_available()
+    writer = st.columns([3, 2])
+    if writer[0].button(
+        "✨ Help me write my slogan & about",
+        key="biz_ai_copy", disabled=not api_ok, width="stretch",
+        help="I'll suggest a slogan and an 'about me' line from your details.",
+    ):
+        with st.spinner("Writing some ideas for you…"):
+            try:
+                suggestion = generate_lesson(
+                    system=business.copy_system_prompt(
+                        name=st.session_state.get("biz_name", ""),
+                        age=student.get("age") or 13,
+                        interests=db.interests_text(student["id"]) or "a range of things",
+                        services=[s["label"] for s in (profile.get("services") or [])],
+                    ),
+                    user_prompt=business.COPY_USER_PROMPT,
+                    schema=business.COPY_SCHEMA,
+                    effort=config.DEFAULT_EFFORT,
+                )
+                st.session_state["biz_slogan"] = suggestion.get("slogan", "").strip()
+                st.session_state["biz_about"] = suggestion.get("about", "").strip()
+                st.toast("Filled in some ideas — tweak them to sound like you! ✍️")
+                st.rerun()
+            except LessonGenerationError as exc:
+                st.error(str(exc))
+    if not api_ok:
+        writer[1].caption(f"⚠️ {api_msg}")
+
     existing = {s["label"]: s for s in (profile.get("services") or [])}
     with st.form("business_form"):
         biz_name = st.text_input(
-            "Business name", value=profile.get("name", ""),
+            "Business name", key="biz_name",
             placeholder="e.g. Landon's Leaf Crew",
         )
         st.caption("Need a slogan? Borrow one: " + " · ".join(business.SLOGAN_IDEAS[:3]))
         slogan = st.text_input(
-            "Slogan — a short catchy line", value=profile.get("slogan", ""),
+            "Slogan — a short catchy line", key="biz_slogan",
             placeholder="e.g. Your yard, done right.",
         )
         about = st.text_area(
             "One line about you — why you're good at this",
-            value=profile.get("about", ""), height=70,
+            key="biz_about", height=70,
             placeholder="e.g. I work hard, show up on time, and leave your yard spotless.",
         )
         cols = st.columns(2)
@@ -5614,6 +5655,18 @@ def render_business_builder(db: Database, student: dict[str, Any]) -> None:
             file_name="my-flyer.html", mime="text/html", key="biz_flyer_dl",
         )
         st.caption("Open the downloaded file and press Print (⌘P) for a clean one-page flyer.")
+
+        # The door-knock script -- the words to say when he walks up. Built from
+        # his own details so it's never generic; plain text to read/practice.
+        script = business.doorknock_script(profile, name_of)
+        with st.expander("🚪 What do I say at the door? (my script)"):
+            st.caption("Read this out loud a few times until it feels easy. Practice on a parent first!")
+            st.code(script, language=None, wrap_lines=True)
+            st.download_button(
+                "⬇️ Download my script",
+                data=script, file_name="my-door-script.txt", mime="text/plain",
+                key="biz_script_dl",
+            )
     else:
         st.info("Add your business name and at least one service above, then your flyer shows up here.")
 
@@ -5624,9 +5677,13 @@ def render_business_log(db: Database, student: dict[str, Any]) -> None:
     it took -- and sees running totals (earned, spent, profit, hours). Each job
     with minutes logs time to Occupational Education, so the work counts as
     school. This is the real math of the project, kept to simple dollar inputs."""
+    from compass import business
+
     sid = student["id"]
+    student_name = student.get("name") or ""
     totals = db.business_totals(sid)
-    goal = (db.get_business_profile(sid).get("goal") or "").strip()
+    profile = db.get_business_profile(sid)
+    goal = (profile.get("goal") or "").strip()
 
     st.markdown("### 💵 My jobs & money")
     cols = st.columns(4)
@@ -5667,9 +5724,9 @@ def render_business_log(db: Database, student: dict[str, Any]) -> None:
     if not jobs:
         st.caption("No jobs logged yet — add your first one above after you do it.")
         return
-    st.caption("Your jobs — newest first:")
+    st.caption("Your jobs — newest first. Tap 🧾 to make a receipt to give your customer.")
     for job in jobs:
-        row = st.columns([5, 1])
+        row = st.columns([5, 1, 1])
         bits = [job["job_date"]]
         if job["customer"]:
             bits.append(md(job["customer"]))
@@ -5680,7 +5737,12 @@ def render_business_log(db: Database, student: dict[str, Any]) -> None:
         if job["expense"]:
             earned += f" (−\\${job['expense']:,.2f} supplies)"
         row[0].write(" · ".join(bits) + " — " + earned)
-        if row[1].button("🗑", key=f"bizjob_del_{job['id']}", help="Delete this job"):
+        row[1].download_button(
+            "🧾", data=business.receipt_document(profile, job, student_name),
+            file_name=f"receipt-{job['id']}.html", mime="text/html",
+            key=f"bizjob_receipt_{job['id']}", help="Download a receipt for this job",
+        )
+        if row[2].button("🗑", key=f"bizjob_del_{job['id']}", help="Delete this job"):
             db.delete_business_job(job["id"])
             st.rerun()
 

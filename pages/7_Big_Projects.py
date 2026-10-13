@@ -249,8 +249,11 @@ visible_projects = [p for p in projects if not p["shelved"]]
 # very first page view, but it isn't a real "you have a project" in the
 # sense this banner and the starter-catalog button below care about.
 has_steps_project = any(p["kind"] == "steps" for p in projects)
+# The My Business project has real steps too but isn't a starter-catalog option;
+# its presence shouldn't make the page claim there are "no projects yet".
+has_business_project = any(p["kind"] == "business" for p in projects)
 
-if not has_steps_project:
+if not has_steps_project and not has_business_project:
     st.info("No projects yet.")
     if st.button("Add this year's starter projects", type="primary"):
         count = db.seed_big_projects(student["id"])

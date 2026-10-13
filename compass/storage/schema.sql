@@ -458,11 +458,16 @@ CREATE TABLE IF NOT EXISTS big_projects (
     sort_order  INTEGER NOT NULL DEFAULT 0,
     shelved     INTEGER NOT NULL DEFAULT 0,  -- "not an interest" -- parent-only, reversible
     -- 'steps' is the ordinary project (this table's own project_steps rows).
-    -- 'travel_log' is the one special case: a folder around the *existing*
-    -- Travel Journal (travel_entries, unchanged) so it can sit organized
-    -- alongside other projects -- see Database.ensure_travel_log_project.
-    -- It never gets project_steps rows of its own.
-    kind        TEXT NOT NULL DEFAULT 'steps' CHECK (kind IN ('steps', 'travel_log')),
+    -- 'travel_log' is a special case: a folder around the *existing* Travel
+    -- Journal (travel_entries, unchanged) so it can sit organized alongside
+    -- other projects -- see Database.ensure_travel_log_project; it never gets
+    -- project_steps rows of its own. 'business' is Landon's yard-work project
+    -- (see Database.ensure_business_project) and renders like an ordinary steps
+    -- project. No CHECK: `kind` is only ever written by internal code (never
+    -- user input), and its validation lives in Python -- the same choice the
+    -- ALTER-added column takes for already-migrated databases (see migrate()),
+    -- so a new kind never means rebuilding this table again.
+    kind        TEXT NOT NULL DEFAULT 'steps',
     -- 'linear' is the ordinary project above: a fixed, ordered pipeline.
     -- 'choice' is a branching project instead -- project_steps.parent_step_id
     -- turns the flat sort_order sequence into a tree, and finishing a step
