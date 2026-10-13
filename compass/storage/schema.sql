@@ -569,6 +569,20 @@ CREATE TABLE IF NOT EXISTS art_prompts (
 );
 
 -- ---------------------------------------------------------------------------
+-- Business profile -- the homeschool "start a little business" project. One
+-- per student: a JSON blob of the details he enters (name, slogan, services &
+-- prices, contact, savings goal) that the app turns into a printable flyer.
+-- Stored as JSON because the shape is small, self-contained, and read/written
+-- whole; see compass/business.py for the fields.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS business_profile (
+    student_id INTEGER PRIMARY KEY REFERENCES students(id) ON DELETE CASCADE,
+    data       TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ---------------------------------------------------------------------------
 -- Morning routine log -- which stretch/breathing/mindfulness routine
 -- (compass/morning_routines.py) he did to start the day. One per student per
 -- day: unlike Check-In, a morning routine is fundamentally a single event,

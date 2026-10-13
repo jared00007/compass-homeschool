@@ -4281,6 +4281,39 @@ class Database:
         )
         self.conn.commit()
 
+    # -- business profile (the "start a little business" project) ---------------
+
+    def get_business_profile(self, student_id: int) -> dict[str, Any]:
+        """His stored business details, or an empty default when he hasn't set
+        any up yet. Always returns a dict (never None), so callers can read
+        fields straight off it."""
+        from compass import business
+
+        row = _row(
+            self.conn.execute(
+                "SELECT data FROM business_profile WHERE student_id = ?", (student_id,)
+            )
+        )
+        profile = business.default_profile()
+        if row and row["data"]:
+            try:
+                stored = json.loads(row["data"])
+            except (TypeError, ValueError):
+                stored = {}
+            if isinstance(stored, dict):
+                profile.update(stored)
+        return profile
+
+    def save_business_profile(self, student_id: int, data: dict[str, Any]) -> None:
+        """Store (replace) his business profile -- one row per student."""
+        self.conn.execute(
+            "INSERT INTO business_profile (student_id, data) VALUES (?, ?) "
+            "ON CONFLICT(student_id) DO UPDATE SET "
+            "data = excluded.data, updated_at = datetime('now')",
+            (student_id, json.dumps(data)),
+        )
+        self.conn.commit()
+
     def complete_enrichment_activity(
         self, lesson_id: int, student_id: int, occurred_on: str | None = None,
         reflection: str = "",

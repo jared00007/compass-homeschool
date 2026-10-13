@@ -210,6 +210,7 @@ def _render_nav() -> None:
     st.page_link("pages/17_Courses.py", label="Courses", icon="📚")
     st.page_link("pages/7_Big_Projects.py", label="Big Projects", icon="🎬")
     st.page_link("pages/6_Life_Skills.py", label="Life Skills", icon="🛠️")
+    st.page_link("pages/19_My_Business.py", label="My Business", icon="🍂")
     st.page_link("pages/8_Check_In.py", label="Check In", icon="💬")
     st.page_link("pages/16_Quizzes.py", label="Quizzes", icon="📝")
     if is_parent():
@@ -5506,6 +5507,112 @@ def render_enrichment_generator(db: Database, student: dict[str, Any]) -> None:
                     else:
                         st.toast(f"{spec['label']} activity ready — it's on his Home. {spec['emoji']}")
                         st.rerun()
+
+
+def render_business_builder(db: Database, student: dict[str, Any]) -> None:
+    """Student-facing: his 'start a little business' project. He fills in a few
+    concrete fields -- name, what he offers and for how much, a line about
+    himself, how to reach him -- and the app turns it into a printable flyer.
+
+    Built kid-friendly for a 13-year-old: short fields, tick-a-service pricing,
+    example slogans to borrow, everything in one form so editing never jumps the
+    page. The flyer renders live below once he has a name and one service."""
+    from compass import business
+
+    profile = db.get_business_profile(student["id"])
+    name_of = md(student.get("name") or "")
+    st.caption(
+        "Set up your own yard-work business! Fill in the boxes, tick what you'll "
+        "do, and I'll make you a flyer you can print and hand to neighbors. 🍂"
+    )
+
+    existing = {s["label"]: s for s in (profile.get("services") or [])}
+    with st.form("business_form"):
+        biz_name = st.text_input(
+            "Business name", value=profile.get("name", ""),
+            placeholder="e.g. Landon's Leaf Crew",
+        )
+        st.caption("Need a slogan? Borrow one: " + " · ".join(business.SLOGAN_IDEAS[:3]))
+        slogan = st.text_input(
+            "Slogan — a short catchy line", value=profile.get("slogan", ""),
+            placeholder="e.g. Your yard, done right.",
+        )
+        about = st.text_area(
+            "One line about you — why you're good at this",
+            value=profile.get("about", ""), height=70,
+            placeholder="e.g. I work hard, show up on time, and leave your yard spotless.",
+        )
+        cols = st.columns(2)
+        area = cols[0].text_input(
+            "Where you work", value=profile.get("area", ""),
+            placeholder="e.g. Maple Street & nearby",
+        )
+        contact = cols[1].text_input(
+            "How to book you (a parent's phone/email)", value=profile.get("contact", ""),
+            placeholder="e.g. (555) 123-4567",
+        )
+        goal = st.text_input(
+            "What are you saving for? (optional)", value=profile.get("goal", ""),
+            placeholder="e.g. a new mountain bike",
+        )
+
+        st.markdown("**What do you offer? Tick each one and set a price.**")
+        chosen: list[dict[str, str]] = []
+        for key, emoji, label in business.PRESET_SERVICES:
+            row = st.columns([3, 1])
+            on = row[0].checkbox(
+                f"{emoji} {label}", value=(label in existing), key=f"biz_svc_{key}",
+            )
+            price = row[1].text_input(
+                "Price", value=existing.get(label, {}).get("price", ""),
+                key=f"biz_price_{key}", label_visibility="collapsed", placeholder="$",
+            )
+            if on:
+                chosen.append({"emoji": emoji, "label": label, "price": price.strip()})
+
+        st.caption("Add your own, if you want:")
+        customs = [s for s in (profile.get("services") or []) if s.get("label") not in
+                   {p[2] for p in business.PRESET_SERVICES}]
+        for i in range(2):
+            prefill = customs[i] if i < len(customs) else {}
+            row = st.columns([3, 1])
+            cname = row[0].text_input(
+                "Custom service", value=prefill.get("label", ""),
+                key=f"biz_custom_{i}", label_visibility="collapsed",
+                placeholder="e.g. Shovel snow",
+            )
+            cprice = row[1].text_input(
+                "Price", value=prefill.get("price", ""),
+                key=f"biz_customprice_{i}", label_visibility="collapsed", placeholder="$",
+            )
+            if cname.strip():
+                chosen.append({"emoji": "✅", "label": cname.strip(), "price": cprice.strip()})
+
+        saved = st.form_submit_button("💾 Save my business", type="primary", width="stretch")
+
+    if saved:
+        profile.update({
+            "name": biz_name.strip(), "slogan": slogan.strip(), "about": about.strip(),
+            "area": area.strip(), "contact": contact.strip(), "goal": goal.strip(),
+            "services": chosen,
+        })
+        db.save_business_profile(student["id"], profile)
+        st.success("Saved! Your flyer is below. 🍂")
+        st.rerun()
+
+    st.divider()
+    profile = db.get_business_profile(student["id"])
+    if business.is_ready_for_flyer(profile):
+        st.markdown("### 📄 Your flyer")
+        st.markdown(business.flyer_inner_html(profile, name_of), unsafe_allow_html=True)
+        st.download_button(
+            "⬇️ Download my flyer to print",
+            data=business.flyer_document(profile, name_of),
+            file_name="my-flyer.html", mime="text/html", key="biz_flyer_dl",
+        )
+        st.caption("Open the downloaded file and press Print (⌘P) for a clean one-page flyer.")
+    else:
+        st.info("Add your business name and at least one service above, then your flyer shows up here.")
 
 
 def render_quick_log(db: Database, student: dict[str, Any]) -> None:
