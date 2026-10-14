@@ -63,7 +63,6 @@ def default_profile() -> dict[str, Any]:
         "area": "",
         # The flyer's closing line -- how he follows up, in person. No phone/email.
         "closing": DEFAULT_CLOSING,
-        "goal": "",
         # Each service: {"emoji", "label", "price"} -- preset or custom.
         "services": [],
     }
@@ -111,7 +110,6 @@ def flyer_inner_html(profile: dict[str, Any], student_name: str = "") -> str:
     # The closing line is how he follows up -- in person, no phone/email. A blank
     # one falls back to the friendly default rather than leaving the flyer open.
     closing = _e(profile.get("closing")) or _e(DEFAULT_CLOSING)
-    goal = _e(profile.get("goal"))
     who = _e(student_name)
 
     accent = "#c0553b"      # warm autumn red
@@ -149,10 +147,6 @@ def flyer_inner_html(profile: dict[str, Any], student_name: str = "") -> str:
         f'padding:14px 18px; text-align:center; font-size:16px; font-weight:700; line-height:1.4;">'
         f"👋 {closing}</div>"
     )
-    goal_block = (
-        f'<div style="margin-top:10px; text-align:center; font-size:12px; color:#8a7a5c;">'
-        f"Every job helps me save for {goal} — thanks for the work!</div>" if goal else ""
-    )
     by_block = (
         f'<div style="margin-top:2px; font-size:13px; color:#8a7a5c;">Run by {who}</div>'
         if who else ""
@@ -172,7 +166,7 @@ def flyer_inner_html(profile: dict[str, Any], student_name: str = "") -> str:
         f'    <div style="font-size:13px; font-weight:800; text-transform:uppercase; '
         f'letter-spacing:.08em; color:{accent}; margin-bottom:4px;">What I do</div>'
         f"    {services_block}"
-        f"    {about_block}{area_block}{contact_block}{goal_block}"
+        f"    {about_block}{area_block}{contact_block}"
         f"  </div>"
         f"</div>"
     )
@@ -221,24 +215,22 @@ def doorknock_script(profile: dict[str, Any], student_name: str = "") -> str:
 
     hello = f"Hi! My name is {who}." if who else "Hi there!"
     biz = f"I started my own little business called {name}." if name else "I started my own little yard-work business."
-    goal = (profile.get("goal") or "").strip()
 
     lines = [
         hello + " I live right here in the neighborhood.",
         biz,
         f"I can {offer} — I work hard and do a really good job.",
         "Would you like your yard done this week?",
+        "Here's a flyer with everything I offer. If you'd like, I can stop back "
+        "by later this week to talk more. Thanks so much!",
     ]
-    if goal:
-        lines.append(f"I'm saving up for {goal}, so every job really helps.")
-    lines.append("Here's a flyer with everything I offer and how to reach me. Thanks so much!")
 
     tips = (
         "— Tips —\n"
         "• Smile and look them in the eye.\n"
         "• Speak slow and a little louder than feels normal.\n"
         "• If they say no, say \"No problem, have a great day!\" and move on.\n"
-        "• Always hand them a flyer so they can call you later."
+        "• Always hand them a flyer so they can find you again."
     )
     return "\n".join(lines) + "\n\n" + tips
 

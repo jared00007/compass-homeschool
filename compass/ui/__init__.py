@@ -5601,12 +5601,7 @@ def render_business_builder(db: Database, student: dict[str, Any]) -> None:
         )
         st.caption(
             "🔒 **No phone number or email** — the safe way for you to do this. You'll "
-            "hand neighbors the flyer and offer to **stop back by to talk**. A parent "
-            "goes with you and helps set up the jobs."
-        )
-        goal = st.text_input(
-            "What are you saving for? (optional)", value=profile.get("goal", ""),
-            placeholder="e.g. a new mountain bike",
+            "hand neighbors the flyer and offer to **stop back by to talk**."
         )
 
         st.markdown("**What do you offer? Tick each one and set a price.**")
@@ -5649,7 +5644,7 @@ def render_business_builder(db: Database, student: dict[str, Any]) -> None:
     if saved:
         profile.update({
             "name": biz_name.strip(), "slogan": slogan.strip(), "about": about.strip(),
-            "area": area.strip(), "closing": closing.strip(), "goal": goal.strip(),
+            "area": area.strip(), "closing": closing.strip(),
             "services": chosen,
         })
         db.save_business_profile(student["id"], profile)
@@ -5707,7 +5702,6 @@ def render_business_log(db: Database, student: dict[str, Any]) -> None:
     student_name = student.get("name") or ""
     totals = db.business_totals(sid)
     profile = db.get_business_profile(sid)
-    goal = (profile.get("goal") or "").strip()
 
     st.markdown("### 💵 My jobs & money")
     # Shown on the run *after* a job is logged -- the rerun below (needed to
@@ -5720,9 +5714,6 @@ def render_business_log(db: Database, student: dict[str, Any]) -> None:
     cols[1].metric("Spent", f"${totals['expense']:,.2f}")
     cols[2].metric("Profit", f"${totals['profit']:,.2f}")
     cols[3].metric("Hours", f"{round(totals['minutes'] / 60, 1)}")
-    if goal and totals["profit"] > 0:
-        # Escape the $ so Streamlit's markdown doesn't read it as LaTeX math.
-        st.caption(f"💪 \\${totals['profit']:,.2f} saved toward **{md(goal)}** — keep it up!")
 
     with st.form("business_job_form", clear_on_submit=True):
         st.markdown("**Log a job you did:**")

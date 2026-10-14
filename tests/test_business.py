@@ -103,7 +103,6 @@ def test_flyer_document_is_a_standalone_printable_page():
 def test_doorknock_script_is_built_from_his_details():
     profile = {
         "name": "Leaf Crew",
-        "goal": "a new bike",
         "services": [
             {"label": "Rake leaves"}, {"label": "Bag the leaves"}, {"label": "Clear walkways"},
         ],
@@ -112,15 +111,14 @@ def test_doorknock_script_is_built_from_his_details():
     assert "Landon" in script
     assert "Leaf Crew" in script
     assert "rake leaves" in script  # lower-cased into the offer line
-    assert "a new bike" in script   # goal line only appears when set
+    assert "stop back by" in script  # the in-person follow-up
     assert "flyer" in script.lower()
 
 
 def test_doorknock_script_handles_a_bare_profile():
-    # No name, no services, no goal -- still a usable, friendly script.
+    # No name, no services -- still a usable, friendly script.
     script = business.doorknock_script({"name": "", "services": []})
     assert "yard work" in script.lower()
-    assert "a new bike" not in script
     assert script.strip()
 
 
