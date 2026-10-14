@@ -1562,6 +1562,9 @@ class Database:
         # business_jobs predates these columns.
         self._ensure_column("business_jobs", "math_activity_id", "INTEGER")
         self._ensure_column("business_jobs", "writing_activity_id", "INTEGER")
+        # A house number on his neighborhood map -- the real identifier for a
+        # customer's house (his private tracker, never the public flyer).
+        self._ensure_column("business_houses", "number", "TEXT NOT NULL DEFAULT ''")
         self._backfill_life_skill_content()
         self._backfill_life_skill_catalog()
         self._backfill_life_skill_credits()
@@ -4554,17 +4557,19 @@ class Database:
     _HOUSE_STATUSES = ("customer", "maybe", "avoid")
 
     def add_business_house(
-        self, student_id: int, nickname: str, *,
-        street: str = "", status: str = "maybe", notes: str = "",
+        self, student_id: int, nickname: str = "", *,
+        number: str = "", street: str = "", status: str = "maybe", notes: str = "",
     ) -> int:
-        """Add a house to his neighborhood map. `status` is 'customer' (said yes),
-        'maybe' (come back), or 'avoid' (a not-so-friendly no); anything else is
-        normalized to 'maybe'. Returns the house id."""
+        """Add a house to his neighborhood map. `number` is the house number (the
+        real identifier for a customer's house); `nickname` is an optional memory
+        aid. `status` is 'customer' (said yes), 'maybe' (come back), or 'avoid' (a
+        not-so-friendly no); anything else is normalized to 'maybe'. Returns the
+        house id."""
         status = status if status in self._HOUSE_STATUSES else "maybe"
         cur = self.conn.execute(
-            "INSERT INTO business_houses (student_id, nickname, street, status, notes) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (student_id, nickname.strip(), street.strip(), status, notes.strip()),
+            "INSERT INTO business_houses (student_id, nickname, number, street, status, notes) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (student_id, nickname.strip(), number.strip(), street.strip(), status, notes.strip()),
         )
         self.conn.commit()
         return int(cur.lastrowid)
@@ -4574,14 +4579,14 @@ class Database:
         he added them."""
         return _rows(self.conn.execute(
             "SELECT * FROM business_houses WHERE student_id = ? "
-            "ORDER BY street, id",
+            "ORDER BY street, CAST(number AS INTEGER), number, id",
             (student_id,),
         ))
 
     def update_business_house(
         self, house_id: int, *,
-        nickname: str | None = None, street: str | None = None,
-        status: str | None = None, notes: str | None = None,
+        nickname: str | None = None, number: str | None = None,
+        street: str | None = None, status: str | None = None, notes: str | None = None,
     ) -> None:
         """Partial update -- only the fields passed are changed. An unrecognized
         status is ignored rather than stored."""
@@ -4589,6 +4594,8 @@ class Database:
         params: list[Any] = []
         if nickname is not None:
             sets.append("nickname = ?"); params.append(nickname.strip())
+        if number is not None:
+            sets.append("number = ?"); params.append(number.strip())
         if street is not None:
             sets.append("street = ?"); params.append(street.strip())
         if status is not None and status in self._HOUSE_STATUSES:

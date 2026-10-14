@@ -5592,31 +5592,17 @@ def render_business_builder(db: Database, student: dict[str, Any]) -> None:
             "Never put your house number or full address on a flyer."
         )
 
-        # Contact: safe-by-default for a 13-year-old. The radio decides how the
-        # flyer phrases booking; the field below feeds it (ignored for "no
-        # number"). Captions steer parents away from a personal cell.
-        method_keys = [m[0] for m in business.CONTACT_METHODS]
-        method_labels = {
-            "phone": "📞 A phone number — use a parent's Google Voice / second line",
-            "email": "✉️ An email — a parent's address",
-            "knock": "🚪 No number — \"I'll come back around / leave a note\"",
-        }
-        cur_method = profile.get("contact_method") or "phone"
-        contact_method = st.radio(
-            "How can neighbors book you?", method_keys,
-            index=method_keys.index(cur_method) if cur_method in method_keys else 0,
-            format_func=lambda k: method_labels[k],
-        )
-        contact = st.text_input(
-            "Phone number or email for the flyer",
-            value=profile.get("contact", ""),
-            placeholder="e.g. a Google Voice number, or a parent's email",
+        # No phone or email on a 13-year-old's flyer. Instead it closes with a
+        # warm, in-person follow-up -- he hands over the flyer and offers to stop
+        # back by to chat. Editable, but there's deliberately nowhere for a number.
+        closing = st.text_area(
+            "How you'll follow up (this goes on your flyer)",
+            value=profile.get("closing") or business.DEFAULT_CLOSING, height=90,
         )
         st.caption(
-            "🔒 **Don't use your own cell.** A free **Google Voice** number rings a "
-            "parent's phone but keeps the real number private, or use a parent's "
-            "email. Pick “No number” to leave it off the flyer entirely — you'll "
-            "just come back around. A grown-up handles the calls and says yes to jobs."
+            "🔒 **No phone number or email** — the safe way for you to do this. You'll "
+            "hand neighbors the flyer and offer to **stop back by to talk**. A parent "
+            "goes with you and helps set up the jobs."
         )
         goal = st.text_input(
             "What are you saving for? (optional)", value=profile.get("goal", ""),
@@ -5663,8 +5649,7 @@ def render_business_builder(db: Database, student: dict[str, Any]) -> None:
     if saved:
         profile.update({
             "name": biz_name.strip(), "slogan": slogan.strip(), "about": about.strip(),
-            "area": area.strip(), "contact": contact.strip(),
-            "contact_method": contact_method, "goal": goal.strip(),
+            "area": area.strip(), "closing": closing.strip(), "goal": goal.strip(),
             "services": chosen,
         })
         db.save_business_profile(student["id"], profile)
@@ -5890,11 +5875,14 @@ def render_business_houses(db: Database, student: dict[str, Any]) -> None:
 
     with st.form("business_house_form", clear_on_submit=True):
         st.markdown("**Add a house:**")
-        row = st.columns([2, 2])
-        nickname = row[0].text_input("What do you call it?", key="bizhouse_nick",
-                                     placeholder="e.g. Blue house on Maple")
+        row = st.columns([1, 2])
+        number = row[0].text_input("House #", key="bizhouse_number", placeholder="e.g. 42")
         street = row[1].text_input("Street", key="bizhouse_street",
                                    placeholder="e.g. Maple Street")
+        nickname = st.text_input(
+            "What do you call it? (optional — a reminder)", key="bizhouse_nick",
+            placeholder="e.g. blue house with the big dog",
+        )
         if known_streets:
             st.caption("Streets you've used: " + " · ".join(md(s) for s in known_streets))
         status = st.radio("How did it go?", status_keys,
@@ -5903,11 +5891,12 @@ def render_business_houses(db: Database, student: dict[str, Any]) -> None:
         notes = st.text_input("Notes (optional)", key="bizhouse_notes",
                               placeholder="e.g. wants it done every 2 weeks")
         if st.form_submit_button("➕ Add to my map", type="primary", width="stretch"):
-            if nickname.strip():
-                db.add_business_house(sid, nickname, street=street, status=status, notes=notes)
+            if number.strip() or nickname.strip():
+                db.add_business_house(sid, nickname, number=number, street=street,
+                                      status=status, notes=notes)
                 st.rerun()
             else:
-                st.warning("Give the house a quick name first (so you'll remember which one).")
+                st.warning("Add a house number or a quick name so you'll know which house it is.")
 
     if not houses:
         return
@@ -5915,9 +5904,12 @@ def render_business_houses(db: Database, student: dict[str, Any]) -> None:
     for house in houses:
         _k, emoji, _short, long_label, _color = business.house_status(house["status"])
         row = st.columns([4, 3, 1])
-        bits = [f"{emoji} **{md(house['nickname'])}**"]
-        if house["street"]:
-            bits.append(md(house["street"]))
+        # Lead with the address (number + street), nickname as a reminder.
+        addr = " ".join(p for p in [house["number"], house["street"]] if p).strip()
+        head = md(addr) if addr else md(house["nickname"] or "A house")
+        bits = [f"{emoji} **{head}**"]
+        if addr and house["nickname"]:
+            bits.append(md(house["nickname"]))
         line = " · ".join(bits)
         n = visits.get((house["nickname"] or "").strip().lower(), 0)
         if n:

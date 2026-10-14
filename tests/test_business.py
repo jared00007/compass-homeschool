@@ -44,18 +44,30 @@ def test_is_ready_needs_a_name_and_a_service():
     assert business.is_ready_for_flyer({"name": "X", "services": [{"label": "Rake"}]})
 
 
-def test_flyer_shows_the_business_name_services_and_contact():
+def test_flyer_shows_the_business_name_services_and_closing():
     profile = {
         "name": "Leaf Crew", "slogan": "Done right.",
         "services": [{"emoji": "🍂", "label": "Rake leaves", "price": "$25"}],
-        "contact": "(555) 111-2222",
+        "closing": "Stop back by to chat soon!",
     }
     html = business.flyer_inner_html(profile, "Landon")
     assert "Leaf Crew" in html
     assert "Rake leaves" in html and "$25" in html
-    assert "(555) 111-2222" in html
+    assert "Stop back by to chat soon!" in html
     assert "Done right." in html
     assert "Run by Landon" in html
+
+
+def test_flyer_has_no_phone_or_email_and_falls_back_to_a_default_closing():
+    # A kid's flyer never carries a number/email; a blank closing still produces
+    # a warm, in-person follow-up.
+    html = business.flyer_inner_html(
+        {"name": "X", "services": [{"label": "Rake"}], "contact": "555-NOPE"}
+    )
+    assert "555-NOPE" not in html
+    # The default closing shows (substrings chosen to dodge HTML-escaped apostrophes).
+    assert "help with your yard" in html
+    assert "stop back by later this week" in html
 
 
 def test_a_half_filled_custom_service_is_dropped_from_the_flyer():
@@ -164,36 +176,24 @@ def test_copy_system_prompt_carries_his_details():
     assert "13-year-old" in prompt
 
 
-# --- privacy-aware contact on the flyer -----------------------------------------
+# --- the flyer's closing line (no number / email) -------------------------------
 
 
-def test_flyer_contact_phone_is_the_default():
-    html = business.flyer_inner_html(
-        {"name": "X", "services": [{"label": "Rake"}], "contact": "555-0100"}
-    )
-    assert "📞 Call or text to book: 555-0100" in html
-    assert "phone Call" not in html  # the method key must not leak where the emoji goes
-
-
-def test_flyer_contact_email_changes_the_booking_line():
+def test_flyer_closing_is_editable_and_escaped():
     html = business.flyer_inner_html({
         "name": "X", "services": [{"label": "Rake"}],
-        "contact": "book@example.com", "contact_method": "email",
+        "closing": "Come find me <at the park>!",
     })
-    assert "✉️ Email to book: book@example.com" in html
-    assert "Call or text" not in html
-    assert "email Email" not in html
+    assert "Come find me" in html
+    assert "<at the park>" not in html
+    assert "&lt;at the park&gt;" in html
 
 
-def test_flyer_contact_knock_shows_no_number_even_if_one_is_stored():
-    # The safest option for a young teen: the flyer carries no number at all.
-    html = business.flyer_inner_html({
-        "name": "X", "services": [{"label": "Rake"}],
-        "contact": "555-SHOULD-NOT-SHOW", "contact_method": "knock",
-    })
-    assert "555-SHOULD-NOT-SHOW" not in html
-    assert "🚪" in html and "come back around" in html
-    assert "knock I'll" not in html  # the method key must not leak into the line
+def test_default_profile_has_a_closing_and_no_contact_fields():
+    profile = business.default_profile()
+    assert profile["closing"] == business.DEFAULT_CLOSING
+    assert "contact" not in profile
+    assert "contact_method" not in profile
 
 
 # --- the neighborhood map (houses) ----------------------------------------------
@@ -227,6 +227,20 @@ def test_neighborhood_map_escapes_user_input():
 def test_house_status_defaults_to_maybe_for_unknown():
     assert business.house_status("customer")[1] == "🟢"
     assert business.house_status("nonsense")[0] == "maybe"
+
+
+def test_map_shows_house_number_and_label_helper():
+    houses = [
+        {"number": "42", "nickname": "Blue house", "street": "Maple St", "status": "customer"},
+        {"number": "7", "street": "Maple St", "status": "avoid"},  # number only, no nickname
+    ]
+    html = business.neighborhood_map_html(houses)
+    assert "42" in html and "7" in html
+    assert "Blue house" in html
+    # The plain-text label helper combines number and nickname when it has both.
+    assert business.house_label(houses[0]) == "42 — Blue house"
+    assert business.house_label(houses[1]) == "7"
+    assert business.house_label({}) == "A house"
 
 
 # --- multi-subject job credit ---------------------------------------------------
@@ -290,19 +304,26 @@ def test_business_monthly_totals_group_by_month(db, student):
 
 def test_houses_round_trip_and_update_and_delete(db, student):
     sid = student["id"]
-    h1 = db.add_business_house(sid, "Blue house", street="Maple St", status="customer")
-    db.add_business_house(sid, "Grumpy corner", street="Maple St", status="avoid",
-                          notes="yelled at me lol")
+    h1 = db.add_business_house(sid, "Blue house", number="42", street="Maple St",
+                              status="customer")
+    db.add_business_house(sid, "Grumpy corner", number="7", street="Maple St",
+                          status="avoid", notes="yelled at me lol")
     houses = db.list_business_houses(sid)
     assert len(houses) == 2
+    # Ordered along the street by house number (7 before 42).
+    assert [h["number"] for h in houses] == ["7", "42"]
+    assert next(h for h in houses if h["id"] == h1)["number"] == "42"
     assert db.business_house_streets(sid) == ["Maple St"]
     # An unknown status is normalized to 'maybe'.
     weird = db.add_business_house(sid, "Mystery", status="banana")
     assert next(h for h in db.list_business_houses(sid) if h["id"] == weird)["status"] == "maybe"
+    # A house can be added by number alone (no nickname).
+    num_only = db.add_business_house(sid, number="99", street="Oak Ave", status="maybe")
+    assert next(h for h in db.list_business_houses(sid) if h["id"] == num_only)["number"] == "99"
     # Update and delete.
-    db.update_business_house(h1, status="maybe", notes="moved")
+    db.update_business_house(h1, number="44", status="maybe", notes="moved")
     updated = next(h for h in db.list_business_houses(sid) if h["id"] == h1)
-    assert updated["status"] == "maybe" and updated["notes"] == "moved"
+    assert updated["status"] == "maybe" and updated["notes"] == "moved" and updated["number"] == "44"
     db.delete_business_house(h1)
     assert all(h["id"] != h1 for h in db.list_business_houses(sid))
 
@@ -322,14 +343,18 @@ def test_the_page_adds_a_house_to_the_map(monkeypatch, tmp_path):
     db_path = tmp_path / "biz.db"
     Database(db_path).close()
     at = _open(monkeypatch, db_path)
-    [t for t in at.text_input if t.key == "bizhouse_nick"][0].set_value("Blue house on Maple")
-    [b for b in at.button if "Add to my map" in (b.label or "")][0].click().run()
+    [t for t in at.text_input if t.key == "bizhouse_number"][0].set_value("42")
+    [t for t in at.text_input if t.key == "bizhouse_street"][0].set_value("Maple Street")
+    [t for t in at.text_input if t.key == "bizhouse_nick"][0].set_value("Blue house")
+    [b for b in at.button if "Add to my map" in (b.label or "")][0].click().run(timeout=30)
     assert not at.exception, [e.message for e in at.exception]
     db = Database(db_path)
     student = db.ensure_default_student()
     houses = db.list_business_houses(student["id"])
     db.close()
-    assert len(houses) == 1 and houses[0]["nickname"] == "Blue house on Maple"
+    assert len(houses) == 1
+    assert houses[0]["number"] == "42" and houses[0]["street"] == "Maple Street"
+    assert houses[0]["nickname"] == "Blue house"
 
 
 # --- storage --------------------------------------------------------------------

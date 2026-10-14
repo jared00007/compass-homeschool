@@ -622,6 +622,7 @@ CREATE TABLE IF NOT EXISTS business_houses (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
     nickname    TEXT NOT NULL,
+    number      TEXT NOT NULL DEFAULT '',
     street      TEXT NOT NULL DEFAULT '',
     status      TEXT NOT NULL DEFAULT 'maybe',
     notes       TEXT NOT NULL DEFAULT '',

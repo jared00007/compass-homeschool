@@ -43,6 +43,17 @@ SLOGAN_IDEAS: tuple[str, ...] = (
 )
 
 
+# The flyer carries NO phone number or email -- the safest choice for a 13-year-
+# old going door to door. Instead it closes with a warm, in-person follow-up: he
+# hands over the flyer and offers to stop back by to talk. This is the default
+# wording; he can tweak it in the builder, but there's deliberately nowhere to
+# put a personal number.
+DEFAULT_CLOSING = (
+    "I'd love to help with your yard! If any of this sounds good, I'll stop back "
+    "by later this week to talk more. Does that sound good? 🍂"
+)
+
+
 def default_profile() -> dict[str, Any]:
     """A blank business profile -- the shape stored per student."""
     return {
@@ -50,29 +61,12 @@ def default_profile() -> dict[str, Any]:
         "slogan": "",
         "about": "",
         "area": "",
-        "contact": "",
-        # How neighbors book him -- deliberately NOT a kid's or parent's personal
-        # cell by default. 'phone' (a parent's Google Voice / second line),
-        # 'email' (a parent's address), or 'knock' (no number at all -- he comes
-        # back around). See compass.ui.render_business_builder for the safety tips.
-        "contact_method": "phone",
+        # The flyer's closing line -- how he follows up, in person. No phone/email.
+        "closing": DEFAULT_CLOSING,
         "goal": "",
         # Each service: {"emoji", "label", "price"} -- preset or custom.
         "services": [],
     }
-
-
-# How he can be booked -- (key, emoji, flyer verb). A 13-year-old's flyer should
-# never carry a personal cell number, so the safe-by-default options route to a
-# parent (a free Google Voice number or an email they control) or avoid a number
-# entirely ("I'll come back around"). The builder explains each; the flyer just
-# renders the chosen line.
-CONTACT_METHODS: tuple[tuple[str, str, str], ...] = (
-    ("phone", "📞", "Call or text to book:"),
-    ("email", "✉️", "Email to book:"),
-    ("knock", "🚪", "I'll come back around — or leave a note on your door!"),
-)
-_CONTACT_BY_KEY = {m[0]: m for m in CONTACT_METHODS}
 
 
 def _clean_services(services: Any) -> list[dict[str, str]]:
@@ -114,7 +108,9 @@ def flyer_inner_html(profile: dict[str, Any], student_name: str = "") -> str:
     slogan = _e(profile.get("slogan"))
     about = _e(profile.get("about"))
     area = _e(profile.get("area"))
-    contact = _e(profile.get("contact"))
+    # The closing line is how he follows up -- in person, no phone/email. A blank
+    # one falls back to the friendly default rather than leaving the flyer open.
+    closing = _e(profile.get("closing")) or _e(DEFAULT_CLOSING)
     goal = _e(profile.get("goal"))
     who = _e(student_name)
 
@@ -146,20 +142,12 @@ def flyer_inner_html(profile: dict[str, Any], student_name: str = "") -> str:
         f'<div style="margin-top:6px; font-size:13px; color:#8a7a5c;">📍 {area}</div>'
         if area else ""
     )
-    method = profile.get("contact_method") or "phone"
-    _mkey, emoji, verb = _CONTACT_BY_KEY.get(method, _CONTACT_BY_KEY["phone"])
-    if method == "knock":
-        # No number at all -- the safest option for a young teen going door to
-        # door. Renders whether or not a contact value was entered.
-        contact_line = f"{emoji} {verb}"
-    elif contact:
-        contact_line = f"{emoji} {verb} {contact}"
-    else:
-        contact_line = ""
+    # The warm, in-person follow-up -- the whole "how to book" on a kid's flyer,
+    # with no number or email to put out there.
     contact_block = (
-        f'<div style="margin-top:14px; background:{accent}; color:#fff; border-radius:10px; '
-        f'padding:12px 16px; text-align:center; font-size:18px; font-weight:800;">'
-        f"{contact_line}</div>" if contact_line else ""
+        f'<div style="margin-top:16px; background:{accent}; color:#fff; border-radius:10px; '
+        f'padding:14px 18px; text-align:center; font-size:16px; font-weight:700; line-height:1.4;">'
+        f"👋 {closing}</div>"
     )
     goal_block = (
         f'<div style="margin-top:10px; text-align:center; font-size:12px; color:#8a7a5c;">'
@@ -365,16 +353,35 @@ def house_status(key: str) -> tuple[str, str, str, str, str]:
     return _HOUSE_BY_KEY.get(key, _HOUSE_BY_KEY["maybe"])
 
 
+def house_label(house: dict[str, Any]) -> str:
+    """A short identifier for a house: its number and nickname when it has both
+    ("42 — Blue house"), or whichever one it has. Plain text, for lists."""
+    number = str(house.get("number") or "").strip()
+    nick = str(house.get("nickname") or "").strip()
+    if number and nick:
+        return f"{number} — {nick}"
+    return number or nick or "A house"
+
+
 def _house_pin(house: dict[str, Any]) -> str:
     _k, emoji, _short, _long, color = house_status(house.get("status"))
-    nick = _e(house.get("nickname")) or "A house"
+    number = _e(house.get("number"))
+    nick = _e(house.get("nickname"))
+    # Lead with the number (the real identifier); nickname rides along smaller.
+    primary = number or nick or "A house"
+    secondary = nick if (number and nick) else ""
+    secondary_block = (
+        f'<div style="font-size:10px; color:#8a7a5c; line-height:1.1; '
+        f'word-break:break-word;">{secondary}</div>' if secondary else ""
+    )
     return (
         f'<div style="display:flex; flex-direction:column; align-items:center; '
         f'width:92px; text-align:center;">'
         f'<div style="font-size:30px; line-height:1;">🏠</div>'
         f'<div style="margin-top:-8px; font-size:15px;">{emoji}</div>'
-        f'<div style="margin-top:2px; font-size:11px; font-weight:700; color:{color}; '
-        f'line-height:1.15; word-break:break-word;">{nick}</div>'
+        f'<div style="margin-top:2px; font-size:12px; font-weight:800; color:{color}; '
+        f'line-height:1.15; word-break:break-word;">{primary}</div>'
+        f"{secondary_block}"
         f"</div>"
     )
 
@@ -384,7 +391,10 @@ def neighborhood_map_html(houses: list[dict[str, Any]], student_name: str = "") 
     colored by status, grouped by street. Inline-styled only, everything escaped.
     Empty until he's added a house."""
     accent = "#c0553b"
-    cleaned = [h for h in (houses or []) if (h.get("nickname") or "").strip()]
+    cleaned = [
+        h for h in (houses or [])
+        if (h.get("nickname") or "").strip() or (h.get("number") or "").strip()
+    ]
     if not cleaned:
         return (
             '<div style="padding:18px; border:2px dashed #d8cdb8; border-radius:14px; '
