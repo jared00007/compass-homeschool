@@ -1556,6 +1556,12 @@ class Database:
         self._ensure_column("travel_entries", "feedback_read_at", "TEXT")
         self._ensure_column("travel_entries", "feedback_reply", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("travel_entries", "active", "INTEGER NOT NULL DEFAULT 1")
+        # The business job now credits Math (bookkeeping) and Writing (flyers,
+        # receipts) as their own small blocks, each linked so a deleted job takes
+        # them with it. Added via ALTER (no CHECK) for databases whose
+        # business_jobs predates these columns.
+        self._ensure_column("business_jobs", "math_activity_id", "INTEGER")
+        self._ensure_column("business_jobs", "writing_activity_id", "INTEGER")
         self._backfill_life_skill_content()
         self._backfill_life_skill_catalog()
         self._backfill_life_skill_credits()
@@ -4384,15 +4390,25 @@ class Database:
         earned: float = 0.0,
         expense: float = 0.0,
         minutes: int = 0,
+        count_math: bool = False,
+        count_writing: bool = False,
     ) -> int:
         """Record one job he did. `earned`/`expense` are dollars (stored as whole
-        cents). When `minutes` > 0 the time is logged to Occupational Education so
-        the work counts as school, and that activity is linked to the job so
-        deleting the job removes it too. Returns the job id."""
+        cents). When `minutes` > 0 the labor time is logged to Occupational
+        Education so the work counts as school.
+
+        The business also teaches real Math (pricing, change, profit) and Writing
+        (flyers, receipts). Those are credited as their own small, separate blocks
+        -- `config.BUSINESS_BOOKKEEPING_MINUTES` to Math when `count_math`, and
+        `config.BUSINESS_WRITING_MINUTES` to Writing when `count_writing` -- so the
+        hours stay honest (a slice of genuine work, never the same minutes
+        double-billed). All logged activities are linked to the job, so deleting
+        it removes every one. Returns the job id."""
         minutes = max(0, int(minutes))
+        who = (customer or "").strip()
+        desc = (description or "").strip()
         activity_id: int | None = None
         if minutes > 0:
-            who = (customer or "").strip()
             activity_id = self.log_activity(
                 student_id=student_id,
                 title=f"Yard job — {who}" if who else "Yard job",
@@ -4401,16 +4417,44 @@ class Database:
                 minutes=minutes,
                 subject_credits={"occupational_education": minutes},
                 occurred_on=job_date,
-                description=(description or "").strip(),
+                description=desc,
+                source="business",
+            )
+        math_activity_id: int | None = None
+        if count_math and config.BUSINESS_BOOKKEEPING_MINUTES > 0:
+            math_activity_id = self.log_activity(
+                student_id=student_id,
+                title=f"Business math — {who}" if who else "Business math",
+                tier=config.TIER_CORE,
+                primary_subject="math",
+                minutes=config.BUSINESS_BOOKKEEPING_MINUTES,
+                subject_credits={"math": config.BUSINESS_BOOKKEEPING_MINUTES},
+                occurred_on=job_date,
+                description="Priced the job and worked out the money (charged, spent, profit).",
+                source="business",
+            )
+        writing_activity_id: int | None = None
+        if count_writing and config.BUSINESS_WRITING_MINUTES > 0:
+            writing_activity_id = self.log_activity(
+                student_id=student_id,
+                title="Business writing",
+                tier=config.TIER_CORE,
+                primary_subject="writing",
+                minutes=config.BUSINESS_WRITING_MINUTES,
+                subject_credits={"writing": config.BUSINESS_WRITING_MINUTES},
+                occurred_on=job_date,
+                description="Wrote a flyer, receipt, or note for the business.",
                 source="business",
             )
         cur = self.conn.execute(
             "INSERT INTO business_jobs "
             "(student_id, job_date, customer, description, earned_cents, "
-            " expense_cents, minutes, activity_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            " expense_cents, minutes, activity_id, math_activity_id, writing_activity_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
-                student_id, job_date, (customer or "").strip(), (description or "").strip(),
-                round(float(earned) * 100), round(float(expense) * 100), minutes, activity_id,
+                student_id, job_date, who, desc,
+                round(float(earned) * 100), round(float(expense) * 100), minutes,
+                activity_id, math_activity_id, writing_activity_id,
             ),
         )
         self.conn.commit()
@@ -4430,14 +4474,59 @@ class Database:
         return rows
 
     def delete_business_job(self, job_id: int) -> None:
-        """Remove a job and the Occupational-Education hours it logged."""
+        """Remove a job and every block of school time it logged (the labor
+        Occupational-Education hours plus any Math/Writing credit)."""
         row = _row(self.conn.execute(
-            "SELECT activity_id FROM business_jobs WHERE id = ?", (job_id,)
+            "SELECT activity_id, math_activity_id, writing_activity_id "
+            "FROM business_jobs WHERE id = ?", (job_id,)
         ))
-        if row and row["activity_id"] is not None:
-            self.delete_activity(int(row["activity_id"]))
+        if row:
+            for col in ("activity_id", "math_activity_id", "writing_activity_id"):
+                if row[col] is not None:
+                    self.delete_activity(int(row[col]))
         self.conn.execute("DELETE FROM business_jobs WHERE id = ?", (job_id,))
         self.conn.commit()
+
+    def business_subject_minutes(self, student_id: int) -> dict[str, int]:
+        """How many minutes the business has credited to each subject -- the
+        breakdown behind "how this counts as school". Reads the activity credits
+        his jobs logged (source='business'), so it reflects Occupational
+        Education labor plus any Math/Writing he counted."""
+        cur = self.conn.execute(
+            "SELECT asc_.subject AS subject, COALESCE(SUM(asc_.minutes), 0) AS minutes "
+            "FROM activity_subject_credits asc_ "
+            "JOIN activities a ON a.id = asc_.activity_id "
+            "WHERE a.student_id = ? AND a.source = 'business' "
+            "GROUP BY asc_.subject",
+            (student_id,),
+        )
+        return {r["subject"]: int(r["minutes"]) for r in cur.fetchall()}
+
+    def business_monthly_totals(self, student_id: int) -> list[dict[str, Any]]:
+        """Per-month recap of his jobs -- newest month first. Each row:
+        {month 'YYYY-MM', jobs, earned, expense, profit (dollars), minutes}.
+        The "season summary" he can be proud of and you can keep for records."""
+        cur = self.conn.execute(
+            "SELECT substr(job_date, 1, 7) AS month, COUNT(*) AS jobs, "
+            "COALESCE(SUM(earned_cents), 0) AS earned, "
+            "COALESCE(SUM(expense_cents), 0) AS expense, "
+            "COALESCE(SUM(minutes), 0) AS minutes "
+            "FROM business_jobs WHERE student_id = ? "
+            "GROUP BY month ORDER BY month DESC",
+            (student_id,),
+        )
+        out: list[dict[str, Any]] = []
+        for r in cur.fetchall():
+            earned_c, expense_c = int(r["earned"]), int(r["expense"])
+            out.append({
+                "month": r["month"],
+                "jobs": int(r["jobs"]),
+                "earned": self._dollars(earned_c),
+                "expense": self._dollars(expense_c),
+                "profit": self._dollars(earned_c - expense_c),
+                "minutes": int(r["minutes"]),
+            })
+        return out
 
     def business_totals(self, student_id: int) -> dict[str, Any]:
         """Running totals across all his jobs: earned, spent, profit (dollars),
@@ -4459,6 +4548,90 @@ class Database:
             "profit": self._dollars(earned_c - expense_c),
             "minutes": int(row.get("minutes") or 0),
         }
+
+    # -- business houses (his neighborhood lead / customer map) -----------------
+
+    _HOUSE_STATUSES = ("customer", "maybe", "avoid")
+
+    def add_business_house(
+        self, student_id: int, nickname: str, *,
+        street: str = "", status: str = "maybe", notes: str = "",
+    ) -> int:
+        """Add a house to his neighborhood map. `status` is 'customer' (said yes),
+        'maybe' (come back), or 'avoid' (a not-so-friendly no); anything else is
+        normalized to 'maybe'. Returns the house id."""
+        status = status if status in self._HOUSE_STATUSES else "maybe"
+        cur = self.conn.execute(
+            "INSERT INTO business_houses (student_id, nickname, street, status, notes) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (student_id, nickname.strip(), street.strip(), status, notes.strip()),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def list_business_houses(self, student_id: int) -> list[dict[str, Any]]:
+        """His houses, grouped sensibly for the map: by street, then by the order
+        he added them."""
+        return _rows(self.conn.execute(
+            "SELECT * FROM business_houses WHERE student_id = ? "
+            "ORDER BY street, id",
+            (student_id,),
+        ))
+
+    def update_business_house(
+        self, house_id: int, *,
+        nickname: str | None = None, street: str | None = None,
+        status: str | None = None, notes: str | None = None,
+    ) -> None:
+        """Partial update -- only the fields passed are changed. An unrecognized
+        status is ignored rather than stored."""
+        sets: list[str] = []
+        params: list[Any] = []
+        if nickname is not None:
+            sets.append("nickname = ?"); params.append(nickname.strip())
+        if street is not None:
+            sets.append("street = ?"); params.append(street.strip())
+        if status is not None and status in self._HOUSE_STATUSES:
+            sets.append("status = ?"); params.append(status)
+        if notes is not None:
+            sets.append("notes = ?"); params.append(notes.strip())
+        if not sets:
+            return
+        params.append(house_id)
+        self.conn.execute(
+            f"UPDATE business_houses SET {', '.join(sets)} WHERE id = ?", params
+        )
+        self.conn.commit()
+
+    def delete_business_house(self, house_id: int) -> None:
+        self.conn.execute("DELETE FROM business_houses WHERE id = ?", (house_id,))
+        self.conn.commit()
+
+    def business_house_streets(self, student_id: int) -> list[str]:
+        """Distinct non-empty street names he's used -- for the 'pick a street'
+        dropdown, so he doesn't retype 'Maple Street' every time."""
+        cur = self.conn.execute(
+            "SELECT DISTINCT street FROM business_houses "
+            "WHERE student_id = ? AND street != '' ORDER BY street",
+            (student_id,),
+        )
+        return [r["street"] for r in cur.fetchall()]
+
+    def business_house_visit_counts(self, student_id: int) -> dict[str, int]:
+        """How many logged jobs match each house (his repeat-customer view) --
+        keyed by the house nickname lower-cased, matched against each job's
+        customer field. A loose, forgiving match: it's a helpful count, not a
+        source of truth, so a house with no matching jobs simply shows zero."""
+        houses = self.list_business_houses(student_id)
+        jobs = self.list_business_jobs(student_id)
+        customers = [(j["customer"] or "").strip().lower() for j in jobs]
+        counts: dict[str, int] = {}
+        for house in houses:
+            nick = (house["nickname"] or "").strip().lower()
+            if not nick:
+                continue
+            counts[nick] = sum(1 for c in customers if c and (c == nick or nick in c or c in nick))
+        return counts
 
     def complete_enrichment_activity(
         self, lesson_id: int, student_id: int, occurred_on: str | None = None,

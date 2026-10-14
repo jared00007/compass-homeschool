@@ -215,6 +215,13 @@ CODING_DEFAULT_MINUTES = 45
 # separate block for the sit-down assessment, logged once per lesson (retakes
 # don't stack) so it captures time without double-counting the lesson itself.
 QUIZ_DEFAULT_MINUTES = 10
+# When he logs a yard job, the labor minutes count as Occupational Education.
+# These two are the *other* real instruction riding along, credited as their own
+# small blocks only when he says he did them (see add_business_job): the money
+# math (pricing, change, profit) as Math, and writing a flyer/receipt as Writing.
+# Kept modest and honest -- a slice of genuine work, never inflated hours.
+BUSINESS_BOOKKEEPING_MINUTES = 10
+BUSINESS_WRITING_MINUTES = 10
 # Default minutes a parent-added lesson resource (a video, an article) is worth
 # when he marks it watched/read -- editable per resource when the parent adds it.
 RESOURCE_DEFAULT_MINUTES = 20

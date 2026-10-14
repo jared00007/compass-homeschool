@@ -12,7 +12,13 @@ from __future__ import annotations
 
 import streamlit as st
 
-from compass.ui import page_setup, render_business_builder, render_business_log
+from compass.ui import (
+    page_setup,
+    render_business_builder,
+    render_business_houses,
+    render_business_log,
+    render_business_summary,
+)
 
 db, student = page_setup("My Business", icon="🍂")
 
@@ -26,7 +32,13 @@ st.title("🍂 My Business")
 render_business_builder(db, student)
 
 st.divider()
+render_business_houses(db, student)
+
+st.divider()
 render_business_log(db, student)
+
+st.divider()
+render_business_summary(db, student)
 
 st.divider()
 st.page_link("Home.py", label="Back to Home", icon="🏠")

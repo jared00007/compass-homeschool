@@ -5583,14 +5583,40 @@ def render_business_builder(db: Database, student: dict[str, Any]) -> None:
             key="biz_about", height=70,
             placeholder="e.g. I work hard, show up on time, and leave your yard spotless.",
         )
-        cols = st.columns(2)
-        area = cols[0].text_input(
-            "Where you work", value=profile.get("area", ""),
-            placeholder="e.g. Maple Street & nearby",
+        area = st.text_input(
+            "Where you work — your street or neighborhood (not your address)",
+            value=profile.get("area", ""), placeholder="e.g. Maple Street & nearby",
         )
-        contact = cols[1].text_input(
-            "How to book you (a parent's phone/email)", value=profile.get("contact", ""),
-            placeholder="e.g. (555) 123-4567",
+        st.caption(
+            "🔒 Keep it general — a street or neighborhood name is plenty. "
+            "Never put your house number or full address on a flyer."
+        )
+
+        # Contact: safe-by-default for a 13-year-old. The radio decides how the
+        # flyer phrases booking; the field below feeds it (ignored for "no
+        # number"). Captions steer parents away from a personal cell.
+        method_keys = [m[0] for m in business.CONTACT_METHODS]
+        method_labels = {
+            "phone": "📞 A phone number — use a parent's Google Voice / second line",
+            "email": "✉️ An email — a parent's address",
+            "knock": "🚪 No number — \"I'll come back around / leave a note\"",
+        }
+        cur_method = profile.get("contact_method") or "phone"
+        contact_method = st.radio(
+            "How can neighbors book you?", method_keys,
+            index=method_keys.index(cur_method) if cur_method in method_keys else 0,
+            format_func=lambda k: method_labels[k],
+        )
+        contact = st.text_input(
+            "Phone number or email for the flyer",
+            value=profile.get("contact", ""),
+            placeholder="e.g. a Google Voice number, or a parent's email",
+        )
+        st.caption(
+            "🔒 **Don't use your own cell.** A free **Google Voice** number rings a "
+            "parent's phone but keeps the real number private, or use a parent's "
+            "email. Pick “No number” to leave it off the flyer entirely — you'll "
+            "just come back around. A grown-up handles the calls and says yes to jobs."
         )
         goal = st.text_input(
             "What are you saving for? (optional)", value=profile.get("goal", ""),
@@ -5637,7 +5663,8 @@ def render_business_builder(db: Database, student: dict[str, Any]) -> None:
     if saved:
         profile.update({
             "name": biz_name.strip(), "slogan": slogan.strip(), "about": about.strip(),
-            "area": area.strip(), "contact": contact.strip(), "goal": goal.strip(),
+            "area": area.strip(), "contact": contact.strip(),
+            "contact_method": contact_method, "goal": goal.strip(),
             "services": chosen,
         })
         db.save_business_profile(student["id"], profile)
@@ -5728,13 +5755,29 @@ def render_business_log(db: Database, student: dict[str, Any]) -> None:
         minutes = row2[2].number_input("Minutes worked", min_value=0, step=15, value=60,
                                        key="bizjob_minutes",
                                        help="Counts as Occupational Education school time.")
+        st.caption("This job also taught:")
+        subj = st.columns(2)
+        count_math = subj[0].checkbox(
+            f"🔢 Money math (+{config.BUSINESS_BOOKKEEPING_MINUTES} min Math)",
+            value=True, key="bizjob_math",
+            help="Pricing the job and working out charged / spent / profit.",
+        )
+        count_writing = subj[1].checkbox(
+            f"✍️ Wrote a flyer/receipt (+{config.BUSINESS_WRITING_MINUTES} min Writing)",
+            value=False, key="bizjob_writing",
+            help="Tick if he wrote or updated a flyer, receipt, or note for this.",
+        )
         add = st.form_submit_button("➕ Add this job", type="primary", width="stretch")
     if add:
         db.add_business_job(
             sid, job_date=job_date.isoformat(), customer=customer, description=description,
             earned=float(charged), expense=float(spent), minutes=int(minutes),
+            count_math=count_math, count_writing=count_writing,
         )
-        st.success("Logged! Your totals updated. 💵")
+        # Set a flag rather than calling st.success() here: the rerun below
+        # (needed to refresh the totals above) would otherwise wipe the message
+        # before it shows. The top of this function reads and clears the flag.
+        st.session_state["biz_job_logged"] = True
         st.rerun()
 
     jobs = db.list_business_jobs(sid)
@@ -5761,6 +5804,138 @@ def render_business_log(db: Database, student: dict[str, Any]) -> None:
         )
         if row[2].button("🗑", key=f"bizjob_del_{job['id']}", help="Delete this job"):
             db.delete_business_job(job["id"])
+            st.rerun()
+
+
+def render_business_summary(db: Database, student: dict[str, Any]) -> None:
+    """How the business is counting as school (hours by subject) plus a
+    month-by-month recap -- the part a parent keeps for records and the student
+    can be proud of."""
+    from compass import subjects
+
+    sid = student["id"]
+    by_subject = db.business_subject_minutes(sid)
+    months = db.business_monthly_totals(sid)
+    if not by_subject and not months:
+        return  # nothing logged yet -- stay quiet
+
+    st.markdown("### 📚 How this counts as school")
+    if by_subject:
+        # Lead with the three subjects the business actually earns, labelled.
+        order = ["occupational_education", "math", "writing"]
+        ordered = [s for s in order if s in by_subject] + [
+            s for s in by_subject if s not in order
+        ]
+        cols = st.columns(len(ordered))
+        for col, subj in zip(cols, ordered):
+            hours = round(by_subject[subj] / 60, 1)
+            col.metric(subjects.label(subj), f"{hours} h")
+        st.caption(
+            "Raking is **Occupational Education**; the money math counts as "
+            "**Math** and flyers/receipts as **Writing** — all toward his 1,000 "
+            "hours. These show on the compliance dashboard too."
+        )
+
+    if months:
+        st.markdown("#### 📅 Season so far")
+        rows = [
+            {
+                "Month": _month_label(m["month"]),
+                "Jobs": m["jobs"],
+                "Earned": f"${m['earned']:,.2f}",
+                "Profit": f"${m['profit']:,.2f}",
+                "Hours": round(m["minutes"] / 60, 1),
+            }
+            for m in months
+        ]
+        st.dataframe(rows, hide_index=True, width="stretch")
+
+
+def _month_label(ym: str) -> str:
+    """'2026-10' -> 'October 2026'; falls back to the raw value if malformed."""
+    try:
+        return date.fromisoformat(f"{ym}-01").strftime("%B %Y")
+    except ValueError:
+        return ym
+
+
+def render_business_houses(db: Database, student: dict[str, Any]) -> None:
+    """His neighborhood lead/customer map -- who said yes (🟢 customers), who to
+    come back to (🟡), and which houses to skip (🔴, the not-so-friendly nos).
+    Doubles as his repeat-customer view: each house shows how many logged jobs
+    match it."""
+    from compass import business
+
+    sid = student["id"]
+    student_name = student.get("name") or ""
+    houses = db.list_business_houses(sid)
+    visits = db.business_house_visit_counts(sid)
+
+    st.markdown("### 🗺️ My neighborhood map")
+    st.caption(
+        "Track every house you knock on: 🟢 said yes, 🟡 come back later, "
+        "🔴 skip it. Your map and your customer list, all in one."
+    )
+    st.markdown(business.neighborhood_map_html(houses, student_name), unsafe_allow_html=True)
+    if houses:
+        st.download_button(
+            "⬇️ Download my map",
+            data=business.neighborhood_map_document(houses, student_name),
+            file_name="my-neighborhood-map.html", mime="text/html", key="biz_map_dl",
+        )
+
+    status_keys = [s[0] for s in business.HOUSE_STATUSES]
+    status_label = {s[0]: f"{s[1]} {s[3]}" for s in business.HOUSE_STATUSES}
+    known_streets = db.business_house_streets(sid)
+
+    with st.form("business_house_form", clear_on_submit=True):
+        st.markdown("**Add a house:**")
+        row = st.columns([2, 2])
+        nickname = row[0].text_input("What do you call it?", key="bizhouse_nick",
+                                     placeholder="e.g. Blue house on Maple")
+        street = row[1].text_input("Street", key="bizhouse_street",
+                                   placeholder="e.g. Maple Street")
+        if known_streets:
+            st.caption("Streets you've used: " + " · ".join(md(s) for s in known_streets))
+        status = st.radio("How did it go?", status_keys,
+                          format_func=lambda k: status_label[k], horizontal=True,
+                          key="bizhouse_status")
+        notes = st.text_input("Notes (optional)", key="bizhouse_notes",
+                              placeholder="e.g. wants it done every 2 weeks")
+        if st.form_submit_button("➕ Add to my map", type="primary", width="stretch"):
+            if nickname.strip():
+                db.add_business_house(sid, nickname, street=street, status=status, notes=notes)
+                st.rerun()
+            else:
+                st.warning("Give the house a quick name first (so you'll remember which one).")
+
+    if not houses:
+        return
+    st.caption("Your houses — change a status or remove one:")
+    for house in houses:
+        _k, emoji, _short, long_label, _color = business.house_status(house["status"])
+        row = st.columns([4, 3, 1])
+        bits = [f"{emoji} **{md(house['nickname'])}**"]
+        if house["street"]:
+            bits.append(md(house["street"]))
+        line = " · ".join(bits)
+        n = visits.get((house["nickname"] or "").strip().lower(), 0)
+        if n:
+            line += f" — 🔁 {n} job{'s' if n != 1 else ''} logged"
+        if house["notes"]:
+            line += f"  \n_{md(house['notes'])}_"
+        row[0].markdown(line)
+        new_status = row[1].selectbox(
+            "Status", status_keys, index=status_keys.index(house["status"])
+            if house["status"] in status_keys else 1,
+            format_func=lambda k: status_label[k],
+            key=f"bizhouse_status_{house['id']}", label_visibility="collapsed",
+        )
+        if new_status != house["status"]:
+            db.update_business_house(house["id"], status=new_status)
+            st.rerun()
+        if row[2].button("🗑", key=f"bizhouse_del_{house['id']}", help="Remove this house"):
+            db.delete_business_house(house["id"])
             st.rerun()
 
 

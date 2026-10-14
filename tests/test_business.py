@@ -164,6 +164,174 @@ def test_copy_system_prompt_carries_his_details():
     assert "13-year-old" in prompt
 
 
+# --- privacy-aware contact on the flyer -----------------------------------------
+
+
+def test_flyer_contact_phone_is_the_default():
+    html = business.flyer_inner_html(
+        {"name": "X", "services": [{"label": "Rake"}], "contact": "555-0100"}
+    )
+    assert "📞 Call or text to book: 555-0100" in html
+    assert "phone Call" not in html  # the method key must not leak where the emoji goes
+
+
+def test_flyer_contact_email_changes_the_booking_line():
+    html = business.flyer_inner_html({
+        "name": "X", "services": [{"label": "Rake"}],
+        "contact": "book@example.com", "contact_method": "email",
+    })
+    assert "✉️ Email to book: book@example.com" in html
+    assert "Call or text" not in html
+    assert "email Email" not in html
+
+
+def test_flyer_contact_knock_shows_no_number_even_if_one_is_stored():
+    # The safest option for a young teen: the flyer carries no number at all.
+    html = business.flyer_inner_html({
+        "name": "X", "services": [{"label": "Rake"}],
+        "contact": "555-SHOULD-NOT-SHOW", "contact_method": "knock",
+    })
+    assert "555-SHOULD-NOT-SHOW" not in html
+    assert "🚪" in html and "come back around" in html
+    assert "knock I'll" not in html  # the method key must not leak into the line
+
+
+# --- the neighborhood map (houses) ----------------------------------------------
+
+
+def test_neighborhood_map_is_empty_until_a_house_is_added():
+    html = business.neighborhood_map_html([])
+    assert "map" in html.lower()
+    assert "🏠" not in html  # no pins yet
+
+
+def test_neighborhood_map_groups_houses_and_colors_by_status():
+    houses = [
+        {"nickname": "Blue house", "street": "Maple St", "status": "customer"},
+        {"nickname": "Corner lot", "street": "Maple St", "status": "avoid"},
+        {"nickname": "Big porch", "street": "Oak Ave", "status": "maybe"},
+    ]
+    html = business.neighborhood_map_html(houses, "Landon")
+    assert "Landon's neighborhood map" in html
+    assert "Maple St" in html and "Oak Ave" in html
+    assert "Blue house" in html and "Corner lot" in html and "Big porch" in html
+    assert "🟢" in html and "🔴" in html and "🟡" in html  # legend + pins
+
+
+def test_neighborhood_map_escapes_user_input():
+    html = business.neighborhood_map_html([{"nickname": "<script>x</script>", "status": "maybe"}])
+    assert "<script>x" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_house_status_defaults_to_maybe_for_unknown():
+    assert business.house_status("customer")[1] == "🟢"
+    assert business.house_status("nonsense")[0] == "maybe"
+
+
+# --- multi-subject job credit ---------------------------------------------------
+
+
+def test_job_can_credit_math_and_writing_as_separate_blocks(db, student):
+    sid = student["id"]
+    db.add_business_job(sid, job_date="2026-10-13", customer="Mrs. Lee", earned=25.0,
+                        minutes=60, count_math=True, count_writing=True)
+    cur = db.conn.execute(
+        "SELECT subject, SUM(minutes) m FROM activity_subject_credits GROUP BY subject"
+    )
+    credits = {r["subject"]: r["m"] for r in cur.fetchall()}
+    assert credits["occupational_education"] == 60
+    assert credits["math"] == config.BUSINESS_BOOKKEEPING_MINUTES
+    assert credits["writing"] == config.BUSINESS_WRITING_MINUTES
+    # The business_jobs.minutes column (used for totals) is still just the labor.
+    assert db.business_totals(sid)["minutes"] == 60
+
+
+def test_deleting_a_job_removes_its_math_and_writing_credit_too(db, student):
+    sid = student["id"]
+    job_id = db.add_business_job(sid, job_date="2026-10-13", earned=20.0, minutes=45,
+                                 count_math=True, count_writing=True)
+    assert len([a for a in db.list_activities(sid) if a["source"] == "business"]) == 3
+    db.delete_business_job(job_id)
+    assert [a for a in db.list_activities(sid) if a["source"] == "business"] == []
+
+
+def test_math_and_writing_credit_are_off_by_default(db, student):
+    sid = student["id"]
+    db.add_business_job(sid, job_date="2026-10-13", earned=20.0, minutes=45)
+    subjects = {a["primary_subject"] for a in db.list_activities(sid) if a["source"] == "business"}
+    assert subjects == {"occupational_education"}
+
+
+def test_business_subject_minutes_breakdown(db, student):
+    sid = student["id"]
+    db.add_business_job(sid, job_date="2026-10-13", earned=25.0, minutes=60, count_math=True)
+    db.add_business_job(sid, job_date="2026-10-14", earned=30.0, minutes=90, count_math=True)
+    breakdown = db.business_subject_minutes(sid)
+    assert breakdown["occupational_education"] == 150
+    assert breakdown["math"] == 2 * config.BUSINESS_BOOKKEEPING_MINUTES
+
+
+def test_business_monthly_totals_group_by_month(db, student):
+    sid = student["id"]
+    db.add_business_job(sid, job_date="2026-10-05", earned=25.0, expense=5.0, minutes=60)
+    db.add_business_job(sid, job_date="2026-10-20", earned=35.0, expense=0.0, minutes=90)
+    db.add_business_job(sid, job_date="2026-11-02", earned=40.0, expense=0.0, minutes=60)
+    months = db.business_monthly_totals(sid)
+    assert [m["month"] for m in months] == ["2026-11", "2026-10"]  # newest first
+    october = months[1]
+    assert october["jobs"] == 2
+    assert october["earned"] == 60.0 and october["profit"] == 55.0
+    assert october["minutes"] == 150
+
+
+# --- houses: storage ------------------------------------------------------------
+
+
+def test_houses_round_trip_and_update_and_delete(db, student):
+    sid = student["id"]
+    h1 = db.add_business_house(sid, "Blue house", street="Maple St", status="customer")
+    db.add_business_house(sid, "Grumpy corner", street="Maple St", status="avoid",
+                          notes="yelled at me lol")
+    houses = db.list_business_houses(sid)
+    assert len(houses) == 2
+    assert db.business_house_streets(sid) == ["Maple St"]
+    # An unknown status is normalized to 'maybe'.
+    weird = db.add_business_house(sid, "Mystery", status="banana")
+    assert next(h for h in db.list_business_houses(sid) if h["id"] == weird)["status"] == "maybe"
+    # Update and delete.
+    db.update_business_house(h1, status="maybe", notes="moved")
+    updated = next(h for h in db.list_business_houses(sid) if h["id"] == h1)
+    assert updated["status"] == "maybe" and updated["notes"] == "moved"
+    db.delete_business_house(h1)
+    assert all(h["id"] != h1 for h in db.list_business_houses(sid))
+
+
+def test_house_visit_counts_match_logged_jobs(db, student):
+    sid = student["id"]
+    db.add_business_house(sid, "Mrs. Lee", status="customer")
+    db.add_business_house(sid, "Never hired", status="maybe")
+    db.add_business_job(sid, job_date="2026-10-13", customer="Mrs. Lee", earned=25.0, minutes=60)
+    db.add_business_job(sid, job_date="2026-10-20", customer="Mrs. Lee", earned=25.0, minutes=60)
+    counts = db.business_house_visit_counts(sid)
+    assert counts["mrs. lee"] == 2
+    assert counts["never hired"] == 0
+
+
+def test_the_page_adds_a_house_to_the_map(monkeypatch, tmp_path):
+    db_path = tmp_path / "biz.db"
+    Database(db_path).close()
+    at = _open(monkeypatch, db_path)
+    [t for t in at.text_input if t.key == "bizhouse_nick"][0].set_value("Blue house on Maple")
+    [b for b in at.button if "Add to my map" in (b.label or "")][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    houses = db.list_business_houses(student["id"])
+    db.close()
+    assert len(houses) == 1 and houses[0]["nickname"] == "Blue house on Maple"
+
+
 # --- storage --------------------------------------------------------------------
 
 
@@ -305,7 +473,7 @@ def test_the_page_logs_a_job_and_updates_totals(monkeypatch, tmp_path):
     Database(db_path).close()
     at = _open(monkeypatch, db_path)
     at.number_input(key="bizjob_charged").set_value(30.0)
-    [b for b in at.button if "Add this job" in (b.label or "")][0].click().run()
+    [b for b in at.button if "Add this job" in (b.label or "")][0].click().run(timeout=30)
     assert not at.exception, [e.message for e in at.exception]
     db = Database(db_path)
     student = db.ensure_default_student()

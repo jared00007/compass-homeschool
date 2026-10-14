@@ -51,10 +51,28 @@ def default_profile() -> dict[str, Any]:
         "about": "",
         "area": "",
         "contact": "",
+        # How neighbors book him -- deliberately NOT a kid's or parent's personal
+        # cell by default. 'phone' (a parent's Google Voice / second line),
+        # 'email' (a parent's address), or 'knock' (no number at all -- he comes
+        # back around). See compass.ui.render_business_builder for the safety tips.
+        "contact_method": "phone",
         "goal": "",
         # Each service: {"emoji", "label", "price"} -- preset or custom.
         "services": [],
     }
+
+
+# How he can be booked -- (key, emoji, flyer verb). A 13-year-old's flyer should
+# never carry a personal cell number, so the safe-by-default options route to a
+# parent (a free Google Voice number or an email they control) or avoid a number
+# entirely ("I'll come back around"). The builder explains each; the flyer just
+# renders the chosen line.
+CONTACT_METHODS: tuple[tuple[str, str, str], ...] = (
+    ("phone", "📞", "Call or text to book:"),
+    ("email", "✉️", "Email to book:"),
+    ("knock", "🚪", "I'll come back around — or leave a note on your door!"),
+)
+_CONTACT_BY_KEY = {m[0]: m for m in CONTACT_METHODS}
 
 
 def _clean_services(services: Any) -> list[dict[str, str]]:
@@ -128,10 +146,20 @@ def flyer_inner_html(profile: dict[str, Any], student_name: str = "") -> str:
         f'<div style="margin-top:6px; font-size:13px; color:#8a7a5c;">📍 {area}</div>'
         if area else ""
     )
+    method = profile.get("contact_method") or "phone"
+    _mkey, emoji, verb = _CONTACT_BY_KEY.get(method, _CONTACT_BY_KEY["phone"])
+    if method == "knock":
+        # No number at all -- the safest option for a young teen going door to
+        # door. Renders whether or not a contact value was entered.
+        contact_line = f"{emoji} {verb}"
+    elif contact:
+        contact_line = f"{emoji} {verb} {contact}"
+    else:
+        contact_line = ""
     contact_block = (
         f'<div style="margin-top:14px; background:{accent}; color:#fff; border-radius:10px; '
         f'padding:12px 16px; text-align:center; font-size:18px; font-weight:800;">'
-        f"📞 Call or text to book: {contact}</div>" if contact else ""
+        f"{contact_line}</div>" if contact_line else ""
     )
     goal_block = (
         f'<div style="margin-top:10px; text-align:center; font-size:12px; color:#8a7a5c;">'
@@ -310,6 +338,108 @@ def receipt_document(profile: dict[str, Any], job: dict[str, Any], student_name:
         "</head>"
         '<body style="margin:0; padding:28px; background:#fff;">'
         f"{receipt_inner_html(profile, job, student_name)}"
+        "</body></html>"
+    )
+
+
+# --- the neighborhood map (his lead / customer tracker) -------------------------
+# Who said yes, who to come back to, and which houses to skip (the not-so-friendly
+# nos). Drawn as a playful street map: each street is a lane, each house a little
+# pin colored by status. Pure HTML/SVG so it renders the same in the app and in a
+# printable download, and can be tested without a browser.
+
+# (key, emoji, short label, long label, color) -- the three states a house can be
+# in. 'customer' = said yes (his repeat customers live here); 'maybe' = come back
+# later; 'avoid' = skip this one.
+HOUSE_STATUSES: tuple[tuple[str, str, str, str, str], ...] = (
+    ("customer", "🟢", "Customer", "Said yes — a customer!", "#2e8b57"),
+    ("maybe", "🟡", "Maybe", "Maybe / come back later", "#d99a00"),
+    ("avoid", "🔴", "Skip", "Skip this one (not friendly)", "#c0392b"),
+)
+_HOUSE_BY_KEY = {s[0]: s for s in HOUSE_STATUSES}
+
+
+def house_status(key: str) -> tuple[str, str, str, str, str]:
+    """The (key, emoji, short, long, color) tuple for a status, defaulting to
+    'maybe' for anything unrecognized."""
+    return _HOUSE_BY_KEY.get(key, _HOUSE_BY_KEY["maybe"])
+
+
+def _house_pin(house: dict[str, Any]) -> str:
+    _k, emoji, _short, _long, color = house_status(house.get("status"))
+    nick = _e(house.get("nickname")) or "A house"
+    return (
+        f'<div style="display:flex; flex-direction:column; align-items:center; '
+        f'width:92px; text-align:center;">'
+        f'<div style="font-size:30px; line-height:1;">🏠</div>'
+        f'<div style="margin-top:-8px; font-size:15px;">{emoji}</div>'
+        f'<div style="margin-top:2px; font-size:11px; font-weight:700; color:{color}; '
+        f'line-height:1.15; word-break:break-word;">{nick}</div>'
+        f"</div>"
+    )
+
+
+def neighborhood_map_html(houses: list[dict[str, Any]], student_name: str = "") -> str:
+    """His houses as a friendly street map -- streets as lanes, houses as pins
+    colored by status, grouped by street. Inline-styled only, everything escaped.
+    Empty until he's added a house."""
+    accent = "#c0553b"
+    cleaned = [h for h in (houses or []) if (h.get("nickname") or "").strip()]
+    if not cleaned:
+        return (
+            '<div style="padding:18px; border:2px dashed #d8cdb8; border-radius:14px; '
+            'text-align:center; color:#8a7a5c; font-family:-apple-system,Segoe UI,Roboto,sans-serif;">'
+            "Add a house below and it'll show up on your map. 🗺️</div>"
+        )
+
+    # Group by street, keeping the order list_business_houses already returns.
+    streets: dict[str, list[dict[str, Any]]] = {}
+    for h in cleaned:
+        streets.setdefault((h.get("street") or "").strip(), []).append(h)
+
+    lanes = []
+    for street, group in streets.items():
+        pins = "".join(_house_pin(h) for h in group)
+        label = _e(street) or "Around the neighborhood"
+        lanes.append(
+            f'<div style="margin:0 0 6px;">'
+            f'<div style="font-size:12px; font-weight:800; text-transform:uppercase; '
+            f'letter-spacing:.06em; color:{accent}; margin-bottom:4px;">🛣️ {label}</div>'
+            f'<div style="display:flex; flex-wrap:wrap; gap:10px; align-items:flex-start; '
+            f'padding:12px 10px; background:#f6efe2; border-radius:12px; '
+            f'border:1px solid #e4d9c2;">{pins}</div>'
+            f"</div>"
+        )
+
+    legend = " &nbsp; ".join(
+        f'<span style="white-space:nowrap;">{emoji} {_e(short)}</span>'
+        for _k, emoji, short, _long, _c in HOUSE_STATUSES
+    )
+    who = _e(student_name)
+    title = f"{who}'s neighborhood map" if who else "My neighborhood map"
+    return (
+        f'<div style="max-width:620px; margin:0 auto; border:3px solid {accent}; '
+        f'border-radius:16px; overflow:hidden; font-family:-apple-system,Segoe UI,Roboto,sans-serif; '
+        f'background:#fffdf8;">'
+        f'  <div style="background:{accent}; color:#fff; padding:12px 18px; font-size:18px; '
+        f'font-weight:900;">🗺️ {title}</div>'
+        f'  <div style="padding:14px 16px;">{"".join(lanes)}'
+        f'    <div style="margin-top:10px; font-size:12px; color:#5c4a2e;">{legend}</div>'
+        f"  </div>"
+        f"</div>"
+    )
+
+
+def neighborhood_map_document(houses: list[dict[str, Any]], student_name: str = "") -> str:
+    """A standalone, printable version of the map -- the download for the fridge."""
+    who = _e(student_name)
+    return (
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+        f"<title>{who or 'My'} neighborhood map</title>"
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        "</head>"
+        '<body style="margin:0; padding:28px; background:#fff;">'
+        f"{neighborhood_map_html(houses, student_name)}"
         "</body></html>"
     )
 

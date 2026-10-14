@@ -590,23 +590,46 @@ CREATE TABLE IF NOT EXISTS business_profile (
 -- Business jobs -- the money/bookkeeping side of the project: one row per job
 -- he does (date, customer, what he did, what he charged, what he spent, how
 -- long it took). Money is stored in whole cents to keep the arithmetic exact.
--- `activity_id` links the hours this job logs to Occupational Education, so the
--- work counts as school; deleting the job removes that activity too.
+-- The labor time logs to Occupational Education via `activity_id`; the money
+-- math and any flyer/receipt writing log their own small blocks to Math and
+-- Writing via `math_activity_id`/`writing_activity_id` (only when he says he
+-- did them -- see add_business_job). Deleting the job removes all three.
 CREATE TABLE IF NOT EXISTS business_jobs (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    student_id    INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-    job_date      TEXT NOT NULL,
-    customer      TEXT NOT NULL DEFAULT '',
-    description   TEXT NOT NULL DEFAULT '',
-    earned_cents  INTEGER NOT NULL DEFAULT 0,
-    expense_cents INTEGER NOT NULL DEFAULT 0,
-    minutes       INTEGER NOT NULL DEFAULT 0,
-    activity_id   INTEGER,
-    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id         INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    job_date           TEXT NOT NULL,
+    customer           TEXT NOT NULL DEFAULT '',
+    description        TEXT NOT NULL DEFAULT '',
+    earned_cents       INTEGER NOT NULL DEFAULT 0,
+    expense_cents      INTEGER NOT NULL DEFAULT 0,
+    minutes            INTEGER NOT NULL DEFAULT 0,
+    activity_id        INTEGER,
+    math_activity_id   INTEGER,
+    writing_activity_id INTEGER,
+    created_at         TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_business_jobs_student
     ON business_jobs (student_id, job_date DESC, id DESC);
+
+-- Business houses -- his neighborhood lead/customer map. One row per house he's
+-- knocked on: a nickname he'll recognize ("blue house on Maple"), the street,
+-- and a status -- 'customer' (said yes), 'maybe' (come back), or 'avoid' (the
+-- not-so-friendly nos). Drives the fun printable map and his repeat-customer
+-- view. No CHECK on status: it's only ever written by the app, validated in
+-- Python (same choice big_projects.kind makes).
+CREATE TABLE IF NOT EXISTS business_houses (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    nickname    TEXT NOT NULL,
+    street      TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL DEFAULT 'maybe',
+    notes       TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_business_houses_student
+    ON business_houses (student_id);
 
 -- ---------------------------------------------------------------------------
 -- Morning routine log -- which stretch/breathing/mindfulness routine
