@@ -5690,6 +5690,49 @@ def render_business_builder(db: Database, student: dict[str, Any]) -> None:
         st.info("Add your business name and at least one service above, then your flyer shows up here.")
 
 
+def render_business_supplies(db: Database, student: dict[str, Any]) -> None:
+    """The gear he needs to do good work -- tied to the services he picked. He
+    ticks what he already has; everything left is his shopping list (downloadable
+    for a trip to the store with a parent)."""
+    from compass import business
+
+    profile = db.get_business_profile(student["id"])
+    supplies = business.supplies_for(profile)
+
+    st.markdown("### 🧰 What I'll need")
+    st.caption(
+        "Here's the gear for the jobs you offer. Tick what you already have — "
+        "everything you leave unticked is your shopping list. 🛒"
+    )
+
+    have = set(profile.get("supplies_have") or [])
+    with st.form("business_supplies_form"):
+        new_have: list[str] = []
+        for sup in supplies:
+            if st.checkbox(f"{sup['emoji']} {sup['label']}", value=sup["key"] in have,
+                           key=f"bizsupply_{sup['key']}", help=sup["note"]):
+                new_have.append(sup["key"])
+        saved = st.form_submit_button("💾 Save my gear list", width="stretch")
+    if saved:
+        profile["supplies_have"] = new_have
+        db.save_business_profile(student["id"], profile)
+        have = set(new_have)  # reflect the save in the shopping list below (no rerun)
+        st.success("Saved your gear list! 🧰")
+
+    missing = [s for s in supplies if s["key"] not in have]
+    if missing:
+        st.markdown("**🛒 Still to get:**")
+        for sup in missing:
+            st.markdown(f"- {sup['emoji']} **{md(sup['label'])}** — {md(sup['note'])}")
+        st.download_button(
+            "⬇️ Download my shopping list",
+            data=business.shopping_list_text(profile, have),
+            file_name="my-shopping-list.txt", mime="text/plain", key="biz_shop_dl",
+        )
+    else:
+        st.success("✅ You've got everything you need to do great work!")
+
+
 def render_business_log(db: Database, student: dict[str, Any]) -> None:
     """Student-facing: the money/bookkeeping side of his business. He logs each
     job -- date, customer, what he did, what he charged, what he spent, how long

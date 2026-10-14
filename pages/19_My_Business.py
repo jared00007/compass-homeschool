@@ -18,6 +18,7 @@ from compass.ui import (
     render_business_houses,
     render_business_log,
     render_business_summary,
+    render_business_supplies,
 )
 
 db, student = page_setup("My Business", icon="🍂")
@@ -30,6 +31,9 @@ if (db.get_business_profile(student["id"]).get("name") or "").strip():
 
 st.title("🍂 My Business")
 render_business_builder(db, student)
+
+st.divider()
+render_business_supplies(db, student)
 
 st.divider()
 render_business_houses(db, student)

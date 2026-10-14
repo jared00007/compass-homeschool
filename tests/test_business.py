@@ -174,6 +174,71 @@ def test_copy_system_prompt_carries_his_details():
     assert "13-year-old" in prompt
 
 
+# --- the gear / supplies checklist ----------------------------------------------
+
+
+def test_supplies_always_include_the_general_basics():
+    supplies = business.supplies_for({"services": []})
+    keys = [s["key"] for s in supplies]
+    # The basics anyone needs, even before picking a service.
+    for basic in business.GENERAL_SUPPLY_KEYS:
+        assert basic in keys
+    # Every item is fully shaped for the UI.
+    assert all({"key", "emoji", "label", "note"} <= set(s) for s in supplies)
+
+
+def test_supplies_add_service_specific_gear():
+    profile = {"services": [
+        {"label": "Rake leaves"},
+        {"label": "Haul branches & sticks"},
+    ]}
+    keys = [s["key"] for s in business.supplies_for(profile)]
+    assert "rake" in keys        # from raking
+    assert "loppers" in keys     # from branches
+    assert "cart" in keys        # from branches
+    assert "handtools" not in keys  # he didn't pick the garden-beds service
+    assert keys.count("cart") == 1  # deduped even if two services want it
+
+
+def test_supplies_skip_unknown_custom_services():
+    # A custom service has no known gear, so it just contributes nothing.
+    keys = [s["key"] for s in business.supplies_for({"services": [{"label": "Wash windows"}]})]
+    assert keys == list(business.GENERAL_SUPPLY_KEYS)
+
+
+def test_shopping_list_is_what_he_has_not_ticked():
+    profile = {"services": [{"label": "Rake leaves"}]}
+    # He has a rake and gloves already; everything else is still to get.
+    text = business.shopping_list_text(profile, have=["rake", "gloves"])
+    assert "Rake" not in text  # already has it
+    assert "Work gloves" not in text
+    assert "Yard-waste bags" in text  # needs these
+    # With everything ticked, the list is empty.
+    all_keys = [s["key"] for s in business.supplies_for(profile)]
+    assert business.shopping_list_text(profile, have=all_keys) == ""
+
+
+def test_the_page_saves_a_gear_list(monkeypatch, tmp_path):
+    db_path = tmp_path / "biz.db"
+    database = Database(db_path)
+    student = database.ensure_default_student()
+    database.save_business_profile(student["id"], {
+        "name": "Leaf Crew",
+        "services": [{"emoji": "🍂", "label": "Rake leaves", "price": "$25"}],
+    })
+    database.close()
+
+    at = _open(monkeypatch, db_path)
+    at.checkbox(key="bizsupply_rake").check()
+    [b for b in at.button if "Save my gear list" in (b.label or "")][0].click().run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    profile = database.get_business_profile(student["id"])
+    database.close()
+    assert "rake" in (profile.get("supplies_have") or [])
+
+
 # --- the flyer's closing line (no number / email) -------------------------------
 
 

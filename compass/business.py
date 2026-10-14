@@ -65,7 +65,77 @@ def default_profile() -> dict[str, Any]:
         "closing": DEFAULT_CLOSING,
         # Each service: {"emoji", "label", "price"} -- preset or custom.
         "services": [],
+        # Keys (see SUPPLY_CATALOG) of gear he already has ticked off -- so the
+        # rest reads as his shopping list.
+        "supplies_have": [],
     }
+
+
+# --- the gear / supplies checklist ----------------------------------------------
+# What he actually needs to do a good job. A 13-year-old has a rake but probably
+# no bags, no tarp, no gloves -- so the app spells it out, tied to the services he
+# picked, and turns whatever he hasn't got yet into a plain shopping list.
+
+# key -> (emoji, label, why it helps).
+SUPPLY_CATALOG: dict[str, tuple[str, str, str]] = {
+    "gloves": ("🧤", "Work gloves", "Keep your hands safe and blister-free."),
+    "bags": ("🗑️", "Yard-waste bags", "Paper leaf bags or tough contractor bags to haul it all away — you'll need to buy these."),
+    "tarp": ("🟫", "A big tarp", "Pile leaves on it and drag a huge load in one trip."),
+    "boots": ("👟", "Closed-toe shoes or boots", "Good footing and no stubbed toes."),
+    "water": ("💧", "A water bottle", "Stay hydrated — these jobs are real work."),
+    "rake": ("🍂", "A sturdy leaf rake", "Your main tool. A metal-tine rake lasts the longest."),
+    "broom": ("🧹", "A broom (or leaf blower)", "For clearing leaves off walkways and the drive."),
+    "loppers": ("✂️", "Loppers / pruning shears", "To cut branches and sticks down to a haulable size."),
+    "cart": ("🛒", "A cart or wheelbarrow", "Move heavy bags and branches without ten trips."),
+    "handtools": ("🌱", "A hand trowel & cultivator", "For tidying up garden beds."),
+    "shovel": ("❄️", "A shovel", "For winter yard prep and moving snow or mulch."),
+}
+
+# Needed no matter which jobs he does.
+GENERAL_SUPPLY_KEYS: tuple[str, ...] = ("gloves", "bags", "tarp", "boots", "water")
+
+# Extra gear each preset service calls for, beyond the general basics above.
+SERVICE_SUPPLY_MAP: dict[str, tuple[str, ...]] = {
+    "rake": ("rake",),
+    "bag": ("cart",),
+    "walkways": ("broom",),
+    "branches": ("loppers", "cart"),
+    "beds": ("handtools",),
+    "winter": ("shovel",),
+}
+
+
+def supplies_for(profile: dict[str, Any]) -> list[dict[str, str]]:
+    """The gear he needs, as ordered {key, emoji, label, note} dicts: the general
+    basics first, then whatever each service he offers adds. Custom (non-preset)
+    services are skipped -- there's no way to know their gear."""
+    label_to_key = {label: key for key, _emoji, label, _baseline in PRESET_SERVICES}
+    chosen = {s["label"] for s in _clean_services(profile.get("services"))}
+    service_keys = {label_to_key[label] for label in chosen if label in label_to_key}
+
+    needed: list[str] = list(GENERAL_SUPPLY_KEYS)
+    for key, _emoji, _label, _baseline in PRESET_SERVICES:  # preserve preset order
+        if key in service_keys:
+            for supply in SERVICE_SUPPLY_MAP.get(key, ()):
+                if supply not in needed:
+                    needed.append(supply)
+    out: list[dict[str, str]] = []
+    for key in needed:
+        emoji, label, note = SUPPLY_CATALOG[key]
+        out.append({"key": key, "emoji": emoji, "label": label, "note": note})
+    return out
+
+
+def shopping_list_text(profile: dict[str, Any], have: Any = ()) -> str:
+    """A plain-text shopping list -- the gear he needs but hasn't ticked as
+    already having. Empty string when he's got everything."""
+    have_set = {str(k) for k in (have or [])}
+    missing = [s for s in supplies_for(profile) if s["key"] not in have_set]
+    if not missing:
+        return ""
+    lines = ["Shopping list — gear I still need:", ""]
+    lines += [f"[ ] {s['emoji']} {s['label']}" for s in missing]
+    return "\n".join(lines)
 
 
 def _clean_services(services: Any) -> list[dict[str, str]]:
