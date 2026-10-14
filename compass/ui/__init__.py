@@ -5641,8 +5641,20 @@ def render_business_builder(db: Database, student: dict[str, Any]) -> None:
             "services": chosen,
         })
         db.save_business_profile(student["id"], profile)
-        st.success("Saved! Your flyer is below. 🍂")
-        st.rerun()
+        # Mirror onto his Big Projects board right away once it has a name, so the
+        # project shows up without needing to reopen this page.
+        if profile["name"]:
+            db.ensure_business_project(student["id"])
+        # No st.rerun() here on purpose: a rerun restarts the script and wipes
+        # this confirmation before it ever reaches the screen (which read as
+        # "I clicked Save and nothing happened"). The flyer section below
+        # re-reads the profile in this same run, so it already reflects the save.
+        if business.is_ready_for_flyer(profile):
+            st.success("Saved! Your flyer is below. 🍂")
+        elif not profile["name"]:
+            st.warning("Add a business name first, then press Save.")
+        else:
+            st.warning("Saved! Now tick at least one service above to get your flyer.")
 
     st.divider()
     profile = db.get_business_profile(student["id"])
@@ -5686,6 +5698,11 @@ def render_business_log(db: Database, student: dict[str, Any]) -> None:
     goal = (profile.get("goal") or "").strip()
 
     st.markdown("### 💵 My jobs & money")
+    # Shown on the run *after* a job is logged -- the rerun below (needed to
+    # refresh the totals above) would otherwise wipe the confirmation before it
+    # ever reached the screen.
+    if st.session_state.pop("biz_job_logged", False):
+        st.success("Logged! Your totals updated. 💵")
     cols = st.columns(4)
     cols[0].metric("Earned", f"${totals['earned']:,.2f}")
     cols[1].metric("Spent", f"${totals['expense']:,.2f}")
