@@ -182,62 +182,93 @@ def flyer_inner_html(profile: dict[str, Any], student_name: str = "") -> str:
     closing = _e(profile.get("closing")) or _e(DEFAULT_CLOSING)
     who = _e(student_name)
 
-    accent = "#c0553b"      # warm autumn red
-    leaf_band = "#f6efe2"   # soft paper band
+    # A warmer, higher-contrast autumn palette than the old all-beige look, so it
+    # reads with punch on paper rather than washing out.
+    ink = "#241a10"        # near-black brown, body text
+    rust = "#b8381d"       # deep pumpkin -- the hero + headings
+    gold = "#e79a30"       # warm gold -- the header gradient's second stop
+    green = "#2f7d52"      # fresh green -- price chips + the call to action
+    cream = "#fffaf0"      # paper
+    line = "#ead9bb"       # soft divider / border
+    # Force background colors to actually print (browsers drop them otherwise --
+    # the #1 reason the old flyer looked flat on paper).
+    print_fix = "-webkit-print-color-adjust:exact; print-color-adjust:exact;"
 
     rows = []
-    for service in _clean_services(profile.get("services")):
-        price = f'<span style="font-weight:800; color:{accent}; white-space:nowrap;">{_e(service["price"])}</span>' if service["price"] else ""
+    for i, service in enumerate(_clean_services(profile.get("services"))):
+        chip = (
+            f'<span style="background:{green}; color:#fff; font-weight:800; font-size:14px; '
+            f'border-radius:999px; padding:4px 13px; white-space:nowrap; {print_fix}">'
+            f'{_e(service["price"])}</span>' if service["price"] else ""
+        )
+        stripe = "#fff6e6" if i % 2 == 0 else "transparent"
         rows.append(
-            f'<div style="display:flex; justify-content:space-between; align-items:baseline; '
-            f'gap:12px; padding:7px 2px; border-bottom:1px dashed #d8cdb8;">'
-            f'<span style="font-size:18px;">{_e(service["emoji"])} {_e(service["label"])}</span>'
-            f"{price}</div>"
+            f'<div style="display:flex; justify-content:space-between; align-items:center; '
+            f'gap:12px; padding:9px 12px; border-radius:9px; background:{stripe}; {print_fix}">'
+            f'<span style="font-size:16px; font-weight:600; color:{ink};">'
+            f'{_e(service["emoji"])} {_e(service["label"])}</span>'
+            f"{chip}</div>"
         )
     services_block = "".join(rows) or (
-        '<div style="padding:8px 2px; color:#8a7a5c;">(add what you offer)</div>'
+        f'<div style="padding:8px 2px; color:#9a8a6c;">(add what you offer)</div>'
     )
 
     slogan_block = (
-        f'<div style="font-size:19px; font-style:italic; color:#5c4a2e; margin-top:4px;">'
+        f'<div style="font-size:16px; font-style:italic; color:#fff; opacity:.95; margin-top:6px;">'
         f"“{slogan}”</div>" if slogan else ""
     )
+    by_block = (
+        f'<div style="margin-top:8px; font-size:12px; font-weight:700; letter-spacing:.14em; '
+        f'text-transform:uppercase; color:#fff; opacity:.85;">Run by {who}</div>'
+        if who else ""
+    )
     about_block = (
-        f'<div style="margin-top:16px; font-size:15px; color:#3f3524; line-height:1.5;">{about}</div>'
-        if about else ""
+        f'<div style="margin-top:16px; font-size:14px; color:{ink}; line-height:1.55; '
+        f'text-align:center; font-style:italic;">“{about}”</div>' if about else ""
     )
     area_block = (
-        f'<div style="margin-top:6px; font-size:13px; color:#8a7a5c;">📍 {area}</div>'
-        if area else ""
+        f'<div style="margin-top:12px; text-align:center; font-size:13px; font-weight:700; '
+        f'color:{rust};">📍 {area}</div>' if area else ""
     )
+    # Centered section label with little rules on either side.
+    def _rule_label(text: str) -> str:
+        bar = f'<span style="height:2px; flex:1; background:{gold}; opacity:.55; {print_fix}"></span>'
+        return (
+            f'<div style="display:flex; align-items:center; gap:10px; margin:2px 0 10px; '
+            f'font-size:12px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; '
+            f'color:{rust};">{bar}{text}{bar}</div>'
+        )
+
     # The warm, in-person follow-up -- the whole "how to book" on a kid's flyer,
     # with no number or email to put out there.
-    contact_block = (
-        f'<div style="margin-top:16px; background:{accent}; color:#fff; border-radius:10px; '
-        f'padding:14px 18px; text-align:center; font-size:16px; font-weight:700; line-height:1.4;">'
-        f"👋 {closing}</div>"
-    )
-    by_block = (
-        f'<div style="margin-top:2px; font-size:13px; color:#8a7a5c;">Run by {who}</div>'
-        if who else ""
+    cta_block = (
+        f'<div style="margin:18px 0 4px; background:{green}; color:#fff; border-radius:13px; '
+        f'padding:15px 18px; text-align:center; font-size:15px; font-weight:700; line-height:1.45; '
+        f'{print_fix}">👋 {closing}</div>'
     )
 
     return (
-        f'<div style="max-width:560px; margin:0 auto; border:3px solid {accent}; '
-        f'border-radius:16px; overflow:hidden; font-family:-apple-system,Segoe UI,Roboto,sans-serif; '
-        f'background:#fffdf8;">'
-        f'  <div style="background:{leaf_band}; padding:22px 24px 18px; text-align:center; '
-        f'border-bottom:3px solid {accent};">'
-        f'    <div style="font-size:34px; font-weight:900; color:#2e2416; letter-spacing:-.01em;">'
-        f"🍂 {name}</div>"
+        f'<div style="max-width:540px; margin:0 auto; border-radius:18px; overflow:hidden; '
+        f'font-family:\'Segoe UI\',-apple-system,Roboto,Helvetica,Arial,sans-serif; '
+        f'background:{cream}; border:1px solid {line}; {print_fix}">'
+        # --- hero ---
+        f'  <div style="background:{rust}; background-image:linear-gradient(135deg,{rust} 0%,{gold} 135%); '
+        f'color:#fff; padding:28px 24px 22px; text-align:center; {print_fix}">'
+        f'    <div style="font-size:11px; font-weight:800; letter-spacing:.24em; text-transform:uppercase; '
+        f'opacity:.9;">Neighborhood Yard Care</div>'
+        f'    <div style="font-size:35px; font-weight:900; line-height:1.05; margin-top:7px; '
+        f'text-shadow:0 1px 1px rgba(0,0,0,.18);">🍂 {name}</div>'
         f"    {slogan_block}{by_block}"
         f"  </div>"
-        f'  <div style="padding:20px 26px 24px;">'
-        f'    <div style="font-size:13px; font-weight:800; text-transform:uppercase; '
-        f'letter-spacing:.08em; color:{accent}; margin-bottom:4px;">What I do</div>'
+        # --- body ---
+        f'  <div style="padding:22px 26px 10px;">'
+        f"    {_rule_label('What I Do')}"
         f"    {services_block}"
-        f"    {about_block}{area_block}{contact_block}"
+        f"    {about_block}{area_block}{cta_block}"
         f"  </div>"
+        # --- footer leaf strip ---
+        f'  <div style="background:{ink}; color:{gold}; text-align:center; padding:9px; '
+        f'font-size:15px; letter-spacing:.3em; {print_fix}">🍂 🍁 🍂 🍁 🍂</div>'
         f"</div>"
     )
 
