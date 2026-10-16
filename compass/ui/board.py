@@ -1200,6 +1200,39 @@ def render_board_backlog(
     if not sum(len(items) for items in by_epic.values()):
         _ui.st.caption("Nothing parked.")
         return
+
+    # A free-text search across the whole parked backlog -- reported: pairing a
+    # skill seen in Khan to a card made weeks ago meant scrolling every unit.
+    # Matches the card name, its unit, its course, and its subject, so typing
+    # what Khan shows ("exponents") surfaces the card wherever it's parked. Shown
+    # only on the parent board; it rides alongside the Khan course/unit filters.
+    raw_query = ""
+    if interactive:
+        raw_query = _ui.st.text_input(
+            "🔍 Search the backlog",
+            placeholder="Find a card by name, unit, or course — e.g. “exponents”",
+            key=f"{key_prefix}_backlog_search",
+        )
+    query = raw_query.strip().lower()
+
+    def _matches(item: dict[str, Any]) -> bool:
+        if not query:
+            return True
+        meta = item.get("metadata") or {}
+        hay = " ".join(
+            str(x) for x in (
+                item.get("title"), item.get("topic"), item.get("subject"),
+                meta.get("khan_course"), meta.get("khan_unit"),
+            ) if x
+        ).lower()
+        return query in hay
+
+    if query:
+        all_items = [it for items in by_epic.values() for it in items]
+        if not any(_matches(item) for _kind, item in all_items):
+            _ui.st.info(f"No parked cards match “{raw_query.strip()}”.")
+            return
+
     def _render_cards(cards, row_key):
         with _ui.st.container(key=row_key):
             columns = _ui.st.columns(min(len(cards), 4))
@@ -1232,7 +1265,11 @@ def render_board_backlog(
             # Khan cards cluster by course -> unit, in lesson order, and on the
             # parent board the whole set is filterable by course and unit
             # (requested: "see them by course and unit and filterable on those").
-            _ui.st.markdown(f"#### {icon} {epic} ({len(items)})")
+            khan_items = [it for it in items if _matches(it[1])]
+            if query and not khan_items:
+                continue  # search is on and nothing here matches -- skip the section
+            count_label = len(khan_items) if query else len(items)
+            _ui.st.markdown(f"#### {icon} {epic} ({count_label})")
             hierarchy = weekly.group_khan_backlog_by_course_unit(items)
             course_pick, unit_pick = "All courses", "All units"
             if interactive:
@@ -1255,17 +1292,22 @@ def render_board_backlog(
                     "Unit", ["All units"] + unit_opts,
                     key=f"{key_prefix}_khan_unit_filter_{course_pick}",
                 )
-            # A filter that narrows to one course (or one unit) forces the
-            # matching course open so its results are actually visible even
-            # though courses default collapsed.
-            force_open = course_pick != "All courses" or unit_pick != "All units"
+            # A filter that narrows to one course (or one unit) -- or an active
+            # text search -- forces the matching course open so its results are
+            # actually visible even though courses default collapsed.
+            force_open = (
+                course_pick != "All courses" or unit_pick != "All units" or bool(query)
+            )
             for course_idx, (course, units) in enumerate(hierarchy):
                 if course_pick != "All courses" and course != course_pick:
                     continue
-                shown = [
-                    (u, cards) for u, cards in units
-                    if unit_pick == "All units" or u == unit_pick
-                ]
+                shown = []
+                for u, cards in units:
+                    if unit_pick != "All units" and u != unit_pick:
+                        continue
+                    hits = [c for c in cards if _matches(c[1])]
+                    if hits:
+                        shown.append((u, hits))
                 if not shown:
                     continue
                 total = sum(len(cards) for _, cards in shown)
@@ -1315,6 +1357,7 @@ def render_board_backlog(
                     u_open = (
                         _ui.st.session_state.get(uopen_key, False)
                         or unit_pick != "All units"
+                        or bool(query)  # a search opens matching units to the cards
                     )
                     ucaret = "▼" if u_open else "▶"
                     if _ui.st.button(
@@ -1354,9 +1397,15 @@ def render_board_backlog(
         else:
             # Every other epic stays a single collapsed expander -- a parent
             # asked for the groups closed by default so the panel opens as a
-            # short list of headers to expand one at a time.
-            with _ui.st.expander(f"{icon} {epic} ({len(items)})", expanded=False):
-                _render_cards(items, f"{key_prefix}_backlog_row_{safe_epic}")
+            # short list of headers to expand one at a time. A search filters the
+            # epic's cards and pops it open so matches are visible at a glance.
+            shown_items = [it for it in items if _matches(it[1])]
+            if query and not shown_items:
+                continue
+            with _ui.st.expander(
+                f"{icon} {epic} ({len(shown_items)})", expanded=bool(query)
+            ):
+                _render_cards(shown_items, f"{key_prefix}_backlog_row_{safe_epic}")
 
 
 # --- per-subject week view: the same day board, scoped to one agent ------------

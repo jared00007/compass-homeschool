@@ -753,6 +753,46 @@ def test_the_backlog_panel_includes_a_story_parked_from_a_totally_different_week
     assert any("Origins of the Cold War" in label for label in card_labels)
 
 
+def test_the_backlog_search_filters_cards_by_name_unit_or_course(monkeypatch, tmp_path):
+    """Reported: pairing a skill seen in Khan to a card made weeks ago meant
+    scrolling every unit. A search box filters the parked backlog -- the Khan
+    epic header count reflects the matches, and a no-hit search says so."""
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    sid = db.ensure_default_student()["id"]
+    for title, unit in [
+        ("Khan Academy: Exponents review", "Exponents"),
+        ("Khan Academy: Multiplying decimals", "Decimals"),
+        ("Khan Academy: Linear equations", "Equations"),
+    ]:
+        lid = db.save_lesson(
+            student_id=sid, agent="khan", subject="math", topic=unit, title=title,
+            payload={"title": title, "activities": []},
+            metadata={"source": "khan", "khan_course_id": "c1",
+                      "khan_course": "Pre-algebra", "khan_unit": unit},
+        )
+        db.send_to_backlog(lid)
+    db.close()
+
+    at, board_tab = _open_board_tab(monkeypatch, db_path)
+    search = [t for t in at.text_input if (t.key or "") == "board_backlog_search"]
+    assert search, "the parent backlog must offer a search box"
+
+    # A term that matches one card narrows the Khan epic to a single result.
+    search[0].set_value("decimals").run()
+    assert not at.exception, [e.message for e in at.exception]
+    md_all = " ".join(m.value for m in _board_tab(at).markdown)
+    assert "Khan Academy (1)" in md_all
+
+    # A term that matches nothing says so plainly.
+    [t for t in at.text_input if (t.key or "") == "board_backlog_search"][0].set_value(
+        "zzznomatch"
+    ).run()
+    assert not at.exception, [e.message for e in at.exception]
+    infos = " ".join(i.value for i in _board_tab(at).info)
+    assert "No parked cards match" in infos
+
+
 def test_the_board_columns_are_monday_through_friday_only_no_sixth_backlog_column(
     monkeypatch, tmp_path
 ):
