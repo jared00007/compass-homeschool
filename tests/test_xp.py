@@ -228,6 +228,38 @@ def test_weekly_progress_counts_only_this_weeks_core_work(db, student):
     assert progress.goal == config.XP_WEEKLY_GOAL
 
 
+def test_parent_bonus_round_trips_and_stacks(db, student):
+    week = "2026-09-07"
+    assert xp.parent_bonus(db, week) == {"xp": 0, "note": ""}
+    xp.set_parent_bonus(db, week, 40, "Math was hard")
+    assert xp.parent_bonus(db, week) == {"xp": 40, "note": "Math was hard"}
+    # Stacking adds, keeping the latest note; a blank note keeps the old one.
+    assert xp.add_parent_bonus(db, week, 10, "") == 50
+    assert xp.parent_bonus(db, week)["note"] == "Math was hard"
+    # A non-positive amount clears it.
+    xp.set_parent_bonus(db, week, 0)
+    assert xp.parent_bonus(db, week)["xp"] == 0
+
+
+def test_parent_bonus_counts_toward_the_weekly_total_and_goal(db, student):
+    sid = student["id"]
+    today = date(2026, 9, 10)   # Thursday
+    monday = "2026-09-07"
+    before = xp.weekly_progress(db, sid, today)
+    # Award exactly enough to reach the goal -- the "tip to the goal" case.
+    remaining = before.remaining
+    assert remaining > 0
+    xp.add_parent_bonus(db, monday, remaining, "Toughed it out")
+    after = xp.weekly_progress(db, sid, today)
+    assert after.total == before.total + remaining
+    assert after.reached
+    # It shows as its own bonus line with the reason.
+    assert any(b.xp == remaining and "Toughed it out" in b.label for b in after.bonus_items)
+    # A bonus for a different week doesn't leak into this one.
+    xp.set_parent_bonus(db, "2026-08-31", 999)
+    assert xp.weekly_progress(db, sid, today).total == after.total
+
+
 def test_weekly_redo_docks_xp_on_the_day_it_happened(db, student):
     sid = student["id"]
     today = date(2026, 9, 10)

@@ -3840,6 +3840,71 @@ def render_xp_reward_editor(db: Database) -> None:
                 xp_module.remove_reward_from_library(db, to_remove)
                 st.rerun()
 
+    render_parent_bonus_award(db)
+
+
+def render_parent_bonus_award(db: Database) -> None:
+    """Parent-only: put your thumb on the scale. Award discretionary bonus XP for
+    THIS week -- effort credit ("math was hard, he toughed it out") that counts
+    toward the goal like any other XP. A one-tap "top up to the goal" covers the
+    common case; a manual amount handles the rest. Reversible any time."""
+    student = db.ensure_default_student()
+    this_monday = date.today() - timedelta(days=date.today().weekday())
+    progress = xp_module.weekly_progress(db, student["id"])
+    current = xp_module.parent_bonus(db, this_monday)
+
+    with st.expander("⭐ Give bonus XP — tip the scale for effort"):
+        st.caption(
+            f"He's at **{progress.total} / {progress.goal} XP** this week"
+            + (
+                f" — **{progress.remaining}** short of the goal."
+                if not progress.reached else " — **goal reached.** 🎉"
+            )
+        )
+        if current["xp"] > 0:
+            note = f" ({md(current['note'])})" if current["note"] else ""
+            st.info(f"⭐ Bonus already given this week: **+{current['xp']} XP**{note}")
+
+        reason = st.text_input(
+            "Why (shows on his bonus line)", value=current["note"],
+            key="xp_bonus_reason", placeholder="e.g. Math was hard — he stuck with it",
+        )
+
+        # The common case: one tap to lift him exactly to the goal.
+        if not progress.reached and progress.remaining > 0:
+            if st.button(
+                f"✨ Top up to the goal (+{progress.remaining} XP)",
+                key="xp_bonus_topup", type="primary", width="stretch",
+            ):
+                xp_module.add_parent_bonus(
+                    db, this_monday, progress.remaining,
+                    reason.strip() or "Effort bonus",
+                )
+                st.success(f"Topped up +{progress.remaining} XP — goal reached. 🎉")
+                st.rerun()
+
+        cols = st.columns([2, 1])
+        amount = cols[0].number_input(
+            "Or award a custom amount", min_value=0, max_value=5000, step=10, value=0,
+            key="xp_bonus_amount",
+        )
+        if cols[1].button("➕ Award", key="xp_bonus_award", width="stretch"):
+            if amount > 0:
+                xp_module.add_parent_bonus(
+                    db, this_monday, int(amount), reason.strip() or "Effort bonus"
+                )
+                st.success(f"Awarded +{int(amount)} XP. ⭐")
+                st.rerun()
+            else:
+                st.warning("Enter an amount above 0 (or use the top-up button).")
+
+        if current["xp"] > 0 and st.button(
+            "↩️ Clear this week's bonus", key="xp_bonus_clear"
+        ):
+            xp_module.set_parent_bonus(db, this_monday, 0)
+            st.toast("Bonus cleared.")
+            st.rerun()
+
 
 def render_free_reading(db: Database, student: dict[str, Any]) -> None:
     """His own free-reading logger -- comics, novels, hobby books he reads on his

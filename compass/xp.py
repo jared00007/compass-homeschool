@@ -476,6 +476,69 @@ def set_week_reward_given(db: Any, week_start: date | str, given: bool = True) -
     db.set_setting(_WEEKS_GIVEN_SETTING, json.dumps(sorted(current)))
 
 
+# --- parent bonus XP (a judgment call: "math was hard, he toughed it out") --------
+# Extra credit a parent awards at their discretion, per week, with a short note.
+# It rides as its own line in the weekly bonus items, so it counts toward the goal
+# exactly like any other XP -- the parent's thumb on the scale when effort beat the
+# raw point count. Stored as {week_iso: {"xp": int, "note": str}}.
+
+_PARENT_BONUS_SETTING = "xp_parent_bonus"
+
+
+def _parent_bonuses(db: Any) -> dict[str, Any]:
+    raw = db.get_setting(_PARENT_BONUS_SETTING)
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (ValueError, TypeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def parent_bonus(db: Any, week_start: date | str) -> dict[str, Any]:
+    """The parent's awarded bonus for one week: {"xp": int, "note": str}. Zero
+    when none has been given."""
+    entry = _parent_bonuses(db).get(_week_key(week_start))
+    if not isinstance(entry, dict):
+        return {"xp": 0, "note": ""}
+    try:
+        xp = int(entry.get("xp") or 0)
+    except (TypeError, ValueError):
+        xp = 0
+    return {"xp": max(0, xp), "note": str(entry.get("note") or "")}
+
+
+def set_parent_bonus(db: Any, week_start: date | str, xp: int, note: str = "") -> None:
+    """Set (replace) this week's parent bonus. A non-positive amount clears it."""
+    bonuses = _parent_bonuses(db)
+    key = _week_key(week_start)
+    try:
+        value = max(0, int(xp))
+    except (TypeError, ValueError):
+        value = 0
+    if value <= 0:
+        bonuses.pop(key, None)
+    else:
+        bonuses[key] = {"xp": value, "note": str(note or "").strip()}
+    db.set_setting(_PARENT_BONUS_SETTING, json.dumps(bonuses))
+
+
+def add_parent_bonus(db: Any, week_start: date | str, delta: int, note: str = "") -> int:
+    """Add `delta` XP to this week's parent bonus (stacking on any already given),
+    keeping the latest non-empty note. Returns the new total. A clamp keeps it
+    from going negative."""
+    current = parent_bonus(db, week_start)
+    try:
+        d = int(delta)
+    except (TypeError, ValueError):
+        d = 0
+    new_total = max(0, current["xp"] + d)
+    new_note = (note or "").strip() or current["note"]
+    set_parent_bonus(db, week_start, new_total, new_note)
+    return new_total
+
+
 # --- Landon's own weekly reward pick (he chooses, a parent approves) --------------
 
 _WEEK_CHOICES_SETTING = "xp_week_choices"
@@ -789,6 +852,13 @@ def weekly_progress(
         bonus_items.append(
             BonusItem("🏆", f"Mastered {units_mastered} unit{'s' if units_mastered != 1 else ''}",
                       units_mastered * config.KHAN_UNIT_MASTERY_BONUS)
+        )
+    # A parent's discretionary bonus for this week -- effort credit that counts
+    # toward the goal like any other XP.
+    pbonus = parent_bonus(db, monday)
+    if pbonus["xp"] > 0:
+        bonus_items.append(
+            BonusItem("⭐", pbonus["note"] or "Parent bonus", pbonus["xp"])
         )
 
     # The reward: Landon's own pick once a parent approves it, his pending pick
