@@ -143,6 +143,40 @@ CREATE TABLE IF NOT EXISTS vocabulary (
 CREATE INDEX IF NOT EXISTS idx_vocab_due
     ON vocabulary (student_id, next_review_on);
 
+-- Spelling words -- the self-running Spelling track. The model generates
+-- grade-level words (a mixed range: some easier, most on-level, a few stretch),
+-- each with a one-sentence clue (the word blanked out). Same Leitner-box spacing
+-- as vocabulary: a missed word drops to box 1 and comes back soon, a right one
+-- climbs; box 5 retires it. No parent word list -- see compass/spelling.py.
+CREATE TABLE IF NOT EXISTS spelling_words (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id     INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    word           TEXT NOT NULL,
+    clue           TEXT NOT NULL DEFAULT '',
+    tier           TEXT NOT NULL DEFAULT 'on',   -- easier | on | stretch
+    box            INTEGER NOT NULL DEFAULT 1 CHECK (box BETWEEN 1 AND 5),
+    next_review_on TEXT NOT NULL,
+    times_correct  INTEGER NOT NULL DEFAULT 0,
+    times_missed   INTEGER NOT NULL DEFAULT 0,
+    retired        INTEGER NOT NULL DEFAULT 0,   -- 1 once mastered (box 5), out of rotation
+    created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (student_id, word)
+);
+
+CREATE INDEX IF NOT EXISTS idx_spelling_due
+    ON spelling_words (student_id, retired, next_review_on);
+
+-- One row per weekly Spelling Quiz he takes -- the score history behind the
+-- Spelling grade and the "last quiz" readout.
+CREATE TABLE IF NOT EXISTS spelling_quiz_results (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    taken_on    TEXT NOT NULL,
+    correct     INTEGER NOT NULL DEFAULT 0,
+    total       INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- ---------------------------------------------------------------------------
 -- Generated lessons (agent output), and logged activities (actual hours).
 -- ---------------------------------------------------------------------------

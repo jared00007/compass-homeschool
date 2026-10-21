@@ -6036,6 +6036,218 @@ def render_business_houses(db: Database, student: dict[str, Any]) -> None:
             st.rerun()
 
 
+def render_spelling_settings(db: Database, student: dict[str, Any]) -> None:
+    """Parent-only: the one-switch Spelling setup. Flip it on and Compass builds
+    a grade-level word pool itself (a mixed range) and runs a daily card plus a
+    weekly quiz -- no word list to maintain. The only knobs are how many words a
+    day, the quiz length, and the quiz day."""
+    from compass import spelling
+    from compass.agents import api_available
+
+    cfg = spelling.settings(db)
+    on = st.toggle(
+        "Spelling track", value=cfg["enabled"], key="spelling_enabled_toggle",
+        help="A short daily word card + a weekly quiz. Compass picks grade-level words itself.",
+    )
+    if on != cfg["enabled"]:
+        spelling.save_settings(db, enabled=on)
+        st.rerun()
+    if not on:
+        st.caption(
+            "Off — flip it on and Compass builds a grade-level word list and runs a "
+            "daily card + weekly quiz. No lists to make; it tracks like everything else."
+        )
+        return
+
+    st.caption(
+        f"No word lists to build — Compass picks words at **{md(spelling.effective_level(db, student))}** "
+        "with a range (some easier, most on-level, a few stretch) and refreshes them as he goes."
+    )
+    cols = st.columns(3)
+    daily_opts = [3, 4, 5, 6]
+    daily = cols[0].selectbox(
+        "Words per day", daily_opts,
+        index=daily_opts.index(cfg["daily_count"]) if cfg["daily_count"] in daily_opts else 2,
+        key="spelling_daily_count_in",
+    )
+    quiz_opts = [5, 10, 15]
+    qcount = cols[1].selectbox(
+        "Quiz length", quiz_opts,
+        index=quiz_opts.index(cfg["quiz_count"]) if cfg["quiz_count"] in quiz_opts else 1,
+        key="spelling_quiz_count_in",
+    )
+    qday = cols[2].selectbox(
+        "Quiz day", list(range(7)), index=cfg["quiz_day"],
+        format_func=lambda d: spelling.WEEKDAY_NAMES[d], key="spelling_quiz_day_in",
+    )
+    if (daily, qcount, qday) != (cfg["daily_count"], cfg["quiz_count"], cfg["quiz_day"]):
+        spelling.save_settings(db, daily_count=daily, quiz_count=qcount, quiz_day=qday)
+        st.rerun()
+
+    counts = db.spelling_pool_counts(student["id"])
+    added = 0
+    if counts["active"] < config.SPELLING_MIN_POOL:
+        with st.spinner("Building his word list…"):
+            added = spelling.ensure_pool(db, student)
+        counts = db.spelling_pool_counts(student["id"])
+    api_ok, api_msg = api_available()
+    if counts["active"] == 0 and not api_ok:
+        st.warning(f"⚠️ Generating words needs the API key: {api_msg}")
+    else:
+        note = f"📚 **{counts['active']}** words in rotation"
+        if added:
+            note += f" · generated {added} new"
+        st.caption(note + ". He'll see a daily card; the quiz lands on " +
+                   f"**{spelling.WEEKDAY_NAMES[qday]}**.")
+    summary = spelling.grade_summary(db, student["id"])
+    if summary:
+        st.caption(
+            f"📈 Spelling grade so far: **{summary['letter']}** "
+            f"(avg {summary['average']}% over {summary['quizzes']} quiz"
+            f"{'zes' if summary['quizzes'] != 1 else ''}) · "
+            f"last {summary['last_correct']}/{summary['last_total']}."
+        )
+
+
+def _spelling_speak_button(word: str, *, height: int = 46) -> None:
+    """A '🔊 Say the word' button that speaks the word with the browser's own
+    voice -- no audio files, no API. The word rides in the button's JS but is
+    never shown, so it stays a spelling test."""
+    import json
+    import streamlit.components.v1 as components
+
+    safe = json.dumps(str(word))
+    components.html(
+        "<button onclick='var u=new SpeechSynthesisUtterance(" + safe +
+        ");u.rate=0.82;window.speechSynthesis.cancel();window.speechSynthesis.speak(u);' "
+        "style=\"width:100%;padding:9px 6px;border-radius:9px;border:1px solid #216a8f;"
+        "background:#216a8f;color:#fff;font-weight:800;font-size:14px;cursor:pointer;"
+        "font-family:-apple-system,Segoe UI,Roboto,sans-serif;\">🔊 Say it</button>",
+        height=height,
+    )
+
+
+def _spelling_answer_rows(words: list[dict[str, Any]], key_prefix: str) -> dict[int, str]:
+    """Render one row per word (a speak button, the clue, a type-it box) inside an
+    open form, and return {word_id: typed answer} for grading on submit."""
+    typed: dict[int, str] = {}
+    for word in words:
+        row = st.columns([1, 5])
+        with row[0]:
+            _spelling_speak_button(word["word"])
+        clue = md(word["clue"]) if word.get("clue") else "_Say the word, then spell it._"
+        row[1].markdown(clue)
+        typed[word["id"]] = row[1].text_input(
+            "type the word", key=f"{key_prefix}_in_{word['id']}",
+            label_visibility="collapsed", placeholder="type the word here",
+        )
+    return typed
+
+
+def _spelling_result_rows(rows: list[dict[str, Any]]) -> None:
+    for r in rows:
+        if r["correct"]:
+            st.markdown(f"- ✅ **{md(r['word'])}**")
+        else:
+            typed = md(r["typed"]) or "_(blank)_"
+            st.markdown(f"- ❌ you wrote “{typed}” — it's **{md(r['word'])}**")
+
+
+def _grade_spelling(words: list[dict[str, Any]], typed: dict[int, str]) -> tuple[list[tuple[int, bool]], list[dict[str, Any]]]:
+    answers: list[tuple[int, bool]] = []
+    rows: list[dict[str, Any]] = []
+    for word in words:
+        entry = (typed.get(word["id"]) or "").strip()
+        correct = entry.lower() == word["word"].strip().lower()
+        answers.append((word["id"], correct))
+        rows.append({"word": word["word"], "typed": entry, "correct": correct})
+    return answers, rows
+
+
+def render_spelling_home_card(db: Database, student: dict[str, Any]) -> None:
+    """Student-facing: his daily spelling card, or -- on quiz day -- the weekly
+    quiz. Shows only when the parent has the Spelling track on. Hears the word,
+    types it; it's graded, spaced (misses come back), and logged to Spelling."""
+    from compass import spelling
+
+    if not spelling.is_enabled(db):
+        return
+    # First-run safety: if the pool is empty, build it once (parent usually seeds
+    # it from Setup, but never leave him staring at an empty card).
+    if db.spelling_pool_counts(student["id"])["active"] == 0:
+        with st.spinner("Setting up your spelling words…"):
+            spelling.ensure_pool(db, student)
+
+    if spelling.is_quiz_day(db):
+        _render_spelling_quiz_card(db, student)
+    else:
+        _render_spelling_daily_card(db, student)
+
+
+def _render_spelling_daily_card(db: Database, student: dict[str, Any]) -> None:
+    from compass import spelling
+
+    with st.container(border=True, key="spelling_daily_card"):
+        st.markdown("**🔤 Daily spelling**")
+        if spelling.daily_done_today(db):
+            res = st.session_state.get("spelling_daily_result")
+            if res:
+                st.success(f"✅ Done — {res['correct']}/{res['total']} right. New words tomorrow!")
+                _spelling_result_rows(res["rows"])
+            else:
+                st.caption("✅ Done for today — new words tomorrow.")
+            return
+        words = spelling.daily_words(db, student)
+        if not words:
+            st.caption("🎉 All caught up — nothing due right now.")
+            return
+        st.caption(f"{len(words)} words · hear each one, then spell it. Counts as **Spelling**.")
+        with st.form("spelling_daily_form"):
+            typed = _spelling_answer_rows(words, "spd")
+            submitted = st.form_submit_button("✅ Check my spelling", type="primary", width="stretch")
+        if submitted:
+            answers, rows = _grade_spelling(words, typed)
+            spelling.complete_daily(db, student, answers)
+            st.session_state["spelling_daily_result"] = {
+                "correct": sum(1 for _w, c in answers if c), "total": len(answers), "rows": rows,
+            }
+            st.rerun()
+
+
+def _render_spelling_quiz_card(db: Database, student: dict[str, Any]) -> None:
+    from compass import spelling
+
+    today = date.today().isoformat()
+    with st.container(border=True, key="spelling_quiz_card"):
+        st.markdown("**📝 Spelling Quiz — this week**")
+        if db.spelling_quiz_taken_on(student["id"], today):
+            res = st.session_state.get("spelling_quiz_result")
+            if res:
+                st.success(f"✅ Quiz done — {res['correct']}/{res['total']}! Nice work.")
+                _spelling_result_rows(res["rows"])
+            else:
+                st.caption("✅ You took this week's quiz. See you next week!")
+            return
+        words = spelling.quiz_words(db, student)
+        if not words:
+            st.caption("No words to quiz yet — do a few daily cards first.")
+            return
+        st.caption(
+            f"{len(words)} words — I say each one, you spell it. This is your graded "
+            "spelling test for the week."
+        )
+        with st.form("spelling_quiz_form"):
+            typed = _spelling_answer_rows(words, "spq")
+            submitted = st.form_submit_button("📝 Turn in my quiz", type="primary", width="stretch")
+        if submitted:
+            answers, rows = _grade_spelling(words, typed)
+            outcome = spelling.complete_quiz(db, student, answers)
+            st.session_state["spelling_quiz_result"] = {
+                "correct": outcome["correct"], "total": outcome["total"], "rows": rows,
+            }
+            st.rerun()
+
+
 def render_quick_log(db: Database, student: dict[str, Any]) -> None:
     """One-tap logging of real-life instruction -- the off-app hours that
     usually go uncounted (documentaries, field trips, travel/park days,

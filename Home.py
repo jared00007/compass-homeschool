@@ -27,6 +27,7 @@ from compass.ui import (
     render_khan_unit_mastery_meter,
     render_recess,
     render_rewind_review,
+    render_spelling_home_card,
     render_declaration_banner,
     render_first_day_celebration,
     render_message_thread,
@@ -162,6 +163,9 @@ if not is_parent():
         render_rewind_review(db, student, today_iso)
         # A book report and/or book quiz over what he's reading, if assigned.
         render_book_study(db, student, today_iso)
+        # The daily spelling card (or, on quiz day, the weekly spelling quiz),
+        # if the parent has the Spelling track on.
+        render_spelling_home_card(db, student)
         # Light art/music + movement enrichment activities his parent set up.
         render_enrichment_activities(db, student, today_iso)
         # A quick, no-stakes break -- because half a real day isn't lessons.

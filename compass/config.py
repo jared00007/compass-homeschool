@@ -222,6 +222,15 @@ QUIZ_DEFAULT_MINUTES = 10
 # Kept modest and honest -- a slice of genuine work, never inflated hours.
 BUSINESS_BOOKKEEPING_MINUTES = 10
 BUSINESS_WRITING_MINUTES = 10
+# The self-running Spelling track (compass/spelling.py). The daily card is a
+# couple of minutes credited to Spelling; the weekly quiz a bit more. Defaults
+# for the parent's one-switch setup live here too.
+SPELLING_DAILY_MINUTES = 5
+SPELLING_QUIZ_MINUTES = 15
+SPELLING_DAILY_WORDS = 5
+SPELLING_QUIZ_WORDS = 10
+SPELLING_QUIZ_WEEKDAY = 4  # 0=Mon … 4=Fri (default quiz day)
+SPELLING_MIN_POOL = 14     # keep at least this many active words in rotation
 # Default minutes a parent-added lesson resource (a video, an article) is worth
 # when he marks it watched/read -- editable per resource when the parent adds it.
 RESOURCE_DEFAULT_MINUTES = 20

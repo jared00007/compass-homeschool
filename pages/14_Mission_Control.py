@@ -50,6 +50,7 @@ from compass.ui import (
     render_lesson_review,
     render_life_skill_review_card,
     render_day_target_editor,
+    render_spelling_settings,
     render_art_card_generator,
     render_art_gallery,
     render_enrichment_generator,
@@ -1206,6 +1207,9 @@ if mc_view == "setup":
 
     with st.expander("🎯 Daily rhythm — what counts as a full day"):
         render_day_target_editor(db)
+
+    with st.expander("🔤 Spelling — a daily word card + weekly quiz (auto)"):
+        render_spelling_settings(db, student)
 
     with st.expander("🎨 Enrichment — art, music & movement activities"):
         render_art_card_generator(db, student)

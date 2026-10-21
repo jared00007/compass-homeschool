@@ -2859,6 +2859,117 @@ class Database:
             )
         )
 
+    # -- spelling (the self-running Spelling track) ---------------------------
+
+    def add_spelling_word(
+        self, student_id: int, word: str, clue: str = "", tier: str = "on"
+    ) -> int:
+        """Add one generated spelling word to his pool. New words start due today
+        (box 1). A word already in the pool is left as-is (duplicates ignored)."""
+        tier = tier if tier in ("easier", "on", "stretch") else "on"
+        cur = self.conn.execute(
+            "INSERT INTO spelling_words (student_id, word, clue, tier, box, next_review_on) "
+            "VALUES (?, ?, ?, ?, 1, date('now')) "
+            "ON CONFLICT(student_id, word) DO NOTHING",
+            # Stored lowercase so the pool dedups case-insensitively (the generator
+            # already lowercases; a hand-added "Separate" shouldn't double "separate").
+            (student_id, word.strip().lower(), clue.strip(), tier),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid or 0)
+
+    def list_spelling_words(
+        self, student_id: int, include_retired: bool = False
+    ) -> list[dict[str, Any]]:
+        query = "SELECT * FROM spelling_words WHERE student_id = ?"
+        if not include_retired:
+            query += " AND retired = 0"
+        query += " ORDER BY retired, box, next_review_on, word"
+        return _rows(self.conn.execute(query, (student_id,)))
+
+    def spelling_pool_counts(self, student_id: int) -> dict[str, int]:
+        """How many words he has total, still in rotation (active), and due today
+        -- what the top-up logic reads to decide whether to generate more."""
+        row = _row(self.conn.execute(
+            "SELECT COUNT(*) AS total, "
+            "COALESCE(SUM(CASE WHEN retired = 0 THEN 1 ELSE 0 END), 0) AS active, "
+            "COALESCE(SUM(CASE WHEN retired = 0 AND next_review_on <= date('now') "
+            "          THEN 1 ELSE 0 END), 0) AS due "
+            "FROM spelling_words WHERE student_id = ?",
+            (student_id,),
+        )) or {}
+        return {
+            "total": int(row.get("total") or 0),
+            "active": int(row.get("active") or 0),
+            "due": int(row.get("due") or 0),
+        }
+
+    def spelling_due(self, student_id: int, limit: int = 5) -> list[dict[str, Any]]:
+        """Today's words for the daily card: active words due for review (new
+        words are due immediately), shakiest first (lowest box)."""
+        return _rows(self.conn.execute(
+            "SELECT * FROM spelling_words WHERE student_id = ? AND retired = 0 "
+            "AND next_review_on <= date('now') "
+            "ORDER BY box ASC, next_review_on ASC, id ASC LIMIT ?",
+            (student_id, limit),
+        ))
+
+    def record_spelling_attempt(self, word_id: int, correct: bool) -> None:
+        """Leitner update for one word: right climbs a box (box 5 retires it),
+        wrong drops it to box 1 so it comes back soon."""
+        row = _row(self.conn.execute(
+            "SELECT * FROM spelling_words WHERE id = ?", (word_id,)
+        ))
+        if row is None:
+            return
+        box = min(row["box"] + 1, 5) if correct else 1
+        interval = LEITNER_INTERVALS[box]
+        next_review = (date.today() + timedelta(days=interval)).isoformat()
+        retired = 1 if (correct and box >= 5) else 0
+        self.conn.execute(
+            "UPDATE spelling_words SET box = ?, next_review_on = ?, "
+            "times_correct = times_correct + ?, times_missed = times_missed + ?, "
+            "retired = ? WHERE id = ?",
+            (box, next_review, 1 if correct else 0, 0 if correct else 1, retired, word_id),
+        )
+        self.conn.commit()
+
+    def spelling_quiz_pool(self, student_id: int, limit: int = 10) -> list[dict[str, Any]]:
+        """The words for the weekly quiz -- active words weighted toward the ones
+        he's shakiest on (lowest box, then most-missed)."""
+        return _rows(self.conn.execute(
+            "SELECT * FROM spelling_words WHERE student_id = ? AND retired = 0 "
+            "ORDER BY box ASC, times_missed DESC, next_review_on ASC, id ASC LIMIT ?",
+            (student_id, limit),
+        ))
+
+    def record_spelling_quiz(
+        self, student_id: int, correct: int, total: int, taken_on: str | None = None
+    ) -> int:
+        taken_on = taken_on or date.today().isoformat()
+        cur = self.conn.execute(
+            "INSERT INTO spelling_quiz_results (student_id, taken_on, correct, total) "
+            "VALUES (?, ?, ?, ?)",
+            (student_id, taken_on, int(correct), int(total)),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def list_spelling_quiz_results(
+        self, student_id: int, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        return _rows(self.conn.execute(
+            "SELECT * FROM spelling_quiz_results WHERE student_id = ? "
+            "ORDER BY taken_on DESC, id DESC LIMIT ?",
+            (student_id, limit),
+        ))
+
+    def spelling_quiz_taken_on(self, student_id: int, taken_on: str) -> bool:
+        return _row(self.conn.execute(
+            "SELECT 1 FROM spelling_quiz_results WHERE student_id = ? AND taken_on = ? LIMIT 1",
+            (student_id, taken_on),
+        )) is not None
+
     # -- lessons --------------------------------------------------------------
 
     def save_lesson(
