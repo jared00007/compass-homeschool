@@ -4796,6 +4796,11 @@ def render_khan_spinoff_tool(db: Database, student: dict[str, Any]) -> None:
         value=lightning.spinoff_seed_prompt(skills[pick]),
         key=f"spinoff_prompt_{cid}_{pick}", height=90,
     )
+    add_quiz = st.checkbox(
+        "Add a quick quiz", value=True, key=f"spinoff_quiz_{cid}_{pick}",
+        help="Off = just a teach-and-practice companion, with no quiz to score. "
+             "Some skills don't need a check.",
+    )
     if st.button(
         "✨ Generate companion lesson", disabled=not api_ok, key=f"spinoff_go_{cid}",
     ):
@@ -4805,6 +4810,7 @@ def render_khan_spinoff_tool(db: Database, student: dict[str, Any]) -> None:
                 lightning.generate_lightning_lesson(
                     db, student, lightning.agent_for_subject(course["subject"]),
                     topic=skills[pick], instructions=prompt,
+                    include_quiz=add_quiz,
                     link={
                         "khan_lesson_id": source["id"], "skill": skills[pick],
                         "unit": course["course"], "course_id": cid,

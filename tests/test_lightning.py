@@ -49,6 +49,37 @@ def test_generates_one_short_lesson_into_the_backlog(db, student):
     assert not lesson["metadata"].get("planned_for")
 
 
+_QUIZ = [{"question": "2^-1 = ?", "choices": ["1/2", "2", "-2"],
+          "correct_index": 0, "explanation": "A negative exponent means reciprocal."}]
+
+
+def _gen_with_quiz(db, student, **kwargs):
+    """Generate a lightning lesson whose writer produces a quiz -- with the
+    framework's quiz verifier stubbed out, so the only thing that can drop the
+    quiz is the include_quiz flag under test, not quiz-shape validation."""
+    with patch("compass.agents.framework.generate_lesson",
+               side_effect=lambda **k: _payload(quiz=list(_QUIZ))), \
+         patch("compass.agents.framework.verify_quiz", side_effect=lambda payload: []):
+        return lightning.generate_lightning_lesson(
+            db, student, "math", topic="Negative exponents", **kwargs
+        )
+
+
+def test_quiz_is_kept_by_default(db, student):
+    result = _gen_with_quiz(db, student)
+    assert db.get_lesson(result.lesson_id)["payload"].get("quiz")  # quiz present
+
+
+def test_quiz_can_be_dropped_when_not_wanted(db, student):
+    result = _gen_with_quiz(db, student, include_quiz=False)
+    # The saved lesson carries no quiz, but still teaches and grades its activities.
+    lesson = db.get_lesson(result.lesson_id)
+    assert not lesson["payload"].get("quiz")
+    assert lesson["payload"].get("activities")
+    # The returned object matches what's stored.
+    assert not result.payload.get("quiz")
+
+
 def test_a_single_lesson_skips_the_multi_day_planner(db, student):
     # If the planner were called it would need its own mock; target_days=1 must
     # avoid it, so mocking only the day-writer is enough.

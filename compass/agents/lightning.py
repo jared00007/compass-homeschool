@@ -77,12 +77,17 @@ def generate_lightning_lesson(
     instructions: str = "",
     minutes: int = 15,
     link: dict[str, Any] | None = None,
+    include_quiz: bool = True,
 ) -> GeneratedLesson:
     """Write one short lesson on `topic` in `agent_key`'s subject, using the
     parent's editable `instructions`. Lands in the Backlog like any generated
     lesson. `link`, when given, is stored on the lesson's metadata (used to record
     that a lesson was spun off from a Khan skill). Raises ValueError for an unknown
-    subject or an empty topic."""
+    subject or an empty topic.
+
+    `include_quiz=False` drops the auto-written quiz, for a companion that's just
+    a quick teach/practice with nothing to score -- some spin-offs don't need a
+    check. The lesson still teaches and grades its activities as usual."""
     if agent_key not in LIGHTNING_AGENTS:
         raise ValueError(f"'{agent_key}' isn't a lightning-lesson subject.")
     topic = (topic or "").strip()
@@ -110,4 +115,11 @@ def generate_lightning_lesson(
     )
     # target_days=1 skips the multi-day planner and writes the whole topic as one
     # short lesson.
-    return agent.generate_series(ctx, proposal, target_days=1)[0]
+    result = agent.generate_series(ctx, proposal, target_days=1)[0]
+    # Drop the quiz when it wasn't wanted -- the lesson is already saved, so strip
+    # it from the payload and persist. Mutates the dict in place (safe even though
+    # GeneratedLesson is frozen) so the returned object matches what's stored.
+    if not include_quiz and (result.payload or {}).get("quiz"):
+        result.payload["quiz"] = []
+        db.update_lesson_content(result.lesson_id, payload=result.payload)
+    return result
