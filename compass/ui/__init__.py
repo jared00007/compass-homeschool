@@ -6093,12 +6093,22 @@ def render_spelling_settings(db: Database, student: dict[str, Any]) -> None:
     api_ok, api_msg = api_available()
     if counts["active"] == 0 and not api_ok:
         st.warning(f"⚠️ Generating words needs the API key: {api_msg}")
+    elif counts["active"] == 0:
+        st.info("Setting his words up — reopen this in a moment if none show yet.")
     else:
         note = f"📚 **{counts['active']}** words in rotation"
         if added:
             note += f" · generated {added} new"
-        st.caption(note + ". He'll see a daily card; the quiz lands on " +
-                   f"**{spelling.WEEKDAY_NAMES[qday]}**.")
+        st.caption(note + f". The weekly quiz lands on **{spelling.WEEKDAY_NAMES[qday]}**.")
+        # Tell them plainly where it shows up for him right now -- the quiz today
+        # if it's quiz day, otherwise his daily card. A success banner when the
+        # pool was just built (the "I flipped it on" moment).
+        if spelling.is_quiz_day(db):
+            ready = "📝 **Today's the quiz day** — his weekly spelling quiz is on his Home."
+        else:
+            n = min(cfg["daily_count"], counts["due"]) or cfg["daily_count"]
+            ready = f"✨ His first **{n} spelling words** are on his Home now — he can start today."
+        (st.success if added else st.caption)(ready)
     summary = spelling.grade_summary(db, student["id"])
     if summary:
         st.caption(

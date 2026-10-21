@@ -192,6 +192,33 @@ def test_complete_quiz_records_score_logs_hours_and_sets_grade(db, student):
 # --- the page -------------------------------------------------------------------
 
 
+MISSION_CONTROL_PATH = str(REPO_ROOT / "pages" / "14_Mission_Control.py")
+
+
+def test_setup_confirms_where_his_words_are_after_turning_it_on(monkeypatch, tmp_path):
+    db_path = tmp_path / "setup.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    spelling.save_settings(db, enabled=True, quiz_day=0)  # Monday quiz
+    db.add_spelling_word(student["id"], "separate", "Keep them ____.", "on")
+    db.close()
+
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+    # No API key in tests, so ensure_pool no-ops; the one seeded word is enough
+    # for the "it's on his Home" confirmation to show.
+    at = AppTest.from_file(HOME_PATH)
+    at.session_state["parent_unlocked"] = True
+    at.run(timeout=30)
+    at.switch_page(MISSION_CONTROL_PATH)
+    at.session_state["mc_view"] = "setup"
+    at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+    text = " ".join([m.value for m in at.markdown] + [s.value for s in at.success]
+                    + [c.value for c in at.caption])
+    assert "on his Home" in text
+
+
 def test_the_daily_card_shows_on_his_home_when_enabled(monkeypatch, tmp_path):
     from compass import auth
 
