@@ -178,6 +178,21 @@ def test_complete_daily_records_and_logs_hours_once(db, student):
     assert len([x for x in db.list_activities(sid) if x["source"] == "spelling"]) == 1
 
 
+def test_attempts_feed_the_parents_daily_flow(db, student):
+    sid = student["id"]
+    a = db.add_spelling_word(sid, "separate", "Keep them ____.", "on")
+    b = db.add_spelling_word(sid, "rhythm", "A steady ____.", "on")
+    spelling.complete_daily(db, student, [(a, True), (b, False)])
+    flow = db.spelling_daily_flow(sid)
+    assert len(flow) == 1
+    assert flow[0]["answered"] == 2 and flow[0]["correct"] == 1 and flow[0]["kinds"] == "daily"
+    # The per-word detail for that day, and the shaky-word list.
+    words = {x["word"]: x["correct"] for x in db.spelling_attempts_on(sid, date.today().isoformat())}
+    assert words == {"separate": 1, "rhythm": 0}
+    shaky = db.shaky_spelling_words(sid)
+    assert [w["word"] for w in shaky] == ["rhythm"]
+
+
 def test_complete_quiz_records_score_logs_hours_and_sets_grade(db, student):
     sid = student["id"]
     a = db.add_spelling_word(sid, "necessary", "It is ____.", "on")
@@ -217,6 +232,31 @@ def test_setup_confirms_where_his_words_are_after_turning_it_on(monkeypatch, tmp
     text = " ".join([m.value for m in at.markdown] + [s.value for s in at.success]
                     + [c.value for c in at.caption])
     assert "on his Home" in text
+
+
+def test_the_parent_review_shows_the_daily_flow_in_records(monkeypatch, tmp_path):
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    spelling.save_settings(db, enabled=True)
+    a = db.add_spelling_word(student["id"], "separate", "Keep them ____.", "on")
+    b = db.add_spelling_word(student["id"], "rhythm", "A steady ____.", "on")
+    spelling.complete_daily(db, student, [(a, True), (b, False)])
+    db.close()
+
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+    at = AppTest.from_file(HOME_PATH)
+    at.session_state["parent_unlocked"] = True
+    at.run(timeout=30)
+    at.switch_page(MISSION_CONTROL_PATH)
+    at.session_state["mc_view"] = "records"
+    at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+    text = " ".join(m.value for m in at.markdown)
+    assert "🔤 Spelling" in text
+    assert "His daily flow" in text
+    assert "rhythm" in text  # the shaky word he missed shows in "still working on"
 
 
 def test_the_daily_card_shows_on_his_home_when_enabled(monkeypatch, tmp_path):

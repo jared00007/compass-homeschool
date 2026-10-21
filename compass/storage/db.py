@@ -2914,9 +2914,12 @@ class Database:
             (student_id, limit),
         ))
 
-    def record_spelling_attempt(self, word_id: int, correct: bool) -> None:
+    def record_spelling_attempt(
+        self, word_id: int, correct: bool, kind: str = "daily"
+    ) -> None:
         """Leitner update for one word: right climbs a box (box 5 retires it),
-        wrong drops it to box 1 so it comes back soon."""
+        wrong drops it to box 1 so it comes back soon. Also logs a per-answer row
+        (word + right/wrong + date) so a parent can see his daily flow."""
         row = _row(self.conn.execute(
             "SELECT * FROM spelling_words WHERE id = ?", (word_id,)
         ))
@@ -2932,7 +2935,43 @@ class Database:
             "retired = ? WHERE id = ?",
             (box, next_review, 1 if correct else 0, 0 if correct else 1, retired, word_id),
         )
+        self.conn.execute(
+            "INSERT INTO spelling_attempts (student_id, word, correct, kind, happened_on) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (row["student_id"], row["word"], 1 if correct else 0,
+             "quiz" if kind == "quiz" else "daily", date.today().isoformat()),
+        )
         self.conn.commit()
+
+    def spelling_attempts_on(self, student_id: int, day: str) -> list[dict[str, Any]]:
+        """Every word he answered on `day` (daily card + quiz), oldest first --
+        the detail behind the parent's daily flow."""
+        return _rows(self.conn.execute(
+            "SELECT * FROM spelling_attempts WHERE student_id = ? AND happened_on = ? "
+            "ORDER BY id ASC",
+            (student_id, day),
+        ))
+
+    def spelling_daily_flow(self, student_id: int, limit: int = 10) -> list[dict[str, Any]]:
+        """A per-day tally for the most recent days he practiced -- {happened_on,
+        answered, correct, kinds}. Only days he did something appear."""
+        return _rows(self.conn.execute(
+            "SELECT happened_on, COUNT(*) AS answered, "
+            "COALESCE(SUM(correct), 0) AS correct, "
+            "GROUP_CONCAT(DISTINCT kind) AS kinds "
+            "FROM spelling_attempts WHERE student_id = ? "
+            "GROUP BY happened_on ORDER BY happened_on DESC LIMIT ?",
+            (student_id, limit),
+        ))
+
+    def shaky_spelling_words(self, student_id: int, limit: int = 12) -> list[dict[str, Any]]:
+        """The words he's been missing -- active words with at least one miss,
+        most-missed (then lowest box) first. The parent's 'needs work' list."""
+        return _rows(self.conn.execute(
+            "SELECT * FROM spelling_words WHERE student_id = ? AND retired = 0 "
+            "AND times_missed > 0 ORDER BY times_missed DESC, box ASC, word LIMIT ?",
+            (student_id, limit),
+        ))
 
     def spelling_quiz_pool(self, student_id: int, limit: int = 10) -> list[dict[str, Any]]:
         """The words for the weekly quiz -- active words weighted toward the ones

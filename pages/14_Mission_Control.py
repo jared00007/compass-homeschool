@@ -21,7 +21,7 @@ from functools import partial
 
 import streamlit as st
 
-from compass import config, gradebook, weekly
+from compass import config, gradebook, spelling, weekly
 from compass.agents.framework import GeneratedLesson, TopicProposal
 from compass.compliance import build_report
 from compass.export import (
@@ -51,6 +51,7 @@ from compass.ui import (
     render_life_skill_review_card,
     render_day_target_editor,
     render_spelling_settings,
+    render_spelling_review,
     render_art_card_generator,
     render_art_gallery,
     render_enrichment_generator,
@@ -1003,6 +1004,13 @@ if mc_view == "records":
 
     with st.expander("📊 Log a Khan quiz / test score into a grade"):
         render_khan_grade_logger(db, student)
+
+    # Spelling is auto-graded, so it never enters the review queue -- its grade,
+    # his daily flow, and the words he's missing live here instead. Renders
+    # nothing unless the Spelling track is on.
+    if spelling.is_enabled(db):
+        st.divider()
+        render_spelling_review(db, student)
 
     st.divider()
     st.markdown("### 🗂️ The instructional record")

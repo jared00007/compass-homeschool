@@ -6119,6 +6119,85 @@ def render_spelling_settings(db: Database, student: dict[str, Any]) -> None:
         )
 
 
+def _spelling_harden_inputs() -> None:
+    """Best-effort anti-cheat on the spelling boxes: block paste & drop and turn
+    off the browser's autocomplete / autocorrect / spellcheck, so he can't paste
+    the word or have the browser fix his spelling for him. Reaches the inputs
+    from a tiny 0-height helper frame; silently does nothing if the browser won't
+    allow it (the test still works, it's just not foolproof)."""
+    import streamlit.components.v1 as components
+
+    components.html(
+        "<script>"
+        "var d=window.parent.document;"
+        "function h(){try{d.querySelectorAll("
+        "'[class*=\"st-key-spd_in_\"] input,[class*=\"st-key-spq_in_\"] input'"
+        ").forEach(function(el){if(el.dataset.noCheat)return;el.dataset.noCheat='1';"
+        "el.setAttribute('autocomplete','off');el.setAttribute('autocorrect','off');"
+        "el.setAttribute('autocapitalize','off');el.setAttribute('spellcheck','false');"
+        "['paste','drop'].forEach(function(ev){el.addEventListener(ev,function(e){"
+        "e.preventDefault();});});});}catch(e){}}"
+        "h();try{new MutationObserver(h).observe(d.body,{childList:true,subtree:true});}catch(e){}"
+        "</script>",
+        height=0,
+    )
+
+
+def render_spelling_review(db: Database, student: dict[str, Any]) -> None:
+    """Parent-only: how the Spelling track is going. Spelling is auto-graded (the
+    quiz checks each word on submit, so nothing lands in the review queue), so
+    this is the review surface -- the grade, his day-by-day flow (which days,
+    how many right, daily vs quiz), the words he's still missing, and the words
+    on the most recent day. Shows only when the Spelling track is on."""
+    from compass import spelling
+
+    if not spelling.is_enabled(db):
+        return
+    sid = student["id"]
+    st.markdown("### 🔤 Spelling")
+
+    summary = spelling.grade_summary(db, sid)
+    if summary:
+        cols = st.columns(3)
+        cols[0].metric("Grade", summary["letter"])
+        cols[1].metric("Quiz average", f"{summary['average']}%")
+        cols[2].metric("Last quiz", f"{summary['last_correct']}/{summary['last_total']}")
+    else:
+        st.caption(
+            "No quiz yet — nothing to grade. His first **weekly quiz** posts the "
+            "Spelling grade; daily practice shows below in the meantime."
+        )
+
+    flow = db.spelling_daily_flow(sid, limit=10)
+    if flow:
+        st.markdown("**His daily flow** — what he's actually done")
+        for day in flow:
+            kinds = (day["kinds"] or "").replace("quiz", "📝 quiz").replace("daily", "🔤 daily")
+            st.markdown(
+                f"- **{day['happened_on']}** — {day['correct']}/{day['answered']} right · {kinds}"
+            )
+        recent = flow[0]["happened_on"]
+        with st.expander(f"The words on {recent}"):
+            for attempt in db.spelling_attempts_on(sid, recent):
+                mark = "✅" if attempt["correct"] else "❌"
+                st.markdown(f"{mark} {md(attempt['word'])}")
+    else:
+        st.caption(
+            "He hasn't done a spelling card yet — once he does, his day-by-day flow shows here."
+        )
+
+    shaky = db.shaky_spelling_words(sid, 12)
+    if shaky:
+        st.markdown("**Words he's still working on**")
+        st.markdown(" · ".join(f"**{md(w['word'])}** ({w['times_missed']}×)" for w in shaky))
+
+    counts = db.spelling_pool_counts(sid)
+    st.caption(
+        f"📚 {counts['active']} words in rotation. Spelling is **auto-graded** — the "
+        "quiz checks each word on submit, so there's nothing to approve."
+    )
+
+
 def _spelling_speak_button(word: str, *, height: int = 46) -> None:
     """A '🔊 Say the word' button that speaks the word with the browser's own
     voice -- no audio files, no API. The word rides in the button's JS but is
@@ -6192,6 +6271,8 @@ def render_spelling_home_card(db: Database, student: dict[str, Any]) -> None:
         _render_spelling_quiz_card(db, student)
     else:
         _render_spelling_daily_card(db, student)
+    # Block paste and the browser's autocorrect/spellcheck on the type-it boxes.
+    _spelling_harden_inputs()
 
 
 def _render_spelling_daily_card(db: Database, student: dict[str, Any]) -> None:

@@ -267,7 +267,7 @@ def complete_daily(
     """Record each word's result (Leitner), then log the day's few minutes to
     Spelling -- once per day, so re-opening never double-counts."""
     for word_id, correct in answers:
-        db.record_spelling_attempt(word_id, bool(correct))
+        db.record_spelling_attempt(word_id, bool(correct), kind="daily")
     key = _daily_done_key(date.today().isoformat())
     if answers and not db.get_setting(key):
         db.log_activity(
@@ -290,7 +290,7 @@ def complete_quiz(
     """Record the quiz: each word's Leitner result, the score row (for the grade),
     and the assessment time -- once per day. Returns {correct, total}."""
     for word_id, correct in answers:
-        db.record_spelling_attempt(word_id, bool(correct))
+        db.record_spelling_attempt(word_id, bool(correct), kind="quiz")
     correct = sum(1 for _wid, ok in answers if ok)
     total = len(answers)
     db.record_spelling_quiz(student["id"], correct, total)

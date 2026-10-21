@@ -177,6 +177,22 @@ CREATE TABLE IF NOT EXISTS spelling_quiz_results (
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- One row per word he answers (daily card or quiz) -- the parent's "what did he
+-- actually do today" flow. The word is stored inline so the record survives the
+-- word later retiring or changing.
+CREATE TABLE IF NOT EXISTS spelling_attempts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    word        TEXT NOT NULL,
+    correct     INTEGER NOT NULL DEFAULT 0,
+    kind        TEXT NOT NULL DEFAULT 'daily',   -- daily | quiz
+    happened_on TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_spelling_attempts
+    ON spelling_attempts (student_id, happened_on);
+
 -- ---------------------------------------------------------------------------
 -- Generated lessons (agent output), and logged activities (actual hours).
 -- ---------------------------------------------------------------------------
