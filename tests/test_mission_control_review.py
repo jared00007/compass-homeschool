@@ -218,13 +218,15 @@ def test_a_submitted_lesson_surfaces_open_in_waiting_on_you(monkeypatch, tmp_pat
     assert _review_label(at) == "✅ Review (1)"
     markdowns = _md(review_tab)
     assert any("Turned in — waiting on you" in m and "(1)" in m for m in markdowns)
-    # The card is a collapsible expander; its bar carries the status + title,
-    # and the sole waiting item opens automatically.
-    waiting = [
-        e for e in review_tab.expander
-        if "turned in — waiting on you" in (e.label or "") and "Turned in" in (e.label or "")
-    ]
-    assert waiting, [e.label for e in review_tab.expander]
+    # The card is now an action row: subject chip + title, with its own Open and
+    # Send-back buttons on the bar. The title and subject show in the row markdown.
+    assert any("Turned in" in m for m in markdowns)
+    assert any("Science" in m for m in markdowns)  # the subject chip
+    keys = [b.key for b in review_tab.button]
+    assert f"reviewtoggle_{lid}" in keys   # the Open/Close toggle
+    assert f"quicksb_{lid}" in keys        # one-tap Send back
+    # A graded (non-Khan) lesson gets no one-tap approve -- it must be opened to grade.
+    assert f"quickappr_{lid}" not in keys
 
 
 def test_a_submitted_card_can_be_sent_back_not_hard_deleted(monkeypatch, tmp_path):
@@ -284,9 +286,10 @@ def test_the_waiting_bar_summarizes_hand_ins_and_quiz(monkeypatch, tmp_path):
     db.close()
 
     at, review_tab = _open_review_tab(monkeypatch, db_path)
-    labels = " ".join(e.label or "" for e in review_tab.expander)
-    assert "1 hand-in" in labels
-    assert "quiz 4/5" in labels
+    # The quick-read summary now sits in the row's caption line, not an expander label.
+    captions = " ".join(c.value for c in review_tab.caption)
+    assert "1 hand-in" in captions
+    assert "quiz 4/5" in captions
 
 
 def test_an_overdue_this_week_lesson_shows_in_the_overdue_section(monkeypatch, tmp_path):
@@ -967,6 +970,65 @@ def test_a_khan_card_is_approved_in_one_tap(monkeypatch, tmp_path):
     lesson = db.get_lesson(lid)
     db.close()
     assert lesson["status"] == "completed"  # one tap -> approved, hours logged
+
+
+def _seed_two_submitted_khan_cards(db, student):
+    from compass.agents import khan_card
+    quiz = [{"question": "q", "choices": ["a", "b"], "correct_index": 0, "explanation": "e"}]
+    ids = []
+    for unit in ("Exponents", "Decimals"):
+        lid = khan_card.create_khan_card(
+            db, student, subject="math", unit=unit, url="https://khan/x",
+            minutes=30, day_iso=date.today().isoformat(), quiz=quiz,
+        )
+        db.record_quiz_result(lid, student["id"], 5, 5, True)
+        db.submit_lesson(lid)
+        ids.append(lid)
+    return ids
+
+
+def test_a_khan_card_is_approved_from_the_row_in_one_tap(monkeypatch, tmp_path):
+    """Option A: with several waiting, each Khan row carries its own one-tap
+    Approve on the bar -- no opening the card, no scroll dive. Only the tapped
+    card is approved; the rest stay waiting."""
+    db_path = tmp_path / "rowapprove.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    a, b = _seed_two_submitted_khan_cards(db, student)
+    db.close()
+
+    at, _ = _open_review_tab(monkeypatch, db_path)
+    keys = [btn.key for btn in at.button]
+    assert f"quickappr_{a}" in keys and f"quickappr_{b}" in keys  # inline on each row
+    [btn for btn in at.button if btn.key == f"quickappr_{a}"][0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db = Database(db_path)
+    assert db.get_lesson(a)["status"] == "completed"   # the tapped one
+    assert db.get_lesson(b)["status"] == "submitted"   # the other stays waiting
+    db.close()
+
+
+def test_approve_all_khan_clears_the_whole_batch(monkeypatch, tmp_path):
+    """The Khan-heavy week's fast path: one button approves every waiting Khan
+    card at once."""
+    db_path = tmp_path / "approveall.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    a, b = _seed_two_submitted_khan_cards(db, student)
+    db.close()
+
+    at, _ = _open_review_tab(monkeypatch, db_path)
+    bulk = [btn for btn in at.button if btn.key == "mc_approve_all_khan"]
+    assert bulk, "a batch-approve button should show when 2+ Khan cards wait"
+    assert "Approve all 2 Khan cards" in (bulk[0].label or "")
+    bulk[0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db = Database(db_path)
+    assert db.get_lesson(a)["status"] == "completed"
+    assert db.get_lesson(b)["status"] == "completed"
+    db.close()
 
 
 def test_the_khan_grade_logger_drops_a_score_into_a_subject_grade(monkeypatch, tmp_path):

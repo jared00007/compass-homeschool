@@ -553,6 +553,44 @@ def _render_khan_review(
         _ui.st.rerun()
 
 
+def quick_approve_khan(db: Database, student: dict[str, Any], lesson: dict[str, Any]) -> None:
+    """Approve a submitted Khan card with its own defaults -- exactly what the
+    in-card Approve form does (record his real score, clear the pending claim,
+    log the hours), but without opening the card. Powers the one-tap row action
+    and the "Approve all" button. Safe only for Khan cards: Khan already carried
+    the teaching and auto-scored the quiz, so there's nothing to hand-grade.
+
+    The recorded score is his self-reported claim if he entered one, else a score
+    already on the card; its kind falls back to the card's checkpoint kind (quiz /
+    unit test) or Practice for a plain skill. Hours default to the lesson's own
+    estimate and subject credits -- the same values the form pre-fills."""
+    from compass import khan_mastery as km
+
+    metadata = lesson.get("metadata") or {}
+    claim = km.get_score_claim(lesson)
+    existing = km.get_result(lesson)
+    source = claim or existing or {}
+    percent = source.get("percent")
+    if percent is not None:
+        kind = (
+            source.get("kind")
+            or metadata.get("khan_checkpoint_kind")
+            or config.KHAN_RESULT_KINDS[0]
+        )
+        attempts = existing.get("attempts") if existing else None
+        km.record_result(
+            db, lesson["id"], kind=kind, percent=float(percent),
+            attempts=int(attempts) if attempts else None,
+        )
+    km.reject_score_claim(db, lesson["id"])
+    payload = lesson["payload"]
+    minutes = int(payload.get("estimated_minutes") or 60)
+    credits = {
+        c["subject"]: int(c["minutes"]) for c in (payload.get("subject_credits") or [])
+    }
+    _log_hours_for_lesson(db, student, lesson, minutes=minutes, location="", credits=credits)
+
+
 def _render_khan_reflection(lesson: dict[str, Any]) -> None:
     """Show Landon's turn-in reflection (how hard it was, how it went, his note)
     on the review card, with 'I need help' called out."""

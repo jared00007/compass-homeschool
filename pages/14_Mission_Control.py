@@ -46,6 +46,7 @@ from compass.ui import (
     render_earned_rewards,
     render_weekly_reward_approval,
     render_quick_log,
+    quick_approve_khan,
     render_lesson_review,
     render_life_skill_review_card,
     render_day_target_editor,
@@ -192,6 +193,34 @@ def _review_badge(lesson: dict, today_iso: str) -> str:
     return "🕓 planned"
 
 
+# A small colored subject pill for the review rows -- so you can scan the queue
+# by subject (Math, Science, Life Skills…) at a glance. Emoji + a tinted chip.
+_SUBJECT_EMOJI = {
+    "math": "🔢", "science": "🔬", "reading": "📖", "writing": "✍️",
+    "language": "🔤", "spelling": "🔡", "history": "🏛️", "social_studies": "🌍",
+    "health": "❤️", "occupational_education": "🛠️", "art_and_music": "🎨",
+}
+_SUBJECT_CHIP_COLORS = {
+    "math": ("#e5ecfb", "#2d4f9e"), "science": ("#def0e7", "#1f7a50"),
+    "reading": ("#efe6fa", "#6b3fab"), "writing": ("#efe6fa", "#6b3fab"),
+    "language": ("#efe6fa", "#6b3fab"), "spelling": ("#efe6fa", "#6b3fab"),
+    "history": ("#f7ead0", "#9a6a12"), "social_studies": ("#f7ead0", "#9a6a12"),
+    "health": ("#fde4e4", "#b23a3a"), "occupational_education": ("#fbe6d6", "#b2561f"),
+    "art_and_music": ("#fce6f1", "#a83a74"),
+}
+
+
+def _subject_chip(subject: str) -> str:
+    """An inline HTML pill for a subject -- emoji + label on a tinted background."""
+    emoji = _SUBJECT_EMOJI.get(subject, "📘")
+    bg, fg = _SUBJECT_CHIP_COLORS.get(subject, ("#ebe4d0", "#5c543f"))
+    return (
+        f'<span style="display:inline-block; background:{bg}; color:{fg}; '
+        f'font-weight:800; font-size:12px; padding:2px 10px; border-radius:999px; '
+        f'white-space:nowrap;">{emoji} {label(subject)}</span>'
+    )
+
+
 def _render_review_card_body(lesson: dict, today_iso: str) -> None:
     """Everything inside a lesson's review card: the printable copies, the
     whole lesson laid out with his work and the grading controls inline
@@ -332,20 +361,81 @@ def _render_review_card_body(lesson: dict, today_iso: str) -> None:
 
 
 def _render_review_card(lesson: dict, today_iso: str, *, open: bool = False) -> None:
-    """One lesson's review card, always a collapsible expander so a long
-    review queue stays scannable -- reported directly: the ones waiting on you
-    should "collapse to see just the bar level summary when closed and expand
-    when time to review." `open` only sets the *starting* state (expanded for
-    work that's genuinely waiting on you, collapsed for the quieter
-    overdue/sent-back/backlog/history lists); either way it collapses to the
-    same one-line summary bar. That bar carries a quick read of what's inside
-    (hand-ins, quiz score, minutes) so you can triage without opening each."""
-    header = f"{_review_badge(lesson, today_iso)} · {_lesson_date(lesson)} · {series_day_title(lesson)}"
+    """One lesson's review row: a subject chip + one-line summary, with the
+    actions right on the bar so routine work is cleared without opening anything.
+
+    The old design made every approve a dive into a deep expander, and the rerun
+    afterward dumped you at the bottom of the page (reported). Now a **Khan card**
+    -- Khan carried the teaching and auto-scored the quiz, so there's nothing to
+    hand-grade -- gets a one-tap **✅ Approve** right on the row; a graded Tier-1
+    lesson (math/science/english/history) still says "open to grade" because its
+    activities genuinely need reading. **Send back** is one tap for anything he's
+    turned in. **Open** reveals the full grader inline, its state kept in
+    session_state so grading actions inside never re-collapse it.
+
+    `open` only sets the starting state (expanded for the one-item case, collapsed
+    for the quieter overdue/sent-back/history lists)."""
+    subject_tag = f"{_SUBJECT_EMOJI.get(lesson['subject'], '📘')} {label(lesson['subject'])}"
+    # The quieter lists (overdue, planned-ahead, sent-back, history) aren't the
+    # grade-it-now queue, so they stay plain expanders -- now carrying the subject
+    # in the label so you can still scan them by subject.
+    if lesson["status"] != "submitted":
+        header = (
+            f"{subject_tag} · {_review_badge(lesson, today_iso)} · "
+            f"{_lesson_date(lesson)} · {series_day_title(lesson)}"
+        )
+        summary = _review_summary(lesson)
+        if summary:
+            header += f"  ·  {summary}"
+        with st.expander(header, expanded=open):
+            _render_review_card_body(lesson, today_iso)
+        return
+
+    open_key = f"reviewopen_{lesson['id']}"
+    if open_key not in st.session_state:
+        st.session_state[open_key] = open
+    body_open = st.session_state[open_key]
+
+    submitted = lesson["status"] == "submitted"
+    one_tap = submitted and lesson["agent"] == "khan"
+
+    meta_bits = [_review_badge(lesson, today_iso), _lesson_date(lesson)]
     summary = _review_summary(lesson)
     if summary:
-        header += f"  ·  {summary}"
-    with st.expander(header, expanded=open):
-        _render_review_card_body(lesson, today_iso)
+        meta_bits.append(summary)
+
+    with st.container(border=True, key=f"reviewrow_{lesson['id']}"):
+        cols = st.columns([7, 2, 2, 2], vertical_alignment="center")
+        cols[0].markdown(
+            f"{_subject_chip(lesson['subject'])} &nbsp; **{md(series_day_title(lesson))}**",
+            unsafe_allow_html=True,
+        )
+        cols[0].caption(" · ".join(meta_bits))
+        if cols[1].button(
+            "Close ▴" if body_open else "Open ▾",
+            key=f"reviewtoggle_{lesson['id']}", width="stretch",
+        ):
+            st.session_state[open_key] = not body_open
+            st.rerun()
+        if one_tap:
+            if cols[2].button(
+                "✅ Approve", key=f"quickappr_{lesson['id']}",
+                type="primary", width="stretch",
+            ):
+                quick_approve_khan(db, student, lesson)
+                st.toast("Approved ✅")
+                st.rerun()
+        elif submitted:
+            cols[2].caption("open to grade →")
+        if submitted:
+            if cols[3].button(
+                "↩︎ Send back", key=f"quicksb_{lesson['id']}", width="stretch",
+            ):
+                db.send_lesson_back(lesson["id"], "")
+                st.toast("Sent back to him ↩︎")
+                st.rerun()
+        if body_open:
+            _render_review_card_body(lesson, today_iso)
 
 
 _TRAVEL_REVIEW_BADGES = {
@@ -705,10 +795,24 @@ if mc_view == "review":
         st.success("Nothing turned in to grade right now.")
     else:
         st.caption(
-            "Each row collapses to a summary bar — hand-ins, quiz score, minutes — so "
-            "you can scan the queue, then open the one you're ready to grade. Inside, "
-            "the lesson is laid out the way he saw it, his answer under each activity."
+            "Each row shows its subject and a quick summary. **✅ Approve** a Khan "
+            "card right here (nothing to hand-grade); **Open** a graded lesson to read "
+            "his work; **↩︎ Send back** any of it in one tap."
         )
+        # Clear a whole batch of Khan cards at once -- the Khan-heavy week's fast
+        # path. Only Khan cards qualify (a graded Tier-1 lesson needs reading, so
+        # it's never swept into a bulk approve). Shown once there are at least two.
+        khan_waiting = [l for l in submitted_lessons if l["agent"] == "khan"]
+        if len(khan_waiting) >= 2:
+            if st.button(
+                f"⚡ Approve all {len(khan_waiting)} Khan cards",
+                key="mc_approve_all_khan", width="stretch",
+                help="Logs each card's hours and files it, using his entered scores.",
+            ):
+                for lesson in khan_waiting:
+                    quick_approve_khan(db, student, lesson)
+                st.toast(f"Approved {len(khan_waiting)} Khan cards ✅")
+                st.rerun()
         # One thing waiting takes no click -- open it. A queue of several stays
         # collapsed to summary bars so it's scannable, the reported ask: "expand
         # and collapse to see just the bar level summary when closed and expand

@@ -6157,6 +6157,7 @@ from compass.ui.review import (  # noqa: E402,F401
     _render_writing_review_controls,
     _render_activity_grade_picker,
     _render_final_grade_decision,
+    quick_approve_khan,
     render_lesson_review,
 )
 
