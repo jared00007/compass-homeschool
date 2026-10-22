@@ -144,6 +144,28 @@ def _render_suggestions(courses: list[dict]) -> None:
 with list_tab:
     if not courses:
         st.info("No courses yet — add one in the **Add a course** tab.")
+    else:
+        # A credits-earned summary across all courses -- the transcript-level
+        # number. A course "earns" its credit once it's logged its target hours
+        # (150 × its credit value); partial hours count proportionally so the
+        # total reflects real progress, not just courses set up.
+        planned = sum(c["credit_value"] for c in courses)
+        earned = 0.0
+        for c in courses:
+            target = config.CREDIT_HOURS_PER_UNIT * c["credit_value"]
+            hrs = db.course_minutes(c["id"]) / 60
+            earned += min(hrs / config.CREDIT_HOURS_PER_UNIT, c["credit_value"]) if target else 0
+        summary = st.columns(3)
+        summary[0].metric("Credits in progress", f"{planned:g}")
+        summary[1].metric("Credits earned so far", f"{round(earned, 2):g}")
+        summary[2].metric("Courses", len(courses))
+        st.caption(
+            "A credit is earned as hours accrue — **1.0 credit = 150 logged hours**. "
+            "“Earned so far” counts partial progress; a course hits its full credit "
+            "when it reaches its target hours. Each course below shows its own "
+            "credit · hours."
+        )
+        st.divider()
     _render_suggestions(courses)
     for course in courses:
         minutes = db.course_minutes(course["id"])

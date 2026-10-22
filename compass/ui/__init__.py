@@ -6130,13 +6130,21 @@ def _spelling_harden_inputs() -> None:
     components.html(
         "<script>"
         "var d=window.parent.document;"
-        "function h(){try{d.querySelectorAll("
-        "'[class*=\"st-key-spd_in_\"] input,[class*=\"st-key-spq_in_\"] input'"
-        ").forEach(function(el){if(el.dataset.noCheat)return;el.dataset.noCheat='1';"
+        "var SEL='[class*=\"st-key-spd_in_\"] input,[class*=\"st-key-spq_in_\"] input';"
+        "function h(){try{d.querySelectorAll(SEL).forEach(function(el){"
+        "if(el.dataset.noCheat)return;el.dataset.noCheat='1';"
         "el.setAttribute('autocomplete','off');el.setAttribute('autocorrect','off');"
         "el.setAttribute('autocapitalize','off');el.setAttribute('spellcheck','false');"
         "['paste','drop'].forEach(function(ev){el.addEventListener(ev,function(e){"
-        "e.preventDefault();});});});}catch(e){}}"
+        "e.preventDefault();});});"
+        # Enter must NOT submit / rerun -- move to the next word instead (and
+        # blur on the last), so one Enter can never turn in a half-done card.
+        "el.addEventListener('keydown',function(e){if(e.key==='Enter'){"
+        "e.preventDefault();e.stopImmediatePropagation();"
+        "var all=Array.prototype.slice.call(d.querySelectorAll(SEL));"
+        "var i=all.indexOf(el);if(i>-1&&i<all.length-1){all[i+1].focus();}else{el.blur();}"
+        "}},true);"
+        "});}catch(e){}}"
         "h();try{new MutationObserver(h).observe(d.body,{childList:true,subtree:true});}catch(e){}"
         "</script>",
         height=0,
@@ -6217,18 +6225,20 @@ def _spelling_speak_button(word: str, *, height: int = 46) -> None:
 
 
 def _spelling_answer_rows(words: list[dict[str, Any]], key_prefix: str) -> dict[int, str]:
-    """Render one row per word (a speak button, the clue, a type-it box) inside an
-    open form, and return {word_id: typed answer} for grading on submit."""
+    """Render one numbered row per word (number, speak button, clue, type-it box)
+    and return {word_id: typed answer}. NOT inside an st.form on purpose -- a form
+    submits on Enter, so typing the first word and pressing Enter used to turn in
+    the whole thing. Plain inputs + one Check button means Enter just moves on."""
     typed: dict[int, str] = {}
-    for word in words:
-        row = st.columns([1, 5])
+    for index, word in enumerate(words, start=1):
+        row = st.columns([1, 6])
         with row[0]:
             _spelling_speak_button(word["word"])
         clue = md(word["clue"]) if word.get("clue") else "_Say the word, then spell it._"
-        row[1].markdown(clue)
+        row[1].markdown(f"**{index}.** {clue}")
         typed[word["id"]] = row[1].text_input(
-            "type the word", key=f"{key_prefix}_in_{word['id']}",
-            label_visibility="collapsed", placeholder="type the word here",
+            f"word {index}", key=f"{key_prefix}_in_{word['id']}",
+            label_visibility="collapsed", placeholder=f"type word {index} here",
         )
     return typed
 
@@ -6292,11 +6302,15 @@ def _render_spelling_daily_card(db: Database, student: dict[str, Any]) -> None:
         if not words:
             st.caption("🎉 All caught up — nothing due right now.")
             return
-        st.caption(f"{len(words)} words · hear each one, then spell it. Counts as **Spelling**.")
-        with st.form("spelling_daily_form"):
-            typed = _spelling_answer_rows(words, "spd")
-            submitted = st.form_submit_button("✅ Check my spelling", type="primary", width="stretch")
-        if submitted:
+        st.caption(
+            f"Spell all **{len(words)}** words, then press **Check**. Tap 🔊 to hear "
+            "each one. Counts as **Spelling**."
+        )
+        typed = _spelling_answer_rows(words, "spd")
+        if st.button(
+            f"✅ Check all {len(words)} words", key="spd_submit",
+            type="primary", width="stretch",
+        ):
             answers, rows = _grade_spelling(words, typed)
             spelling.complete_daily(db, student, answers)
             st.session_state["spelling_daily_result"] = {
@@ -6324,13 +6338,14 @@ def _render_spelling_quiz_card(db: Database, student: dict[str, Any]) -> None:
             st.caption("No words to quiz yet — do a few daily cards first.")
             return
         st.caption(
-            f"{len(words)} words — I say each one, you spell it. This is your graded "
-            "spelling test for the week."
+            f"Spell all **{len(words)}** words (tap 🔊 to hear each), then press "
+            "**Turn in**. This is your graded spelling test for the week."
         )
-        with st.form("spelling_quiz_form"):
-            typed = _spelling_answer_rows(words, "spq")
-            submitted = st.form_submit_button("📝 Turn in my quiz", type="primary", width="stretch")
-        if submitted:
+        typed = _spelling_answer_rows(words, "spq")
+        if st.button(
+            f"📝 Turn in all {len(words)} words", key="spq_submit",
+            type="primary", width="stretch",
+        ):
             answers, rows = _grade_spelling(words, typed)
             outcome = spelling.complete_quiz(db, student, answers)
             st.session_state["spelling_quiz_result"] = {
