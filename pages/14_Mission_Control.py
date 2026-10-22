@@ -980,8 +980,21 @@ if mc_view == "records":
     st.markdown("### 🎓 Grades & Record")
     st.caption(
         "His grades, course progress, and every logged hour — in three tabs so each "
-        "is easy to find. Formal transcript paperwork is linked at the bottom."
+        "is easy to find."
     )
+    # The full Course Records page (add a course, write its documentation, and
+    # issue credit) is a separate heavier page. It used to be reachable only from
+    # a single link buried at the very bottom of this view, labelled "Credit
+    # documentation" so nothing said "course records" at all -- reported directly:
+    # "theres no button to get to course record. it buried in credit documentation
+    # & transcript." This is that button, up top where it's actually found.
+    if st.button(
+        "📂 Open Course Records — add a course & issue credit →",
+        key="records_to_course_records_top",
+        type="primary",
+        width="stretch",
+    ):
+        st.switch_page("pages/13_Course_Records.py")
     grades_tab, progress_tab, hours_tab = st.tabs(
         ["📊 Grades", "📈 Course progress", "🗂️ Hours & log"]
     )
@@ -1179,10 +1192,13 @@ if mc_view == "records":
 
     st.divider()
     st.caption(
-        "Need the formal grades-6-12 paperwork — a course description, goals, the "
-        "150-hour-per-credit log, and a downloadable transcript packet?"
+        "Course descriptions, goals, the 150-hour-per-credit log, issuing credit, "
+        "and the downloadable transcript packet all live on the **Course Records** "
+        "page — the button is at the top of this view."
     )
-    if st.button("🎓 Credit documentation & transcripts →", key="records_to_credit_docs"):
+    if st.button(
+        "📂 Open Course Records →", key="records_to_credit_docs", width="stretch"
+    ):
         st.switch_page("pages/13_Course_Records.py")
 
 

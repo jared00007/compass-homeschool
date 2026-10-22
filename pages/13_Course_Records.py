@@ -240,6 +240,36 @@ with list_tab:
                     )
                     st.rerun()
 
+            # Every press of "Draft / Regenerate …" above also logs the AI's raw
+            # draft as a record (it's what shows on the model-cost bill, and it's
+            # where the text in the fields above came from). Those records used to
+            # leak onto the planning board as mystery "Course documentation" cards;
+            # they're off the board now, and this is where you clear the old ones.
+            drafts = [
+                lesson
+                for lesson in db.list_lessons(
+                    student["id"], agent=course_summary.AGENT_KEY, limit=500
+                )
+                if lesson["topic"] == course["title"]
+            ]
+            if drafts:
+                with st.expander(f"🗂️ AI draft records ({len(drafts)})"):
+                    st.caption(
+                        "One record per time you pressed “Draft / Regenerate”. "
+                        "Deleting a record doesn't touch the saved details above — "
+                        "it just clears the logged draft. Safe to delete."
+                    )
+                    for draft in drafts:
+                        drow = st.columns([5, 2])
+                        drow[0].caption(
+                            f"{(draft.get('created_at') or '')[:10]} — {md(draft['title'])}"
+                        )
+                        if drow[1].button(
+                            "🗑️ Delete", key=f"del_draft_{draft['id']}", width="stretch"
+                        ):
+                            db.delete_lesson(draft["id"])
+                            st.rerun()
+
             st.markdown("**Activities counted toward this course**")
             candidates = db.candidate_activities_for_course(
                 student["id"],

@@ -89,6 +89,23 @@ def test_summaries_do_not_reach_the_students_home_page(db, student, course):
     assert lessons and not visible
 
 
+def test_summaries_do_not_show_up_on_the_planning_board(db, student, course):
+    """The same boundary, enforced on the board too. A course_summary row is a
+    cost record, not a card he's assigned; the board pulls every lesson to build
+    the week, so it has to drop these by hand -- reported as a mystery "Course
+    documentation -- Math" card nobody recognized sitting on the board."""
+    from datetime import date
+
+    from compass import weekly
+
+    generate(db, student, course, [], a_summary_payload())
+    board = weekly.board_for_week(db, student, weekly.week_start(date.today()))
+    every_card = [item for bucket in board.values() for _kind, item in bucket]
+    assert not any(c.get("agent") == course_summary.AGENT_KEY for c in every_card)
+    # And nothing else slipped in -- the one generated row was the summary.
+    assert not every_card
+
+
 # --- prompt branches -------------------------------------------------------------
 
 

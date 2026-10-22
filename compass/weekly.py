@@ -232,6 +232,12 @@ def board_for_week(
     would otherwise never surface here at all. `backlogged_ids` guards
     against double-adding a story counted by both passes.
     """
+    # Imported here, not at module top: storage.db imports this module, so a
+    # top-level `from compass.agents import ...` would close an import cycle on
+    # first load. The board is the one surface that pulls every lesson, so it's
+    # also the one that has to drop the parent-paperwork agents by hand.
+    from compass.agents import PARENT_PAPERWORK_AGENTS
+
     today = today or date.today()
     today_iso = today.isoformat()
     week_start_iso = week_start_date.isoformat()
@@ -264,6 +270,8 @@ def board_for_week(
             board[day_iso].append((kind, item))
 
     for lesson in latest_per_day(db.lessons_for_week(student_id, week_start_iso)):
+        if lesson["agent"] in PARENT_PAPERWORK_AGENTS:
+            continue  # parent paperwork, not a card he's assigned -- never on the board
         planned_for = lesson["metadata"].get("planned_for", "")
         _place_scheduled(planned_for, is_backlogged(lesson, today_iso), "lesson", lesson)
 
@@ -320,6 +328,8 @@ def board_for_week(
     for lesson in db.list_lessons(student_id, limit=5000):
         if lesson["id"] in backlogged_ids.get("lesson", set()):
             continue
+        if lesson["agent"] in PARENT_PAPERWORK_AGENTS:
+            continue  # parent paperwork, not a card he's assigned -- never on the board
         metadata = lesson.get("metadata") or {}
         if lesson["status"] == "planned" and is_backlogged(lesson, today_iso):
             board["backlog"].append(("lesson", lesson))
