@@ -317,7 +317,33 @@ with add_tab:
     credit_value = columns[2].number_input(
         "Credit value", min_value=0.25, max_value=2.0, value=1.0, step=0.25,
         key="course_add_credit_value",
+        help="1.0 = a full-year course (≈150 hrs). 0.5 = a semester. See the "
+             "benchmark table just below if you're unsure.",
     )
+    with st.expander("📏 Not sure what credit value to use? (benchmark table)"):
+        st.markdown(
+            "**In Compass, `1.0 credit` = one full-year course ≈ 150 instructional "
+            "hours.** Halve it for a semester. The number sets this course's "
+            "hours *target* (150 × credit), and it's what a high-school transcript "
+            "uses.\n\n"
+            "| Course | Credit |\n"
+            "|---|---|\n"
+            "| Core (Math, English, Science, History/Social Studies) — full year | **1.0** |\n"
+            "| World language — full year | **1.0** |\n"
+            "| Fine art / Music — full year | **1.0** |\n"
+            "| Elective / CTE / Coding — full year | **1.0** |\n"
+            "| Any **semester** (half-year) course | **0.5** |\n"
+            "| Health or PE (often a semester each) | **0.5** |\n"
+            "| A short **quarter** course | **0.25** |\n"
+        )
+        st.caption(
+            "📌 **8th grade:** middle-school courses usually aren't put on a "
+            "high-school transcript — but a high-school-level course taken early "
+            "(Algebra I, Geometry, a world language) commonly earns **1.0 high "
+            "school credit**. If you're just tracking his year, **1.0** gives a "
+            "sensible full-year, 150-hour target either way. So your year-long "
+            "8th-grade math → **1.0**."
+        )
     date_columns = st.columns(2)
     start = date_columns[0].date_input(
         "Start date", value=date.fromisoformat(default_start), key="course_add_start"
