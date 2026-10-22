@@ -293,6 +293,11 @@ CREATE TABLE IF NOT EXISTS courses (
     end_date       TEXT NOT NULL,
     final_grade    TEXT NOT NULL DEFAULT '',
     pass_fail      TEXT CHECK (pass_fail IN ('pass', 'fail')),
+    -- Credit is "issued" when the course is complete: its full credit_value is
+    -- then banked on the transcript regardless of exact logged hours. Until then
+    -- it's in-progress (hours accruing toward the 150/credit guideline).
+    credit_awarded INTEGER NOT NULL DEFAULT 0,
+    completed_on   TEXT NOT NULL DEFAULT '',
     created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

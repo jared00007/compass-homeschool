@@ -82,6 +82,57 @@ def test_migrate_rewrites_old_checkpoint_green_check(db, student):
     assert db.get_lesson(chk["id"])["title"] == fixed["title"]
 
 
+def test_issuing_course_credit_records_award_and_can_be_reopened(db, student):
+    """Issuing credit is the 'this course is done, put it on his transcript'
+    switch: it flips credit_awarded and stamps the completion date, and a
+    freshly-created course starts un-issued so nothing counts until a parent
+    says so. Un-issuing clears both again."""
+    cid = db.create_course(
+        student["id"], "Algebra I", "math", "2025-09-01", "2026-06-15",
+        credit_value=1.0,
+    )
+    fresh = db.list_courses(student["id"])[0]
+    assert fresh["credit_awarded"] == 0 and fresh["completed_on"] == ""
+
+    db.update_course(cid, credit_awarded=1, completed_on="2026-06-15", final_grade="A")
+    issued = db.list_courses(student["id"])[0]
+    assert issued["credit_awarded"] == 1
+    assert issued["completed_on"] == "2026-06-15"
+    assert issued["final_grade"] == "A"
+
+    db.update_course(cid, credit_awarded=0, completed_on="")
+    reopened = db.list_courses(student["id"])[0]
+    assert reopened["credit_awarded"] == 0 and reopened["completed_on"] == ""
+
+
+def test_migrate_adds_credit_award_columns_to_an_old_courses_table(tmp_path):
+    """A family already documenting courses has rows that predate the
+    credit-issuing feature; the migration must backfill credit_awarded and
+    completed_on so those courses just read as not-yet-issued rather than
+    breaking the records page."""
+    path = tmp_path / "old_courses.db"
+    raw = sqlite3.connect(path)
+    raw.executescript(
+        "CREATE TABLE courses ("
+        " id INTEGER PRIMARY KEY, student_id INTEGER, title TEXT, "
+        " credit_subject TEXT, grade_level TEXT DEFAULT '', description TEXT DEFAULT '', "
+        " goals TEXT DEFAULT '', outline TEXT DEFAULT '', credit_value REAL DEFAULT 1.0, "
+        " start_date TEXT, end_date TEXT, final_grade TEXT DEFAULT '', "
+        " pass_fail TEXT DEFAULT '', created_at TEXT DEFAULT '');"
+        "INSERT INTO courses (id, student_id, title, credit_subject, start_date, end_date) "
+        "VALUES (1, 1, 'Old Math', 'math', '2024-09-01', '2025-06-01');"
+    )
+    raw.commit()
+    raw.close()
+
+    database = Database(path)  # migrate() runs on open
+    cols = {r[1] for r in database.conn.execute("PRAGMA table_info(courses)")}
+    assert "credit_awarded" in cols and "completed_on" in cols
+    old = database.list_courses(1)[0]
+    assert old["credit_awarded"] == 0 and old["completed_on"] == ""
+    database.close()
+
+
 def test_migrate_carries_old_park_visits_into_travel_entries(db, student):
     """park_visits (park-only, no story) predates the state-first travel
     journal -- a family already running the old tracker has real rows in it

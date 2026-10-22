@@ -1562,6 +1562,10 @@ class Database:
         # business_jobs predates these columns.
         self._ensure_column("business_jobs", "math_activity_id", "INTEGER")
         self._ensure_column("business_jobs", "writing_activity_id", "INTEGER")
+        # Issuing a course's credit when it's complete (transcript-ready) --
+        # added for databases whose courses table predates these columns.
+        self._ensure_column("courses", "credit_awarded", "INTEGER NOT NULL DEFAULT 0")
+        self._ensure_column("courses", "completed_on", "TEXT NOT NULL DEFAULT ''")
         # A house number on his neighborhood map -- the real identifier for a
         # customer's house (his private tracker, never the public flyer).
         self._ensure_column("business_houses", "number", "TEXT NOT NULL DEFAULT ''")
@@ -6455,6 +6459,7 @@ class Database:
         allowed = {
             "title", "credit_subject", "grade_level", "description", "goals", "outline",
             "credit_value", "start_date", "end_date", "final_grade", "pass_fail",
+            "credit_awarded", "completed_on",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:

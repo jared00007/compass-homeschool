@@ -145,25 +145,20 @@ with list_tab:
     if not courses:
         st.info("No courses yet — add one in the **Add a course** tab.")
     else:
-        # A credits-earned summary across all courses -- the transcript-level
-        # number. A course "earns" its credit once it's logged its target hours
-        # (150 × its credit value); partial hours count proportionally so the
-        # total reflects real progress, not just courses set up.
+        # The transcript-level credits summary. A credit is EARNED when you issue
+        # it (a course marked complete, below); everything else is in progress,
+        # still accruing hours toward the 150/credit guideline.
         planned = sum(c["credit_value"] for c in courses)
-        earned = 0.0
-        for c in courses:
-            target = config.CREDIT_HOURS_PER_UNIT * c["credit_value"]
-            hrs = db.course_minutes(c["id"]) / 60
-            earned += min(hrs / config.CREDIT_HOURS_PER_UNIT, c["credit_value"]) if target else 0
+        earned = sum(c["credit_value"] for c in courses if c["credit_awarded"])
         summary = st.columns(3)
-        summary[0].metric("Credits in progress", f"{planned:g}")
-        summary[1].metric("Credits earned so far", f"{round(earned, 2):g}")
+        summary[0].metric("Credits earned", f"{round(earned, 2):g}")
+        summary[1].metric("In progress", f"{round(planned - earned, 2):g}")
         summary[2].metric("Courses", len(courses))
         st.caption(
-            "A credit is earned as hours accrue — **1.0 credit = 150 logged hours**. "
-            "“Earned so far” counts partial progress; a course hits its full credit "
-            "when it reaches its target hours. Each course below shows its own "
-            "credit · hours."
+            "A credit is **earned when you issue it** — open a course and press "
+            "“Issue credit” once it's complete. **1.0 credit = a full-year course "
+            "≈ 150 logged hours.** In-progress courses are still accruing hours; "
+            "each course below shows its own credit · hours."
         )
         st.divider()
     _render_suggestions(courses)
@@ -174,6 +169,7 @@ with list_tab:
         progress = min(hours / target_hours, 1.0) if target_hours else 0.0
 
         pass_fail_badge = {"pass": " · ✅ Pass", "fail": " · ❌ Fail"}.get(course["pass_fail"], "")
+        credit_badge = " · 🎓 credit issued" if course["credit_awarded"] else ""
 
         # A real st.expander resets to collapsed on every rerun -- fine for a
         # card nobody interacts with, but this one has checkboxes and forms
@@ -190,7 +186,7 @@ with list_tab:
                 st.markdown(
                     f"**{md(course['title'])}** — {label(course['credit_subject'])} · "
                     f"{course['credit_value']:g} credit · {hours:g}/{target_hours:g} hrs"
-                    f"{pass_fail_badge}"
+                    f"{pass_fail_badge}{credit_badge}"
                 )
             with header_columns[1]:
                 if st.button(
@@ -301,6 +297,41 @@ with list_tab:
                     pass_fail={"Pass": "pass", "Fail": "fail"}.get(picked_pf),
                 )
                 st.rerun()
+
+            # Issue the credit when the course is complete -- this is what banks
+            # its full credit on the transcript (vs. just accruing hours). Saves
+            # the grade shown above at the same time so the record is consistent.
+            if course["credit_awarded"]:
+                st.success(
+                    f"🎓 Credit issued — **{course['credit_value']:g} credit** "
+                    f"({label(course['credit_subject'])})"
+                    + (f", on {course['completed_on']}" if course["completed_on"] else "")
+                    + (f" · grade {md(course['final_grade'])}" if course["final_grade"] else "")
+                )
+                if st.button("↩️ Un-issue (reopen the course)", key=f"unissue_{course['id']}"):
+                    db.update_course(course["id"], credit_awarded=0, completed_on="")
+                    st.rerun()
+            else:
+                hours_note = (
+                    f" ({hours:g} of {target_hours:g} target hrs logged)"
+                    if target_hours else ""
+                )
+                st.caption(
+                    f"When this course is done, issue its **{course['credit_value']:g} "
+                    f"credit** to bank it on the transcript{hours_note}."
+                )
+                if st.button(
+                    f"🎓 Issue {course['credit_value']:g} credit (mark complete)",
+                    key=f"issue_{course['id']}", type="primary",
+                ):
+                    db.update_course(
+                        course["id"],
+                        credit_awarded=1,
+                        completed_on=date.today().isoformat(),
+                        final_grade=final_grade.strip(),
+                        pass_fail={"Pass": "pass", "Fail": "fail"}.get(picked_pf),
+                    )
+                    st.rerun()
 
             st.divider()
             activities = db.course_activities(course["id"])
