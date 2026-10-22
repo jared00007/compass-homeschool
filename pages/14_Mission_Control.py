@@ -977,206 +977,205 @@ if mc_view == "plan":
 # are their own heavier page, linked at the bottom.
 
 if mc_view == "records":
+    st.markdown("### 🎓 Grades & Record")
     st.caption(
-        "Grades, the hours record, and every loaded course's progress — all in one "
-        "place. The formal credit-documentation packets are linked at the bottom."
+        "His grades, course progress, and every logged hour — in three tabs so each "
+        "is easy to find. Formal transcript paperwork is linked at the bottom."
+    )
+    grades_tab, progress_tab, hours_tab = st.tabs(
+        ["📊 Grades", "📈 Course progress", "🗂️ Hours & log"]
     )
 
-    # Course progress leads. Each unit inside the tracker is now its own
-    # collapsible expander, so this section is a plain header rather than an outer
-    # expander -- Streamlit forbids an expander inside an expander.
-    st.markdown("### 📈 Course progress")
-    st.caption(
-        "Every loaded course by unit: progress, real Khan scores, and what needs you — "
-        "filter by course, and schedule a unit (or everything) right from here. Each "
-        "unit collapses on its own; open one to schedule it."
-    )
-    render_khan_course_tracker(db, student)
+    # --- Grades: the report card, score logging, and auto-graded spelling -------
+    with grades_tab:
+        st.caption(
+            "The same numbers he sees. Open a subject to read every graded item that "
+            "made up its grade (worst first), and override a subject's grade by hand "
+            "at the bottom of each if a number needs it."
+        )
+        render_report_card(db, student, for_parent=True)
+        with st.expander("📊 Log a Khan quiz / test score into a grade"):
+            render_khan_grade_logger(db, student)
+        # Spelling is auto-graded (nothing hits the review queue), so its grade,
+        # daily flow, and shaky words live here. Renders nothing unless it's on.
+        if spelling.is_enabled(db):
+            st.divider()
+            render_spelling_review(db, student)
 
-    st.divider()
-    st.markdown("### 📊 Report card")
-    st.caption(
-        "The same numbers he sees. Open a subject to read every graded item that "
-        "made up its grade (worst first) and, at the bottom of each, set that "
-        "subject's grade by hand if a number needs overriding."
-    )
-    render_report_card(db, student, for_parent=True)
+    # --- Course progress: every loaded course, by unit --------------------------
+    with progress_tab:
+        st.caption(
+            "Every loaded course by unit: progress, real Khan scores, and what needs "
+            "you. Filter by course, and schedule a unit (or everything) right here — "
+            "each unit collapses on its own; open one to schedule it."
+        )
+        render_khan_course_tracker(db, student)
 
-    with st.expander("📊 Log a Khan quiz / test score into a grade"):
-        render_khan_grade_logger(db, student)
+    # --- Hours & log: the instructional record ----------------------------------
+    with hours_tab:
+        st.caption(
+            "Every hour that counts toward the 1,000-hour floor. Agent lessons land "
+            "here automatically; log anything else by hand, then scan or filter the "
+            "whole record below."
+        )
+        with st.container(border=True):
+            render_quick_log(db, student)
 
-    # Spelling is auto-graded, so it never enters the review queue -- its grade,
-    # his daily flow, and the words he's missing live here instead. Renders
-    # nothing unless the Spelling track is on.
-    if spelling.is_enabled(db):
-        st.divider()
-        render_spelling_review(db, student)
+        with st.expander("➕ Log an activity by hand"):
+            with st.form("manual_log", clear_on_submit=True):
+                columns = st.columns([2, 1, 1])
+                title = columns[0].text_input("What was it?")
+                occurred_on = columns[1].date_input("Date", value=date.today())
+                minutes = columns[2].number_input(
+                    "Total minutes", min_value=5, max_value=600, value=60, step=15
+                )
 
-    st.divider()
-    st.markdown("### 🗂️ The instructional record")
-    st.caption(
-        "Every hour that counts. Activities created from agent lessons land here "
-        "automatically; anything else can be logged by hand. Total minutes count "
-        "toward the 1,000-hour floor."
-    )
+                columns = st.columns([1, 1, 2])
+                tier = columns[0].selectbox(
+                    "Tier", config.TIERS,
+                    format_func=lambda t: config.tier_label(t, student["name"]),
+                )
+                primary = columns[1].selectbox("Primary subject", SUBJECT_KEYS, format_func=label)
+                location = columns[2].text_input("Location (optional)")
 
-    with st.container(border=True):
-        render_quick_log(db, student)
+                description = st.text_area("Description", height=80)
 
-    with st.expander("➕ Log an activity by hand"):
-        with st.form("manual_log", clear_on_submit=True):
-            columns = st.columns([2, 1, 1])
-            title = columns[0].text_input("What was it?")
-            occurred_on = columns[1].date_input("Date", value=date.today())
-            minutes = columns[2].number_input(
-                "Total minutes", min_value=5, max_value=600, value=60, step=15
-            )
+                st.markdown("**Subject credit**")
+                st.caption(
+                    "Leave a subject at 0 to skip it. The primary subject is filled in for you."
+                )
+                credits: dict[str, int] = {}
+                credit_columns = st.columns(3)
+                for index, subject_key in enumerate(SUBJECT_KEYS):
+                    with credit_columns[index % 3]:
+                        credits[subject_key] = st.number_input(
+                            label(subject_key),
+                            min_value=0,
+                            max_value=600,
+                            value=0,
+                            step=15,
+                            key=f"manual_credit_{subject_key}",
+                        )
 
-            columns = st.columns([1, 1, 2])
-            tier = columns[0].selectbox(
-                "Tier", config.TIERS, format_func=lambda t: config.tier_label(t, student["name"])
-            )
-            primary = columns[1].selectbox("Primary subject", SUBJECT_KEYS, format_func=label)
-            location = columns[2].text_input("Location (optional)")
-
-            description = st.text_area("Description", height=80)
-
-            st.markdown("**Subject credit**")
-            st.caption(
-                "Leave a subject at 0 to skip it. The primary subject is filled in for you."
-            )
-            credits: dict[str, int] = {}
-            credit_columns = st.columns(3)
-            for index, subject_key in enumerate(SUBJECT_KEYS):
-                with credit_columns[index % 3]:
-                    credits[subject_key] = st.number_input(
-                        label(subject_key),
-                        min_value=0,
-                        max_value=600,
-                        value=0,
-                        step=15,
-                        key=f"manual_credit_{subject_key}",
+                if st.form_submit_button("Log it", type="primary") and title.strip():
+                    selected = {k: v for k, v in credits.items() if v > 0}
+                    if primary not in selected:
+                        selected[primary] = int(minutes)
+                    db.log_activity(
+                        student_id=student["id"],
+                        title=title.strip(),
+                        tier=tier,
+                        primary_subject=primary,
+                        minutes=int(minutes),
+                        subject_credits=selected,
+                        occurred_on=occurred_on.isoformat(),
+                        description=description.strip(),
+                        source="manual",
+                        location=location.strip(),
                     )
-
-            if st.form_submit_button("Log it", type="primary") and title.strip():
-                selected = {k: v for k, v in credits.items() if v > 0}
-                if primary not in selected:
-                    selected[primary] = int(minutes)
-                db.log_activity(
-                    student_id=student["id"],
-                    title=title.strip(),
-                    tier=tier,
-                    primary_subject=primary,
-                    minutes=int(minutes),
-                    subject_credits=selected,
-                    occurred_on=occurred_on.isoformat(),
-                    description=description.strip(),
-                    source="manual",
-                    location=location.strip(),
-                )
-                st.success("Logged.")
-                st.rerun()
-
-    st.markdown("#### 🔎 Review the record")
-    st.caption("Filter by dates, subject, and type, then scan or delete any entry.")
-
-    # Default to the whole school year so the record opens as the full picture to
-    # narrow, not a 30-day slice. Date range drives which entries the subject/type
-    # filters are built from, so the options always match what's on screen.
-    _sy_start, _sy_end = db.school_year_bounds()
-    date_cols = st.columns(2)
-    start = date_cols[0].date_input(
-        "From", value=date.fromisoformat(_sy_start), key="rec_from"
-    )
-    end = date_cols[1].date_input("To", value=date.today(), key="rec_to")
-
-    in_range = db.list_activities(
-        student["id"], start=start.isoformat(), end=end.isoformat()
-    )
-
-    # Subject and type options are built from what's actually in the range, so a
-    # parent never picks a filter that returns nothing.
-    subject_set: set[str] = set()
-    for activity in in_range:
-        subject_set.update(activity["credits"].keys())
-        if activity.get("primary_subject"):
-            subject_set.add(activity["primary_subject"])
-    subject_options = ["All subjects"] + sorted(subject_set, key=label)
-    source_options = ["All types"] + sorted({a["source"] for a in in_range if a.get("source")})
-
-    filter_cols = st.columns(2)
-    subject_pick = filter_cols[0].selectbox(
-        "Subject", subject_options,
-        format_func=lambda s: s if s == "All subjects" else label(s),
-        key="rec_subject",
-    )
-    type_pick = filter_cols[1].selectbox(
-        "Type", source_options,
-        format_func=lambda s: s if s == "All types" else _record_source_label(s),
-        key="rec_type",
-    )
-    # A live selection can outlive the option that produced it (change the dates and
-    # the old pick may be gone); fall back to "all" so the list never blanks out.
-    if subject_pick not in subject_options:
-        subject_pick = "All subjects"
-    if type_pick not in source_options:
-        type_pick = "All types"
-
-    def _matches(activity: dict) -> bool:
-        if subject_pick != "All subjects":
-            subs = set(activity["credits"].keys())
-            if activity.get("primary_subject"):
-                subs.add(activity["primary_subject"])
-            if subject_pick not in subs:
-                return False
-        if type_pick != "All types" and activity.get("source") != type_pick:
-            return False
-        return True
-
-    activities = [a for a in in_range if _matches(a)]
-
-    if not activities:
-        st.info("Nothing matches these filters.")
-    else:
-        total = sum(a["minutes"] for a in activities)
-        metrics = st.columns(3)
-        filtered_note = "" if len(activities) == len(in_range) else f" of {len(in_range)}"
-        metrics[0].metric(f"Activities{filtered_note}", len(activities))
-        metrics[1].metric("Hours", round(total / 60, 1))
-        metrics[2].metric("Days", len({a["occurred_on"] for a in activities}))
-
-        for activity in activities:
-            with st.container(border=True):
-                columns = st.columns([5, 1])
-                where = f" · {activity['location']}" if activity["location"] else ""
-                columns[0].markdown(
-                    f"**{activity['occurred_on']} — {md(activity['title'])}** "
-                    f"({activity['minutes']} min){where}"
-                )
-                columns[0].caption(
-                    f"{_record_source_label(activity['source'])} · "
-                    f"{config.tier_label(activity['tier'], student['name'])}"
-                )
-                if activity["description"]:
-                    columns[0].caption(md(activity["description"]))
-                credit_summary = " · ".join(
-                    f"{label(s)} {m}m" for s, m in activity["credits"].items()
-                )
-                columns[0].markdown(
-                    f"<small>Credit: {credit_summary}</small>", unsafe_allow_html=True
-                )
-                if columns[1].button("Delete", key=f"del_act_{activity['id']}"):
-                    db.delete_activity(activity["id"])
+                    st.success("Logged.")
                     st.rerun()
 
-    st.divider()
-    show_history = st.checkbox("Also show completed and skipped lessons")
-    if show_history:
-        st.markdown(f"**Completed & skipped** ({len(history)})")
-        if not history:
-            st.caption("Nothing logged yet.")
-        for lesson in history:
-            _render_review_card(lesson, today_iso)
+        st.markdown("#### 🔎 Review the record")
+        st.caption("Filter by dates, subject, and type, then scan or delete any entry.")
+
+        # Default to the whole school year so the record opens as the full picture to
+        # narrow, not a 30-day slice. Date range drives which entries the subject/type
+        # filters are built from, so the options always match what's on screen.
+        _sy_start, _sy_end = db.school_year_bounds()
+        date_cols = st.columns(2)
+        start = date_cols[0].date_input(
+            "From", value=date.fromisoformat(_sy_start), key="rec_from"
+        )
+        end = date_cols[1].date_input("To", value=date.today(), key="rec_to")
+
+        in_range = db.list_activities(
+            student["id"], start=start.isoformat(), end=end.isoformat()
+        )
+
+        # Subject and type options are built from what's actually in the range, so a
+        # parent never picks a filter that returns nothing.
+        subject_set: set[str] = set()
+        for activity in in_range:
+            subject_set.update(activity["credits"].keys())
+            if activity.get("primary_subject"):
+                subject_set.add(activity["primary_subject"])
+        subject_options = ["All subjects"] + sorted(subject_set, key=label)
+        source_options = ["All types"] + sorted({a["source"] for a in in_range if a.get("source")})
+
+        filter_cols = st.columns(2)
+        subject_pick = filter_cols[0].selectbox(
+            "Subject", subject_options,
+            format_func=lambda s: s if s == "All subjects" else label(s),
+            key="rec_subject",
+        )
+        type_pick = filter_cols[1].selectbox(
+            "Type", source_options,
+            format_func=lambda s: s if s == "All types" else _record_source_label(s),
+            key="rec_type",
+        )
+        # A live selection can outlive the option that produced it (change the dates and
+        # the old pick may be gone); fall back to "all" so the list never blanks out.
+        if subject_pick not in subject_options:
+            subject_pick = "All subjects"
+        if type_pick not in source_options:
+            type_pick = "All types"
+
+        def _matches(activity: dict) -> bool:
+            if subject_pick != "All subjects":
+                subs = set(activity["credits"].keys())
+                if activity.get("primary_subject"):
+                    subs.add(activity["primary_subject"])
+                if subject_pick not in subs:
+                    return False
+            if type_pick != "All types" and activity.get("source") != type_pick:
+                return False
+            return True
+
+        activities = [a for a in in_range if _matches(a)]
+
+        if not activities:
+            st.info("Nothing matches these filters.")
+        else:
+            total = sum(a["minutes"] for a in activities)
+            metrics = st.columns(3)
+            filtered_note = "" if len(activities) == len(in_range) else f" of {len(in_range)}"
+            metrics[0].metric(f"Activities{filtered_note}", len(activities))
+            metrics[1].metric("Hours", round(total / 60, 1))
+            metrics[2].metric("Days", len({a["occurred_on"] for a in activities}))
+
+            for activity in activities:
+                with st.container(border=True):
+                    columns = st.columns([5, 1])
+                    where = f" · {activity['location']}" if activity["location"] else ""
+                    columns[0].markdown(
+                        f"**{activity['occurred_on']} — {md(activity['title'])}** "
+                        f"({activity['minutes']} min){where}"
+                    )
+                    columns[0].caption(
+                        f"{_record_source_label(activity['source'])} · "
+                        f"{config.tier_label(activity['tier'], student['name'])}"
+                    )
+                    if activity["description"]:
+                        columns[0].caption(md(activity["description"]))
+                    credit_summary = " · ".join(
+                        f"{label(s)} {m}m" for s, m in activity["credits"].items()
+                    )
+                    columns[0].markdown(
+                        f"<small>Credit: {credit_summary}</small>", unsafe_allow_html=True
+                    )
+                    if columns[1].button("Delete", key=f"del_act_{activity['id']}"):
+                        db.delete_activity(activity["id"])
+                        st.rerun()
+
+        st.divider()
+        show_history = st.checkbox("Also show completed and skipped lessons")
+        if show_history:
+            st.markdown(f"**Completed & skipped** ({len(history)})")
+            if not history:
+                st.caption("Nothing logged yet.")
+            for lesson in history:
+                _render_review_card(lesson, today_iso)
 
     st.divider()
     st.caption(

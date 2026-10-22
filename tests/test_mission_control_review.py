@@ -126,7 +126,7 @@ def test_grades_are_a_view_in_mission_control_with_the_override_editor(monkeypat
 
     grades = _switch_view(at, "records")
     markdowns = " ".join(m.value for m in grades.markdown)
-    assert "Report card" in markdowns
+    assert "Grades & Record" in markdowns  # the records view heading (report card is in the Grades tab)
     # The subject-level override form (how a parent edits a grade) is present.
     assert any((b.key or "") == "grade_override_input_math" for b in grades.number_input)
 
