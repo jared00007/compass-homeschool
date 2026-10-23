@@ -79,21 +79,25 @@ def test_default_plan_target_is_the_monday_after_next():
     assert default_plan_target(date(2026, 8, 14)) == date(2026, 8, 17)
 
 
-# --- latest_per_day: dedup for a regenerated day ------------------------------------
+# --- latest_per_day: one board card per deliberately-assigned lesson --------------
 
 
 def _lesson(id, agent, planned_for):
     return {"id": id, "agent": agent, "metadata": {"planned_for": planned_for}}
 
 
-def test_latest_per_day_keeps_the_newest_lesson_for_a_regenerated_day():
+def test_latest_per_day_keeps_two_same_subject_lessons_on_one_day():
+    """A parent can assign two Compass lessons of the same subject to one day on
+    purpose; both must show. `planned_for` is only ever set by an explicit
+    reschedule, so two dated math rows on a day are always two real lessons, not
+    a regenerated duplicate. Reported: "i assigned landon two math lessons, both
+    compass... it only displays one in the board view on that day."""
     lessons = [
         _lesson(1, "math", "2026-08-10"),
-        _lesson(2, "math", "2026-08-10"),  # regenerated -- supersedes id 1
+        _lesson(2, "math", "2026-08-10"),
     ]
     result = latest_per_day(lessons)
-    assert len(result) == 1
-    assert result[0]["id"] == 2
+    assert {l["id"] for l in result} == {1, 2}
 
 
 def test_latest_per_day_keeps_different_agents_and_days_separate():

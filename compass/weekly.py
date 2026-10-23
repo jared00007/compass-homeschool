@@ -61,36 +61,33 @@ def default_plan_target(on: date | None = None) -> date:
 
 
 def latest_per_day(lessons: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Regenerating a day inserts a fresh lesson rather than replacing the
-    old one -- same "newest wins, nothing gets deleted" approach already
-    used for life-skill plans (`Database.latest_life_skill_plan`). Keyed on
-    (agent, planned_for) so a superseded lesson just stops being shown here
-    rather than needing to be deleted; it's still there for Activity Log's
-    own "to review" cleanup if it was never logged.
+    """Every lesson a parent has deliberately assigned to a day, each kept on
+    its own -- one board card per lesson, sorted by (planned_for, id).
 
-    `lessons` must already be sorted oldest-first (planned_for, id), which
-    is exactly what `Database.lessons_for_week` returns -- iterating in that
-    order and overwriting a dict keyed by (agent, planned_for) naturally
-    keeps the newest entry for each day. Shared by `pages/14_Mission_Control.py`
-    (the parent's planner) and Home's Week tab (the student's read-only
-    view of the same plan).
+    This used to collapse to one lesson per (agent, planned_for), on the theory
+    that regenerating a day leaves a stale duplicate the board should hide. But
+    a lesson's `planned_for`/`week_start` is *only* ever set by
+    `Database.reschedule_lesson`, which updates one existing row in place --
+    nothing in the app inserts a second dated lesson for a day. So the only way
+    two lessons share an (agent, day) is a parent assigning both there on
+    purpose (two Compass math lessons on Friday, a fresh lesson plus a prior
+    day's still-awaiting-revision one -- `render_board_card` explicitly allows
+    it), and collapsing them made all but the newest silently vanish from the
+    day column. Reported directly: "i assigned landon two math lessons, both
+    compass... it only displays one in the board view on that day... i need to
+    see all stories." Khan already had to opt out of the old collapse for this
+    same reason; now every agent is treated the same.
 
-    Khan cards are the exception: they all share the single `khan` agent, and a
-    parent assigns *several* to the same day on purpose (that's the whole Khan
-    workflow) -- they don't supersede one another the way a regenerated lesson
-    does. So each Khan card is keyed by its own id and never collapsed, or all
-    but one would vanish from a day column (reported: "moved two Khan math
-    lessons to today and only one shows").
+    Keyed by id purely to drop an exact-duplicate row defensively; in practice
+    every row here is a distinct lesson and all are kept. `lessons` is whatever
+    `Database.lessons_for_week` returns (dated lessons only -- an undated,
+    on-the-fly lesson has no `week_start`, so it never reaches here; the board's
+    own newest-per-subject sweep handles those). Shared by
+    `pages/14_Mission_Control.py` (the parent's planner) and Home's Week tab.
     """
-    latest: dict[tuple[str, object], dict[str, Any]] = {}
-    for lesson in lessons:
-        if lesson["agent"] == "khan":
-            key: tuple[str, object] = ("khan", lesson["id"])
-        else:
-            key = (lesson["agent"], lesson["metadata"].get("planned_for", ""))
-        latest[key] = lesson
+    by_id: dict[object, dict[str, Any]] = {lesson["id"]: lesson for lesson in lessons}
     return sorted(
-        latest.values(), key=lambda l: (l["metadata"].get("planned_for", ""), l["id"])
+        by_id.values(), key=lambda l: (l["metadata"].get("planned_for", ""), l["id"])
     )
 
 
