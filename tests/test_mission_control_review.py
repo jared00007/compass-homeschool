@@ -1060,3 +1060,41 @@ def test_the_khan_grade_logger_drops_a_score_into_a_subject_grade(monkeypatch, t
     assert math.graded and round(
         [c for c in math.components if c.key == "quizzes"][0].percent
     ) == 100
+
+
+def test_a_quick_card_can_be_deleted_from_the_board_backlog(monkeypatch, tmp_path):
+    """A parent-made Quick card (rides the khan agent) can be deleted from the
+    board's backlog, same as other card types -- tick it, tick the confirm, and
+    the Delete button removes it for good. Reported: "i should be able to delete
+    this card. i know i can delete other card types."""
+    from compass.agents import khan_card
+
+    db_path = tmp_path / "quickdelete.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lid = khan_card.create_khan_card(
+        db, student, subject="occupational_education",
+        unit="Continue the travel journal", minutes=30, day_iso=None,
+        quiz=[], generate_quiz=False, no_xp=True, general_card=True,
+    )
+    db.close()
+
+    at, _ = _open_review_tab(monkeypatch, db_path)
+    _switch_view(at, "board")
+    # A search forces the matching backlog unit open so its cards (and the
+    # delete control) actually render -- units default collapsed.
+    [t for t in at.text_input if t.key == "board_backlog_search"][0].set_value("travel").run()
+    for cb in at.checkbox:
+        label = (cb.label or "").lower()
+        if "travel" in label or "delete the ticked" in label:
+            cb.set_value(True)
+    at.run()
+    delete = [b for b in at.button if b.label == "🗑️ Delete ticked card(s)"]
+    assert delete, [b.label for b in at.button]
+    delete[0].click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db = Database(db_path)
+    gone = db.get_lesson(lid) is None
+    db.close()
+    assert gone, "the ticked Quick card should be deleted for good"

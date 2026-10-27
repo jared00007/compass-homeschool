@@ -683,7 +683,13 @@ def render_board_card(
         # Khan cards carry a fixed Khan-colored left stripe on top of their
         # subject-colored bar -- two colors at once: the bar names the subject,
         # the stripe says "this is Khan," so they read as a group across subjects.
-        is_khan = kind == "lesson" and item.get("agent") == "khan"
+        # A free-form Quick card rides the khan agent but isn't a Khan skill, so
+        # it doesn't wear the Khan stripe (its board tag is neutral too).
+        is_khan = (
+            kind == "lesson"
+            and item.get("agent") == "khan"
+            and not (item.get("metadata") or {}).get("general_card")
+        )
         khan_stripe = f"border-left:6px solid {KHAN_ACCENT_COLOR}; " if is_khan else ""
         _ui.st.markdown(
             f'<div style="background:{tag_color}; color:#fff; margin:-1px -1px 8px; '
@@ -1135,6 +1141,7 @@ def _render_unit_bulk_scheduler(
     days = weekly.week_dates(board_week_start, include_friday=True)
 
     chosen_iso: str | None = None
+    do_delete = False
     with _ui.st.form(f"{key}_form", border=False):
         _ui.st.caption(
             "Tick cards (one or many), then click the day to move them onto — "
@@ -1153,10 +1160,36 @@ def _render_unit_bulk_scheduler(
         other = other_cols[0].date_input("Other day", value=_ui.date.today(), key=f"{key}_other")
         if other_cols[1].form_submit_button("📅 Move to other day", use_container_width=True):
             chosen_iso = other.isoformat()
+        # Delete the ticked cards for good -- the one destructive action, so it's
+        # gated behind its own confirm tick (reported: "i should be able to delete
+        # this card. i know i can delete other card types"). A day-column card
+        # already has this on its own move control; backlog cards only had the
+        # day-mover until now.
+        _ui.st.divider()
+        confirm_delete = _ui.st.checkbox(
+            "Yes, delete the ticked card(s) for good", key=f"{key}_delconfirm"
+        )
+        if _ui.st.form_submit_button("🗑️ Delete ticked card(s)", use_container_width=True):
+            do_delete = True
+
+    targets = ids if select_all else [i for i in ids if checks.get(i)]
+
+    if do_delete:
+        if not targets:
+            _ui.st.warning("Tick at least one card first, then delete.")
+            return
+        if not confirm_delete:
+            _ui.st.warning("Tick the confirm box above to delete.")
+            return
+        for lid in targets:
+            db.delete_lesson(lid)
+            _ui.st.session_state.pop(f"{key}_pick_{lid}", None)
+        _ui.st.session_state.pop(f"{key}_selall", None)
+        _ui.st.session_state.pop(f"{key}_delconfirm", None)
+        _ui.st.rerun()
 
     if chosen_iso is None:
         return
-    targets = ids if select_all else [i for i in ids if checks.get(i)]
     if not targets:
         _ui.st.warning("Tick at least one card first, then click a day.")
         return

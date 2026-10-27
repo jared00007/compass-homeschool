@@ -499,13 +499,17 @@ def test_review_card_text_is_the_fixed_requested_wording():
     assert ui.REVIEW_CARD_TEXT == "Refresh / Quiz prep card - get that XP up towards mastery!"
 
 
-def test_review_card_form_prefills_the_standard_text(db, student, monkeypatch):
+def test_quick_card_form_offers_xp_choice_and_the_old_wording(db, student, monkeypatch):
+    """The general Quick-card form: it still offers the old review wording (as a
+    placeholder), credits school hours, and now lets the parent choose whether it
+    earns XP. The back-compat alias still resolves to the same form."""
     rec = _Rec()
     monkeypatch.setattr(ui, "st", rec)
-    ui.render_khan_review_card_form(db, student)
+    assert ui.render_khan_review_card_form is ui.render_quick_card_form
+    ui.render_quick_card_form(db, student)
     page = "\n".join(rec.written)
-    assert ui.REVIEW_CARD_TEXT in page          # pre-filled, same every time
-    assert "no XP" in page and "school hours" in page
+    assert ui.REVIEW_CARD_TEXT in page          # still offered, now as a placeholder
+    assert "Earns XP?" in page and "school hours" in page
 
 
 def test_review_card_still_carries_its_school_hours(db, student):
@@ -536,6 +540,39 @@ def test_no_xp_card_is_marked_on_the_board_tag():
         "lesson", {"agent": "khan", "subject": "math", "metadata": {"no_xp": True}}
     )
     assert "no XP" in label
+
+
+def test_custom_xp_card_awards_the_parents_exact_amount(db, student):
+    """A parent can set an exact XP amount on a Quick card; finishing it awards
+    that, not the Khan default. Reported: "allow me to input value."""
+    lid = khan_card.create_khan_card(
+        db, student, subject="math", unit="Clean the garage",
+        minutes=30, day_iso=date.today().isoformat(), quiz=[],
+        generate_quiz=False, xp_override=25, general_card=True,
+    )
+    meta = db.get_lesson(lid)["metadata"]
+    assert meta.get("xp_override") == 25 and meta.get("general_card") is True
+
+    before = xp.total_xp(db, student["id"])
+    db.submit_lesson(lid)
+    assert xp.total_xp(db, student["id"]) == before + 25   # the exact amount, not 10
+
+
+def test_general_card_sheds_its_khan_identity(db, student):
+    """A general Quick card rides the khan agent but isn't branded Khan: its
+    title is its own text (no "Khan Academy:" prefix) and its board tag is a
+    neutral pin, not "Khan · …". Reported: "make that a general card."""
+    lid = khan_card.create_khan_card(
+        db, student, subject="math", unit="Field trip to the museum",
+        minutes=60, day_iso=date.today().isoformat(), quiz=[],
+        generate_quiz=False, general_card=True, xp_override=15,
+    )
+    card = db.get_lesson(lid)
+    assert card["title"] == "Field trip to the museum"   # not "Khan Academy: …"
+
+    _, icon, label = ui.board_card_tag("lesson", card)
+    assert icon == "📌" and "Khan" not in label
+    assert "+15 XP" in label
 
 
 def test_daily_due_lessons_tile_counts_khan_cards(db, student, monkeypatch):

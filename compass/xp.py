@@ -99,13 +99,19 @@ def total_xp(db: Any, student_id: int) -> int:
             continue
         metadata = lesson.get("metadata") or {}
         if metadata.get("student_done_on"):
-            # A Khan card is a single small skill, worth less than a full lesson
-            # (see config); its mastery ladder carries the rest of its XP.
-            total += (
-                config.XP_PER_KHAN_LESSON
-                if lesson.get("agent") == "khan"
-                else config.XP_PER_LESSON
-            )
+            # A parent can set an exact XP amount on a card they made by hand
+            # (the Quick-card form) -- that wins over the per-kind default.
+            override = metadata.get("xp_override")
+            if override is not None:
+                total += int(override)
+            else:
+                # A Khan card is a single small skill, worth less than a full
+                # lesson (see config); its mastery ladder carries the rest.
+                total += (
+                    config.XP_PER_KHAN_LESSON
+                    if lesson.get("agent") == "khan"
+                    else config.XP_PER_LESSON
+                )
         quiz_result = metadata.get("quiz_result") or {}
         if quiz_result.get("passed"):
             total += config.XP_QUIZ_PASS_BONUS

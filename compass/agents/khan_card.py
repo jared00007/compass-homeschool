@@ -436,6 +436,8 @@ def create_khan_card(
     quiz: list[dict[str, Any]] | None = None,
     generate_quiz: bool = True,
     no_xp: bool = False,
+    xp_override: int | None = None,
+    general_card: bool = False,
 ) -> int:
     """Create one Khan card, schedule it, and return its lesson id.
 
@@ -450,7 +452,13 @@ def create_khan_card(
     `no_xp=True` marks it a reminder/review card: it behaves like any other card
     (scheduled, worked, turned in, reviewed, hours logged) but earns no XP -- a
     way to put "circle back and review" time on his calendar without it padding
-    the reward total.
+    the reward total. `xp_override` sets an exact XP amount for finishing it
+    (instead of the default Khan rate); ignored when `no_xp`.
+
+    `general_card=True` is a free-form card the parent made for any purpose, not a
+    real Khan skill: it rides the same `khan` agent machinery (board, review,
+    one-tap approve, hours) but drops the Khan branding -- its own title instead
+    of "Khan Academy: …", a neutral board tag, no Khan accent stripe.
     """
     if not is_supported_subject(subject):
         raise ValueError(f"'{subject}' isn't a valid subject for a Khan card.")
@@ -465,6 +473,10 @@ def create_khan_card(
     metadata: dict[str, Any] = {"source": "khan", "resource_url": url.strip()}
     if no_xp:
         metadata["no_xp"] = True
+    elif xp_override is not None:
+        metadata["xp_override"] = int(xp_override)
+    if general_card:
+        metadata["general_card"] = True
     if day_iso is None:
         # No day yet -> park it in the parent's Backlog to schedule from the
         # Board, the same way a generated series lands (held_back).
@@ -475,10 +487,14 @@ def create_khan_card(
         agent=AGENT_KEY,
         subject=subject,
         topic=unit.strip(),
-        title=f"Khan Academy: {unit.strip()}",
+        title=unit.strip() if general_card else f"Khan Academy: {unit.strip()}",
         payload=payload,
-        strategy="parent_khan_card",
-        rationale="Parent added a Khan Academy skill as a lesson card.",
+        strategy="parent_general_card" if general_card else "parent_khan_card",
+        rationale=(
+            "Parent added a custom card."
+            if general_card
+            else "Parent added a Khan Academy skill as a lesson card."
+        ),
         metadata=metadata,
     )
     if day_iso is not None:

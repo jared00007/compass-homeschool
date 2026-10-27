@@ -2263,8 +2263,23 @@ def board_card_tag(kind: str, item: dict[str, Any]) -> tuple[str, str, str]:
             meta = item.get("metadata") or {}
             course = (meta.get("khan_unit") or meta.get("khan_course") or "").strip()
             subject_label = subjects.label(subject) if subjects.is_valid(subject) else "Khan"
-            # A no-XP reminder/review card is marked so it's clear it earns nothing.
-            no_xp_tag = " · 🔕 no XP" if meta.get("no_xp") else ""
+            # The XP state reads right on the bar: a no-XP card earns nothing, a
+            # custom card can carry an exact amount, an ordinary card neither.
+            if meta.get("no_xp"):
+                xp_tag = " · 🔕 no XP"
+            elif meta.get("xp_override") is not None:
+                xp_tag = f" · ⭐ +{int(meta['xp_override'])} XP"
+            else:
+                xp_tag = ""
+            # A free-form "Quick card" rides the Khan machinery but isn't a Khan
+            # skill -- a neutral tag (its own subject, a pin icon) instead of the
+            # Khan unit/branding, so the board doesn't mislabel it.
+            if meta.get("general_card"):
+                return (
+                    SUBJECT_TAG_COLORS.get(subject, _BOARD_TAG_FALLBACK_COLOR),
+                    "📌",
+                    f"{subject_label if subjects.is_valid(subject) else 'Card'}{xp_tag}",
+                )
             # A checkpoint (Khan quiz / unit test) is marked so it reads as a graded
             # check, not another lesson.
             check_kind = meta.get("khan_checkpoint_kind")
@@ -2275,7 +2290,7 @@ def board_card_tag(kind: str, item: dict[str, Any]) -> tuple[str, str, str]:
             return (
                 SUBJECT_TAG_COLORS.get(subject, _BOARD_TAG_FALLBACK_COLOR),
                 "🅰️",
-                f"Khan · {course or subject_label}{check_tag}{no_xp_tag}",
+                f"Khan · {course or subject_label}{check_tag}{xp_tag}",
             )
         return (
             BOARD_TAG_COLORS.get(agent, _BOARD_TAG_FALLBACK_COLOR),
@@ -4226,53 +4241,80 @@ def render_rewind_generator(db: Database, student: dict[str, Any]) -> None:
 REVIEW_CARD_TEXT = "Refresh / Quiz prep card - get that XP up towards mastery!"
 
 
-def render_khan_review_card_form(db: Database, student: dict[str, Any]) -> None:
-    """One-tap 'refresh / quiz-prep' review card -- a heavily used, no-XP card
-    that just puts 'circle back and review before the quiz' time on his calendar.
-    Pre-filled with the same wording every time; the parent only picks a subject
-    and a day. It logs school hours like any card (it credits the subject's time),
-    it just earns no XP."""
+def render_quick_card_form(db: Database, student: dict[str, Any]) -> None:
+    """A general-purpose card the parent builds by hand -- for anything, not just
+    Khan: a review reminder, a chore, a field trip, a "read for 20 minutes." Type
+    what it is, pick the subject its time credits, choose whether it earns XP (and
+    how much), and drop it on a day or in the Backlog. It behaves like any card
+    everywhere (scheduled, worked, turned in, approved, hours logged); the XP is
+    the parent's call. Reported directly: "the khan no xp card. lets just make
+    that a general card. could be khan, could be anything i need it to be. also
+    allow me to edit if xp or no. then allow me to input value."
+    """
     from compass.agents import khan_card
 
     subject_labels = {k: v for k, v in khan_card.KHAN_SUBJECTS}
     st.caption(
-        "A quick review reminder for his calendar — same wording every time. It "
-        "**counts as school hours** for the subject you pick, but earns **no XP**. "
-        "Pick a subject and a day and add it."
+        "Build a card for anything — a review reminder, a chore, a field trip, "
+        "reading time. It **counts as school hours** for the subject you pick. "
+        "Choose whether it earns XP, and how much."
     )
-    with st.form("khan_review_card_form", clear_on_submit=False):
+    with st.form("quick_card_form", clear_on_submit=False):
+        text = st.text_input(
+            "What is this card?", value="", key="quick_card_text",
+            placeholder=REVIEW_CARD_TEXT,
+            help="Whatever you want it to say — this is the card's title.",
+        )
         cols = st.columns(2)
         subject = cols[0].selectbox(
-            "Subject", options=[k for k, _ in khan_card.KHAN_SUBJECTS],
-            format_func=lambda k: subject_labels[k], key="khan_review_subject",
+            "Subject (credits its hours)", options=[k for k, _ in khan_card.KHAN_SUBJECTS],
+            format_func=lambda k: subject_labels[k], key="quick_card_subject",
         )
         minutes = cols[1].number_input(
             "Minutes (school hours)", min_value=5, max_value=240,
             value=config.SUBJECT_DEFAULT_MINUTES.get("math", 35), step=5,
-            key="khan_review_minutes",
+            key="quick_card_minutes",
         )
-        text = st.text_input(
-            "Card text", value=REVIEW_CARD_TEXT, key="khan_review_text",
-            help="Pre-filled and the same each time — edit it only if you want to.",
+        xp_cols = st.columns([2, 2])
+        gives_xp = xp_cols[0].radio(
+            "Earns XP?", options=["No XP", "Give XP"], horizontal=True,
+            key="quick_card_gives_xp",
+            help="No XP still counts as school time — it just doesn't add to his reward total.",
         )
-        day = st.date_input("Assign to day", value=date.today(), key="khan_review_day")
+        xp_value = xp_cols[1].number_input(
+            "XP amount (if it earns XP)", min_value=1, max_value=500,
+            value=config.XP_PER_KHAN_LESSON, step=1, key="quick_card_xp_value",
+        )
+        day = st.date_input("Assign to day", value=date.today(), key="quick_card_day")
         to_backlog = st.checkbox(
-            "Send to the Backlog instead of a day", key="khan_review_backlog",
+            "Send to the Backlog instead of a day", key="quick_card_backlog",
         )
         submitted = st.form_submit_button(
-            "➕ Add review card (no XP)", type="primary", width="stretch"
+            "➕ Add card", type="primary", width="stretch"
         )
     if not submitted:
         return
-    unit = text.strip() or REVIEW_CARD_TEXT
+    unit = text.strip()
+    if not unit:
+        st.error("Give the card a title first — type what it is.")
+        return
+    earns_xp = gives_xp == "Give XP"
     day_iso = None if to_backlog else day.isoformat()
     khan_card.create_khan_card(
         db, student, subject=subject, unit=unit, minutes=int(minutes),
-        day_iso=day_iso, quiz=[], generate_quiz=False, no_xp=True,
+        day_iso=day_iso, quiz=[], generate_quiz=False,
+        no_xp=not earns_xp,
+        xp_override=int(xp_value) if earns_xp else None,
+        general_card=True,
     )
     where = "the Backlog" if to_backlog else day.strftime("%a %b %-d")
-    st.success(f"🔕 Added a no-XP review card to {where}.")
+    xp_note = f"⭐ +{int(xp_value)} XP" if earns_xp else "🔕 no XP"
+    st.success(f"📌 Added a card ({xp_note}) to {where}.")
     st.rerun()
+
+
+# Back-compat alias: this form used to be the Khan-only "review card" creator.
+render_khan_review_card_form = render_quick_card_form
 
 
 def render_khan_course_importer(db: Database, student: dict[str, Any]) -> None:
@@ -5222,9 +5264,18 @@ def _render_one_khan_due_card(
     """One Khan card he can work and turn in on its own -- its link + quiz and a
     Turn-it-in button, in an expander so a day of several stays scannable."""
     marker = "↩️" if card["status"] == "needs_revision" else "⬜"
-    with st.expander(f"{marker} 🅰️ {md(card['title'])}", expanded=expanded):
-        if (card.get("metadata") or {}).get("no_xp"):
-            st.caption("🔕 Review card — no XP, just time to circle back before your quiz.")
+    _meta = card.get("metadata") or {}
+    _is_general = bool(_meta.get("general_card"))
+    _icon = "📌" if _is_general else "🅰️"
+    with st.expander(f"{marker} {_icon} {md(card['title'])}", expanded=expanded):
+        if _meta.get("no_xp"):
+            st.caption(
+                "🔕 No-XP card — it still counts as school time, it just doesn't add XP."
+                if _is_general
+                else "🔕 Review card — no XP, just time to circle back before your quiz."
+            )
+        elif _meta.get("xp_override") is not None:
+            st.caption(f"⭐ Finish this one for **+{int(_meta['xp_override'])} XP**.")
         if card["status"] == "needs_revision":
             st.warning("Sent back — read your parent's note, fix it, and turn it in again.")
         render_lesson(

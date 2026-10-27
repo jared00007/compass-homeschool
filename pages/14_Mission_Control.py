@@ -61,7 +61,7 @@ from compass.ui import (
     render_khan_spinoff_tool,
     render_khan_mastery_confirmations,
     render_khan_grade_logger,
-    render_khan_review_card_form,
+    render_quick_card_form,
     render_khan_score_recorder,
     render_lightning_lesson_panel,
     render_report_card,
@@ -956,8 +956,8 @@ if mc_view == "plan":
         render_lightning_lesson_panel(db, student)
 
         st.divider()
-        st.markdown("#### 🔕 Refresh / Quiz-prep card — no XP")
-        render_khan_review_card_form(db, student)
+        st.markdown("#### 📌 Quick card — for anything, your call on XP")
+        render_quick_card_form(db, student)
 
     # ── 🗓️ Balance the week: spread the backlog across days. ──
     with st.expander("🗓️ Balance the week"):
