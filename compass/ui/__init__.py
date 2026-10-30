@@ -208,6 +208,7 @@ def _render_nav() -> None:
     # Math / Science / English / History. Reported: "button should be Courses
     # and then in the Courses page, there should be 4 buttons each subject."
     st.page_link("pages/17_Courses.py", label="Courses", icon="📚")
+    st.page_link("pages/10_Graph_Explorer.py", label="Graphing", icon="📈")
     st.page_link("pages/7_Big_Projects.py", label="Big Projects", icon="🎬")
     st.page_link("pages/6_Life_Skills.py", label="Life Skills", icon="🛠️")
     st.page_link("pages/19_My_Business.py", label="My Business", icon="🍂")
@@ -6569,4 +6570,10 @@ from compass.ui.firstday import (  # noqa: E402,F401
     _FIRST_DAY_CARD_CSS,
     render_first_day_celebration,
     _render_first_day_contents,
+)
+
+from compass.ui.grapher import (  # noqa: E402,F401
+    EXPLORER_HEIGHT,
+    render_graph_explorer,
+    slope_intercept_explorer_html,
 )

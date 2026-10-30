@@ -29,6 +29,12 @@ st.caption(
     "invent it."
 )
 
+st.page_link(
+    "pages/10_Graph_Explorer.py",
+    label="Stuck on graphing lines? Open the Slope & Intercept Explorer →",
+    icon="📈",
+)
+
 mastered = db.mastered_skills(student["id"])
 mastery = db.mastery_map(student["id"])
 frontier = frontier_report(mastered)
