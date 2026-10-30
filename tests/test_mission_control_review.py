@@ -1123,7 +1123,7 @@ def test_the_open_course_nudge_expands_and_scrolls_to_it(monkeypatch, tmp_path):
     at.switch_page(str(REPO_ROOT / "pages" / "13_Course_Records.py"))
     at.run(timeout=30)
 
-    credit = [b for b in at.button if (b.label or "").startswith("➕ Credit")]
+    credit = [b for b in at.button if (b.label or "").startswith("➕ Add")]
     assert credit, [b.label for b in at.button]
     credit[0].click().run(timeout=30)
     assert not at.exception, [e.message for e in at.exception]

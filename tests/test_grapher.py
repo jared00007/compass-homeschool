@@ -171,3 +171,61 @@ def test_parent_sees_the_ladder_builder_student_does_not(tmp_path, monkeypatch):
     student_md = open_explorer(parent=False)
     assert "Find the gap" in student_md          # diagnostic is for him too
     assert "graphing ladder" not in student_md   # building/assigning work is not
+
+
+# --- the redesigned Mystery Line Challenge + missions-as-cards -----------------
+
+
+def test_mystery_challenge_is_a_hinted_two_step():
+    html = slope_intercept_explorer_html()
+    assert "Mystery Line Challenge" in html
+    # the two explicit steps, with their own feedback slots
+    assert 'id="step1"' in html and 'id="step2"' in html
+    assert 'id="fb_start"' in html and 'id="fb_steep"' in html
+    # a graduated hint (nudge -> method -> reveal) wired to a button
+    assert 'id="hintbtn"' in html and "function showHint" in html
+    assert "The answer:" in html  # the third hint reveals the equation
+    # directional feedback, not just "keep trying"
+    assert "make it STEEPER" in html and "slide" in html
+
+
+def test_missions_card_builder_makes_a_trackable_board_card(tmp_path, monkeypatch):
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", str(tmp_path / "m.db"))
+    Database(tmp_path / "m.db").ensure_default_student()
+
+    at = AppTest.from_file(HOME_PATH)
+    at.session_state["parent_unlocked"] = True
+    at.run(timeout=30)
+    at.switch_page(EXPLORER_PATH)
+    at.run(timeout=30)
+    add = [b for b in at.button if "graphing-missions card" in (b.label or "")]
+    assert add, [b.label for b in at.button]
+    add[0].click().run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+
+    db = Database(tmp_path / "m.db")
+    student = db.ensure_default_student()
+    cards = [l for l in db.list_lessons(student["id"], agent="khan", limit=20)
+             if (l.get("metadata") or {}).get("general_card")]
+    db.close()
+    assert len(cards) == 1
+    assert "Graphing missions" in cards[0]["title"]
+    assert cards[0]["metadata"].get("xp_override") == 15   # logs a little XP when done
+
+
+def test_missions_card_is_hidden_from_the_student(tmp_path, monkeypatch):
+    from compass import auth
+
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", str(tmp_path / "m.db"))
+    db = Database(tmp_path / "m.db")
+    db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    db.close()
+
+    at = AppTest.from_file(HOME_PATH)
+    at.run(timeout=30)
+    at.switch_page(EXPLORER_PATH)
+    at.run(timeout=30)
+    assert not any("graphing-missions card" in (b.label or "") for b in at.button)

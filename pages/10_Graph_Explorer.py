@@ -18,6 +18,7 @@ from compass.ui import (
     render_graph_explorer,
     render_graphing_diagnostic,
     render_graphing_ladder_builder,
+    render_graphing_missions_card,
 )
 
 db, student = page_setup("Graphing", icon="📈")
@@ -37,8 +38,11 @@ if is_parent():
             "- **Start slider = the y-intercept.** Slide it and the whole line moves "
             "up or down. When it's **0**, the line goes through the corner (0,0) — "
             "that's the fingerprint of a *proportional* relationship.\n"
-            "- Work the **Missions** in order, then play the **match the mystery line** "
-            "game — that's him reading a graph *backwards* into an equation.\n"
+            "- Work the **Missions** in order, then the **Mystery Line Challenge** — "
+            "that's him reading a graph *backwards* into an equation, in two steps: "
+            "①  where it starts (the gray dot on the y-axis), then ② how steep (right "
+            "1, count up/down). **💡 Hint** walks him through both; the feedback tells "
+            "him which way to move.\n"
             "- Good talking track: *“What has to be true for the line to go through the "
             "corner?”* and *“Same steepness — what changed when it started at 5?”*"
         )
@@ -51,9 +55,10 @@ st.divider()
 # Landon answers it, and the readout steers both of you to the right spot.
 render_graphing_diagnostic(db, student)
 
-# The scaffolded ladder is a parent action (it generates and assigns work), so
-# it's gated to the parent view.
+# Parent actions (assigning work / building lessons) are gated to the parent view.
 if is_parent():
+    st.divider()
+    render_graphing_missions_card(db, student)
     st.divider()
     render_graphing_ladder_builder(db, student, api_ok=api_available())
 

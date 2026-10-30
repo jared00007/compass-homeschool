@@ -586,3 +586,62 @@ def test_daily_due_lessons_tile_counts_khan_cards(db, student, monkeypatch):
     monkeypatch.setattr(ui, "st", rec)
     ui.render_daily_due(db, student, today)
     assert "Lessons — 1 of 2 submitted" in "\n".join(rec.written)
+
+
+# --- the redesigned "Level up your mastery" screen ------------------------------
+
+
+def _seed_mastery_cards(db, student):
+    """Two units: one with a mastered + an unmastered skill, one fully mastered."""
+    from datetime import date as _date
+    specs = [
+        ("Unit A: Expressions", "Skill a1", True),
+        ("Unit A: Expressions", "Skill a2", False),
+        ("Unit B: Equations", "Skill b1", True),
+    ]
+    for unit, title, mastered in specs:
+        lid = khan_card.create_khan_card(
+            db, student, subject="math", unit=title, minutes=30,
+            day_iso=_date.today().isoformat(), quiz=[], generate_quiz=False,
+        )
+        meta = db.get_lesson(lid)["metadata"]
+        meta["khan_unit"] = unit
+        db.update_lesson_content(lid, metadata=meta)
+        db.set_lesson_status(lid, "completed")
+        if mastered:
+            km.confirm_mastery(db, lid, "mastered", on=_date.today().isoformat())
+
+
+def test_mastery_screen_climbs_active_and_browses_the_mastered(tmp_path, monkeypatch):
+    """The climb shows only units with skills still to level up (each collapsed
+    behind a 'done/total mastered' header), and everything mastered drops into one
+    collapsed browse-all table. Reported: "make it better for him to track ... make
+    mastered units collapsed into a browse all mastered table/view."""
+    from pathlib import Path
+
+    import streamlit as st
+    from streamlit.testing.v1 import AppTest
+    from compass import auth, config
+
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", str(tmp_path / "km.db"))
+    db = Database(tmp_path / "km.db")
+    student = db.ensure_default_student()
+    _seed_mastery_cards(db, student)
+    auth.set_pin(db, "1234")  # mastery boost is a student-view screen
+    db.close()
+
+    repo = Path(__file__).resolve().parent.parent
+    at = AppTest.from_file(str(repo / "Home.py"))
+    at.run(timeout=30)
+    at.switch_page(str(repo / "pages" / "18_Khan.py"))
+    at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+
+    labels = [e.label for e in at.expander]
+    # the partly-done unit is an active climb with a progress header...
+    assert any("Unit A: Expressions — 1/2 mastered" in l for l in labels)
+    # ...the fully-mastered unit is NOT its own climb expander...
+    assert not any("Unit B" in l for l in labels)
+    # ...and both mastered skills live in the one browse-all table.
+    assert any("Browse all mastered skills (2)" in l for l in labels)

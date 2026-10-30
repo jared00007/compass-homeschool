@@ -115,16 +115,16 @@ def _render_suggestions(courses: list[dict]) -> None:
                 names = ", ".join(c["title"] for c in matching)
                 st.markdown(
                     f"**{label(subject)}** — {hours:.1f} untagged hours this year. "
-                    f"You already have **{names}** covering this — credit these hours "
-                    "to it."
+                    f"You already have **{names}** covering this — count these hours "
+                    "toward it."
                 )
-                # One tap to actually claim the hours (and jump to the course), not
-                # just open it and hand-tick each activity. Reported: "those courses
-                # should have hours already acreditted to them too." The first
-                # matching course claims the untagged hours; the picker inside still
-                # lets a parent un-claim anything that doesn't belong.
+                # One tap to actually attach the hours (and jump to the course), not
+                # just open it and hand-tick each activity. "Add … hours" (not
+                # "credit"), so it never reads as issuing the transcript credit --
+                # that's the separate "Issue credit" button. Reported: "the credit +29
+                # ... just allows me to give a credit but the course isnt completed?"
                 if st.button(
-                    f"➕ Credit {hours:.1f} {label(subject)} hours to {names}",
+                    f"➕ Add {hours:.1f} {label(subject)} hours to {names}",
                     key=f"nudge_credit_{subject}",
                 ):
                     for course in matching:
@@ -304,7 +304,7 @@ with list_tab:
                 if untagged:
                     extra_min = sum(a["minutes"] for a in untagged)
                     if st.button(
-                        f"➕ Credit all {len(untagged)} untagged ({extra_min / 60:.1f} hrs) "
+                        f"➕ Add all {len(untagged)} untagged ({extra_min / 60:.1f} hrs) "
                         "to this course",
                         key=f"credit_all_{course['id']}",
                     ):
@@ -372,9 +372,22 @@ with list_tab:
                     if target_hours else ""
                 )
                 st.caption(
-                    f"When this course is done, issue its **{course['credit_value']:g} "
-                    f"credit** to bank it on the transcript{hours_note}."
+                    f"Issuing credit is **separate from logging hours** — it's the "
+                    f"'this course is finished, put its **{course['credit_value']:g} "
+                    f"credit** on the transcript' switch. Do it when the course is "
+                    f"actually done{hours_note}."
                 )
+                # Issuing a full credit on a barely-started course is almost always a
+                # misclick (a 1.0 credit ≈ a full ~150-hour course). Flag it, but
+                # leave it the parent's call. Reported: "just allows me to give a
+                # credit but the course isnt completed?"
+                if target_hours and hours < target_hours * 0.5:
+                    st.warning(
+                        f"Heads up: only **{hours:g} of {target_hours:g} hours** are "
+                        f"logged, so this course looks **unfinished**. You can still "
+                        "issue the credit if you mean to — but if you were trying to "
+                        "add hours, use the **“Add … hours”** button up top instead."
+                    )
                 if st.button(
                     f"🎓 Issue {course['credit_value']:g} credit (mark complete)",
                     key=f"issue_{course['id']}", type="primary",

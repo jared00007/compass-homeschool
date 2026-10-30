@@ -5142,23 +5142,82 @@ def render_khan_mastery_boost(db: Database, student: dict[str, Any]) -> None:
     ]
     if not revisitable:
         return
+    from datetime import timedelta
+
     st.divider()
     st.subheader("🏆 Level up your mastery")
     st.caption(
-        "Go back to Khan, practice a skill you've already done, and mark how far "
-        "you got. Every level up earns bonus XP — and it never costs you anything, "
-        "so climbing is always worth it."
+        "Practice a Khan skill you've already done, mark how far you got, and each "
+        "level up earns bonus XP — it never costs anything, so climbing is always "
+        "worth it."
     )
+
+    # Group by unit (stable), then split each unit into skills still to climb and
+    # ones already mastered. The old screen opened EVERY unit at once -- a wall of
+    # ladders, finished skills mixed in with the ones he can still move. Now the
+    # climb shows only what's left, each unit collapsed behind a progress header,
+    # and everything mastered drops into one browse-all table at the bottom.
+    # Reported: "level up mastery screen ... is bad ... make it better for him to
+    # track as the days go on ... make mastered units collapsed into a browse all
+    # mastered table/view."
     groups: dict[tuple[Any, str], list[dict[str, Any]]] = {}
     for card in revisitable:
         meta = card.get("metadata") or {}
-        key = (meta.get("khan_course_id") or "", meta.get("khan_unit") or meta.get("khan_course") or "Other Khan skills")
+        key = (meta.get("khan_course_id") or "",
+               meta.get("khan_unit") or meta.get("khan_course") or "Other Khan skills")
         groups.setdefault(key, []).append(card)
+
+    # Progress so he can watch it move day to day: how many mastered of the total,
+    # and how many level-ups he logged in the last week (momentum).
+    total = len(revisitable)
+    mastered = sum(1 for c in revisitable if km.card_state(c)["is_max"])
+    cutoff = (date.today() - timedelta(days=7)).isoformat()
+    recent = sum(1 for c in revisitable for on, _xp in km.card_bumps(c) if on >= cutoff)
+    st.progress(mastered / total if total else 0.0,
+                text=f"🏆 {mastered} of {total} skills mastered")
+    if recent:
+        st.caption(
+            f"🔥 You leveled up **{recent}** time{'s' if recent != 1 else ''} in the last "
+            "7 days — keep the streak going!"
+        )
+
+    active: list[tuple[str, list[dict[str, Any]], int, int]] = []
+    mastered_rows: list[tuple[str, str]] = []  # (unit, skill) for the browse table
     for (_cid, cname), cards_in in groups.items():
         cards_in.sort(key=lambda c: (c.get("metadata") or {}).get("khan_part") or 0)
-        with st.expander(f"🅰️ {md(cname)}", expanded=True):
-            for card in cards_in:
+        climbable, done = [], 0
+        for card in cards_in:
+            if km.card_state(card)["is_max"]:
+                done += 1
+                mastered_rows.append((cname, card["title"]))
+            else:
+                climbable.append(card)       # still has a level to claim (or pending)
+        if climbable:
+            active.append((cname, climbable, done, len(cards_in)))
+
+    if not active:
+        st.success(
+            "🎉 Every skill you've done is mastered — top of the ladder! Load more "
+            "Khan units to keep climbing."
+        )
+    # A single active unit is safe to open; more than one stays collapsed so it
+    # reads as a short list of units with work left, not a wall.
+    for cname, climbable, done, ntot in active:
+        header = f"🅰️ {md(cname)} — {done}/{ntot} mastered"
+        with st.expander(header, expanded=len(active) == 1):
+            if done:
+                st.caption(f"✓ {done} already mastered here — see the browse list below.")
+            for card in climbable:
                 _render_one_mastery_row(db, card)
+
+    if mastered_rows:
+        with st.expander(f"✅ Browse all mastered skills ({len(mastered_rows)})", expanded=False):
+            st.caption("Everything you've taken to the top of the ladder.")
+            rows = sorted(mastered_rows, key=lambda r: (r[0].lower(), r[1].lower()))
+            table = "| Unit | Skill | Level |\n|---|---|---|\n" + "\n".join(
+                f"| {md(unit)} | {md(skill)} | 🏆 Mastered |" for unit, skill in rows
+            )
+            st.markdown(table)
 
 
 def render_khan_mastery_confirmations(db: Database, student: dict[str, Any]) -> None:
@@ -6634,5 +6693,6 @@ from compass.ui.grapher import (  # noqa: E402,F401
     render_graph_explorer,
     render_graphing_diagnostic,
     render_graphing_ladder_builder,
+    render_graphing_missions_card,
     slope_intercept_explorer_html,
 )

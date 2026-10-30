@@ -76,6 +76,21 @@ _EXPLORER_HTML = r"""<!doctype html>
   .missions li.done{color:var(--good);font-weight:700;}
   .match{margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
   .match .status{font-weight:800;}
+  .steps{list-style:none;padding:0;margin:8px 0;}
+  .steps li{display:flex;gap:9px;align-items:flex-start;padding:8px 4px;
+    border-bottom:1px dashed var(--grid-strong);}
+  .steps li:last-child{border-bottom:none;}
+  .steps .dot{flex:0 0 22px;height:22px;border-radius:50%;border:2px solid var(--grid-strong);
+    margin-top:1px;display:flex;align-items:center;justify-content:center;
+    font-size:13px;font-weight:900;color:#fff;}
+  .steps li.ok .dot{background:var(--good);border-color:var(--good);}
+  .steps li.ok .dot::after{content:"\2713";}
+  .fb{font-size:13px;color:var(--dim);}
+  .steps li.ok .fb{color:var(--good);font-weight:700;}
+  .matchbig{font-weight:800;font-size:15px;margin:10px 0 6px;}
+  .btn.ghost{background:#fff;}
+  .hintbox{margin-top:9px;font-size:14px;line-height:1.4;background:#FFF6D9;
+    border:1px solid var(--accent);border-radius:9px;padding:9px 11px;display:none;}
   .btn{border:2px solid var(--border);background:var(--accent);color:var(--ink);
     font-weight:800;font-size:14px;padding:8px 12px;border-radius:9px;cursor:pointer;}
   .btn:active{transform:translateY(1px);}
@@ -136,12 +151,29 @@ _EXPLORER_HTML = r"""<!doctype html>
       <p class="sub">Dial the line to make each one true.</p>
       <ul id="missions" class="missions"></ul>
 
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <h2>🔍 Mystery Line Challenge</h2>
+      <p class="sub">A dashed line is hiding on the graph. Match it in just two steps —
+        and if you're stuck, <b>💡 Hint</b> walks you through reading it.</p>
+      <ol class="steps">
+        <li id="step1"><span class="dot"></span><div>
+          <b>① Where does it start?</b><br>
+          <span id="fb_start" class="fb">Find where the dashed line crosses the up–down axis, and set “where it starts” there.</span>
+        </div></li>
+        <li id="step2"><span class="dot"></span><div>
+          <b>② How steep is it?</b><br>
+          <span id="fb_steep" class="fb">From that start, go right 1 — count how far up (or down) the dashed line goes.</span>
+        </div></li>
+      </ol>
+      <div id="matchbig" class="matchbig">Dial your solid line onto the dashed one.</div>
       <div class="match">
-        <span>Last one — <b>match the dashed mystery line</b>:</span>
-        <span id="matchstatus" class="status" style="color:var(--dim)">keep trying…</span>
-        <button id="newline" class="btn">🎲 New mystery line</button>
+        <button id="hintbtn" class="btn ghost">💡 Hint</button>
+        <button id="newline" class="btn">🎲 New line</button>
         <span id="matchcount" class="tiny"></span>
       </div>
+      <div id="hintbox" class="hintbox"></div>
     </div>
   </div>
 </div>
@@ -152,7 +184,7 @@ _EXPLORER_HTML = r"""<!doctype html>
   var cv = document.getElementById('grid');
   var ctx = cv.getContext('2d');
   var mEl=document.getElementById('m'), bEl=document.getElementById('b');
-  var target = null, matches = 0;
+  var target = null, matches = 0, hintIdx = 0;
 
   function sizeCanvas(){
     var cssW = cv.clientWidth || 460;
@@ -280,20 +312,34 @@ _EXPLORER_HTML = r"""<!doctype html>
     });
   }
 
+  function fmtPlain(m,b){ // plain-text equation for the reveal hint
+    var mp = (m===1)?'x':(m===-1)?'-x':(nice(m)+'x');
+    var bp = (b>0)?(' + '+nice(b)):(b<0)?(' - '+nice(Math.abs(b))):'';
+    if(m===0) return nice(b);
+    return mp+bp;
+  }
+
   function newTarget(){
     var ms=[-3,-2,-1,-0.5,0.5,1,2,3];
     var m=ms[Math.floor(Math.random()*ms.length)];
     var b=Math.floor(Math.random()*13)-6; // -6..6
     target={m:m,b:b};
-    document.getElementById('matchstatus').textContent='keep trying…';
-    document.getElementById('matchstatus').style.color='#8A7A5E';
+    hintIdx=0;
+    var hb=document.getElementById('hintbox'); hb.style.display='none'; hb.innerHTML='';
     draw();
+  }
+
+  function drawGhostStart(b){ // mark the mystery line's starting point on the y-axis
+    ctx.save();
+    ctx.fillStyle='#9AA0A6'; ctx.strokeStyle='#fff'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(px(0),py(b),6,0,7); ctx.fill(); ctx.stroke();
+    ctx.restore();
   }
 
   function draw(){
     var m=parseFloat(mEl.value), b=parseFloat(bEl.value);
     drawGrid();
-    if(target) drawLineFor(target.m,target.b,'#9AA0A6',true);
+    if(target){ drawLineFor(target.m,target.b,'#9AA0A6',true); drawGhostStart(target.b); }
     drawLineFor(m,b,'#2F63E0',false);
     drawSlopeTriangle(m,b);
     drawIntercept(b);
@@ -314,13 +360,46 @@ _EXPLORER_HTML = r"""<!doctype html>
     });
 
     if(target){
-      var hit = Math.abs(m-target.m)<1e-9 && Math.abs(b-target.b)<1e-9;
-      var st=document.getElementById('matchstatus');
-      if(hit){ st.textContent='✓ Matched! 🎉'; st.style.color='#2F9B68';
+      var startOk = Math.abs(b-target.b)<1e-9;
+      var steepOk = Math.abs(m-target.m)<1e-9;
+      var fs=document.getElementById('fb_start'), ft=document.getElementById('fb_steep');
+      // Step ① — where it starts, with a direction to move.
+      if(startOk){ fs.textContent='✓ matches'; }
+      else if(b<target.b){ fs.textContent='your start is too LOW — slide “where it starts” UP'; }
+      else { fs.textContent='your start is too HIGH — slide “where it starts” DOWN'; }
+      // Step ② — how steep, with a direction.
+      if(steepOk){ ft.textContent='✓ matches'; }
+      else if(m===0 && target.m!==0){ ft.textContent="it's not flat — tilt it"; }
+      else if((m>0)!==(target.m>0) && m!==0 && target.m!==0){
+        ft.textContent='it leans the OTHER way — flip it '+(target.m>0?'uphill':'downhill'); }
+      else if(Math.abs(m)<Math.abs(target.m)){ ft.textContent='close — make it STEEPER'; }
+      else { ft.textContent='close — make it LESS steep'; }
+      document.getElementById('step1').classList.toggle('ok', startOk);
+      document.getElementById('step2').classList.toggle('ok', steepOk);
+
+      var mb=document.getElementById('matchbig');
+      if(startOk && steepOk){
+        mb.textContent='🎉 Matched! You read the line.'; mb.style.color='#2F9B68';
         if(!target.counted){ target.counted=true; matches++;
-          document.getElementById('matchcount').textContent='matched: '+matches; } }
-      else{ st.textContent='keep trying…'; st.style.color='#8A7A5E'; }
+          document.getElementById('matchcount').textContent='solved: '+matches; } }
+      else{ mb.textContent='Dial your solid line onto the dashed one.'; mb.style.color=''; }
     }
+  }
+
+  function showHint(){
+    var hints=[
+      '<b>Step ①.</b> Find where the <b>dashed</b> line crosses the up–down axis '
+        +'(look for the gray dot). Move <b>“where it starts”</b> to that number.',
+      '<b>Step ②.</b> Put your finger on that gray start dot. Go <b>right 1</b> square — '
+        +'count how many the dashed line goes <b>up</b> (or down = a minus). '
+        +'Set <b>“how steep”</b> to that.',
+      '<b>The answer:</b> the mystery line is <b>y = '+fmtPlain(target.m,target.b)
+        +'</b>. Dial your sliders to exactly that and watch it land.'
+    ];
+    var hb=document.getElementById('hintbox');
+    hb.style.display='block';
+    hb.innerHTML='💡 '+hints[Math.min(hintIdx,2)];
+    if(hintIdx<2) hintIdx++;
   }
 
   function clamp(el){ var v=parseFloat(el.value),
@@ -335,6 +414,7 @@ _EXPLORER_HTML = r"""<!doctype html>
   document.getElementById('bdown').onclick=function(){step(bEl,-1);};
   document.getElementById('bup').onclick=function(){step(bEl,1);};
   document.getElementById('newline').onclick=newTarget;
+  document.getElementById('hintbtn').onclick=showHint;
   window.addEventListener('resize',sizeCanvas);
 
   buildMissions();
@@ -563,6 +643,56 @@ def render_graphing_diagnostic(db, student) -> None:
             st.session_state.pop(f"gd_{i}", None)
         st.session_state.pop("graph_diag_result", None)
         st.rerun()
+
+
+_MISSIONS_CARD_NOTE = (
+    "Open the 📈 Graphing page and work these in the Explorer:\n"
+    "1) Make the line go through the corner (0, 0) — that's what “proportional” means.\n"
+    "2) Make it climb 3 for every 1 step right (slope = 3).\n"
+    "3) Make it START at 5 before it climbs (y-intercept = 5).\n"
+    "4) Make a flat line that never climbs (slope = 0).\n"
+    "5) Make it head downhill (a negative slope).\n"
+    "6) Mystery Line Challenge: solve 3 dashed mystery lines. Stuck? Tap 💡 Hint — "
+    "it walks you through reading where it starts, then how steep it is.\n\n"
+    "When you've done them, turn this card in."
+)
+
+
+def render_graphing_missions_card(db, student) -> None:
+    """Parent-only: drop a trackable card on his board for the Explorer missions.
+    He works them here, turns the card in, and it logs the time (and a little XP) --
+    so the hands-on practice counts like everything else. Reported: "set this up
+    with some missions that can be cards." Rides the general-card path."""
+    import streamlit as st
+
+    from datetime import date
+
+    from compass.agents import khan_card
+
+    st.markdown("#### 🎯 Put the missions on his board")
+    st.caption(
+        "Adds one card for the Explorer missions — a short, repeatable rep he can do "
+        "right here. Turning it in logs the time and a little XP, so the practice is "
+        "tracked like everything else."
+    )
+    with st.expander("What the card asks him to do"):
+        st.markdown(_MISSIONS_CARD_NOTE)
+    cols = st.columns([2, 1])
+    day = cols[0].date_input("Assign to", value=date.today(), key="gm_day")
+    to_backlog = cols[1].checkbox("Backlog instead", key="gm_backlog")
+    if st.button("➕ Add the graphing-missions card", key="gm_add", type="primary"):
+        khan_card.create_khan_card(
+            db, student, subject="math",
+            unit="📈 Graphing missions — Slope & Intercept Explorer",
+            note=_MISSIONS_CARD_NOTE, minutes=15,
+            day_iso=None if to_backlog else day.isoformat(),
+            quiz=[], generate_quiz=False, general_card=True, xp_override=15,
+        )
+        where = "the Backlog" if to_backlog else day.strftime("%a %b %-d")
+        st.success(
+            f"✅ Added a graphing-missions card to {where}. He opens it, does the "
+            "missions here on the Explorer, then turns it in."
+        )
 
 
 def render_graphing_ladder_builder(db, student, *, api_ok: bool) -> None:
