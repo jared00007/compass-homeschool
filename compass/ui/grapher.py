@@ -38,10 +38,10 @@ _EXPLORER_HTML = r"""<!doctype html>
   .wrap{display:flex;flex-wrap:wrap;gap:16px;padding:14px;align-items:flex-start;}
   .col{flex:1 1 320px;min-width:280px;}
   .card{background:#fff;border:2px solid var(--border);border-radius:12px;
-    padding:14px 16px;box-shadow:0 2px 0 rgba(46,94,170,.15);}
+    padding:11px 13px;box-shadow:0 2px 0 rgba(46,94,170,.15);}
   canvas{width:100%;height:auto;display:block;border-radius:8px;}
-  h2{font-size:17px;margin:0 0 4px;}
-  .sub{color:var(--dim);font-size:13px;margin:0 0 10px;}
+  h2{font-size:16px;margin:0 0 3px;}
+  .sub{color:var(--dim);font-size:12.5px;margin:0 0 7px;}
   .badge{display:inline-block;font-weight:800;font-size:13px;padding:4px 10px;
     border-radius:999px;margin-top:10px;}
   .badge.prop{background:#E1F0E6;color:var(--good);}
@@ -67,8 +67,8 @@ _EXPLORER_HTML = r"""<!doctype html>
   th{background:#F6EFDA;}
   .tiny{color:var(--dim);font-size:12px;margin-top:6px;}
   .missions{list-style:none;padding:0;margin:8px 0 0;}
-  .missions li{display:flex;align-items:center;gap:9px;padding:7px 4px;
-    border-bottom:1px dashed var(--grid-strong);font-size:14px;}
+  .missions li{display:flex;align-items:center;gap:9px;padding:5px 4px;
+    border-bottom:1px dashed var(--grid-strong);font-size:13.5px;}
   .missions li:last-child{border-bottom:none;}
   .chk{flex:0 0 22px;height:22px;border-radius:50%;border:2px solid var(--grid-strong);
     display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;}
@@ -77,7 +77,7 @@ _EXPLORER_HTML = r"""<!doctype html>
   .match{margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
   .match .status{font-weight:800;}
   .steps{list-style:none;padding:0;margin:8px 0;}
-  .steps li{display:flex;gap:9px;align-items:flex-start;padding:8px 4px;
+  .steps li{display:flex;gap:9px;align-items:flex-start;padding:6px 4px;
     border-bottom:1px dashed var(--grid-strong);}
   .steps li:last-child{border-bottom:none;}
   .steps .dot{flex:0 0 22px;height:22px;border-radius:50%;border:2px solid var(--grid-strong);
@@ -148,7 +148,7 @@ _EXPLORER_HTML = r"""<!doctype html>
       </div>
     </div>
 
-    <div class="card notice-card" style="margin-top:14px;">
+    <div class="card notice-card" style="margin-top:10px;">
       <h2>🧠 What to notice</h2>
       <div id="notice" class="notice"></div>
     </div>
@@ -199,14 +199,14 @@ _EXPLORER_HTML = r"""<!doctype html>
     </div>
 
     <div id="exploreExtras">
-    <div class="card" style="margin-top:14px;">
+    <div class="card" style="margin-top:10px;">
       <h2>🎯 Missions</h2>
       <p class="sub">Dial the line to make each one true.</p>
       <ul id="missions" class="missions"></ul>
 
     </div>
 
-    <div class="card" style="margin-top:14px;">
+    <div class="card" style="margin-top:10px;">
       <h2>🔍 Mystery Line Challenge</h2>
       <p class="sub">A dashed line is hiding on the graph. Match it in just two steps —
         and if you're stuck, <b>💡 Hint</b> walks you through reading it.</p>
@@ -230,7 +230,7 @@ _EXPLORER_HTML = r"""<!doctype html>
     </div>
     </div><!-- /exploreExtras -->
 
-    <div id="practiceCard" class="card" style="margin-top:14px;display:none;">
+    <div id="practiceCard" class="card" style="margin-top:10px;display:none;">
       <h2>🎓 Practice</h2>
       <div class="pctrls">
         <label>Level
@@ -273,6 +273,24 @@ _EXPLORER_HTML = r"""<!doctype html>
     cv.height = Math.round(cssW*dpr); // square
     ctx.setTransform(dpr,0,0,dpr,0,0);
     draw();
+    fitFrame();
+  }
+
+  // Grow this component's own iframe to fit its content so it never shows an
+  // inner scrollbar -- the whole tool stays in view and the page scrolls as one,
+  // not a box-within-a-box. The srcdoc frame is same-origin, so frameElement is
+  // reachable; wrapped in try/catch in case a browser blocks it. Reported: "that
+  // whole container for the graphing needs to be in view. no scroller."
+  function fitFrame(){
+    try{
+      var h = Math.ceil(document.body.getBoundingClientRect().height) + 2;
+      var fe = window.frameElement;
+      if(fe){
+        fe.style.height = h+'px'; fe.setAttribute('height', h);
+        var w = fe.parentElement, n = 0;
+        while(w && n < 4){ if(w.style){ w.style.height='auto'; w.style.maxHeight='none'; } w = w.parentElement; n++; }
+      }
+    }catch(e){}
   }
 
   function W(){return cv.clientWidth || 460;}
@@ -741,10 +759,14 @@ _EXPLORER_HTML = r"""<!doctype html>
   document.getElementById('pnext').onclick=nextProblem;
   document.getElementById('plevel').onchange=nextProblem;
   window.addEventListener('resize',sizeCanvas);
+  // Re-fit the frame whenever the content height changes (mode switch, a new
+  // problem, a hint expanding) so there's never an inner scrollbar.
+  try{ new ResizeObserver(fitFrame).observe(document.body); }catch(e){}
 
   buildMissions();
   newTarget();
   sizeCanvas();
+  setTimeout(fitFrame, 60);   // after fonts/layout settle
 })();
 </script>
 </body>
@@ -897,13 +919,18 @@ def _ladder_proposal():
     )
 
 
-# Tall enough that the two columns show without the iframe clipping on a narrow
-# (stacked) layout; the widget lays itself out responsively inside.
-EXPLORER_HEIGHT = 900
+# A close starting height so the first paint doesn't clip before the widget
+# auto-fits its own frame to its content (see fitFrame in the JS). After that the
+# frame grows/shrinks to exactly fit -- no inner scrollbar, whichever mode he's in.
+EXPLORER_HEIGHT = 980
 
 
 def render_graph_explorer() -> None:
-    """Drop the Slope & Intercept Explorer onto the page (a components iframe)."""
+    """Drop the Slope & Intercept Explorer onto the page (a components iframe).
+
+    `scrolling` stays on only as a safety net: the page self-sizes its own iframe
+    to its content (fitFrame), so in practice no inner scrollbar ever shows -- the
+    whole tool stays in view and the page scrolls as one."""
     import streamlit.components.v1 as components
 
     components.html(_EXPLORER_HTML, height=EXPLORER_HEIGHT, scrolling=True)

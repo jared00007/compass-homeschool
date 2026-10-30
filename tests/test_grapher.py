@@ -268,3 +268,14 @@ def test_graph_spells_out_what_to_notice_and_remember():
     assert 'class="startcell"' in html
     # mid-problem it teaches the METHOD instead of giving the answer away
     assert "How to read any line" in html
+
+
+def test_explorer_auto_fits_its_frame_so_no_inner_scrollbar():
+    """The tool sizes its own iframe to its content so it never shows a nested
+    scrollbar — the whole container stays in view, the page scrolls as one.
+    Reported: "that whole container for the graphing needs to be in view. no
+    scroller."""
+    html = slope_intercept_explorer_html()
+    assert "function fitFrame" in html
+    assert "window.frameElement" in html            # resizes its own frame
+    assert "ResizeObserver(fitFrame)" in html        # re-fits on any content change
