@@ -11,7 +11,14 @@ from __future__ import annotations
 
 import streamlit as st
 
-from compass.ui import is_parent, page_setup, render_graph_explorer
+from compass.agents import api_available
+from compass.ui import (
+    is_parent,
+    page_setup,
+    render_graph_explorer,
+    render_graphing_diagnostic,
+    render_graphing_ladder_builder,
+)
 
 db, student = page_setup("Graphing", icon="📈")
 
@@ -38,7 +45,15 @@ if is_parent():
 
 render_graph_explorer()
 
-st.caption(
-    "This is a practice tool — nothing to turn in. To put graphing practice on his "
-    "board, add a card from **Mission Control → Plan**."
-)
+st.divider()
+
+# Find the gap — a quick check that pinpoints the shaky rung. Open to everyone:
+# Landon answers it, and the readout steers both of you to the right spot.
+render_graphing_diagnostic(db, student)
+
+# The scaffolded ladder is a parent action (it generates and assigns work), so
+# it's gated to the parent view.
+if is_parent():
+    st.divider()
+    render_graphing_ladder_builder(db, student, api_ok=api_available())
+

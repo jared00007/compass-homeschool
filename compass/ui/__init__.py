@@ -6574,6 +6574,10 @@ from compass.ui.firstday import (  # noqa: E402,F401
 
 from compass.ui.grapher import (  # noqa: E402,F401
     EXPLORER_HEIGHT,
+    GRAPHING_LADDER,
+    DIAGNOSTIC,
     render_graph_explorer,
+    render_graphing_diagnostic,
+    render_graphing_ladder_builder,
     slope_intercept_explorer_html,
 )

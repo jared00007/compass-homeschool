@@ -75,3 +75,99 @@ def test_explorer_page_works_for_the_student_too(tmp_path, monkeypatch):
     at.switch_page(EXPLORER_PATH)
     at.run(timeout=30)
     assert not at.exception, [e.message for e in at.exception]
+
+
+# --- the "find the gap" diagnostic --------------------------------------------
+
+from compass.ui import DIAGNOSTIC, GRAPHING_LADDER  # noqa: E402
+from compass.ui.grapher import _diagnostic_readout  # noqa: E402
+
+
+def test_diagnostic_all_correct_reads_as_put_it_together():
+    result = _diagnostic_readout([q["correct"] for q in DIAGNOSTIC])
+    assert result["all_right"] and not result["shaky"]
+
+
+def test_diagnostic_flags_the_shaky_rungs_in_teaching_order():
+    # miss question 4 (slope) and question 2 (unit rate); the readout should name
+    # both, lowest rung first.
+    picks = [q["correct"] for q in DIAGNOSTIC]
+    picks[1] = (DIAGNOSTIC[1]["correct"] + 1) % 4   # unit_rate wrong
+    picks[3] = (DIAGNOSTIC[3]["correct"] + 1) % 4   # slope wrong
+    result = _diagnostic_readout(picks)
+    assert result["shaky"] == ["unit_rate", "slope"]   # teaching order
+    assert "intercept" in result["got"] and "plotting" in result["got"]
+    assert not result["all_right"]
+
+
+# --- the scaffolded 6-lesson ladder -------------------------------------------
+
+
+def test_graphing_ladder_is_six_rungs_ending_in_reading_backwards():
+    assert len(GRAPHING_LADDER) == 6
+    assert "Plot points" in GRAPHING_LADDER[0]["title"]
+    assert "write the equation" in GRAPHING_LADDER[-1]["title"].lower() \
+        or "write the equation" in GRAPHING_LADDER[-1]["focus"].lower()
+    # every rung carries a real teaching focus
+    assert all(d["focus"].strip() for d in GRAPHING_LADDER)
+
+
+def test_ladder_builds_six_backlog_lessons(tmp_path):
+    """The builder hands the fixed ladder to the Math agent's own series path, so
+    six graded Math lessons land in the Backlog (held_back), in order."""
+    from unittest.mock import patch
+
+    from compass.agents import get_agent
+    from compass.ui import context_for
+    from compass.ui.grapher import _ladder_proposal
+
+    db = Database(tmp_path / "ladder.db")
+    student = db.ensure_default_student()
+
+    def fake_lesson(**kw):
+        return {
+            "title": "Graphing day", "topic": "graphing", "overview": "x",
+            "activities": [{"title": "a", "minutes": 20}, {"title": "b", "minutes": 20}],
+            "quiz": [], "subject_credits": [{"subject": "math", "minutes": 40}],
+        }
+
+    with patch("compass.agents.framework.generate_lesson", side_effect=fake_lesson):
+        agent = get_agent("math")
+        ctx = context_for(db, student, minutes=45)
+        results = agent.generate_series(ctx, _ladder_proposal(), plan=GRAPHING_LADDER)
+
+    assert len(results) == 6
+    lessons = db.list_lessons(student["id"], agent="math", limit=50)
+    assert len(lessons) == 6
+    assert all((l.get("metadata") or {}).get("held_back") for l in lessons)  # backlog
+    assert sorted((l["metadata"]).get("series_index") for l in lessons) == [0, 1, 2, 3, 4, 5]
+    db.close()
+
+
+def test_parent_sees_the_ladder_builder_student_does_not(tmp_path, monkeypatch):
+    from compass import auth
+
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", str(tmp_path / "g.db"))
+
+    def open_explorer(parent):
+        st.cache_resource.clear()
+        at = AppTest.from_file(HOME_PATH)
+        if parent:
+            at.session_state["parent_unlocked"] = True
+        at.run(timeout=30)
+        at.switch_page(EXPLORER_PATH)
+        at.run(timeout=30)
+        assert not at.exception, [e.message for e in at.exception]
+        return "\n".join(m.value for m in at.markdown)
+
+    db = Database(tmp_path / "g.db")
+    db.ensure_default_student()
+    auth.set_pin(db, "1234")  # a PIN forces student mode by default
+    db.close()
+
+    parent_md = open_explorer(parent=True)
+    assert "graphing ladder" in parent_md and "Find the gap" in parent_md
+
+    student_md = open_explorer(parent=False)
+    assert "Find the gap" in student_md          # diagnostic is for him too
+    assert "graphing ladder" not in student_md   # building/assigning work is not

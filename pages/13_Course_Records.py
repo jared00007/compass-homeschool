@@ -124,6 +124,12 @@ def _render_suggestions(courses: list[dict]) -> None:
                 if st.button(f"📂 Open {names}", key=f"nudge_open_{subject}"):
                     for course in matching:
                         st.session_state[f"course_open_{course['id']}"] = True
+                    # The course cards sit far below this nudge, so just expanding
+                    # one looked like nothing happened (the page stayed scrolled
+                    # here). Remember which to scroll to; the list renders a one-shot
+                    # jump to it. Reported: "when i try to open a course, it doesnt
+                    # do anything?"
+                    st.session_state["_scroll_to_course"] = matching[0]["id"]
                     st.rerun()
             else:
                 st.markdown(
@@ -181,6 +187,11 @@ with list_tab:
         if open_key not in st.session_state:
             st.session_state[open_key] = False
         with st.container(border=True):
+            # Scroll anchor so the "Open" nudge up top can jump the page here.
+            st.markdown(
+                f"<div id='compass-course-{course['id']}'></div>",
+                unsafe_allow_html=True,
+            )
             header_columns = st.columns([20, 3])
             with header_columns[0]:
                 st.markdown(
@@ -378,6 +389,21 @@ with list_tab:
                 if st.button("Delete this course", key=f"delete_course_{course['id']}"):
                     db.delete_course(course["id"])
                     st.rerun()
+
+    # One-shot: if a nudge just asked to open a course, jump the page down to it
+    # (the expand alone isn't visible when the card is far below the fold).
+    scroll_id = st.session_state.pop("_scroll_to_course", None)
+    if scroll_id is not None:
+        import streamlit.components.v1 as components
+
+        components.html(
+            "<script>"
+            "var el=window.parent.document.getElementById('compass-course-"
+            f"{scroll_id}');"
+            "if(el){el.scrollIntoView({behavior:'smooth',block:'center'});}"
+            "</script>",
+            height=0,
+        )
 
 with add_tab:
     st.markdown("#### Add a course")

@@ -1098,3 +1098,36 @@ def test_a_quick_card_can_be_deleted_from_the_board_backlog(monkeypatch, tmp_pat
     gone = db.get_lesson(lid) is None
     db.close()
     assert gone, "the ticked Quick card should be deleted for good"
+
+
+def test_the_open_course_nudge_expands_and_scrolls_to_it(monkeypatch, tmp_path):
+    """The "Worth turning into a course" nudge's Open button expands the matching
+    course card (which sits far below) and fires a one-shot scroll to it, so it no
+    longer looks like nothing happened. Reported: "when i try to open a course, it
+    doesnt do anything?"."""
+    st.cache_resource.clear()
+    db_path = tmp_path / "nudge.db"
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", str(db_path))
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    start, end = db.school_year_bounds()
+    db.create_course(student["id"], "8th Grade Math", "math", start, end, credit_value=1.0)
+    # Enough untagged math hours (> the nudge threshold) to surface the nudge.
+    db.log_activity(student["id"], "Math work", "core", "math", 25 * 60,
+                    {"math": 25 * 60}, occurred_on=start)
+    db.close()
+
+    at = AppTest.from_file(HOME_PATH)
+    at.session_state["parent_unlocked"] = True
+    at.run(timeout=30)
+    at.switch_page(str(REPO_ROOT / "pages" / "13_Course_Records.py"))
+    at.run(timeout=30)
+
+    opens = [b for b in at.button if (b.label or "").startswith("📂 Open")]
+    assert opens, [b.label for b in at.button]
+    opens[0].click().run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+    # the card is now expanded (its toggle reads "Hide"), and the one-shot scroll
+    # flag was consumed rather than left to re-fire forever.
+    assert any((b.label or "") == "Hide" for b in at.button)
+    assert "_scroll_to_course" not in at.session_state

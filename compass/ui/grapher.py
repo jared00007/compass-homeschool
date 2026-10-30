@@ -352,6 +352,146 @@ def slope_intercept_explorer_html() -> str:
     return _EXPLORER_HTML
 
 
+# --- "Find the gap": a quick diagnostic that pinpoints the stuck rung ----------
+#
+# "Graphing proportional relationships and intercepts" is a stack of sub-skills;
+# when a kid is "just struggling," it's usually ONE rung that's shaky. This is a
+# 5-question flashlight -- not graded, no score -- that tells the parent which
+# rung to aim at instead of re-teaching the whole stack. Fixed questions, so it
+# needs no model call.
+
+# Each rung the diagnostic can flag, in teaching order, with the Explorer mission
+# (or move) that practices it -- shown in the readout as "start here."
+_RUNGS = {
+    "plotting": ("Plotting points", "placing (x, y) on the grid"),
+    "unit_rate": ("Unit rate / constant", "how much y changes per 1 step of x"),
+    "proportional": ("Proportional = through the origin",
+                     'the "through (0,0)" fingerprint'),
+    "slope": ("Slope as the rate", "rise over run = the unit rate"),
+    "intercept": ("The y-intercept", "where the line starts when x = 0"),
+}
+
+# question, options, index of the right one, the rung it tests, a nudge for a miss.
+DIAGNOSTIC: list[dict] = [
+    {
+        "q": "Where on a graph is the point (4, 1)?",
+        "options": ["4 to the right, then 1 up", "1 to the right, then 4 up",
+                    "4 up, then 1 to the right", "4 to the left, then 1 up"],
+        "correct": 0, "rung": "plotting",
+        "hint": "Points come first across (x), then up (y). Play with reading the "
+                "grid before graphing whole lines.",
+    },
+    {
+        "q": "A table reads: x = 2 → y = 6, x = 3 → y = 9, x = 4 → y = 12. "
+             "How much does y go up each time x goes up by 1?",
+        "options": ["3", "6", "2", "1"],
+        "correct": 0, "rung": "unit_rate",
+        "hint": "That steady jump is the unit rate (the constant). In the Explorer, "
+                "the steepness slider IS this number.",
+    },
+    {
+        "q": "Which line shows a PROPORTIONAL relationship?",
+        "options": ["A straight line through the corner (0, 0)",
+                    "A straight line that crosses the y-axis at 4",
+                    "A curve that bends", "A flat line at y = 5"],
+        "correct": 0, "rung": "proportional",
+        "hint": "Proportional lines always pass through (0, 0). Try the Explorer "
+                'mission "make it go through the corner."',
+    },
+    {
+        "q": "A line goes UP 2 every time it goes 1 to the RIGHT. What is its slope?",
+        "options": ["2", "1/2", "1", "3"],
+        "correct": 0, "rung": "slope",
+        "hint": "Slope = rise ÷ run = up over right. Watch the red triangle in the "
+                "Explorer as you drag the steepness slider.",
+    },
+    {
+        "q": "Where does the line y = 3x + 5 cross the y-axis?",
+        "options": ["(0, 5)", "(5, 0)", "(0, 3)", "(0, 0)"],
+        "correct": 0, "rung": "intercept",
+        "hint": 'The "+ 5" is where it starts (x = 0). In the Explorer, drag the '
+                '"where it starts" slider and watch that point.',
+    },
+]
+
+
+def _diagnostic_readout(answers: list[int | None]) -> dict:
+    """Turn the five picks into {shaky: [rung_key...], got: [...], all_right: bool}
+    in teaching order -- the lowest shaky rung is where to start."""
+    shaky, got = [], []
+    for q, picked in zip(DIAGNOSTIC, answers):
+        (shaky if picked != q["correct"] else got).append(q["rung"])
+    # de-dup while keeping _RUNGS' teaching order
+    order = list(_RUNGS)
+    shaky = sorted(set(shaky), key=order.index)
+    got = sorted(set(got), key=order.index)
+    return {"shaky": shaky, "got": got, "all_right": not shaky}
+
+
+# --- the scaffolded 6-lesson ladder (built on the existing series machinery) ---
+#
+# A fixed day-by-day plan that walks the exact rungs the Math graph lists. Passed
+# straight to the Math agent's generate_series as the `plan`, so each day is a
+# normal, graded Compass lesson -- we only pin the sequence, the agent writes the
+# content. Lands in the Backlog to schedule by day.
+GRAPHING_LADDER: list[dict[str, str]] = [
+    {"title": "Plot points fast",
+     "focus": "Plot and name points (x, y) on the coordinate plane — reading and "
+              "placing ordered pairs fluently, across first then up. Just the grid "
+              "mechanics, so graphing lines later isn't slowed by point-plotting."},
+    {"title": "Unit rate from a table",
+     "focus": "Find the unit rate / constant of proportionality from a real-world "
+              "table (e.g. $3 per taco): how much y goes up for each 1 increase in "
+              "x, and writing it as y = kx."},
+    {"title": "Proportional graphs go through the origin",
+     "focus": "Plot a proportional table and see it forms a straight line through "
+              "(0, 0). Connect the table's constant ratio to y = kx and to the "
+              "steepness of the line; recognize the through-the-origin fingerprint "
+              "of a proportional relationship."},
+    {"title": "Slope is the rate",
+     "focus": "Slope as rise over run on a graph, and that it equals the unit rate "
+              "— the SAME number in the table, the graph's steepness, and the k in "
+              "y = kx. Compute slope from a graph and from two points."},
+    {"title": "When it doesn't start at zero: the y-intercept",
+     "focus": "Introduce y = mx + b by contrast with proportional — a line that "
+              "starts at (0, b) instead of the origin (e.g. a $5 flat fee plus $3 "
+              "per taco). Identify and interpret b as the starting value; put "
+              "proportional and non-proportional graphs side by side."},
+    {"title": "Read a graph, write the equation",
+     "focus": "Given a graph or a drawn line, read off the slope (m) and the "
+              "y-intercept (b) and write y = mx + b. Mixed practice reading graphs "
+              "backwards into equations, both proportional (b = 0) and not."},
+]
+
+
+def _ladder_proposal():
+    """A hand-built proposal for the graphing ladder -- heavy scaffolding, a
+    concrete real-world story, and a pointer to the Explorer, for a student who
+    was stuck on exactly this."""
+    from compass.agents.framework import TopicProposal
+
+    return TopicProposal(
+        topic="Graphing proportional relationships, slope & y-intercepts",
+        rationale="A scaffolded ladder for a student who was struggling with "
+                  "graphing proportional relationships and reading intercepts.",
+        strategy="parent_graphing_ladder",
+        guidance=(
+            "This student is STRUGGLING with this topic — scaffold heavily. Anchor "
+            "every day in ONE concrete real-world story (money, speed, a recipe) and "
+            "show the same relationship as a table, a graph, and an equation so the "
+            "connections are explicit. Keep numbers friendly. Point him to the "
+            "in-app “Slope & Intercept Explorer” (Graphing page) to try each idea "
+            "hands-on."
+        ),
+        context_lines=[
+            "The student has been struggling with graphing proportional "
+            "relationships and reading y-intercepts.",
+            "There is an interactive “Slope & Intercept Explorer” in the app "
+            "(the Graphing page) he can use alongside these lessons.",
+        ],
+    )
+
+
 # Tall enough that the two columns show without the iframe clipping on a narrow
 # (stacked) layout; the widget lays itself out responsively inside.
 EXPLORER_HEIGHT = 900
@@ -362,3 +502,107 @@ def render_graph_explorer() -> None:
     import streamlit.components.v1 as components
 
     components.html(_EXPLORER_HTML, height=EXPLORER_HEIGHT, scrolling=True)
+
+
+def render_graphing_diagnostic(db, student) -> None:
+    """The 5-question "find the gap" check: a quick flashlight on which rung is
+    shaky. Not graded; it just steers the parent (and the Explorer) at the right
+    spot. Its result is remembered so it survives the reruns around it."""
+    import streamlit as st
+
+    st.markdown("#### 🔎 Find the gap — a quick 5-question check")
+    st.caption(
+        "Not a test — it just shows which step is shaky, so you aim at that instead "
+        "of re-teaching everything. Have him answer honestly."
+    )
+    with st.form("graph_diag"):
+        picks: list = []
+        for i, q in enumerate(DIAGNOSTIC):
+            picks.append(
+                st.radio(f"**{i + 1}. {q['q']}**", q["options"],
+                         index=None, key=f"gd_{i}")
+            )
+        submitted = st.form_submit_button("See where he's stuck", type="primary")
+
+    if submitted:
+        if any(p is None for p in picks):
+            st.warning("Answer all five first.")
+        else:
+            idx = [q["options"].index(p) for q, p in zip(DIAGNOSTIC, picks)]
+            st.session_state["graph_diag_result"] = _diagnostic_readout(idx)
+
+    result = st.session_state.get("graph_diag_result")
+    if not result:
+        return
+
+    st.divider()
+    if result["all_right"]:
+        st.success(
+            "🎉 He's got all the pieces — the struggle is likely **putting them "
+            "together**, not a missing skill. Have him play the **“match the mystery "
+            "line”** game above and do a few mixed problems reading graphs into "
+            "equations."
+        )
+    else:
+        names = ", ".join(_RUNGS[r][0] for r in result["shaky"])
+        st.markdown(f"**👉 Start here:** {names}")
+        for r in result["shaky"]:
+            title, _ = _RUNGS[r]
+            hint = next(q["hint"] for q in DIAGNOSTIC if q["rung"] == r)
+            st.markdown(f"- **{title}** — {hint}")
+        if result["got"]:
+            st.caption(
+                "Already solid: " + ", ".join(_RUNGS[r][0] for r in result["got"]) + "."
+            )
+        st.caption(
+            "The **6-lesson ladder** below builds these up in order, or use the "
+            "Explorer's missions for just the shaky ones."
+        )
+    if st.button("↺ Retake the check", key="gd_retake"):
+        for i in range(len(DIAGNOSTIC)):
+            st.session_state.pop(f"gd_{i}", None)
+        st.session_state.pop("graph_diag_result", None)
+        st.rerun()
+
+
+def render_graphing_ladder_builder(db, student, *, api_ok: bool) -> None:
+    """Parent-only: one click builds the fixed 6-lesson graphing ladder into the
+    Backlog, each day written as a normal graded Math lesson by the Math agent."""
+    import streamlit as st
+
+    from compass import config
+    from compass.agents import LessonGenerationError, get_agent
+
+    st.markdown("#### 📚 Put it on his schedule — the 6-lesson graphing ladder")
+    st.caption(
+        "Builds six day-sized Math lessons — one per rung, in order — into the "
+        "Board's **Backlog** for you to assign by day. Each is a full graded lesson "
+        "that points back to the Explorer."
+    )
+    with st.expander("See the six rungs"):
+        for i, day in enumerate(GRAPHING_LADDER, 1):
+            st.markdown(f"**{i}. {day['title']}** — {day['focus']}")
+
+    if st.button(
+        "✍️ Build the 6-lesson ladder → Backlog",
+        type="primary", disabled=not api_ok, key="build_graph_ladder",
+    ):
+        from compass.ui import context_for  # lazy: avoids an import cycle
+
+        agent = get_agent("math")
+        minutes = config.SUBJECT_DEFAULT_MINUTES.get("math", 60)
+        ctx = context_for(db, student, minutes=minutes)
+        with st.spinner("Writing six scaffolded graphing lessons…"):
+            try:
+                results = agent.generate_series(ctx, _ladder_proposal(), plan=GRAPHING_LADDER)
+            except LessonGenerationError as exc:
+                st.error(str(exc))
+                return
+        st.success(
+            f"✅ Built {len(results)} lessons into the Backlog. Assign them by day "
+            "from **Mission Control → Board**."
+        )
+        for r in results:
+            st.caption("• " + (r.payload.get("title") or "Lesson"))
+    if not api_ok:
+        st.caption("⚠️ Add an API key (Student Profile) to generate the lessons.")
