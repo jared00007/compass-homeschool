@@ -38,13 +38,16 @@ if is_parent():
             "- **Start slider = the y-intercept.** Slide it and the whole line moves "
             "up or down. When it's **0**, the line goes through the corner (0,0) — "
             "that's the fingerprint of a *proportional* relationship.\n"
-            "- Work the **Missions** in order, then the **Mystery Line Challenge** — "
-            "that's him reading a graph *backwards* into an equation, in two steps: "
-            "①  where it starts (the gray dot on the y-axis), then ② how steep (right "
-            "1, count up/down). **💡 Hint** walks him through both; the feedback tells "
-            "him which way to move.\n"
+            "- Two tabs at the top: **🎛️ Explore** (free play + the Missions and "
+            "Mystery Line Challenge) and **🎓 Practice** (real problems with checking "
+            "and feedback).\n"
+            "- In **Practice**, he works three kinds — *read a graph → equation*, "
+            "*graph an equation*, and *word problems* — with a worked solution on every "
+            "miss, a **👀 Show me** that puts the answer on the graph, and levels that "
+            "unlock as he gets a streak going. Start at Level 1 (proportional) and let "
+            "it climb.\n"
             "- Good talking track: *“What has to be true for the line to go through the "
-            "corner?”* and *“Same steepness — what changed when it started at 5?”*"
+            "corner?”* and *“In the taxi problem, what does the slope mean in real life?”*"
         )
 
 render_graph_explorer()

@@ -199,7 +199,7 @@ def test_missions_card_builder_makes_a_trackable_board_card(tmp_path, monkeypatc
     at.run(timeout=30)
     at.switch_page(EXPLORER_PATH)
     at.run(timeout=30)
-    add = [b for b in at.button if "graphing-missions card" in (b.label or "")]
+    add = [b for b in at.button if "graphing-practice card" in (b.label or "")]
     assert add, [b.label for b in at.button]
     add[0].click().run(timeout=30)
     assert not at.exception, [e.message for e in at.exception]
@@ -210,7 +210,7 @@ def test_missions_card_builder_makes_a_trackable_board_card(tmp_path, monkeypatc
              if (l.get("metadata") or {}).get("general_card")]
     db.close()
     assert len(cards) == 1
-    assert "Graphing missions" in cards[0]["title"]
+    assert "Graphing practice" in cards[0]["title"]
     assert cards[0]["metadata"].get("xp_override") == 15   # logs a little XP when done
 
 
@@ -228,4 +228,25 @@ def test_missions_card_is_hidden_from_the_student(tmp_path, monkeypatch):
     at.run(timeout=30)
     at.switch_page(EXPLORER_PATH)
     at.run(timeout=30)
-    assert not any("graphing-missions card" in (b.label or "") for b in at.button)
+    assert not any("graphing-practice card" in (b.label or "") for b in at.button)
+
+
+# --- Practice mode: real problems, checking, levels ---------------------------
+
+
+def test_explorer_has_a_practice_mode_with_the_three_problem_types():
+    html = slope_intercept_explorer_html()
+    # the mode switch + the practice panel
+    assert 'id="modePractice"' in html and 'id="practiceCard"' in html
+    assert 'id="pcheck"' in html and 'id="pshow"' in html and 'id="pnext"' in html
+    # the practice engine + the three problem types (A read-graph, B graph-it, D word)
+    assert "function genProblem" in html and "function checkAnswer" in html
+    assert "Read the purple line" in html          # type A
+    assert "Graph this line" in html               # type B
+    assert "What does the slope mean here?" in html  # type D
+    # scaffolded levels + mastery/streak tracking
+    assert "Fractions &amp; word problems" in html
+    assert "function maybeLevelUp" in html and 'id="pstreak"' in html
+    # a worked-solution path and the "show me on the graph" aid
+    assert "rise \\u00f7 run" in html or "rise ÷ run" in html
+    assert "function showMe" in html

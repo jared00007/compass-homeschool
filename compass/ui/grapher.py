@@ -91,6 +91,26 @@ _EXPLORER_HTML = r"""<!doctype html>
   .btn.ghost{background:#fff;}
   .hintbox{margin-top:9px;font-size:14px;line-height:1.4;background:#FFF6D9;
     border:1px solid var(--accent);border-radius:9px;padding:9px 11px;display:none;}
+  .modebar{display:flex;gap:8px;margin-bottom:12px;}
+  .modebtn{flex:1;border:2px solid var(--border);background:#fff;color:var(--ink);
+    font-weight:800;font-size:14px;padding:9px;border-radius:10px;cursor:pointer;}
+  .modebtn.active{background:var(--line);color:#fff;}
+  .pctrls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:13px;margin-bottom:6px;}
+  .pctrls select{font-size:13px;padding:4px 6px;border-radius:7px;border:2px solid var(--border);
+    background:#fff;color:var(--ink);font-weight:700;}
+  .pmastery{margin:4px 0 10px;}
+  .pbadge{display:inline-block;font-size:11.5px;font-weight:800;background:#F6EFDA;
+    border:1px solid var(--grid-strong);border-radius:999px;padding:3px 8px;margin:0 4px 4px 0;
+    font-variant-numeric:tabular-nums;}
+  .pprompt{font-size:15px;line-height:1.45;margin:4px 0 8px;}
+  .pprompt .peq{font-weight:800;color:var(--line);font-size:17px;}
+  .pnums{display:flex;gap:12px;flex-wrap:wrap;margin:6px 0;}
+  .pnums label{font-weight:700;font-size:13px;display:flex;flex-direction:column;gap:3px;}
+  .pnum{width:110px;font-size:17px;padding:7px 8px;border-radius:8px;border:2px solid var(--border);
+    font-variant-numeric:tabular-nums;}
+  .pmc{margin-top:6px;}
+  .pmcopt{display:block;font-size:13.5px;padding:5px 2px;cursor:pointer;}
+  .pmcopt input{margin-right:7px;}
   .btn{border:2px solid var(--border);background:var(--accent);color:var(--ink);
     font-weight:800;font-size:14px;padding:8px 12px;border-radius:9px;cursor:pointer;}
   .btn:active{transform:translateY(1px);}
@@ -114,8 +134,12 @@ _EXPLORER_HTML = r"""<!doctype html>
     </div>
   </div>
 
-  <!-- Right: controls, equation, table, missions -->
+  <!-- Right: controls, equation, table, missions / practice -->
   <div class="col">
+    <div class="modebar">
+      <button id="modeExplore" class="modebtn active">🎛️ Explore</button>
+      <button id="modePractice" class="modebtn">🎓 Practice</button>
+    </div>
     <div class="card">
       <div id="eq" class="eq">y = <span class="m">1</span>x</div>
 
@@ -146,6 +170,7 @@ _EXPLORER_HTML = r"""<!doctype html>
       <div class="tiny">Notice: each step right, y jumps by the slope.</div>
     </div>
 
+    <div id="exploreExtras">
     <div class="card" style="margin-top:14px;">
       <h2>🎯 Missions</h2>
       <p class="sub">Dial the line to make each one true.</p>
@@ -175,6 +200,32 @@ _EXPLORER_HTML = r"""<!doctype html>
       </div>
       <div id="hintbox" class="hintbox"></div>
     </div>
+    </div><!-- /exploreExtras -->
+
+    <div id="practiceCard" class="card" style="margin-top:14px;display:none;">
+      <h2>🎓 Practice</h2>
+      <div class="pctrls">
+        <label>Level
+          <select id="plevel">
+            <option value="1">1 · Proportional (through 0,0)</option>
+            <option value="2">2 · Add a starting point</option>
+            <option value="3">3 · Negatives too</option>
+            <option value="4">4 · Fractions &amp; word problems</option>
+          </select>
+        </label>
+        <span id="pstreak" class="tiny"></span>
+        <span id="psolved" class="tiny"></span>
+      </div>
+      <div id="pmastery" class="pmastery"></div>
+      <div id="pprompt" class="pprompt"></div>
+      <div id="panswer" class="panswer"></div>
+      <div class="match">
+        <button id="pcheck" class="btn">✓ Check</button>
+        <button id="pshow" class="btn ghost">👀 Show me</button>
+        <button id="pnext" class="btn ghost">→ New problem</button>
+      </div>
+      <div id="pfeedback" class="hintbox"></div>
+    </div>
   </div>
 </div>
 
@@ -185,6 +236,7 @@ _EXPLORER_HTML = r"""<!doctype html>
   var ctx = cv.getContext('2d');
   var mEl=document.getElementById('m'), bEl=document.getElementById('b');
   var target = null, matches = 0, hintIdx = 0;
+  var mode = 'explore';
 
   function sizeCanvas(){
     var cssW = cv.clientWidth || 460;
@@ -338,22 +390,26 @@ _EXPLORER_HTML = r"""<!doctype html>
 
   function draw(){
     var m=parseFloat(mEl.value), b=parseFloat(bEl.value);
-    drawGrid();
-    if(target){ drawLineFor(target.m,target.b,'#9AA0A6',true); drawGhostStart(target.b); }
-    drawLineFor(m,b,'#2F63E0',false);
-    drawSlopeTriangle(m,b);
-    drawIntercept(b);
 
+    // Live slider readouts update in both modes.
     document.getElementById('mval').textContent=nice(m);
     document.getElementById('bval').textContent=nice(b);
     document.getElementById('eq').innerHTML=fmtEq(m,b);
     for(var i=0;i<=4;i++){ document.getElementById('y'+i).textContent=nice(m*i+b); }
-
     var badge=document.getElementById('badge');
     if(b===0){ badge.className='badge prop';
       badge.innerHTML='✓ Proportional — it goes through the corner (0, 0)'; }
     else{ badge.className='badge notprop';
       badge.innerHTML='Not proportional — it starts at (0, '+nice(b)+'), not the corner'; }
+
+    drawGrid();
+    if(mode==='practice'){ drawPracticeCanvas(m,b); return; }
+
+    // --- Explore mode: his line + the mystery-line challenge ---
+    if(target){ drawLineFor(target.m,target.b,'#9AA0A6',true); drawGhostStart(target.b); }
+    drawLineFor(m,b,'#2F63E0',false);
+    drawSlopeTriangle(m,b);
+    drawIntercept(b);
 
     MISSIONS.forEach(function(ms,i){
       document.getElementById('mi'+i).classList.toggle('done', ms.test(m,b));
@@ -408,6 +464,192 @@ _EXPLORER_HTML = r"""<!doctype html>
   function step(el,dir){ el.value=parseFloat(el.value)+dir*parseFloat(el.step);
     clamp(el); draw(); }
 
+  // =====================================================================
+  //  PRACTICE MODE — real problems, checking, feedback, levels, mastery.
+  //  Problems are generated in the browser (infinite reps, zero cost) across
+  //  three types: A read-a-graph -> equation, B equation -> graph (dial the
+  //  sliders), D word problem -> equation + what the slope means. Levels
+  //  scaffold: 1 proportional, 2 add an intercept, 3 negatives, 4 fractions
+  //  & word problems. "Show me" loads the answer onto the graph so he connects
+  //  the problem to the picture.
+  // =====================================================================
+  var P = { level:1, streak:0, solved:0, cur:null, answered:false, meaning:null,
+            byType:{A:{ok:0,n:0}, B:{ok:0,n:0}, D:{ok:0,n:0}} };
+  function rnd(lo,hi){ return Math.floor(Math.random()*(hi-lo+1))+lo; }
+  function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
+  function shuffle(a){ a=a.slice(); for(var i=a.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=a[i];a[i]=a[j];a[j]=t; } return a; }
+  function near(a,bb){ a=parseFloat(a); return !isNaN(a) && Math.abs(a-bb)<1e-9; }
+
+  var WORD_CTX=[
+    {unit:'hour',  verb:'of work',  xlabel:'hours worked', ylabel:'total cost ($)',
+     build:function(r,s){return 'A plumber charges $'+s+' just to show up, plus $'+r+' for each hour of work.';}},
+    {unit:'mile',  verb:'driven',   xlabel:'miles driven', ylabel:'total fare ($)',
+     build:function(r,s){return 'A taxi costs $'+s+' to start, plus $'+r+' for every mile driven.';}},
+    {unit:'month', verb:'',         xlabel:'months', ylabel:'total paid ($)',
+     build:function(r,s){return 'A gym charges a $'+s+' sign-up fee, plus $'+r+' every month.';}},
+    {unit:'day',   verb:'',         xlabel:'days', ylabel:'money saved ($)',
+     build:function(r,s){return 'You start with $'+s+' saved and add $'+r+' every day.';}}
+  ];
+
+  function slopeFor(level){
+    if(level<=2) return rnd(1,5);
+    if(level===3){ var v=rnd(1,5); return Math.random()<0.5?-v:v; }
+    return pick([0.5,1,1.5,2,2.5,3,-0.5,-1,-1.5,-2,-2.5,-3]);
+  }
+  function interceptFor(level){
+    if(level===1) return 0;
+    if(level===2) return rnd(1,6);
+    return rnd(-6,6);
+  }
+
+  function genProblem(level){
+    var types = level>=2 ? ['A','B','D'] : ['A','B'];  // word problems have a start, so L2+
+    var type=pick(types);
+    if(type==='D'){
+      return {type:'D', m:rnd(2,9), b:rnd(5,40), ctx:pick(WORD_CTX)};
+    }
+    var m=slopeFor(level); if(m===0) m=1;
+    return {type:type, m:m, b:interceptFor(level)};
+  }
+
+  function numInputs(){
+    return '<div class="pnums">'
+      +'<label>slope (m)<input type="number" step="0.5" id="pm" class="pnum" placeholder="?"></label>'
+      +'<label>y-intercept (b)<input type="number" step="1" id="pb" class="pnum" placeholder="?"></label></div>';
+  }
+
+  function renderProblem(){
+    var p=P.cur, prompt=document.getElementById('pprompt'), ans=document.getElementById('panswer');
+    var fb=document.getElementById('pfeedback'); fb.style.display='none'; fb.innerHTML='';
+    if(p.type==='A'){
+      prompt.innerHTML='📈 <b>Read the purple line</b> on the graph. What is its equation?';
+      ans.innerHTML=numInputs();
+    } else if(p.type==='B'){
+      prompt.innerHTML='🎯 <b>Graph this line:</b> <span class="peq">y = '+fmtPlain(p.m,p.b)
+        +'</span><br><span class="tiny">Use the two sliders above to match it, then press Check.</span>';
+      ans.innerHTML='';
+    } else {
+      prompt.innerHTML='🧮 '+p.ctx.build(p.m,p.b)
+        +'<br><span class="tiny">Let x = '+p.ctx.xlabel+', y = '+p.ctx.ylabel+'.</span>';
+      var opts=shuffle([
+        {t:'It costs $'+p.m+' more for each extra '+p.ctx.unit+'.', ok:true},
+        {t:'It is $'+p.b+' no matter what.', ok:false},
+        {t:'The total is always $'+p.m+'.', ok:false},
+        {t:'It takes '+p.m+' '+p.ctx.unit+'s.', ok:false}
+      ]);
+      P.meaning=opts;
+      var mc='<div class="pmc"><div class="tiny" style="margin-top:8px"><b>What does the slope mean here?</b></div>';
+      opts.forEach(function(o,i){ mc+='<label class="pmcopt"><input type="radio" name="pmean" value="'+i+'"> '+o.t+'</label>'; });
+      mc+='</div>';
+      ans.innerHTML=numInputs()+mc;
+    }
+    draw();
+  }
+
+  function drawPracticeCanvas(m,b){
+    var p=P.cur; if(!p) return;
+    if(p.type==='A'){
+      drawLineFor(p.m,p.b,'#8c4fa8',false);                 // the line to read (purple)
+      if(P.answered){ drawSlopeTriangle(p.m,p.b); drawIntercept(p.b); }
+    } else if(p.type==='B'){
+      drawLineFor(m,b,'#2F63E0',false);                     // his line, as he builds it
+      drawSlopeTriangle(m,b); drawIntercept(b);
+    } else {                                                 // D — show the answer only on reveal
+      if(P.answered){ drawLineFor(p.m,p.b,'#8c4fa8',false); drawSlopeTriangle(p.m,p.b); drawIntercept(p.b); }
+    }
+  }
+
+  function recordResult(type, ok){
+    P.byType[type].n++; if(ok){ P.byType[type].ok++; P.solved++; }
+  }
+
+  function updateStats(){
+    document.getElementById('pstreak').textContent='🔥 streak '+P.streak;
+    document.getElementById('psolved').textContent='solved '+P.solved;
+    var names={A:'Read graph', B:'Graph it', D:'Word problem'};
+    var html='';
+    ['A','B','D'].forEach(function(t){ var s=P.byType[t];
+      html+='<span class="pbadge">'+names[t]+' '+s.ok+'/'+s.n+'</span> '; });
+    document.getElementById('pmastery').innerHTML=html;
+  }
+
+  function maybeLevelUp(fb){
+    if(P.streak>=3 && P.level<4){
+      P.level++; P.streak=0;
+      document.getElementById('plevel').value=P.level;
+      fb.innerHTML+=' 🎉 <b>Level '+P.level+'!</b> The problems get a bit harder now.';
+    }
+  }
+
+  function checkAnswer(){
+    var p=P.cur; if(!p||P.answered) return;
+    var fb=document.getElementById('pfeedback'); fb.style.display='block';
+    var ok=false, msg='';
+    if(p.type==='B'){
+      var m=parseFloat(mEl.value), b=parseFloat(bEl.value);
+      ok = near(m,p.m) && near(b,p.b);
+      if(!ok){
+        var parts=[];
+        if(!near(b,p.b)) parts.push('the start should be <b>'+nice(p.b)+'</b> (you have '+nice(b)+')');
+        if(!near(m,p.m)) parts.push('the slope should be <b>'+nice(p.m)+'</b> (you have '+nice(m)+')');
+        msg='Not yet — '+parts.join(', ')+'. It’s <b>y = '+fmtPlain(p.m,p.b)+'</b>.';
+      }
+    } else {
+      var am=(document.getElementById('pm')||{}).value;
+      var ab=(document.getElementById('pb')||{}).value;
+      var eqOk = near(am,p.m) && near(ab,p.b);
+      var meanOk=true;
+      if(p.type==='D'){
+        var sel=document.querySelector('input[name=pmean]:checked');
+        meanOk = !!(sel && P.meaning[parseInt(sel.value)].ok);
+      }
+      ok = eqOk && meanOk;
+      if(!eqOk){
+        if(p.type==='D') msg='The $/'+p.ctx.unit+' is the <b>slope</b> ('+nice(p.m)
+          +'); the amount before you do anything is the <b>y-intercept</b> ('+nice(p.b)
+          +'). So y = <b>'+fmtPlain(p.m,p.b)+'</b>.';
+        else msg='Slope = rise ÷ run — from the y-intercept, right 1 then count up/down. '
+          +'It crosses the y-axis at <b>'+nice(p.b)+'</b>. So y = <b>'+fmtPlain(p.m,p.b)+'</b>.';
+      } else if(!meanOk){
+        msg='The equation is right! But the <b>slope</b> is the rate — <b>$'+nice(p.m)
+          +' per '+p.ctx.unit+'</b>. The $'+nice(p.b)+' is the starting amount (the y-intercept).';
+      }
+    }
+    recordResult(p.type, ok);
+    if(ok){ fb.innerHTML='✅ <b>Correct!</b>'; P.answered=true; P.streak++; maybeLevelUp(fb); }
+    else  { fb.innerHTML='❌ '+msg; P.streak=0; }
+    updateStats();
+  }
+
+  function showMe(){
+    var p=P.cur; if(!p) return;
+    P.answered=true;
+    mEl.value=p.m; bEl.value=p.b; clamp(mEl); clamp(bEl);
+    var pm=document.getElementById('pm'), pb=document.getElementById('pb');
+    if(pm) pm.value=nice(p.m); if(pb) pb.value=nice(p.b);
+    var fb=document.getElementById('pfeedback'); fb.style.display='block';
+    fb.innerHTML='👀 Here it is: <b>y = '+fmtPlain(p.m,p.b)+'</b> — slope <b>'+nice(p.m)
+      +'</b>, starts at <b>'+nice(p.b)+'</b>. See it on the graph.';
+    draw();
+  }
+
+  function nextProblem(){
+    P.level=parseInt(document.getElementById('plevel').value)||P.level;
+    P.cur=genProblem(P.level); P.answered=false;
+    mEl.value=1; bEl.value=0;   // neutral start so type B actually has to be built
+    renderProblem(); updateStats();
+  }
+
+  function setMode(nm){
+    mode=nm;
+    document.getElementById('modeExplore').classList.toggle('active', nm==='explore');
+    document.getElementById('modePractice').classList.toggle('active', nm==='practice');
+    document.getElementById('exploreExtras').style.display = nm==='explore'?'':'none';
+    document.getElementById('practiceCard').style.display = nm==='practice'?'':'none';
+    if(nm==='practice' && !P.cur){ nextProblem(); }
+    draw();
+  }
+
   mEl.addEventListener('input',draw); bEl.addEventListener('input',draw);
   document.getElementById('mdown').onclick=function(){step(mEl,-1);};
   document.getElementById('mup').onclick=function(){step(mEl,1);};
@@ -415,6 +657,12 @@ _EXPLORER_HTML = r"""<!doctype html>
   document.getElementById('bup').onclick=function(){step(bEl,1);};
   document.getElementById('newline').onclick=newTarget;
   document.getElementById('hintbtn').onclick=showHint;
+  document.getElementById('modeExplore').onclick=function(){setMode('explore');};
+  document.getElementById('modePractice').onclick=function(){setMode('practice');};
+  document.getElementById('pcheck').onclick=checkAnswer;
+  document.getElementById('pshow').onclick=showMe;
+  document.getElementById('pnext').onclick=nextProblem;
+  document.getElementById('plevel').onchange=nextProblem;
   window.addEventListener('resize',sizeCanvas);
 
   buildMissions();
@@ -646,15 +894,15 @@ def render_graphing_diagnostic(db, student) -> None:
 
 
 _MISSIONS_CARD_NOTE = (
-    "Open the 📈 Graphing page and work these in the Explorer:\n"
-    "1) Make the line go through the corner (0, 0) — that's what “proportional” means.\n"
-    "2) Make it climb 3 for every 1 step right (slope = 3).\n"
-    "3) Make it START at 5 before it climbs (y-intercept = 5).\n"
-    "4) Make a flat line that never climbs (slope = 0).\n"
-    "5) Make it head downhill (a negative slope).\n"
-    "6) Mystery Line Challenge: solve 3 dashed mystery lines. Stuck? Tap 💡 Hint — "
-    "it walks you through reading where it starts, then how steep it is.\n\n"
-    "When you've done them, turn this card in."
+    "Open the 📈 Graphing page, then tap the 🎓 Practice tab.\n\n"
+    "Your goal today: get a 🔥 streak of 3 in a row and level up at least once.\n"
+    "Work the three problem kinds:\n"
+    "• Read graph — read the purple line and type its equation (slope + y-intercept).\n"
+    "• Graph it — dial the sliders to match the equation it gives you.\n"
+    "• Word problem — write the equation, and pick what the slope means.\n\n"
+    "Stuck? Tap 👀 Show me to see the answer on the graph, then try the next one. "
+    "When you've leveled up, turn this card in.\n\n"
+    "(Warm-up option: the Explore tab's Missions + Mystery Line Challenge.)"
 )
 
 
@@ -669,29 +917,29 @@ def render_graphing_missions_card(db, student) -> None:
 
     from compass.agents import khan_card
 
-    st.markdown("#### 🎯 Put the missions on his board")
+    st.markdown("#### 🎯 Put graphing practice on his board")
     st.caption(
-        "Adds one card for the Explorer missions — a short, repeatable rep he can do "
-        "right here. Turning it in logs the time and a little XP, so the practice is "
-        "tracked like everything else."
+        "Adds one card for a round of **Practice** (and the warm-up missions) — a "
+        "short, repeatable rep he does right here. Turning it in logs the time and a "
+        "little XP, so it's tracked like everything else. Defaults to **today**."
     )
     with st.expander("What the card asks him to do"):
         st.markdown(_MISSIONS_CARD_NOTE)
     cols = st.columns([2, 1])
     day = cols[0].date_input("Assign to", value=date.today(), key="gm_day")
     to_backlog = cols[1].checkbox("Backlog instead", key="gm_backlog")
-    if st.button("➕ Add the graphing-missions card", key="gm_add", type="primary"):
+    if st.button("➕ Add today's graphing-practice card", key="gm_add", type="primary"):
         khan_card.create_khan_card(
             db, student, subject="math",
-            unit="📈 Graphing missions — Slope & Intercept Explorer",
+            unit="📈 Graphing practice — Slope & Intercept Explorer",
             note=_MISSIONS_CARD_NOTE, minutes=15,
             day_iso=None if to_backlog else day.isoformat(),
             quiz=[], generate_quiz=False, general_card=True, xp_override=15,
         )
         where = "the Backlog" if to_backlog else day.strftime("%a %b %-d")
         st.success(
-            f"✅ Added a graphing-missions card to {where}. He opens it, does the "
-            "missions here on the Explorer, then turns it in."
+            f"✅ Added a graphing-practice card to {where}. He opens the Graphing page, "
+            "does a round of Practice, then turns it in."
         )
 
 
