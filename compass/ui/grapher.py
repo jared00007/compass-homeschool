@@ -35,11 +35,14 @@ _EXPLORER_HTML = r"""<!doctype html>
   *{box-sizing:border-box;}
   body{margin:0;background:var(--paper);color:var(--ink);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
-  .wrap{display:flex;flex-wrap:wrap;gap:16px;padding:14px;align-items:flex-start;}
-  .col{flex:1 1 320px;min-width:280px;}
+  .wrap{display:flex;flex-wrap:wrap;gap:16px;padding:14px;align-items:flex-start;
+    max-width:1040px;}
+  .col{flex:1 1 320px;min-width:280px;max-width:500px;}
   .card{background:#fff;border:2px solid var(--border);border-radius:12px;
     padding:11px 13px;box-shadow:0 2px 0 rgba(46,94,170,.15);}
-  canvas{width:100%;height:auto;display:block;border-radius:8px;}
+  /* Cap the canvas so it can't balloon to the column width on a wide screen
+     (that made the whole tool enormous and overlap the page below it). */
+  canvas{width:100%;max-width:420px;height:auto;display:block;margin:0 auto;border-radius:8px;}
   h2{font-size:16px;margin:0 0 3px;}
   .sub{color:var(--dim);font-size:12.5px;margin:0 0 7px;}
   .badge{display:inline-block;font-weight:800;font-size:13px;padding:4px 10px;
@@ -273,21 +276,6 @@ _EXPLORER_HTML = r"""<!doctype html>
     cv.height = Math.round(cssW*dpr); // square
     ctx.setTransform(dpr,0,0,dpr,0,0);
     draw();
-    fitFrame();
-  }
-
-  // Size ONLY this component's own iframe to its content, so it never shows an
-  // inner scrollbar while the normal PAGE scroll still works. The srcdoc frame is
-  // same-origin, so frameElement is reachable; wrapped in try/catch in case a
-  // browser blocks it. Deliberately touches nothing but the iframe -- an earlier
-  // version set ancestor heights to auto and killed the page's own scrolling.
-  // Reported: "now i cant scroll at all and cant even see the whole thing."
-  function fitFrame(){
-    try{
-      var h = Math.ceil(document.body.getBoundingClientRect().height) + 2;
-      var fe = window.frameElement;
-      if(fe){ fe.style.height = h+'px'; fe.setAttribute('height', h); }
-    }catch(e){}
   }
 
   function W(){return cv.clientWidth || 460;}
@@ -756,14 +744,10 @@ _EXPLORER_HTML = r"""<!doctype html>
   document.getElementById('pnext').onclick=nextProblem;
   document.getElementById('plevel').onchange=nextProblem;
   window.addEventListener('resize',sizeCanvas);
-  // Re-fit the frame whenever the content height changes (mode switch, a new
-  // problem, a hint expanding) so there's never an inner scrollbar.
-  try{ new ResizeObserver(fitFrame).observe(document.body); }catch(e){}
 
   buildMissions();
   newTarget();
   sizeCanvas();
-  setTimeout(fitFrame, 60);   // after fonts/layout settle
 })();
 </script>
 </body>
@@ -916,18 +900,16 @@ def _ladder_proposal():
     )
 
 
-# A close starting height so the first paint doesn't clip before the widget
-# auto-fits its own frame to its content (see fitFrame in the JS). After that the
-# frame grows/shrinks to exactly fit -- no inner scrollbar, whichever mode he's in.
-EXPLORER_HEIGHT = 980
+# The fixed frame height. With the canvas capped and the layout maxed at ~1040px
+# wide, the tool is a stable ~950px tall on any desktop width (measured), so this
+# fits it with headroom -- no inner scrollbar and no overlap with the page below.
+# On a very narrow (stacked) phone layout the content is taller and `scrolling`
+# lets the frame scroll on its own as a fallback.
+EXPLORER_HEIGHT = 985
 
 
 def render_graph_explorer() -> None:
-    """Drop the Slope & Intercept Explorer onto the page (a components iframe).
-
-    `scrolling` stays on only as a safety net: the page self-sizes its own iframe
-    to its content (fitFrame), so in practice no inner scrollbar ever shows -- the
-    whole tool stays in view and the page scrolls as one."""
+    """Drop the Slope & Intercept Explorer onto the page (a components iframe)."""
     import streamlit.components.v1 as components
 
     components.html(_EXPLORER_HTML, height=EXPLORER_HEIGHT, scrolling=True)
