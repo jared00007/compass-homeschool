@@ -250,3 +250,21 @@ def test_explorer_has_a_practice_mode_with_the_three_problem_types():
     # a worked-solution path and the "show me on the graph" aid
     assert "rise \\u00f7 run" in html or "rise ÷ run" in html
     assert "function showMe" in html
+
+
+def test_graph_spells_out_what_to_notice_and_remember():
+    """The graph should shout what matters: a live 'what to notice' narration, a
+    'remember this' strip, and slope=blue / intercept=gold color-coding tying the
+    equation, graph, and table together. Reported: "how does he learn ... make
+    that super in your face ... what is important to remember recall."""
+    html = slope_intercept_explorer_html()
+    assert 'id="notice"' in html and "function updateNotice" in html
+    assert "What to notice" in html and "Remember this" in html
+    # the two load-bearing ideas, named in plain words
+    assert "where it <b>STARTS</b>" in html and "the <b>SLOPE</b>" in html
+    # the shared colour tokens (slope blue .mk, intercept gold .bk) + the gold
+    # table cell that equals b
+    assert ".mk{color:var(--line);}" in html and ".bk{color:#b8860b;}" in html
+    assert 'class="startcell"' in html
+    # mid-problem it teaches the METHOD instead of giving the answer away
+    assert "How to read any line" in html

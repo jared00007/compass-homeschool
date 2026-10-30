@@ -116,6 +116,21 @@ _EXPLORER_HTML = r"""<!doctype html>
   .btn:active{transform:translateY(1px);}
   .legend{font-size:12px;color:var(--dim);margin-top:8px;}
   .legend b.l{color:var(--line);} .legend b.t{color:var(--accent);}
+  /* slope = blue, intercept = gold, used everywhere so the equation, the graph,
+     and the words all share the same two colors. */
+  .mk{color:var(--line);} .bk{color:#b8860b;}
+  .startcell{background:#FCEFD1 !important;font-weight:800;}
+  .notice-card{border-color:var(--accent);box-shadow:0 2px 0 rgba(242,183,5,.25);}
+  .notice-card h2{color:#9a6b00;}
+  .notice{font-size:14.5px;line-height:1.5;}
+  .notice .nrow{padding:4px 0;border-bottom:1px dashed var(--grid-strong);}
+  .notice .nrow:last-child{border-bottom:none;}
+  .notice .nrow.good{color:var(--good);font-weight:700;}
+  .notice .nrow.warn{color:#9a6b00;font-weight:700;}
+  .remember{margin-top:12px;background:#EDF2FB;border:2px dashed var(--border);
+    border-radius:12px;padding:11px 13px;font-size:13px;line-height:1.55;}
+  .remember .rhead{font-weight:800;font-size:14px;margin-bottom:4px;}
+  .remember div{margin:2px 0;}
 </style>
 </head>
 <body>
@@ -131,6 +146,19 @@ _EXPLORER_HTML = r"""<!doctype html>
         <b class="l">━━ your line</b> &nbsp;·&nbsp; <b class="t">●</b> where it starts (the y-intercept)
         &nbsp;·&nbsp; <span style="color:#888">- - - mystery line</span>
       </div>
+    </div>
+
+    <div class="card notice-card" style="margin-top:14px;">
+      <h2>🧠 What to notice</h2>
+      <div id="notice" class="notice"></div>
+    </div>
+
+    <div class="remember">
+      <div class="rhead">📌 Remember this</div>
+      <div><b class="mk">m</b> = <b class="mk">slope</b> = rise ÷ run = <b>the rate</b> (how steep). Bigger m = steeper.</div>
+      <div><b class="bk">b</b> = <b class="bk">y-intercept</b> = <b>where it starts</b> — its value when x = 0.</div>
+      <div><b class="bk">b = 0</b> → it goes through the corner <b>(0, 0)</b> → <b>proportional</b>.</div>
+      <div>Equation: <b>y = <span class="mk">m</span>x + <span class="bk">b</span></b>.</div>
     </div>
   </div>
 
@@ -165,9 +193,9 @@ _EXPLORER_HTML = r"""<!doctype html>
 
       <table>
         <thead><tr><th>x</th><th>0</th><th>1</th><th>2</th><th>3</th><th>4</th></tr></thead>
-        <tbody><tr><th>y</th><td id="y0">0</td><td id="y1">1</td><td id="y2">2</td><td id="y3">3</td><td id="y4">4</td></tr></tbody>
+        <tbody><tr><th>y</th><td id="y0" class="startcell">0</td><td id="y1">1</td><td id="y2">2</td><td id="y3">3</td><td id="y4">4</td></tr></tbody>
       </table>
-      <div class="tiny">Notice: each step right, y jumps by the slope.</div>
+      <div class="tiny">The gold cell (x = 0) is <b class="bk">b</b>, where it starts. Each step right, y jumps by <b class="mk">m</b> (the slope).</div>
     </div>
 
     <div id="exploreExtras">
@@ -315,7 +343,7 @@ _EXPLORER_HTML = r"""<!doctype html>
     ctx.textAlign='left'; ctx.textBaseline='top';
     ctx.fillText('right 1', px(0)+11, py(b)+3);
     ctx.textBaseline='middle';
-    ctx.fillText((m>0?'up ':'down ')+nice(Math.abs(m)), px(1)+4, py(b+m/2));
+    ctx.fillText((m>0?'up ':'down ')+nice(Math.abs(m))+'  = slope '+nice(m), px(1)+4, py(b+m/2));
     ctx.restore();
   }
 
@@ -323,11 +351,12 @@ _EXPLORER_HTML = r"""<!doctype html>
     ctx.save();
     ctx.fillStyle='#F2B705'; ctx.strokeStyle='#241C12'; ctx.lineWidth=2;
     ctx.beginPath(); ctx.arc(px(0),py(b),7,0,7); ctx.fill(); ctx.stroke();
-    ctx.fillStyle='#241C12'; ctx.font='bold 12px sans-serif';
+    ctx.fillStyle='#b8860b'; ctx.font='bold 12px sans-serif';
     // Label sits to the LEFT of the y-axis so it never collides with the slope
-    // triangle's "right 1 / up N" labels, which run off to the right.
+    // triangle's "right 1 / up N" labels, which run off to the right. Gold, to
+    // match the intercept everywhere else.
     ctx.textAlign='right'; ctx.textBaseline='bottom';
-    ctx.fillText('(0, '+nice(b)+')', px(0)-10, py(b)-6);
+    ctx.fillText('b = (0, '+nice(b)+')', px(0)-10, py(b)-6);
     ctx.restore();
   }
 
@@ -371,6 +400,46 @@ _EXPLORER_HTML = r"""<!doctype html>
     return mp+bp;
   }
 
+  function fmtEqColored(m,b){ // equation with slope blue, intercept gold
+    var mp = (m===1)?'x':(m===-1)?'-x':(nice(m)+'x');
+    var bp = (b>0)?(' + <span class="bk">'+nice(b)+'</span>')
+      :(b<0)?(' − <span class="bk">'+nice(Math.abs(b))+'</span>'):'';
+    if(m===0) return 'y = <span class="bk">'+nice(b)+'</span>';
+    return 'y = <span class="mk">'+mp+'</span>'+bp;
+  }
+
+  // The always-on "What to notice" panel: in plain words, the two things that
+  // matter about the line on the graph right now -- where it STARTS (b) and how
+  // STEEP it is (m) -- plus whether it's proportional. In Practice, before he's
+  // answered a read-the-graph/word problem it shows the METHOD instead (so it
+  // doesn't hand him the answer).
+  function updateNotice(cm,cb,narrate){
+    var el=document.getElementById('notice'); if(!el) return;
+    if(!narrate){
+      el.innerHTML=
+        '<div class="nrow">🔎 <b>How to read any line — 3 steps:</b></div>'+
+        '<div class="nrow"><b class="bk">①</b> Where does it cross the up–down axis? That number is '+
+          '<b class="bk">b</b> — where it starts.</div>'+
+        '<div class="nrow"><b class="mk">②</b> From there go <b>right 1</b> and count <b class="mk">up or down</b>. '+
+          'That number is <b class="mk">m</b> — the slope.</div>'+
+        '<div class="nrow">③ Put them together: <b>y = <span class="mk">m</span>x + <span class="bk">b</span></b>.</div>';
+      return;
+    }
+    var steep = (cm===0)
+      ? 'the line stays <b>flat</b> (slope 0 — y never changes)'
+      : 'go <b>right 1</b>, then <b class="mk">'+(cm>0?'up':'down')+' '+nice(Math.abs(cm))+'</b>';
+    var prop = (cb===0)
+      ? '<div class="nrow good">✅ b = 0 → it runs through the corner <b>(0, 0)</b> → <b>PROPORTIONAL</b>.</div>'
+      : '<div class="nrow warn">⚠️ b = '+nice(cb)+' (not 0) → it does NOT pass through the corner → not proportional.</div>';
+    el.innerHTML=
+      '<div class="nrow">📍 <b class="bk">b = '+nice(cb)+'</b> — the line crosses the y-axis at '+
+        '<b class="bk">(0, '+nice(cb)+')</b>. That’s where it <b>STARTS</b>.</div>'+
+      '<div class="nrow">📈 <b class="mk">m = '+nice(cm)+'</b> — from the start, '+steep+
+        '. That’s the <b>SLOPE</b> (the rate).</div>'+
+      '<div class="nrow">🧮 Together: <b>'+fmtEqColored(cm,cb)+'</b></div>'+
+      prop;
+  }
+
   function newTarget(){
     var ms=[-3,-2,-1,-0.5,0.5,1,2,3];
     var m=ms[Math.floor(Math.random()*ms.length)];
@@ -401,6 +470,14 @@ _EXPLORER_HTML = r"""<!doctype html>
       badge.innerHTML='✓ Proportional — it goes through the corner (0, 0)'; }
     else{ badge.className='badge notprop';
       badge.innerHTML='Not proportional — it starts at (0, '+nice(b)+'), not the corner'; }
+
+    // Narrate the line that's actually on screen (method-only mid-problem).
+    if(mode==='explore'){ updateNotice(m,b,true); }
+    else if(P.cur){
+      if(P.cur.type==='B'){ updateNotice(m,b,true); }
+      else if(P.answered){ updateNotice(P.cur.m,P.cur.b,true); }
+      else { updateNotice(null,null,false); }
+    }
 
     drawGrid();
     if(mode==='practice'){ drawPracticeCanvas(m,b); return; }
