@@ -285,3 +285,69 @@ def test_the_daily_card_shows_on_his_home_when_enabled(monkeypatch, tmp_path):
         # The type-the-word inputs are present (one per due word).
         keys = [t.key for t in at.text_input]
         assert any((k or "").startswith("spd_in_") for k in keys)
+
+
+# --- difficulty / level control -------------------------------------------------
+
+
+def test_reset_spelling_pool_retires_active_but_keeps_history(db, student):
+    """Lowering the level and rebuilding retires his current words (so the new
+    level takes effect today) without deleting them -- his attempt history and
+    grade are built from the rows, which must survive."""
+    for w in ("alpha", "bravo", "charlie"):
+        db.add_spelling_word(student["id"], w, "a ____ clue", "on")
+    assert db.spelling_pool_counts(student["id"])["active"] == 3
+
+    retired = db.reset_spelling_pool(student["id"])
+    assert retired == 3
+    counts = db.spelling_pool_counts(student["id"])
+    assert counts["active"] == 0          # none in rotation now
+    assert counts["total"] == 3           # ...but the rows (history) are kept
+
+
+def test_rebuild_regenerates_at_the_new_level(db, student):
+    """After dialing the level down, a rebuild generates fresh words AT that
+    level -- the generation prompt carries the new grade band."""
+    spelling.save_settings(db, enabled=True, level="grade 6")
+    for w in ("oldone", "oldtwo"):
+        db.add_spelling_word(student["id"], w, "an ____ clue", "stretch")
+
+    db.reset_spelling_pool(student["id"])
+    with patch("compass.agents.llm.generate_lesson", return_value=_FAKE_WORDS) as gen, \
+         patch("compass.agents.api_available", return_value=(True, "")):
+        made = spelling.ensure_pool(db, student, minimum=3)
+    assert made >= 3
+    # the prompt was built for grade 6, not his grade 8
+    system = gen.call_args.kwargs["system"]
+    assert "grade 6" in system
+    active = {w["word"] for w in db.list_spelling_words(student["id"])}  # active only
+    assert "observation" in active and "oldone" not in active
+
+
+def test_difficulty_control_lowers_his_level(tmp_path, monkeypatch):
+    """The parent view's new Difficulty selector writes the level override, so
+    'Easier' actually drops the grade Compass writes his words at. Reported: "bring
+    down the level ... allow for the type of dynamic change ... for parent."""
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", str(tmp_path / "s.db"))
+    db = Database(tmp_path / "s.db")
+    student = db.ensure_default_student()
+    spelling.save_settings(db, enabled=True)
+    db.close()
+
+    at = AppTest.from_file(HOME_PATH)
+    at.session_state["parent_unlocked"] = True
+    at.run(timeout=30)
+    at.switch_page(str(REPO_ROOT / "pages" / "14_Mission_Control.py"))
+    at.session_state["mc_view"] = "setup"
+    at.run(timeout=30)
+
+    diff = [sb for sb in at.selectbox if (sb.label or "") == "Difficulty"]
+    assert diff, "the Difficulty selector should render when spelling is on"
+    easier = next(o for o in diff[0].options if "Easier — two grades down" in o)
+    diff[0].set_value(easier).run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+
+    db = Database(tmp_path / "s.db")
+    assert spelling.effective_level(db, db.ensure_default_student()) == "grade 6"
+    db.close()

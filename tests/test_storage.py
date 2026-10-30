@@ -2876,3 +2876,62 @@ def test_a_submitted_step_still_shows_as_due_on_home(db, student):
     due = db.due_project_steps(student["id"], "2026-09-04")
     assert [s["id"] for s in due] == [step]
     assert due[0]["status"] == "submitted"
+
+
+def test_create_course_auto_credits_matching_untagged_hours(db, student):
+    """A new course starts already crediting the hours it obviously covers --
+    matching subject and date range -- instead of reading 0 until a parent
+    hand-ticks each one. Reported: "those courses should have hours already
+    acreditted to them too."""
+    db.log_activity(student["id"], "Algebra practice", "core", "math", 20 * 60,
+                    {"math": 20 * 60}, occurred_on="2026-09-01")
+    db.log_activity(student["id"], "A science thing", "core", "science", 9 * 60,
+                    {"science": 9 * 60}, occurred_on="2026-09-02")
+    cid = db.create_course(student["id"], "8th Math", "math",
+                           "2026-08-24", "2027-08-23", credit_value=1.0)
+    assert db.course_minutes(cid) == 20 * 60          # the math hours, credited
+    # the science activity is a different subject -- untouched
+    assert db.credit_untagged_activities_to_course(cid) == 0
+
+
+def test_credit_untagged_is_idempotent_and_date_scoped(db, student):
+    cid = db.create_course(student["id"], "Math", "math",
+                           "2026-08-24", "2027-08-23", credit_value=1.0)
+    db.log_activity(student["id"], "In range", "core", "math", 60,
+                    {"math": 60}, occurred_on="2026-10-01")
+    db.log_activity(student["id"], "Out of range", "core", "math", 60,
+                    {"math": 60}, occurred_on="2030-01-01")
+    assert db.credit_untagged_activities_to_course(cid) == 1   # only the in-range one
+    assert db.credit_untagged_activities_to_course(cid) == 0   # idempotent
+    assert db.course_minutes(cid) == 60
+
+
+def test_migration_autocredits_existing_courses_once(tmp_path):
+    """A course made before auto-credit landed should pick up its matching hours
+    one time on open -- but a later hand-untick must not be re-claimed on the next
+    open, so the migration is flagged done."""
+    path = tmp_path / "old_course.db"
+    db = Database(path)
+    student = db.ensure_default_student()
+    cid = db.create_course(student["id"], "Math", "math",
+                           "2026-08-24", "2027-08-23", credit_value=1.0)
+    db.log_activity(student["id"], "Work", "core", "math", 30 * 60,
+                    {"math": 30 * 60}, occurred_on="2026-09-01")
+    # Simulate an old database: untag everything and clear the one-time flag.
+    db.conn.execute("UPDATE activities SET course_id = NULL")
+    db.conn.execute("DELETE FROM settings WHERE key = 'did_course_hour_autocredit'")
+    db.conn.commit()
+    assert db.course_minutes(cid) == 0
+    db.close()
+
+    db = Database(path)  # reopen -> migration runs once
+    assert db.course_minutes(cid) == 30 * 60
+    assert db.get_setting("did_course_hour_autocredit") == "1"
+    # A deliberate untick now sticks -- reopening does not re-claim it.
+    acts = db.candidate_activities_for_course(student["id"], "math",
+                                              "2026-08-24", "2027-08-23", cid)
+    db.set_activity_course(acts[0]["id"], None)
+    db.close()
+    db = Database(path)
+    assert db.course_minutes(cid) == 0   # not re-claimed
+    db.close()

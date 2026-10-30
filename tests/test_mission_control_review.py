@@ -1123,11 +1123,17 @@ def test_the_open_course_nudge_expands_and_scrolls_to_it(monkeypatch, tmp_path):
     at.switch_page(str(REPO_ROOT / "pages" / "13_Course_Records.py"))
     at.run(timeout=30)
 
-    opens = [b for b in at.button if (b.label or "").startswith("📂 Open")]
-    assert opens, [b.label for b in at.button]
-    opens[0].click().run(timeout=30)
+    credit = [b for b in at.button if (b.label or "").startswith("➕ Credit")]
+    assert credit, [b.label for b in at.button]
+    credit[0].click().run(timeout=30)
     assert not at.exception, [e.message for e in at.exception]
     # the card is now expanded (its toggle reads "Hide"), and the one-shot scroll
     # flag was consumed rather than left to re-fire forever.
     assert any((b.label or "") == "Hide" for b in at.button)
     assert "_scroll_to_course" not in at.session_state
+
+    # ...and the untagged hours are now actually credited to the course.
+    db = Database(db_path)
+    course = db.list_courses(db.ensure_default_student()["id"])[0]
+    assert db.course_minutes(course["id"]) == 25 * 60
+    db.close()

@@ -6112,9 +6112,64 @@ def render_spelling_settings(db: Database, student: dict[str, Any]) -> None:
         return
 
     st.caption(
-        f"No word lists to build — Compass picks words at **{md(spelling.effective_level(db, student))}** "
-        "with a range (some easier, most on-level, a few stretch) and refreshes them as he goes."
+        "No word lists to build — Compass picks the words itself (a range: some easier, "
+        "most on-level, a few stretch) and refreshes them as he goes."
     )
+
+    # Difficulty: the one lever that makes spelling easier or harder. There was no
+    # control for this before, so he always got his exact grade (too hard when
+    # he's struggling). Dialing it down writes the level override; a rebuild swaps
+    # his current words for fresh ones at the new level today. Reported: "we also
+    # need to tone down spelling ... bring down the level ... allow for the type of
+    # dynamic change in the app on the spelling for parent setting/view."
+    try:
+        grade_num = int(str(student.get("grade") or "8").strip() or "8")
+    except ValueError:
+        grade_num = 8
+    level_opts: list[tuple[str, str]] = [("", f"On his grade (Grade {grade_num})")]
+    if grade_num - 2 >= 1:
+        level_opts.append((f"grade {grade_num - 2}",
+                           f"⬇️ Easier — two grades down (Grade {grade_num - 2})"))
+    if grade_num - 1 >= 1:
+        level_opts.append((f"grade {grade_num - 1}",
+                           f"A bit easier — one down (Grade {grade_num - 1})"))
+    level_opts.append((f"grade {grade_num + 1}",
+                       f"⬆️ Challenge — one up (Grade {grade_num + 1})"))
+    current_level = (cfg.get("level") or "").strip()
+    values = [v for v, _ in level_opts]
+    if current_level and current_level not in values:
+        level_opts.insert(1, (current_level, f"Custom — {current_level}"))
+        values = [v for v, _ in level_opts]
+    labels = {v: lbl for v, lbl in level_opts}
+    picked = st.selectbox(
+        "Difficulty", values, index=values.index(current_level) if current_level in values else 0,
+        format_func=lambda v: labels[v], key="spelling_level_in",
+        help="Struggling? Dial it down. This sets the grade level Compass writes "
+        "his words at — then rebuild below so it takes effect today.",
+    )
+    if picked != current_level:
+        spelling.save_settings(db, level=picked)
+        st.session_state["_spelling_level_changed"] = True
+        st.rerun()
+
+    pool_now = db.spelling_pool_counts(student["id"])
+    if st.session_state.pop("_spelling_level_changed", False):
+        st.info(
+            f"Level set to **{spelling.effective_level(db, student)}**. His current "
+            "words are still the old level — rebuild to swap them for new ones now."
+        )
+    if pool_now["active"] and st.button(
+        f"↻ Rebuild his word list at {spelling.effective_level(db, student)}",
+        key="spelling_rebuild",
+        help="Retires his current words and generates a fresh set at the level above. "
+        "His quiz grade and history are kept.",
+    ):
+        with st.spinner("Building a fresh word list at the new level…"):
+            db.reset_spelling_pool(student["id"])
+            made = spelling.ensure_pool(db, student)
+        st.success(f"Swapped in {made} fresh words at {spelling.effective_level(db, student)}.")
+        st.rerun()
+
     cols = st.columns(3)
     daily_opts = [3, 4, 5, 6]
     daily = cols[0].selectbox(

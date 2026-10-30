@@ -1579,6 +1579,7 @@ class Database:
         self._migrate_books_allow_upcoming_status()
         self._migrate_lessons_allow_review_states()
         self._migrate_activities_allow_coding_tier()
+        self._migrate_autocredit_existing_courses()
         # Runs after the rebuild above, not before: that rebuild recreates
         # `books` from its own hardcoded column list on a database old enough
         # to need it, which would otherwise silently drop a column added here
@@ -2907,6 +2908,19 @@ class Database:
             "active": int(row.get("active") or 0),
             "due": int(row.get("due") or 0),
         }
+
+    def reset_spelling_pool(self, student_id: int) -> int:
+        """Retire every active word so the next top-up rebuilds the list fresh --
+        used when a parent changes the spelling level and wants his current words
+        swapped for ones at the new level today, not just as the old ones age out.
+        Retiring (not deleting) keeps his attempt history and grade intact. Returns
+        how many were retired."""
+        cur = self.conn.execute(
+            "UPDATE spelling_words SET retired = 1 WHERE student_id = ? AND retired = 0",
+            (student_id,),
+        )
+        self.conn.commit()
+        return int(cur.rowcount or 0)
 
     def spelling_due(self, student_id: int, limit: int = 5) -> list[dict[str, Any]]:
         """Today's words for the daily card: active words due for review (new
@@ -6445,7 +6459,57 @@ class Database:
             ),
         )
         self.conn.commit()
-        return int(cur.lastrowid)
+        course_id = int(cur.lastrowid)
+        # A course starts already crediting the hours it obviously covers -- every
+        # activity in its subject and date range that isn't already claimed by
+        # another course. Otherwise a brand-new course reads 0 hours even though a
+        # whole year of matching work is sitting right there, and a parent has to
+        # hand-tick each one (reported: "those courses should have hours already
+        # acreditted to them too"). The per-activity picker still lets them
+        # un-claim anything that doesn't belong.
+        self.credit_untagged_activities_to_course(course_id)
+        return course_id
+
+    def credit_untagged_activities_to_course(self, course_id: int) -> int:
+        """Claim every still-untagged activity that matches this course's subject
+        and date range, and return how many were newly credited. Idempotent: an
+        activity already tagged to another course (or this one) is left alone, so
+        running it again only ever picks up newly-logged matching hours."""
+        course = _row(
+            self.conn.execute(
+                "SELECT credit_subject, start_date, end_date FROM courses WHERE id = ?",
+                (course_id,),
+            )
+        )
+        if not course:
+            return 0
+        cur = self.conn.execute(
+            "UPDATE activities SET course_id = ? "
+            "WHERE course_id IS NULL AND primary_subject = ? "
+            "AND occurred_on BETWEEN ? AND ?",
+            (course_id, course["credit_subject"], course["start_date"], course["end_date"]),
+        )
+        self.conn.commit()
+        return int(cur.rowcount or 0)
+
+    def _migrate_autocredit_existing_courses(self) -> None:
+        """Courses now auto-credit their matching hours at creation, but a course
+        made before that lands reads 0 even with a year of matching work logged.
+        One time, claim each existing course's untagged matching activities, then
+        flag it done so a later hand-untick of one isn't re-claimed on every open.
+        Reported: "those courses should have hours already acreditted to them too."
+        """
+        if self.get_setting("did_course_hour_autocredit"):
+            return
+        try:
+            ids = [
+                int(r["id"]) for r in _rows(self.conn.execute("SELECT id FROM courses"))
+            ]
+            for course_id in ids:
+                self.credit_untagged_activities_to_course(course_id)
+        except sqlite3.OperationalError:
+            return  # no courses table yet on a very old db -- nothing to credit
+        self.set_setting("did_course_hour_autocredit", "1")
 
     def list_courses(self, student_id: int) -> list[dict[str, Any]]:
         return _rows(
