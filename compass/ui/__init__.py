@@ -6347,14 +6347,28 @@ def render_spelling_review(db: Database, student: dict[str, Any]) -> None:
         st.markdown("**His daily flow** — what he's actually done")
         for day in flow:
             kinds = (day["kinds"] or "").replace("quiz", "📝 quiz").replace("daily", "🔤 daily")
+            took = _spelling_duration_text(day.get("seconds"))
+            suffix = f" · ⏱️ {took}" if took else ""
             st.markdown(
-                f"- **{day['happened_on']}** — {day['correct']}/{day['answered']} right · {kinds}"
+                f"- **{day['happened_on']}** — {day['correct']}/{day['answered']} right · "
+                f"{kinds}{suffix}"
             )
         recent = flow[0]["happened_on"]
-        with st.expander(f"The words on {recent}"):
-            for attempt in db.spelling_attempts_on(sid, recent):
-                mark = "✅" if attempt["correct"] else "❌"
-                st.markdown(f"{mark} {md(attempt['word'])}")
+        with st.expander(f"His submission on {recent} — exactly what he typed"):
+            attempts = db.spelling_attempts_on(sid, recent)
+            secs = max((a.get("duration_seconds") or 0) for a in attempts) if attempts else 0
+            took = _spelling_duration_text(secs)
+            if took:
+                st.caption(f"⏱️ Took about {took}.")
+            for attempt in attempts:
+                wrote = (attempt.get("typed") or "").strip()
+                if attempt["correct"]:
+                    st.markdown(f"✅ **{md(attempt['word'])}**")
+                else:
+                    shown = md(wrote) if wrote else "_(left blank)_"
+                    st.markdown(
+                        f"❌ he wrote “{shown}” — it's **{md(attempt['word'])}**"
+                    )
     else:
         st.caption(
             "He hasn't done a spelling card yet — once he does, his day-by-day flow shows here."
@@ -6418,15 +6432,47 @@ def _spelling_result_rows(rows: list[dict[str, Any]]) -> None:
             st.markdown(f"- ❌ you wrote “{typed}” — it's **{md(r['word'])}**")
 
 
-def _grade_spelling(words: list[dict[str, Any]], typed: dict[int, str]) -> tuple[list[tuple[int, bool]], list[dict[str, Any]]]:
-    answers: list[tuple[int, bool]] = []
+def _grade_spelling(words: list[dict[str, Any]], typed: dict[int, str]) -> tuple[list[tuple[int, bool, str]], list[dict[str, Any]]]:
+    answers: list[tuple[int, bool, str]] = []
     rows: list[dict[str, Any]] = []
     for word in words:
         entry = (typed.get(word["id"]) or "").strip()
         correct = entry.lower() == word["word"].strip().lower()
-        answers.append((word["id"], correct))
+        answers.append((word["id"], correct, entry))  # carry what he typed through
         rows.append({"word": word["word"], "typed": entry, "correct": correct})
     return answers, rows
+
+
+def _spelling_duration_text(seconds: Any) -> str:
+    """A friendly '4 min 20 s' / '45 s' for a spelling submission's wall-clock, or
+    '' when it wasn't recorded (older attempts, or none)."""
+    try:
+        s = int(seconds or 0)
+    except (TypeError, ValueError):
+        return ""
+    if s <= 0:
+        return ""
+    if s < 60:
+        return f"{s} s"
+    m, rem = divmod(s, 60)
+    return f"{m} min {rem} s" if rem else f"{m} min"
+
+
+def _spelling_elapsed(start_key: str, *, start: bool) -> int | None:
+    """Rough wall-clock seconds for a spelling submission: stamp the moment the
+    card first renders (once), read it back on submit. Not a precise timer -- if
+    he opens the card and wanders off it inflates -- but it answers "about how
+    long did that take" without a stopwatch. Returns None until the card has been
+    shown at least once this session."""
+    import time
+
+    if start:
+        st.session_state.setdefault(start_key, time.time())
+        return None
+    started = st.session_state.pop(start_key, None)
+    if started is None:
+        return None
+    return max(0, int(time.time() - started))
 
 
 def render_spelling_home_card(db: Database, student: dict[str, Any]) -> None:
@@ -6472,13 +6518,17 @@ def _render_spelling_daily_card(db: Database, student: dict[str, Any]) -> None:
             f"Spell all **{len(words)}** words, then press **Check**. Tap 🔊 to hear "
             "each one. Counts as **Spelling**."
         )
+        _spelling_elapsed("spd_started_at", start=True)  # stamp when the card appears
         typed = _spelling_answer_rows(words, "spd")
         if st.button(
             f"✅ Check all {len(words)} words", key="spd_submit",
             type="primary", width="stretch",
         ):
             answers, rows = _grade_spelling(words, typed)
-            spelling.complete_daily(db, student, answers)
+            spelling.complete_daily(
+                db, student, answers,
+                duration_seconds=_spelling_elapsed("spd_started_at", start=False),
+            )
             st.session_state["spelling_daily_result"] = {
                 "correct": sum(1 for _w, c in answers if c), "total": len(answers), "rows": rows,
             }
@@ -6507,13 +6557,17 @@ def _render_spelling_quiz_card(db: Database, student: dict[str, Any]) -> None:
             f"Spell all **{len(words)}** words (tap 🔊 to hear each), then press "
             "**Turn in**. This is your graded spelling test for the week."
         )
+        _spelling_elapsed("spq_started_at", start=True)  # stamp when the quiz appears
         typed = _spelling_answer_rows(words, "spq")
         if st.button(
             f"📝 Turn in all {len(words)} words", key="spq_submit",
             type="primary", width="stretch",
         ):
             answers, rows = _grade_spelling(words, typed)
-            outcome = spelling.complete_quiz(db, student, answers)
+            outcome = spelling.complete_quiz(
+                db, student, answers,
+                duration_seconds=_spelling_elapsed("spq_started_at", start=False),
+            )
             st.session_state["spelling_quiz_result"] = {
                 "correct": outcome["correct"], "total": outcome["total"], "rows": rows,
             }

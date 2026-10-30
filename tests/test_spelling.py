@@ -168,13 +168,13 @@ def test_complete_daily_records_and_logs_hours_once(db, student):
     sid = student["id"]
     a = db.add_spelling_word(sid, "separate", "Keep them ____.", "on")
     b = db.add_spelling_word(sid, "rhythm", "A steady ____.", "on")
-    spelling.complete_daily(db, student, [(a, True), (b, False)])
+    spelling.complete_daily(db, student, [(a, True, "separate"), (b, False, "rhythem")], duration_seconds=95)
     assert spelling.daily_done_today(db) is True
     acts = [x for x in db.list_activities(sid) if x["source"] == "spelling"]
     assert len(acts) == 1 and acts[0]["primary_subject"] == "spelling"
     # Doing another word later the same day doesn't double-log the hours.
     c = db.add_spelling_word(sid, "island", "An ____.", "easier")
-    spelling.complete_daily(db, student, [(c, True)])
+    spelling.complete_daily(db, student, [(c, True, "island")])
     assert len([x for x in db.list_activities(sid) if x["source"] == "spelling"]) == 1
 
 
@@ -182,7 +182,7 @@ def test_attempts_feed_the_parents_daily_flow(db, student):
     sid = student["id"]
     a = db.add_spelling_word(sid, "separate", "Keep them ____.", "on")
     b = db.add_spelling_word(sid, "rhythm", "A steady ____.", "on")
-    spelling.complete_daily(db, student, [(a, True), (b, False)])
+    spelling.complete_daily(db, student, [(a, True, "separate"), (b, False, "rhythem")], duration_seconds=95)
     flow = db.spelling_daily_flow(sid)
     assert len(flow) == 1
     assert flow[0]["answered"] == 2 and flow[0]["correct"] == 1 and flow[0]["kinds"] == "daily"
@@ -197,7 +197,7 @@ def test_complete_quiz_records_score_logs_hours_and_sets_grade(db, student):
     sid = student["id"]
     a = db.add_spelling_word(sid, "necessary", "It is ____.", "on")
     b = db.add_spelling_word(sid, "conscience", "A clear ____.", "stretch")
-    outcome = spelling.complete_quiz(db, student, [(a, True), (b, True)])
+    outcome = spelling.complete_quiz(db, student, [(a, True, "necessary"), (b, True, "conscience")], duration_seconds=240)
     assert outcome == {"correct": 2, "total": 2}
     assert db.spelling_quiz_taken_on(sid, date.today().isoformat())
     assert [x for x in db.list_activities(sid) if x["source"] == "spelling"]
@@ -241,7 +241,7 @@ def test_the_parent_review_shows_the_daily_flow_in_records(monkeypatch, tmp_path
     spelling.save_settings(db, enabled=True)
     a = db.add_spelling_word(student["id"], "separate", "Keep them ____.", "on")
     b = db.add_spelling_word(student["id"], "rhythm", "A steady ____.", "on")
-    spelling.complete_daily(db, student, [(a, True), (b, False)])
+    spelling.complete_daily(db, student, [(a, True, "separate"), (b, False, "rhythem")], duration_seconds=95)
     db.close()
 
     st.cache_resource.clear()
@@ -351,3 +351,63 @@ def test_difficulty_control_lowers_his_level(tmp_path, monkeypatch):
     db = Database(tmp_path / "s.db")
     assert spelling.effective_level(db, db.ensure_default_student()) == "grade 6"
     db.close()
+
+
+# --- seeing his submission + how long it took -----------------------------------
+
+
+def test_daily_submission_stores_exactly_what_he_typed_and_the_time(db, student):
+    """A parent needs to see his real submission and pacing, not just a tally:
+    each word keeps the exact text he typed, and the whole card keeps its
+    wall-clock time. Reported: "can i see his submission? and ... track how long
+    it took him."""
+    sid = student["id"]
+    a = db.add_spelling_word(sid, "separate", "Keep them ____.", "on")
+    b = db.add_spelling_word(sid, "rhythm", "A steady ____.", "on")
+    spelling.complete_daily(
+        db, student, [(a, True, "separate"), (b, False, "rhythem")], duration_seconds=95
+    )
+    rows = {x["word"]: x for x in db.spelling_attempts_on(sid, date.today().isoformat())}
+    assert rows["rhythm"]["typed"] == "rhythem"       # his exact (wrong) spelling
+    assert rows["separate"]["typed"] == "separate"
+    assert rows["rhythm"]["duration_seconds"] == 95
+    assert db.spelling_daily_flow(sid)[0]["seconds"] == 95
+
+
+def test_quiz_submission_stores_its_duration(db, student):
+    sid = student["id"]
+    a = db.add_spelling_word(sid, "necessary", "It is ____.", "on")
+    spelling.complete_quiz(db, student, [(a, True, "necessary")], duration_seconds=240)
+    res = db.list_spelling_quiz_results(sid)
+    assert res and res[0]["duration_seconds"] == 240
+
+
+def test_review_shows_his_typed_submission_and_time(monkeypatch, tmp_path):
+    db_path = tmp_path / "sub.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    spelling.save_settings(db, enabled=True)
+    a = db.add_spelling_word(student["id"], "separate", "Keep them ____.", "on")
+    b = db.add_spelling_word(student["id"], "rhythm", "A steady ____.", "on")
+    spelling.complete_daily(
+        db, student, [(a, True, "separate"), (b, False, "rhythem")], duration_seconds=95
+    )
+    db.close()
+
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+    at = AppTest.from_file(HOME_PATH)
+    at.session_state["parent_unlocked"] = True
+    at.run(timeout=30)
+    at.switch_page(MISSION_CONTROL_PATH)
+    at.session_state["mc_view"] = "records"
+    at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+    text = " ".join(
+        [m.value for m in at.markdown]
+        + [c.value for c in at.caption]
+        + [e.label for e in at.expander]
+    )
+    assert "exactly what he typed" in text          # the submission expander
+    assert "rhythem" in text                        # his actual wrong spelling
+    assert "1 min 35 s" in text                     # 95s rendered as a duration

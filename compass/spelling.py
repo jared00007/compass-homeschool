@@ -262,12 +262,17 @@ def daily_done_today(db: Any, today: str | None = None) -> bool:
 
 
 def complete_daily(
-    db: Any, student: dict[str, Any], answers: list[tuple[int, bool]]
+    db: Any, student: dict[str, Any],
+    answers: list[tuple[int, bool, str]], duration_seconds: int | None = None,
 ) -> None:
-    """Record each word's result (Leitner), then log the day's few minutes to
-    Spelling -- once per day, so re-opening never double-counts."""
-    for word_id, correct in answers:
-        db.record_spelling_attempt(word_id, bool(correct), kind="daily")
+    """Record each word's result (Leitner) -- with exactly what he typed and how
+    long the card took -- then log the day's few minutes to Spelling, once per day
+    so re-opening never double-counts. `answers` is (word_id, correct, typed)."""
+    for word_id, correct, typed in answers:
+        db.record_spelling_attempt(
+            word_id, bool(correct), kind="daily",
+            typed=typed, duration_seconds=duration_seconds,
+        )
     key = _daily_done_key(date.today().isoformat())
     if answers and not db.get_setting(key):
         db.log_activity(
@@ -285,15 +290,20 @@ def complete_daily(
 
 
 def complete_quiz(
-    db: Any, student: dict[str, Any], answers: list[tuple[int, bool]]
+    db: Any, student: dict[str, Any],
+    answers: list[tuple[int, bool, str]], duration_seconds: int | None = None,
 ) -> dict[str, Any]:
-    """Record the quiz: each word's Leitner result, the score row (for the grade),
-    and the assessment time -- once per day. Returns {correct, total}."""
-    for word_id, correct in answers:
-        db.record_spelling_attempt(word_id, bool(correct), kind="quiz")
-    correct = sum(1 for _wid, ok in answers if ok)
+    """Record the quiz: each word's Leitner result and submission (typed + time),
+    the score row (for the grade), and the assessment time -- once per day.
+    `answers` is (word_id, correct, typed). Returns {correct, total}."""
+    for word_id, correct, typed in answers:
+        db.record_spelling_attempt(
+            word_id, bool(correct), kind="quiz",
+            typed=typed, duration_seconds=duration_seconds,
+        )
+    correct = sum(1 for _wid, ok, _t in answers if ok)
     total = len(answers)
-    db.record_spelling_quiz(student["id"], correct, total)
+    db.record_spelling_quiz(student["id"], correct, total, duration_seconds=duration_seconds)
     db.log_activity(
         student_id=student["id"],
         title="Spelling quiz",

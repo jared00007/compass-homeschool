@@ -1566,6 +1566,12 @@ class Database:
         # added for databases whose courses table predates these columns.
         self._ensure_column("courses", "credit_awarded", "INTEGER NOT NULL DEFAULT 0")
         self._ensure_column("courses", "completed_on", "TEXT NOT NULL DEFAULT ''")
+        # Spelling: keep exactly what he typed per word, and how long each
+        # daily/quiz submission took, so a parent can see his real submission and
+        # pacing -- not just a right/wrong tally.
+        self._ensure_column("spelling_attempts", "typed", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column("spelling_attempts", "duration_seconds", "INTEGER")
+        self._ensure_column("spelling_quiz_results", "duration_seconds", "INTEGER")
         # A house number on his neighborhood map -- the real identifier for a
         # customer's house (his private tracker, never the public flyer).
         self._ensure_column("business_houses", "number", "TEXT NOT NULL DEFAULT ''")
@@ -2933,11 +2939,13 @@ class Database:
         ))
 
     def record_spelling_attempt(
-        self, word_id: int, correct: bool, kind: str = "daily"
+        self, word_id: int, correct: bool, kind: str = "daily",
+        typed: str = "", duration_seconds: int | None = None,
     ) -> None:
         """Leitner update for one word: right climbs a box (box 5 retires it),
         wrong drops it to box 1 so it comes back soon. Also logs a per-answer row
-        (word + right/wrong + date) so a parent can see his daily flow."""
+        (word, exactly what he typed, right/wrong, how long the submission took,
+        date) so a parent can see his real submission and pacing, not just a tally."""
         row = _row(self.conn.execute(
             "SELECT * FROM spelling_words WHERE id = ?", (word_id,)
         ))
@@ -2954,10 +2962,13 @@ class Database:
             (box, next_review, 1 if correct else 0, 0 if correct else 1, retired, word_id),
         )
         self.conn.execute(
-            "INSERT INTO spelling_attempts (student_id, word, correct, kind, happened_on) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (row["student_id"], row["word"], 1 if correct else 0,
-             "quiz" if kind == "quiz" else "daily", date.today().isoformat()),
+            "INSERT INTO spelling_attempts "
+            "(student_id, word, typed, correct, kind, duration_seconds, happened_on) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (row["student_id"], row["word"], (typed or "").strip(), 1 if correct else 0,
+             "quiz" if kind == "quiz" else "daily",
+             int(duration_seconds) if duration_seconds is not None else None,
+             date.today().isoformat()),
         )
         self.conn.commit()
 
@@ -2976,7 +2987,8 @@ class Database:
         return _rows(self.conn.execute(
             "SELECT happened_on, COUNT(*) AS answered, "
             "COALESCE(SUM(correct), 0) AS correct, "
-            "GROUP_CONCAT(DISTINCT kind) AS kinds "
+            "GROUP_CONCAT(DISTINCT kind) AS kinds, "
+            "MAX(duration_seconds) AS seconds "  # whole-submission time (same on each row)
             "FROM spelling_attempts WHERE student_id = ? "
             "GROUP BY happened_on ORDER BY happened_on DESC LIMIT ?",
             (student_id, limit),
@@ -3001,13 +3013,16 @@ class Database:
         ))
 
     def record_spelling_quiz(
-        self, student_id: int, correct: int, total: int, taken_on: str | None = None
+        self, student_id: int, correct: int, total: int, taken_on: str | None = None,
+        duration_seconds: int | None = None,
     ) -> int:
         taken_on = taken_on or date.today().isoformat()
         cur = self.conn.execute(
-            "INSERT INTO spelling_quiz_results (student_id, taken_on, correct, total) "
-            "VALUES (?, ?, ?, ?)",
-            (student_id, taken_on, int(correct), int(total)),
+            "INSERT INTO spelling_quiz_results "
+            "(student_id, taken_on, correct, total, duration_seconds) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (student_id, taken_on, int(correct), int(total),
+             int(duration_seconds) if duration_seconds is not None else None),
         )
         self.conn.commit()
         return int(cur.lastrowid)

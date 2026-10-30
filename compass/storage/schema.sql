@@ -174,6 +174,7 @@ CREATE TABLE IF NOT EXISTS spelling_quiz_results (
     taken_on    TEXT NOT NULL,
     correct     INTEGER NOT NULL DEFAULT 0,
     total       INTEGER NOT NULL DEFAULT 0,
+    duration_seconds INTEGER,              -- wall-clock from opening the quiz to turning it in
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -184,8 +185,10 @@ CREATE TABLE IF NOT EXISTS spelling_attempts (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
     word        TEXT NOT NULL,
+    typed       TEXT NOT NULL DEFAULT '',        -- exactly what he submitted for this word
     correct     INTEGER NOT NULL DEFAULT 0,
     kind        TEXT NOT NULL DEFAULT 'daily',   -- daily | quiz
+    duration_seconds INTEGER,                    -- wall-clock for the whole submission this row was part of
     happened_on TEXT NOT NULL,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
