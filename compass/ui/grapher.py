@@ -276,20 +276,17 @@ _EXPLORER_HTML = r"""<!doctype html>
     fitFrame();
   }
 
-  // Grow this component's own iframe to fit its content so it never shows an
-  // inner scrollbar -- the whole tool stays in view and the page scrolls as one,
-  // not a box-within-a-box. The srcdoc frame is same-origin, so frameElement is
-  // reachable; wrapped in try/catch in case a browser blocks it. Reported: "that
-  // whole container for the graphing needs to be in view. no scroller."
+  // Size ONLY this component's own iframe to its content, so it never shows an
+  // inner scrollbar while the normal PAGE scroll still works. The srcdoc frame is
+  // same-origin, so frameElement is reachable; wrapped in try/catch in case a
+  // browser blocks it. Deliberately touches nothing but the iframe -- an earlier
+  // version set ancestor heights to auto and killed the page's own scrolling.
+  // Reported: "now i cant scroll at all and cant even see the whole thing."
   function fitFrame(){
     try{
       var h = Math.ceil(document.body.getBoundingClientRect().height) + 2;
       var fe = window.frameElement;
-      if(fe){
-        fe.style.height = h+'px'; fe.setAttribute('height', h);
-        var w = fe.parentElement, n = 0;
-        while(w && n < 4){ if(w.style){ w.style.height='auto'; w.style.maxHeight='none'; } w = w.parentElement; n++; }
-      }
+      if(fe){ fe.style.height = h+'px'; fe.setAttribute('height', h); }
     }catch(e){}
   }
 
