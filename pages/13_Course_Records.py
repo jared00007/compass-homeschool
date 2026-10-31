@@ -378,19 +378,30 @@ with list_tab:
                     f"actually done{hours_note}."
                 )
                 # Issuing a full credit on a barely-started course is almost always a
-                # misclick (a 1.0 credit ≈ a full ~150-hour course). Flag it, but
-                # leave it the parent's call. Reported: "just allows me to give a
-                # credit but the course isnt completed?"
-                if target_hours and hours < target_hours * 0.5:
+                # misclick (a 1.0 credit ≈ a full ~150-hour course). When the course
+                # clearly isn't done, don't leave it a one-tap primary button: warn,
+                # demote it, and make the parent tick a confirmation first. Reported:
+                # "it looks like the hours have not fully logged but i can seem to do
+                # it?" / "just allows me to give a credit but the course isnt completed?"
+                looks_unfinished = bool(target_hours) and hours < target_hours * 0.5
+                issue_confirmed = True
+                if looks_unfinished:
                     st.warning(
                         f"Heads up: only **{hours:g} of {target_hours:g} hours** are "
                         f"logged, so this course looks **unfinished**. You can still "
                         "issue the credit if you mean to — but if you were trying to "
                         "add hours, use the **“Add … hours”** button up top instead."
                     )
+                    issue_confirmed = st.checkbox(
+                        f"Yes — I know only {hours:g} of {target_hours:g} hours are "
+                        "logged; mark this course finished and issue the credit anyway.",
+                        key=f"issue_confirm_{course['id']}",
+                    )
                 if st.button(
                     f"🎓 Issue {course['credit_value']:g} credit (mark complete)",
-                    key=f"issue_{course['id']}", type="primary",
+                    key=f"issue_{course['id']}",
+                    type="secondary" if looks_unfinished else "primary",
+                    disabled=not issue_confirmed,
                 ):
                     db.update_course(
                         course["id"],

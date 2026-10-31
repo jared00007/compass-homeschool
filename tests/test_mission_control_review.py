@@ -1137,3 +1137,53 @@ def test_the_open_course_nudge_expands_and_scrolls_to_it(monkeypatch, tmp_path):
     course = db.list_courses(db.ensure_default_student()["id"])[0]
     assert db.course_minutes(course["id"]) == 25 * 60
     db.close()
+
+
+def test_issuing_credit_on_an_unfinished_course_needs_an_explicit_confirm(monkeypatch, tmp_path):
+    """A 1.0-credit course (≈150 hrs) with only a few hours logged looks
+    unfinished, so "Issue credit" must not be a one-tap primary button -- it's
+    disabled behind a confirmation tick, and only a deliberate confirm issues it.
+    Reported: "the hours have not fully logged but i can seem to do it?"."""
+    st.cache_resource.clear()
+    db_path = tmp_path / "issue.db"
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", str(db_path))
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    start, end = db.school_year_bounds()
+    # Well under half the 150-hour target -> "looks unfinished". Logged before the
+    # course so create_course auto-credits this matching activity to it.
+    db.log_activity(student["id"], "The rock cycle", "core", "science", 5 * 60,
+                    {"science": 5 * 60}, occurred_on=start)
+    cid = db.create_course(student["id"], "Middle School Big History", "science",
+                           start, end, credit_value=1.0)
+    assert db.course_minutes(cid) == 5 * 60  # the 5 hrs are counted
+    db.close()
+
+    at = AppTest.from_file(HOME_PATH)
+    at.session_state["parent_unlocked"] = True
+    at.session_state[f"course_open_{cid}"] = True  # start the card expanded
+    at.run(timeout=30)
+    at.switch_page(str(REPO_ROOT / "pages" / "13_Course_Records.py"))
+    at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+
+    # The unfinished warning shows, and the issue button is present but locked.
+    assert any("looks" in (w.value or "") and "unfinished" in (w.value or "")
+               for w in at.warning)
+    issue = at.button(key=f"issue_{cid}")
+    assert issue.disabled, "issue-credit must be locked until the parent confirms"
+    # Nothing is awarded while it's locked (AppTest won't even click a disabled one).
+    db = Database(db_path)
+    assert not db.list_courses(student["id"])[0]["credit_awarded"]
+    db.close()
+
+    # Tick the confirmation -> the button unlocks -> clicking it issues the credit.
+    at.checkbox(key=f"issue_confirm_{cid}").check().run(timeout=30)
+    assert not at.button(key=f"issue_{cid}").disabled
+    at.button(key=f"issue_{cid}").click().run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+
+    db = Database(db_path)
+    course = db.list_courses(student["id"])[0]
+    assert course["credit_awarded"], "a confirmed issue should award the credit"
+    db.close()
