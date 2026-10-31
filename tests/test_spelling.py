@@ -295,8 +295,10 @@ def test_the_daily_card_shows_on_his_home_when_enabled(monkeypatch, tmp_path):
     st.cache_resource.clear()
     monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
     # Force a non-quiz day so the daily card (not the quiz) renders, and skip the
-    # brand-new-DB first-day celebration that otherwise st.stop()s the page.
+    # brand-new-DB first-day celebration that otherwise st.stop()s the page. Pin the
+    # practice mode to dictation so the type-it boxes are deterministic.
     with patch("compass.spelling.is_quiz_day", return_value=False), \
+         patch("compass.spelling.practice_mode_for", return_value="dictation"), \
          patch("compass.ui.render_first_day_celebration", return_value=False):
         at = AppTest.from_file(HOME_PATH)
         at.run(timeout=30)
@@ -382,7 +384,8 @@ def test_daily_card_offers_a_second_try_and_counts_a_self_fix(monkeypatch, tmp_p
 
     st.cache_resource.clear()
     monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
-    with patch("compass.ui.render_first_day_celebration", return_value=False):
+    with patch("compass.ui.render_first_day_celebration", return_value=False), \
+         patch("compass.spelling.practice_mode_for", return_value="dictation"):
         at = AppTest.from_file(HOME_PATH)
         at.run(timeout=30)
         # One right, one wrong on the first check.
@@ -409,6 +412,67 @@ def test_daily_card_offers_a_second_try_and_counts_a_self_fix(monkeypatch, tmp_p
     assert by_word["island"]["times_correct"] == 1 and by_word["island"]["times_missed"] == 0
     assert by_word["rhythm"]["times_correct"] == 1     # the first-try word too
     db.close()
+
+
+# --- practice game modes (Stage B) ----------------------------------------------
+
+
+def test_practice_mode_scaffolds_by_leitner_box():
+    """A new/shaky word (low box) gets a supported mode; a strong word (high box)
+    gets straight dictation."""
+    assert spelling.practice_mode_for({"id": 1, "box": 1}, "d") in ("choose", "missing")
+    assert spelling.practice_mode_for({"id": 1, "box": 5}, "d") == "dictation"
+    # stable within a day, for a given word
+    assert spelling.practice_mode_for({"id": 9, "box": 2}, "d") \
+        == spelling.practice_mode_for({"id": 9, "box": 2}, "d")
+
+
+def test_word_games_are_well_formed():
+    """Scramble, mask, and the multiple-choice distractors are all valid: the
+    scramble isn't the word, the mask keeps the ends, and the options always
+    include the real word and never a duplicate."""
+    for w in ("rhythm", "island", "separate", "necessary"):
+        assert spelling.scramble_word(w, "d") != w
+        assert sorted(spelling.scramble_word(w, "d")) == sorted(w)  # same letters
+        masked = spelling.mask_word(w, "d").replace(" ", "")
+        assert masked[0] == w[0] and masked[-1] == w[-1] and "_" in masked
+        opts = spelling.choice_options(w, day="d")
+        assert w in opts and len(set(opts)) == len(opts)
+        assert w not in spelling.misspellings(w, 3, "d")
+
+
+def test_choose_mode_word_renders_a_radio_not_a_text_box(monkeypatch, tmp_path):
+    """A box-1 word on the daily card can come up as 'pick the correct spelling' --
+    a radio of options, not a type-it box."""
+    from compass import auth
+
+    db_path = tmp_path / "modes.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    import datetime
+    today_wd = datetime.date.today().weekday()
+    spelling.save_settings(db, enabled=True, quiz_day=(today_wd + 1) % 7, daily_count=5)
+    # Several box-1 words so at least one lands on 'choose' (box 1 -> choose|missing).
+    for w in ("rhythm", "island", "separate", "necessary", "receive"):
+        db.add_spelling_word(student["id"], w, f"a ____ ({w})", "on")
+    db.close()
+
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+    with patch("compass.ui.render_first_day_celebration", return_value=False), \
+         patch("compass.spelling.practice_mode_for", return_value="choose"):
+        at = AppTest.from_file(HOME_PATH)
+        at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+    # Every word is 'pick the correct spelling' -> a spelling radio each, no type boxes.
+    pick_radios = [r for r in at.radio if (r.key or "").startswith("spd_pick_")]
+    assert len(pick_radios) == 5
+    assert not any((t.key or "").startswith("spd_in_") for t in at.text_input)
+    labels = " ".join(m.value for m in at.markdown)
+    assert "Pick the correct spelling" in labels
+    # the real word is among the options he can pick
+    assert "rhythm" in [o for r in pick_radios for o in r.options]
 
 
 # --- difficulty / level control -------------------------------------------------

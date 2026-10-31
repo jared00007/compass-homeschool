@@ -366,3 +366,127 @@ def complete_quiz(
         source="spelling",
     )
     return {"correct": correct, "total": total}
+
+
+# --- practice game modes (daily card only) --------------------------------------
+#
+# The daily card used to be the same "hear it, type it" every day. These give it
+# variety AND scaffold by how shaky the word is: a brand-new / just-missed word
+# (low Leitner box) gets an easier, supported mode (pick the right spelling, or
+# fill the blanks); as it climbs boxes the support falls away until it's full
+# dictation from memory. The weekly quiz is always dictation -- it's the test.
+# All pure functions, seeded by the word + day so a word's mode is stable within
+# a day (reruns don't reshuffle) but varies day to day.
+
+import random as _random
+
+PRACTICE_MODES = ("choose", "missing", "unscramble", "dictation")
+
+_MODE_LABELS = {
+    "choose": "✅ Pick the correct spelling",
+    "missing": "🧩 Fill in the missing letters",
+    "unscramble": "🔀 Unscramble the letters",
+    "dictation": "🔊 Hear it, then spell it",
+}
+
+
+def _seed(*parts: Any) -> _random.Random:
+    return _random.Random("|".join(str(p) for p in parts))
+
+
+def practice_mode_for(word: dict[str, Any], day: str) -> str:
+    """Pick the practice mode for one word today, scaffolded by its Leitner box:
+    box 1 (new/just-missed) -> recognition or fill-the-blanks; box 2-3 -> a mix up
+    to dictation; box 4+ -> straight dictation."""
+    box = int(word.get("box") or 1)
+    if box <= 1:
+        pool = ["choose", "missing"]
+    elif box <= 3:
+        pool = ["missing", "unscramble", "dictation"]
+    else:
+        pool = ["dictation"]
+    return _seed(word.get("id"), day).choice(pool)
+
+
+def mode_label(mode: str) -> str:
+    return _MODE_LABELS.get(mode, _MODE_LABELS["dictation"])
+
+
+def scramble_word(word: str, day: str = "") -> str:
+    """The word's letters shuffled into a jumble (never back to the word itself)."""
+    word = (word or "").strip()
+    if len(word) < 2:
+        return word
+    rng = _seed(word, day)
+    letters = list(word)
+    for _ in range(16):
+        rng.shuffle(letters)
+        candidate = "".join(letters)
+        if candidate != word:
+            return candidate
+    return "".join(reversed(word))
+
+
+def mask_word(word: str, day: str = "") -> str:
+    """The word with ~40% of its *interior* letters blanked to underscores,
+    spaced out so the blanks are obvious (r h y t h m -> r _ y _ h m)."""
+    word = (word or "").strip()
+    if len(word) <= 2:
+        return " ".join(word)
+    rng = _seed(word, day)
+    interior = list(range(1, len(word) - 1))
+    rng.shuffle(interior)
+    blanks = max(1, round(len(word) * 0.4))
+    chars = list(word)
+    for i in interior[:blanks]:
+        chars[i] = "_"
+    return " ".join(chars)
+
+
+def _perturb(word: str, rng: _random.Random) -> str:
+    chars = list(word)
+    ops = ["swap", "double", "vowel"]
+    if len(chars) >= 4:
+        ops.append("drop")
+    op = rng.choice(ops)
+    if op == "swap" and len(chars) >= 2:
+        i = rng.randrange(len(chars) - 1)
+        chars[i], chars[i + 1] = chars[i + 1], chars[i]
+    elif op == "drop" and len(chars) >= 4:
+        chars.pop(rng.randrange(1, len(chars) - 1))
+    elif op == "double":
+        i = rng.randrange(len(chars))
+        chars.insert(i, chars[i])
+    elif op == "vowel":
+        vowels = "aeiou"
+        idxs = [i for i, c in enumerate(chars) if c in vowels]
+        if idxs:
+            i = rng.choice(idxs)
+            chars[i] = rng.choice([v for v in vowels if v != chars[i]])
+    return "".join(chars)
+
+
+def misspellings(word: str, n: int = 3, day: str = "") -> list[str]:
+    """`n` plausible WRONG spellings of the word (letter swaps, a dropped or
+    doubled letter, a vowel swap) -- the distractors for the 'pick the correct
+    spelling' mode. Never includes the real word."""
+    word = (word or "").strip()
+    rng = _seed(word, day, "miss")
+    out: list[str] = []
+    seen = {word}
+    tries = 0
+    while len(out) < n and tries < 80:
+        tries += 1
+        cand = _perturb(word, rng)
+        if cand and cand not in seen:
+            seen.add(cand)
+            out.append(cand)
+    return out
+
+
+def choice_options(word: str, n_distractors: int = 3, day: str = "") -> list[str]:
+    """The shuffled option list for 'pick the correct spelling': the real word plus
+    up to `n_distractors` plausible misspellings."""
+    opts = [word] + misspellings(word, n_distractors, day)
+    _seed(word, day, "opts").shuffle(opts)
+    return opts

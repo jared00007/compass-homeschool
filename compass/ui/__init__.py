@@ -6596,20 +6596,47 @@ def _spelling_answer_rows(
     the whole thing. Plain inputs + one Check button means Enter just moves on.
     `study=True` (daily practice) adds the 'study this word' learn-first step; the
     quiz leaves it off so it stays a real test."""
+    from compass import spelling
+
+    today = date.today().isoformat()
+    big = "font-size:22px;letter-spacing:5px;font-weight:800;margin:2px 0;"
     typed: dict[int, str] = {}
     for index, word in enumerate(words, start=1):
+        # Variety + scaffolding on the daily card; the quiz is always dictation.
+        mode = spelling.practice_mode_for(word, today) if study else "dictation"
+        clue = md(word["clue"]) if word.get("clue") else "_Say the word, then spell it._"
         row = st.columns([1, 6])
         with row[0]:
             _spelling_speak_button(word["word"])
-        clue = md(word["clue"]) if word.get("clue") else "_Say the word, then spell it._"
-        row[1].markdown(f"**{index}.** {clue}")
-        if study:
-            with row[1]:
+        with row[1]:
+            st.markdown(f"**{index}.** " + (spelling.mode_label(mode) if study else clue))
+            if mode == "missing":
+                st.markdown(
+                    f"<div style='{big}'>{html.escape(spelling.mask_word(word['word'], today))}"
+                    "</div>", unsafe_allow_html=True)
+                st.caption(clue)
+            elif mode == "unscramble":
+                st.markdown(
+                    f"<div style='{big}'>"
+                    f"{html.escape(spelling.scramble_word(word['word'], today).upper())}</div>",
+                    unsafe_allow_html=True)
+                st.caption(clue)
+            elif mode == "choose":
+                st.caption(clue)
+            if study:
                 _render_spelling_study(word)
-        typed[word["id"]] = row[1].text_input(
-            f"word {index}", key=f"{key_prefix}_in_{word['id']}",
-            label_visibility="collapsed", placeholder=f"type word {index} here",
-        )
+            if mode == "choose":
+                picked = st.radio(
+                    f"word {index}", spelling.choice_options(word["word"], day=today),
+                    index=None, key=f"{key_prefix}_pick_{word['id']}",
+                    label_visibility="collapsed",
+                )
+                typed[word["id"]] = picked or ""
+            else:
+                typed[word["id"]] = st.text_input(
+                    f"word {index}", key=f"{key_prefix}_in_{word['id']}",
+                    label_visibility="collapsed", placeholder=f"spell word {index} here",
+                )
     return typed
 
 
