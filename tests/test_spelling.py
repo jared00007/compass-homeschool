@@ -308,6 +308,109 @@ def test_the_daily_card_shows_on_his_home_when_enabled(monkeypatch, tmp_path):
         assert any((k or "").startswith("spd_in_") for k in keys)
 
 
+# --- learn-first study step + letter-level feedback (Stage A) --------------------
+
+
+def test_letter_diff_highlights_the_missed_letters():
+    """A miss should teach: the correct word comes back with the specific letters
+    he got wrong highlighted, not just 'wrong'. Reported: 'legit top notch for
+    learning'."""
+    from compass.ui import _spelling_letter_diff_html
+
+    html = _spelling_letter_diff_html("rythm", "rhythm")
+    # every letter of the correct word is present, and the missing 'h' is wrapped
+    assert "rhythm".replace("h", "") in html.replace("<span", "").replace("</span>", "") \
+        or "ythm" in html
+    assert "<span" in html and ">h<" in html  # the h is the highlighted letter
+    # a perfect answer highlights nothing
+    assert "<span" not in _spelling_letter_diff_html("island", "island")
+    # a blank answer highlights the whole word
+    assert _spelling_letter_diff_html("", "island").count("<span") == 1
+
+
+def test_daily_card_has_a_study_step_but_the_quiz_does_not(monkeypatch, tmp_path):
+    """The daily practice card carries a 'study this word' step (Look-Cover-Write-
+    Check); the weekly quiz stays a clean test with no study aid."""
+    from compass import auth
+
+    def render(quiz_day_offset, *, expect_quiz):
+        db_path = tmp_path / f"study_{quiz_day_offset}.db"
+        db = Database(db_path)
+        student = db.ensure_default_student()
+        auth.set_pin(db, "1234")
+        import datetime
+        today_wd = datetime.date.today().weekday()
+        spelling.save_settings(db, enabled=True,
+                               quiz_day=(today_wd if expect_quiz else (today_wd + 1) % 7))
+        db.add_spelling_word(student["id"], "rhythm", "a steady ____", "on",
+                             definition="a repeated beat", syllables="rhy-thm")
+        db.close()
+        st.cache_resource.clear()
+        monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+        with patch("compass.ui.render_first_day_celebration", return_value=False):
+            at = AppTest.from_file(HOME_PATH)
+            at.run(timeout=30)
+        assert not at.exception, [e.message for e in at.exception]
+        return " ".join(
+            (getattr(e, "label", "") or "") for e in list(at.expander)
+        )
+
+    daily_expanders = render(1, expect_quiz=False)
+    assert "Study this word" in daily_expanders   # the learn-first step is on the daily card
+
+    quiz_expanders = render(0, expect_quiz=True)
+    assert "Study this word" not in quiz_expanders  # ...but never on the graded quiz
+
+
+def test_daily_card_offers_a_second_try_and_counts_a_self_fix(monkeypatch, tmp_path):
+    """A cold miss on the daily card isn't an instant fail: he gets a fix-up round
+    with the correct spelling shown, and fixing it counts. Reported: 'gentle
+    two-try scaffold instead of instant fail'."""
+    from compass import auth
+
+    db_path = tmp_path / "twotry.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    auth.set_pin(db, "1234")
+    import datetime
+    today_wd = datetime.date.today().weekday()
+    spelling.save_settings(db, enabled=True, quiz_day=(today_wd + 1) % 7, daily_count=2)
+    db.add_spelling_word(student["id"], "rhythm", "a steady ____", "on")
+    db.add_spelling_word(student["id"], "island", "an ____ in the sea", "on")
+    words = {w["word"]: w["id"] for w in db.list_spelling_words(student["id"])}
+    db.close()
+
+    st.cache_resource.clear()
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", db_path)
+    with patch("compass.ui.render_first_day_celebration", return_value=False):
+        at = AppTest.from_file(HOME_PATH)
+        at.run(timeout=30)
+        # One right, one wrong on the first check.
+        at.text_input(key=f"spd_in_{words['rhythm']}").set_value("rhythm")
+        at.text_input(key=f"spd_in_{words['island']}").set_value("iland")  # missing s
+        at.button(key="spd_submit").click().run(timeout=30)
+        assert not at.exception, [e.message for e in at.exception]
+
+        # It did NOT finalize -- the fix-up round is showing, not the done state.
+        from compass import spelling as sp
+        assert not sp.daily_done_today(Database(db_path))
+        fix_inputs = [t.key for t in at.text_input if (t.key or "").startswith("spd_fix_in_")]
+        assert fix_inputs == [f"spd_fix_in_{words['island']}"]  # only the missed word
+
+        # Fix it on the second look -> it counts.
+        at.text_input(key=f"spd_fix_in_{words['island']}").set_value("island")
+        at.button(key="spd_fix_submit").click().run(timeout=30)
+        assert not at.exception, [e.message for e in at.exception]
+
+    db = Database(db_path)
+    assert sp.daily_done_today(db)                      # now it's finalized
+    # the self-fixed word counts as correct (climbed a box, no miss recorded)
+    by_word = {w["word"]: w for w in db.list_spelling_words(student["id"], include_retired=True)}
+    assert by_word["island"]["times_correct"] == 1 and by_word["island"]["times_missed"] == 0
+    assert by_word["rhythm"]["times_correct"] == 1     # the first-try word too
+    db.close()
+
+
 # --- difficulty / level control -------------------------------------------------
 
 

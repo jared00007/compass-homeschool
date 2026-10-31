@@ -154,6 +154,10 @@ CREATE TABLE IF NOT EXISTS spelling_words (
     word           TEXT NOT NULL,
     clue           TEXT NOT NULL DEFAULT '',
     tier           TEXT NOT NULL DEFAULT 'on',   -- easier | on | stretch
+    definition     TEXT NOT NULL DEFAULT '',     -- study step: kid-friendly meaning
+    syllables      TEXT NOT NULL DEFAULT '',     -- study step: syllable breakdown (rhy-thm)
+    word_parts     TEXT NOT NULL DEFAULT '',     -- study step: root/prefix/suffix note
+    memory_trick   TEXT NOT NULL DEFAULT '',     -- study step: mnemonic / how to remember it
     box            INTEGER NOT NULL DEFAULT 1 CHECK (box BETWEEN 1 AND 5),
     next_review_on TEXT NOT NULL,
     times_correct  INTEGER NOT NULL DEFAULT 0,

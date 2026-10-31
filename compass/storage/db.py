@@ -1572,6 +1572,13 @@ class Database:
         self._ensure_column("spelling_attempts", "typed", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("spelling_attempts", "duration_seconds", "INTEGER")
         self._ensure_column("spelling_quiz_results", "duration_seconds", "INTEGER")
+        # Spelling "study step": each word can carry how to learn it -- a meaning,
+        # a syllable breakdown, its word-parts (root/prefix/suffix), and a memory
+        # trick. Optional (older rows and a thin generation just leave them blank).
+        self._ensure_column("spelling_words", "definition", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column("spelling_words", "syllables", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column("spelling_words", "word_parts", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column("spelling_words", "memory_trick", "TEXT NOT NULL DEFAULT ''")
         # A house number on his neighborhood map -- the real identifier for a
         # customer's house (his private tracker, never the public flyer).
         self._ensure_column("business_houses", "number", "TEXT NOT NULL DEFAULT ''")
@@ -2873,18 +2880,26 @@ class Database:
     # -- spelling (the self-running Spelling track) ---------------------------
 
     def add_spelling_word(
-        self, student_id: int, word: str, clue: str = "", tier: str = "on"
+        self, student_id: int, word: str, clue: str = "", tier: str = "on",
+        *, definition: str = "", syllables: str = "", word_parts: str = "",
+        memory_trick: str = "",
     ) -> int:
         """Add one generated spelling word to his pool. New words start due today
-        (box 1). A word already in the pool is left as-is (duplicates ignored)."""
+        (box 1). A word already in the pool is left as-is (duplicates ignored).
+        The optional study fields (meaning, syllable breakdown, word-parts, memory
+        trick) power the 'study this word' step; they're fine left blank."""
         tier = tier if tier in ("easier", "on", "stretch") else "on"
         cur = self.conn.execute(
-            "INSERT INTO spelling_words (student_id, word, clue, tier, box, next_review_on) "
-            "VALUES (?, ?, ?, ?, 1, date('now')) "
+            "INSERT INTO spelling_words "
+            "(student_id, word, clue, tier, box, next_review_on, "
+            " definition, syllables, word_parts, memory_trick) "
+            "VALUES (?, ?, ?, ?, 1, date('now'), ?, ?, ?, ?) "
             "ON CONFLICT(student_id, word) DO NOTHING",
             # Stored lowercase so the pool dedups case-insensitively (the generator
             # already lowercases; a hand-added "Separate" shouldn't double "separate").
-            (student_id, word.strip().lower(), clue.strip(), tier),
+            (student_id, word.strip().lower(), clue.strip(), tier,
+             definition.strip(), syllables.strip(), word_parts.strip(),
+             memory_trick.strip()),
         )
         self.conn.commit()
         return int(cur.lastrowid or 0)

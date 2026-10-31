@@ -156,8 +156,42 @@ SPELLING_SCHEMA: dict[str, Any] = {
                             "at grade, 'stretch' = a bit above."
                         ),
                     },
+                    "definition": {
+                        "type": "string",
+                        "description": (
+                            "A short, kid-friendly meaning of the word (one plain "
+                            "sentence, no jargon). This is shown in the 'study the word' "
+                            "step, so it CAN name the word."
+                        ),
+                    },
+                    "syllables": {
+                        "type": "string",
+                        "description": (
+                            "The word broken into syllables with hyphens, e.g. "
+                            "'rhy-thm', 'def-i-nite-ly'. Helps him spell it chunk by chunk."
+                        ),
+                    },
+                    "word_parts": {
+                        "type": "string",
+                        "description": (
+                            "A brief note on the word's structure that aids spelling: a "
+                            "root/prefix/suffix or a related word family, e.g. "
+                            "'sign + -ature; keep the silent g from sign' or "
+                            "'un- + necessary (one n, two s, two c? no: 2 c, 2 s)'. "
+                            "Keep it one short line; '' if nothing useful."
+                        ),
+                    },
+                    "memory_trick": {
+                        "type": "string",
+                        "description": (
+                            "A short, sticky memory trick / mnemonic for the tricky part "
+                            "of the spelling, e.g. 'necessary: one Collar, two Sleeves' or "
+                            "'there's A RAT in sepARATe'. '' if none fits."
+                        ),
+                    },
                 },
-                "required": ["word", "clue", "tier"],
+                "required": ["word", "clue", "tier", "definition", "syllables",
+                             "word_parts", "memory_trick"],
                 "additionalProperties": False,
             },
         }
@@ -176,7 +210,13 @@ def _generation_prompt(level: str, n: int, exclude: set[str]) -> tuple[str, str]
         f"(confidence), most right ON grade, and one or two a STRETCH above. For each "
         f"word write one short, natural sentence that uses it, with the word replaced by "
         f"a blank '____' so the sentence gives meaning without revealing the spelling. "
-        f"Words must be single words, lowercase, and correctly spelled."
+        f"Words must be single words, lowercase, and correctly spelled.\n\n"
+        f"ALSO, for each word, fill the study fields that help a kid actually LEARN to "
+        f"spell it: a plain kid-friendly definition; the word split into syllables with "
+        f"hyphens; a one-line note on its word-parts or the tricky letters; and a short, "
+        f"sticky memory trick for the hard part. These are shown only in a 'study the "
+        f"word' step, so they may reveal the word itself. If a field doesn't apply, use "
+        f"an empty string."
     )
     user = f"Give me {n} spelling words now."
     if avoid:
@@ -208,6 +248,10 @@ def generate_words(
             "word": word.lower(),
             "clue": str(item.get("clue") or "").strip(),
             "tier": tier if tier in ("easier", "on", "stretch") else "on",
+            "definition": str(item.get("definition") or "").strip(),
+            "syllables": str(item.get("syllables") or "").strip(),
+            "word_parts": str(item.get("word_parts") or "").strip(),
+            "memory_trick": str(item.get("memory_trick") or "").strip(),
         })
     return out
 
@@ -237,7 +281,13 @@ def ensure_pool(db: Any, student: dict[str, Any], *, minimum: int | None = None)
     for item in batch:
         if item["word"] in existing:
             continue
-        if db.add_spelling_word(student["id"], item["word"], item["clue"], item["tier"]):
+        if db.add_spelling_word(
+            student["id"], item["word"], item["clue"], item["tier"],
+            definition=item.get("definition", ""),
+            syllables=item.get("syllables", ""),
+            word_parts=item.get("word_parts", ""),
+            memory_trick=item.get("memory_trick", ""),
+        ):
             added += 1
             existing.add(item["word"])
     return added

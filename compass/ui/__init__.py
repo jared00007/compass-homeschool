@@ -6462,11 +6462,140 @@ def _spelling_speak_button(word: str, *, height: int = 46) -> None:
     )
 
 
-def _spelling_answer_rows(words: list[dict[str, Any]], key_prefix: str) -> dict[int, str]:
+# The "study the word" warm-up: a self-contained Look -> Cover -> Write -> Check
+# flashcard (the method teachers actually use). It flashes the word, hides it,
+# then he spells it from memory and gets instant letter-level feedback -- all in
+# the browser, nothing recorded. It's a LEARNING aid on the daily practice card
+# only; the weekly quiz has no study step. The word rides in JS (revealed on the
+# flash by design, so no secrecy needed).
+_SPELLING_STUDY_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
+<style>
+ *{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+ body{margin:0;background:#FFFBF0;color:#241C12;}
+ .wrap{padding:4px 2px;}
+ .btns{display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
+ button{border:1px solid #216a8f;background:#216a8f;color:#fff;font-weight:800;
+   font-size:13px;padding:8px 11px;border-radius:9px;cursor:pointer;}
+ button.ghost{background:#fff;color:#216a8f;}
+ button:active{transform:translateY(1px);}
+ #wordline{text-align:center;margin:6px 0;}
+ #word{font-size:34px;font-weight:800;letter-spacing:3px;}
+ #bar{height:6px;background:#E7DFC9;border-radius:3px;overflow:hidden;margin:8px auto 0;max-width:260px;}
+ #barfill{height:100%;background:#F2B705;width:100%;}
+ #practice{display:none;margin-top:6px;}
+ #pin{width:100%;font-size:18px;padding:8px;border-radius:8px;border:2px solid #216a8f;letter-spacing:1px;}
+ #pfb{margin-top:7px;font-size:14px;min-height:20px;}
+ .hl{background:#ffdf7e;color:#7a2e00;font-weight:800;border-radius:3px;padding:0 2px;}
+ .ok{color:#2F9B68;font-weight:800;} .no{color:#C43B32;font-weight:700;}
+ .tiny{color:#8A7A5E;font-size:12px;}
+</style></head><body>
+<div class="wrap">
+ <div class="btns">
+   <button id="say">🔊 Say it</button>
+   <button id="flash" class="ghost">👁️ Flash &amp; cover</button>
+ </div>
+ <div id="wordline" style="display:none;">
+   <div id="word"></div>
+   <div id="bar"><div id="barfill"></div></div>
+   <div class="tiny">Look hard — it hides in a moment, then you spell it.</div>
+ </div>
+ <div id="practice">
+   <input id="pin" placeholder="spell it from memory" autocomplete="off"
+     autocorrect="off" autocapitalize="off" spellcheck="false">
+   <div style="display:flex;gap:8px;margin-top:7px;">
+     <button id="check">✓ Check</button>
+     <button id="again" class="ghost">👁️ Flash again</button>
+   </div>
+   <div id="pfb"></div>
+   <div class="tiny" style="margin-top:6px;">Just practice — when you've got it, spell it in the box below to turn it in.</div>
+ </div>
+</div>
+<script>
+var DATA=__DATA__; var W=String(DATA.word||"");
+var word=document.getElementById('word'), wordline=document.getElementById('wordline');
+var practice=document.getElementById('practice'), pin=document.getElementById('pin');
+var pfb=document.getElementById('pfb'), barfill=document.getElementById('barfill');
+function say(){var u=new SpeechSynthesisUtterance(W);u.rate=0.82;
+  window.speechSynthesis.cancel();window.speechSynthesis.speak(u);}
+document.getElementById('say').onclick=say;
+var timer=null;
+function doFlash(){
+  pfb.innerHTML=''; pin.value='';
+  word.textContent=W; wordline.style.display='block'; practice.style.display='none';
+  barfill.style.transition='none'; barfill.style.width='100%'; void barfill.offsetWidth;
+  say();
+  var MS=Math.min(4200, Math.max(2600, 650*W.length));
+  barfill.style.transition='width '+MS+'ms linear'; barfill.style.width='0%';
+  clearTimeout(timer);
+  timer=setTimeout(function(){wordline.style.display='none';
+    practice.style.display='block'; pin.focus();}, MS);
+}
+document.getElementById('flash').onclick=doFlash;
+document.getElementById('again').onclick=doFlash;
+function diff(t,c){ // correct word with the letters he missed highlighted (LCS)
+  t=(t||'').toLowerCase(); var cl=c.toLowerCase();
+  var dp=[]; for(var a=0;a<=t.length;a++){dp.push(new Array(cl.length+1).fill(0));}
+  for(var a=t.length-1;a>=0;a--){for(var b=cl.length-1;b>=0;b--){
+    dp[a][b]=(t[a]===cl[b])?dp[a+1][b+1]+1:Math.max(dp[a+1][b],dp[a][b+1]);}}
+  var res='',i=0,j=0;
+  while(j<cl.length){
+    if(i<t.length && t[i]===cl[j]){res+=c[j];i++;j++;}
+    else if(i<t.length && dp[i+1][j]>=dp[i][j+1]){i++;}
+    else{res+='<span class="hl">'+c[j]+'</span>';j++;}
+  }
+  return res;
+}
+document.getElementById('check').onclick=function(){
+  var v=(pin.value||'').trim();
+  if(v.toLowerCase()===W.toLowerCase()){
+    pfb.innerHTML='<span class="ok">✅ Yes! You spelled it. Now do it in the box below.</span>';
+  } else {
+    pfb.innerHTML='<span class="no">Not yet</span> — it\'s <b>'+diff(v,W)+'</b>.';
+  }
+};
+pin.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();
+  document.getElementById('check').click();}});
+['paste','drop'].forEach(function(ev){pin.addEventListener(ev,function(e){e.preventDefault();});});
+</script></body></html>"""
+
+
+def _spelling_study_widget(word: dict[str, Any]) -> None:
+    """The client-side Look-Cover-Write-Check flashcard for one word (daily only)."""
+    import json
+    import streamlit.components.v1 as components
+
+    components.html(
+        _SPELLING_STUDY_HTML.replace("__DATA__", json.dumps({"word": str(word["word"])})),
+        height=220,
+    )
+
+
+def _render_spelling_study(word: dict[str, Any]) -> None:
+    """A per-word 'study it' step for the daily card: the meaning, syllable
+    breakdown, word-parts and a memory trick (whatever the generator gave us),
+    plus the flash-and-spell warm-up. Reveals the word on purpose -- it's how you
+    LEARN a word before testing it. The weekly quiz never shows this."""
+    with st.expander("📖 Study this word first (flash it, then spell it)"):
+        if word.get("definition"):
+            st.markdown(f"💡 **Means:** {md(word['definition'])}")
+        if word.get("syllables"):
+            st.markdown(f"🧩 **Say it in chunks:** `{md(word['syllables'])}`")
+        if word.get("word_parts"):
+            st.markdown(f"🔡 **Word parts:** {md(word['word_parts'])}")
+        if word.get("memory_trick"):
+            st.markdown(f"🧠 **Trick to remember:** {md(word['memory_trick'])}")
+        _spelling_study_widget(word)
+
+
+def _spelling_answer_rows(
+    words: list[dict[str, Any]], key_prefix: str, *, study: bool = False
+) -> dict[int, str]:
     """Render one numbered row per word (number, speak button, clue, type-it box)
     and return {word_id: typed answer}. NOT inside an st.form on purpose -- a form
     submits on Enter, so typing the first word and pressing Enter used to turn in
-    the whole thing. Plain inputs + one Check button means Enter just moves on."""
+    the whole thing. Plain inputs + one Check button means Enter just moves on.
+    `study=True` (daily practice) adds the 'study this word' learn-first step; the
+    quiz leaves it off so it stays a real test."""
     typed: dict[int, str] = {}
     for index, word in enumerate(words, start=1):
         row = st.columns([1, 6])
@@ -6474,11 +6603,35 @@ def _spelling_answer_rows(words: list[dict[str, Any]], key_prefix: str) -> dict[
             _spelling_speak_button(word["word"])
         clue = md(word["clue"]) if word.get("clue") else "_Say the word, then spell it._"
         row[1].markdown(f"**{index}.** {clue}")
+        if study:
+            with row[1]:
+                _render_spelling_study(word)
         typed[word["id"]] = row[1].text_input(
             f"word {index}", key=f"{key_prefix}_in_{word['id']}",
             label_visibility="collapsed", placeholder=f"type word {index} here",
         )
     return typed
+
+
+def _spelling_letter_diff_html(typed: str, correct: str) -> str:
+    """The correct spelling with the letters he missed highlighted, so a miss
+    *teaches* instead of just failing ('rythm' → r**h**ythm). Letter-level and
+    case-insensitive; extra letters he added aren't shown here (the 'you wrote'
+    line covers those)."""
+    import difflib
+
+    typed_l = (typed or "").strip().lower()
+    correct_raw = (correct or "").strip()
+    correct_l = correct_raw.lower()
+    hl = ('<span style="background:#ffdf7e;color:#7a2e00;font-weight:800;'
+          'border-radius:3px;padding:0 2px;">')
+    parts: list[str] = []
+    for tag, _i1, _i2, j1, j2 in difflib.SequenceMatcher(None, typed_l, correct_l).get_opcodes():
+        seg = html.escape(correct_raw[j1:j2])
+        if not seg:
+            continue
+        parts.append(seg if tag == "equal" else hl + seg + "</span>")
+    return "".join(parts) or html.escape(correct_raw)
 
 
 def _spelling_result_rows(rows: list[dict[str, Any]]) -> None:
@@ -6487,7 +6640,12 @@ def _spelling_result_rows(rows: list[dict[str, Any]]) -> None:
             st.markdown(f"- ✅ **{md(r['word'])}**")
         else:
             typed = md(r["typed"]) or "_(blank)_"
-            st.markdown(f"- ❌ you wrote “{typed}” — it's **{md(r['word'])}**")
+            diff = _spelling_letter_diff_html(r["typed"], r["word"])
+            st.markdown(
+                f"- ❌ you wrote “{typed}” — it's **{diff}** "
+                "<span style='color:#8A7A5E;font-size:12px;'>(watch the gold letters)</span>",
+                unsafe_allow_html=True,
+            )
 
 
 def _grade_spelling(words: list[dict[str, Any]], typed: dict[int, str]) -> tuple[list[tuple[int, bool, str]], list[dict[str, Any]]]:
@@ -6555,6 +6713,75 @@ def render_spelling_home_card(db: Database, student: dict[str, Any]) -> None:
     _spelling_harden_inputs()
 
 
+def _finalize_daily(
+    db: Database, student: dict[str, Any],
+    answers: list[tuple[int, bool, str]], word_by_id: dict[int, str],
+    duration: int | None, corrected: int = 0,
+) -> None:
+    """Record the day's result (Leitner + hours) and stash the summary for the
+    'done' state, then clear any fix-up phase and rerun. `corrected` is how many he
+    self-fixed on the second look (shown so the second try feels like a win)."""
+    from compass import spelling
+
+    rows = [{"word": word_by_id[wid], "typed": t, "correct": c} for wid, c, t in answers]
+    spelling.complete_daily(db, student, answers, duration_seconds=duration)
+    st.session_state["spelling_daily_result"] = {
+        "correct": sum(1 for _w, c, _t in answers if c),
+        "total": len(answers), "rows": rows, "corrected": corrected,
+    }
+    st.session_state.pop("spd_fix", None)
+    st.rerun()
+
+
+def _render_spelling_daily_fixups(db: Database, student: dict[str, Any]) -> None:
+    """The gentle second try: the words he missed come back with the correct
+    spelling shown (gold letters on the miss), and he retypes each to lock it in.
+    A fixed word counts as correct for the day -- this is practice, and rewarding
+    the self-correction beats a cold F. The weekly quiz never gets this."""
+    fix = st.session_state["spd_fix"]
+    word_by_id: dict[int, str] = {int(k): v for k, v in fix["words"].items()}
+    missed = [(wid, t) for wid, c, t in fix["answers"] if not c]
+    got = len(fix["answers"]) - len(missed)
+
+    st.caption(
+        f"👏 **{got}/{len(fix['answers'])} on the first try.** Let's fix these "
+        f"{len(missed)} before it counts — look at the **gold letters**, then spell "
+        "it again. (This is practice, so fixing it still counts.)"
+    )
+    retyped: dict[int, str] = {}
+    for wid, r1typed in missed:
+        word = word_by_id[wid]
+        row = st.columns([1, 6])
+        with row[0]:
+            _spelling_speak_button(word)
+        diff = _spelling_letter_diff_html(r1typed, word)
+        wrote = md(r1typed) if r1typed else "_(blank)_"
+        row[1].markdown(
+            f"you wrote “{wrote}” — it's **{diff}**", unsafe_allow_html=True
+        )
+        retyped[wid] = row[1].text_input(
+            f"fix {wid}", key=f"spd_fix_in_{wid}", label_visibility="collapsed",
+            placeholder="spell it again",
+        )
+    buttons = st.columns(2)
+    if buttons[0].button("✅ I fixed them", key="spd_fix_submit",
+                         type="primary", width="stretch"):
+        final: list[tuple[int, bool, str]] = []
+        corrected = 0
+        for wid, c, t in fix["answers"]:
+            if c:
+                final.append((wid, True, t))
+                continue
+            attempt = (retyped.get(wid) or "").strip()
+            now_ok = attempt.lower() == word_by_id[wid].strip().lower()
+            if now_ok:
+                corrected += 1
+            final.append((wid, now_ok, attempt or t))
+        _finalize_daily(db, student, final, word_by_id, fix.get("duration"), corrected)
+    if buttons[1].button("Skip — I'm done", key="spd_fix_skip", width="stretch"):
+        _finalize_daily(db, student, fix["answers"], word_by_id, fix.get("duration"))
+
+
 def _render_spelling_daily_card(db: Database, student: dict[str, Any]) -> None:
     from compass import spelling
 
@@ -6563,10 +6790,19 @@ def _render_spelling_daily_card(db: Database, student: dict[str, Any]) -> None:
         if spelling.daily_done_today(db):
             res = st.session_state.get("spelling_daily_result")
             if res:
-                st.success(f"✅ Done — {res['correct']}/{res['total']} right. New words tomorrow!")
+                extra = (f" (fixed {res['corrected']} on a 2nd look!)"
+                         if res.get("corrected") else "")
+                st.success(
+                    f"✅ Done — {res['correct']}/{res['total']} right{extra}. "
+                    "New words tomorrow!"
+                )
                 _spelling_result_rows(res["rows"])
             else:
                 st.caption("✅ Done for today — new words tomorrow.")
+            return
+        # A gentle second try is in progress (he missed some on the first check).
+        if st.session_state.get("spd_fix"):
+            _render_spelling_daily_fixups(db, student)
             return
         words = spelling.daily_words(db, student)
         if not words:
@@ -6574,23 +6810,25 @@ def _render_spelling_daily_card(db: Database, student: dict[str, Any]) -> None:
             return
         st.caption(
             f"Spell all **{len(words)}** words, then press **Check**. Tap 🔊 to hear "
-            "each one. Counts as **Spelling**."
+            "each one — or **📖 Study this word first** to learn it. Counts as **Spelling**."
         )
         _spelling_elapsed("spd_started_at", start=True)  # stamp when the card appears
-        typed = _spelling_answer_rows(words, "spd")
+        typed = _spelling_answer_rows(words, "spd", study=True)
         if st.button(
             f"✅ Check all {len(words)} words", key="spd_submit",
             type="primary", width="stretch",
         ):
             answers, rows = _grade_spelling(words, typed)
-            spelling.complete_daily(
-                db, student, answers,
-                duration_seconds=_spelling_elapsed("spd_started_at", start=False),
-            )
-            st.session_state["spelling_daily_result"] = {
-                "correct": sum(1 for _w, c in answers if c), "total": len(answers), "rows": rows,
-            }
-            st.rerun()
+            duration = _spelling_elapsed("spd_started_at", start=False)
+            word_by_id = {w["id"]: w["word"] for w in words}
+            if any(not c for _w, c, _t in answers):
+                # Don't finalize on a cold miss -- offer the fix-up round first.
+                st.session_state["spd_fix"] = {
+                    "answers": answers, "duration": duration, "words": word_by_id,
+                }
+                st.rerun()
+            else:
+                _finalize_daily(db, student, answers, word_by_id, duration)
 
 
 def _render_spelling_quiz_card(db: Database, student: dict[str, Any]) -> None:
