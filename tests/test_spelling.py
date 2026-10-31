@@ -138,6 +138,61 @@ def test_clear_spelling_grade_wipes_scores_but_keeps_progress(db, student):
     assert db.list_spelling_words(sid, include_retired=True)[0]["times_correct"] == 1
 
 
+def test_grade_drops_the_lowest_quiz_once_there_are_three(db, student):
+    """The grade is kind: with 3+ quizzes his single lowest is dropped, so a rough
+    first week (the 'bar too high' F) doesn't drag the whole grade down."""
+    sid = student["id"]
+    db.record_spelling_quiz(sid, 2, 10)   # 20% -- the rough start
+    db.record_spelling_quiz(sid, 9, 10)   # 90%
+    db.record_spelling_quiz(sid, 9, 10)   # 90%
+    s = spelling.grade_summary(db, sid)
+    assert s["dropped_lowest"] and s["counted"] == 2
+    assert s["average"] == 90 and s["letter"] == "A-"  # the 20% is dropped
+    assert s["quizzes"] == 3
+
+
+def test_belts_climb_with_mastery():
+    assert spelling.belt_for(0)[0].endswith("White")
+    name, nxt, to_next = spelling.belt_for(6)
+    assert "Yellow" in name and nxt == 15 and to_next == 9
+    assert spelling.belt_for(200)[1] is None  # top belt -> no next threshold
+
+
+def test_streak_counts_consecutive_practice_days():
+    from datetime import date as _date, timedelta
+    d = _date(2026, 10, 31)
+    iso = lambda n: (d - timedelta(days=n)).isoformat()
+    assert spelling.daily_streak([iso(0), iso(1), iso(2)], today=d.isoformat()) == 3
+    assert spelling.daily_streak([iso(0), iso(2)], today=d.isoformat()) == 1   # gap
+    assert spelling.daily_streak([iso(1), iso(2)], today=d.isoformat()) == 2   # yesterday still counts
+    assert spelling.daily_streak([iso(3)], today=d.isoformat()) == 0           # too stale
+    assert spelling.daily_streak([], today=d.isoformat()) == 0
+
+
+def test_daily_completion_reports_a_newly_mastered_word(db, student):
+    """Mastering a word (pushing it to box 5) is reported so the card can
+    celebrate, and it counts toward his belt."""
+    sid = student["id"]
+    wid = db.add_spelling_word(sid, "zephyr", "a gentle ____", "on")
+    for _ in range(3):  # box 1 -> 4
+        db.record_spelling_attempt(wid, correct=True, kind="daily")
+    assert db.spelling_mastered_count(sid) == 0
+    outcome = spelling.complete_daily(db, student, [(wid, True, "zephyr")])
+    assert outcome["mastered"] == 1
+    assert db.spelling_mastered_count(sid) == 1
+    prog = spelling.spelling_progress(db, student)
+    assert prog["mastered"] == 1 and prog["streak"] >= 1
+
+
+def test_a_rebuild_retired_word_is_not_counted_as_mastered(db, student):
+    """Retiring words via a level rebuild (box < 5) must NOT inflate his mastery
+    count -- only true box-5 mastery counts."""
+    sid = student["id"]
+    db.add_spelling_word(sid, "alpha", "a ____", "on")
+    db.reset_spelling_pool(sid)  # retires it at box 1
+    assert db.spelling_mastered_count(sid) == 0
+
+
 # --- pool top-up (the one model call, mocked) -----------------------------------
 
 

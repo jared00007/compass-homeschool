@@ -107,21 +107,101 @@ def letter_grade(percent: float) -> str:
 
 
 def grade_summary(db: Any, student_id: int) -> dict[str, Any] | None:
-    """His Spelling standing from quiz history -- average %, a letter, and the
-    most recent quiz. None until he's taken one."""
-    results = db.list_spelling_quiz_results(student_id, limit=20)
+    """His Spelling standing from quiz history -- a KIND average, a letter, and the
+    most recent quiz. None until he's taken one.
+
+    'Kind' = once there are at least three quizzes, his single LOWEST score is
+    dropped before averaging, and only his recent dozen count. So one rough early
+    week (the 'bar too high on the first rollout' F) doesn't follow him all year --
+    the grade tracks where he is NOW."""
+    results = db.list_spelling_quiz_results(student_id, limit=12)
     scored = [r for r in results if r["total"]]
     if not scored:
         return None
-    pct = sum(100 * r["correct"] / r["total"] for r in scored) / len(scored)
+    pcts = [100 * r["correct"] / r["total"] for r in scored]  # recent first
+    kept = sorted(pcts)
+    dropped = len(kept) >= 3
+    if dropped:
+        kept = kept[1:]  # drop the single lowest
+    pct = sum(kept) / len(kept)
     latest = scored[0]
     return {
         "average": round(pct),
         "letter": letter_grade(pct),
         "quizzes": len(scored),
+        "counted": len(kept),
+        "dropped_lowest": dropped,
         "last_correct": latest["correct"],
         "last_total": latest["total"],
         "last_on": latest["taken_on"],
+    }
+
+
+# --- motivation: streak, mastery belts, progress --------------------------------
+
+# Belts by how many words he's truly mastered (reached box 5). A long, reachable
+# ladder so there's always a next rank in sight.
+SPELLING_BELTS: list[tuple[int, str]] = [
+    (0, "⚪ White"), (5, "🟡 Yellow"), (15, "🟠 Orange"), (30, "🟢 Green"),
+    (50, "🔵 Blue"), (75, "🟣 Purple"), (100, "🟤 Brown"), (150, "⚫ Black"),
+]
+
+
+def belt_for(mastered: int) -> tuple[str, int | None, int]:
+    """His current belt for `mastered` words: (belt_name, next_threshold_or_None,
+    words_to_next). At the top belt, next is None and words_to_next is 0."""
+    name = SPELLING_BELTS[0][1]
+    nxt: int | None = None
+    for i, (threshold, label_) in enumerate(SPELLING_BELTS):
+        if mastered >= threshold:
+            name = label_
+            nxt = SPELLING_BELTS[i + 1][0] if i + 1 < len(SPELLING_BELTS) else None
+        else:
+            break
+    to_next = (nxt - mastered) if nxt is not None else 0
+    return name, nxt, to_next
+
+
+def daily_streak(dates: list[str], today: str | None = None) -> int:
+    """Consecutive days of spelling practice ending today (or yesterday, so an
+    unfinished today doesn't break the chain). `dates` = distinct practice days,
+    most recent first (ISO)."""
+    from datetime import timedelta
+
+    have = set(dates)
+    if not have:
+        return 0
+    cur = date.fromisoformat(today) if today else date.today()
+    if cur.isoformat() not in have:
+        cur = cur - timedelta(days=1)  # today not done yet? count from yesterday
+        if cur.isoformat() not in have:
+            return 0
+    streak = 0
+    while cur.isoformat() in have:
+        streak += 1
+        cur = cur - timedelta(days=1)
+    return streak
+
+
+def spelling_progress(db: Any, student: dict[str, Any]) -> dict[str, Any]:
+    """A compact 'how's he doing' snapshot for the student's own view: mastered
+    count, his belt and what's next, the active-pool size, and his practice
+    streak. All cheap reads."""
+    sid = student["id"]
+    counts = db.spelling_pool_counts(sid)
+    mastered = db.spelling_mastered_count(sid)
+    belt, nxt, to_next = belt_for(mastered)
+    next_belt = next((lbl for thr, lbl in SPELLING_BELTS if thr == nxt), None)
+    streak = daily_streak(db.spelling_practice_dates(sid))
+    return {
+        "mastered": mastered,
+        "active": counts["active"],
+        "total_seen": counts["total"],
+        "belt": belt,
+        "next_at": nxt,
+        "next_belt": next_belt,
+        "to_next": to_next,
+        "streak": streak,
     }
 
 
@@ -314,15 +394,19 @@ def daily_done_today(db: Any, today: str | None = None) -> bool:
 def complete_daily(
     db: Any, student: dict[str, Any],
     answers: list[tuple[int, bool, str]], duration_seconds: int | None = None,
-) -> None:
+) -> dict[str, Any]:
     """Record each word's result (Leitner) -- with exactly what he typed and how
     long the card took -- then log the day's few minutes to Spelling, once per day
-    so re-opening never double-counts. `answers` is (word_id, correct, typed)."""
+    so re-opening never double-counts. `answers` is (word_id, correct, typed).
+    Returns {mastered: how many words he just pushed to mastery} so the card can
+    celebrate it."""
+    mastered_before = db.spelling_mastered_count(student["id"])
     for word_id, correct, typed in answers:
         db.record_spelling_attempt(
             word_id, bool(correct), kind="daily",
             typed=typed, duration_seconds=duration_seconds,
         )
+    mastered_now = max(0, db.spelling_mastered_count(student["id"]) - mastered_before)
     key = _daily_done_key(date.today().isoformat())
     if answers and not db.get_setting(key):
         db.log_activity(
@@ -337,6 +421,7 @@ def complete_daily(
             source="spelling",
         )
         db.set_setting(key, "1")
+    return {"mastered": mastered_now}
 
 
 def complete_quiz(

@@ -6308,11 +6308,18 @@ def render_spelling_settings(db: Database, student: dict[str, Any]) -> None:
 
     summary = spelling.grade_summary(db, student["id"])
     if summary:
+        basis = (
+            f"best {summary['counted']} of his last {summary['quizzes']} "
+            "(lowest dropped)"
+            if summary.get("dropped_lowest")
+            else f"{summary['quizzes']} quiz{'zes' if summary['quizzes'] != 1 else ''}"
+        )
         st.caption(
             f"📈 Spelling grade so far: **{summary['letter']}** "
-            f"(avg {summary['average']}% over {summary['quizzes']} quiz"
-            f"{'zes' if summary['quizzes'] != 1 else ''}) · "
-            f"last {summary['last_correct']}/{summary['last_total']}."
+            f"(avg {summary['average']}% — {basis}) · "
+            f"last {summary['last_correct']}/{summary['last_total']}. "
+            "The grade is kind on purpose: his lowest quiz is dropped so a rough "
+            "start doesn't stick."
         )
         # Let a parent wipe the grade without losing his logged hours or word
         # progress -- for exactly the "the bar was too high on the first rollout
@@ -6751,13 +6758,32 @@ def _finalize_daily(
     from compass import spelling
 
     rows = [{"word": word_by_id[wid], "typed": t, "correct": c} for wid, c, t in answers]
-    spelling.complete_daily(db, student, answers, duration_seconds=duration)
+    outcome = spelling.complete_daily(db, student, answers, duration_seconds=duration)
     st.session_state["spelling_daily_result"] = {
         "correct": sum(1 for _w, c, _t in answers if c),
         "total": len(answers), "rows": rows, "corrected": corrected,
+        "mastered": (outcome or {}).get("mastered", 0),
     }
     st.session_state.pop("spd_fix", None)
     st.rerun()
+
+
+def _render_spelling_progress_strip(db: Database, student: dict[str, Any]) -> None:
+    """His own at-a-glance progress -- streak, belt, mastered count, and a bar to
+    the next belt -- so he can watch it climb day to day. Reported (of the mastery
+    view): 'make this better for him to track as the days go on'."""
+    from compass import spelling
+
+    p = spelling.spelling_progress(db, student)
+    cols = st.columns(3)
+    cols[0].metric("🔥 Streak", f"{p['streak']} day{'' if p['streak'] == 1 else 's'}")
+    cols[1].metric("🥋 Belt", p["belt"])
+    cols[2].metric("🏅 Mastered", p["mastered"])
+    if p["next_at"]:
+        frac = min(p["mastered"] / p["next_at"], 1.0) if p["next_at"] else 0.0
+        st.progress(frac, text=f"{p['to_next']} more mastered → {p['next_belt']} belt")
+    elif p["mastered"]:
+        st.caption("🏆 Black belt — you're a spelling master!")
 
 
 def _render_spelling_daily_fixups(db: Database, student: dict[str, Any]) -> None:
@@ -6817,15 +6843,25 @@ def _render_spelling_daily_card(db: Database, student: dict[str, Any]) -> None:
         if spelling.daily_done_today(db):
             res = st.session_state.get("spelling_daily_result")
             if res:
+                if res.get("mastered"):
+                    st.balloons()
                 extra = (f" (fixed {res['corrected']} on a 2nd look!)"
                          if res.get("corrected") else "")
                 st.success(
                     f"✅ Done — {res['correct']}/{res['total']} right{extra}. "
                     "New words tomorrow!"
                 )
+                if res.get("mastered"):
+                    n = res["mastered"]
+                    st.success(
+                        f"🏅 You **mastered {n} word{'' if n == 1 else 's'}** today — "
+                        "they've graduated out of rotation. Huge!"
+                    )
+                _render_spelling_progress_strip(db, student)
                 _spelling_result_rows(res["rows"])
             else:
                 st.caption("✅ Done for today — new words tomorrow.")
+                _render_spelling_progress_strip(db, student)
             return
         # A gentle second try is in progress (he missed some on the first check).
         if st.session_state.get("spd_fix"):
@@ -6834,7 +6870,9 @@ def _render_spelling_daily_card(db: Database, student: dict[str, Any]) -> None:
         words = spelling.daily_words(db, student)
         if not words:
             st.caption("🎉 All caught up — nothing due right now.")
+            _render_spelling_progress_strip(db, student)
             return
+        _render_spelling_progress_strip(db, student)
         st.caption(
             f"Spell all **{len(words)}** words, then press **Check**. Tap 🔊 to hear "
             "each one — or **📖 Study this word first** to learn it. Counts as **Spelling**."

@@ -2913,6 +2913,27 @@ class Database:
         query += " ORDER BY retired, box, next_review_on, word"
         return _rows(self.conn.execute(query, (student_id,)))
 
+    def spelling_mastered_count(self, student_id: int) -> int:
+        """How many words he's genuinely MASTERED -- reached box 5 and retired out
+        of rotation. A word retired by a level rebuild (box < 5) does NOT count, so
+        this is a true 'learned it' tally for his belts and progress bar."""
+        row = _row(self.conn.execute(
+            "SELECT COUNT(*) AS n FROM spelling_words "
+            "WHERE student_id = ? AND retired = 1 AND box >= 5",
+            (student_id,),
+        )) or {}
+        return int(row.get("n") or 0)
+
+    def spelling_practice_dates(self, student_id: int, limit: int = 60) -> list[str]:
+        """The distinct days he practiced spelling (any daily/quiz answer), most
+        recent first -- the raw material for his practice streak."""
+        rows = _rows(self.conn.execute(
+            "SELECT DISTINCT happened_on FROM spelling_attempts "
+            "WHERE student_id = ? ORDER BY happened_on DESC LIMIT ?",
+            (student_id, limit),
+        ))
+        return [r["happened_on"] for r in rows]
+
     def spelling_pool_counts(self, student_id: int) -> dict[str, int]:
         """How many words he has total, still in rotation (active), and due today
         -- what the top-up logic reads to decide whether to generate more."""
