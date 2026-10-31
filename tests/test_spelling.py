@@ -117,6 +117,27 @@ def test_grade_summary_averages_quiz_scores(db, student):
     assert (summary["last_correct"], summary["last_total"]) == (8, 10)
 
 
+def test_clear_spelling_grade_wipes_scores_but_keeps_progress(db, student):
+    """Resetting the grade removes only the weekly-quiz score rows (what the letter
+    is averaged from); the Leitner word progress stays. Reported: 'wipe landons
+    grade for spelling but keep the hours ... he has an F'."""
+    sid = student["id"]
+    wid = db.add_spelling_word(sid, "rhythm", "keep the ____", "on")
+    db.record_spelling_attempt(wid, correct=True, kind="daily")  # real word progress
+    # Two low quiz scores (the "F").
+    db.record_spelling_quiz(sid, 2, 10)   # 20%
+    db.record_spelling_quiz(sid, 3, 10)   # 30% -> average 25 -> F
+    assert spelling.grade_summary(db, sid)["letter"] == "F"
+    progress_before = db.spelling_pool_counts(sid)
+
+    removed = db.clear_spelling_grade(sid)
+    assert removed == 2
+    assert spelling.grade_summary(db, sid) is None          # grade is gone
+    assert db.spelling_pool_counts(sid) == progress_before  # words untouched
+    # the per-word Leitner progress (box climb from the right answer) survived too
+    assert db.list_spelling_words(sid, include_retired=True)[0]["times_correct"] == 1
+
+
 # --- pool top-up (the one model call, mocked) -----------------------------------
 
 

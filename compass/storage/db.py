@@ -3042,6 +3042,18 @@ class Database:
             (student_id, taken_on),
         )) is not None
 
+    def clear_spelling_grade(self, student_id: int) -> int:
+        """Wipe his Spelling grade by deleting every weekly-quiz score row -- the
+        ONLY thing `grade_summary` reads. Deliberately leaves the logged hours
+        (activities), the Leitner word progress, and the per-answer attempt history
+        alone: it's a grade reset ("the bar was too high on the first rollout"),
+        not a progress reset. Returns how many score rows were removed."""
+        cur = self.conn.execute(
+            "DELETE FROM spelling_quiz_results WHERE student_id = ?", (student_id,)
+        )
+        self.conn.commit()
+        return int(cur.rowcount or 0)
+
     # -- lessons --------------------------------------------------------------
 
     def save_lesson(

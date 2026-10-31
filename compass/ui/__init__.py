@@ -6275,6 +6275,37 @@ def render_spelling_settings(db: Database, student: dict[str, Any]) -> None:
             n = min(cfg["daily_count"], counts["due"]) or cfg["daily_count"]
             ready = f"✨ His first **{n} spelling words** are on his Home now — he can start today."
         (st.success if added else st.caption)(ready)
+    # The full generated word list -- parents couldn't see what Compass picked;
+    # this shows every word, its level (tier), where it is in the Leitner boxes,
+    # and his hit/miss record. Reported: "can i see the words? ... a list or table
+    # of what spelling generated."
+    with st.expander("📋 See his spelling word list"):
+        words = db.list_spelling_words(student["id"], include_retired=True)
+        if not words:
+            st.caption("No words yet — they're generated the first time the track runs.")
+        else:
+            tier_label = {"easier": "⬇️ easier", "on": "• on-level", "stretch": "⬆️ stretch"}
+            rows = []
+            for w in words:
+                if w["retired"]:
+                    status = "✅ mastered"
+                else:
+                    status = f"learning · box {w['box']}/5"
+                rows.append({
+                    "Word": w["word"],
+                    "Level": tier_label.get(w["tier"], w["tier"]),
+                    "Status": status,
+                    "Right": w["times_correct"],
+                    "Missed": w["times_missed"],
+                    "Clue": w["clue"],
+                })
+            active_n = sum(1 for w in words if not w["retired"])
+            st.caption(
+                f"**{len(words)}** words total · **{active_n}** still in rotation · "
+                "the rest already mastered. Lower box = shakier (comes back sooner)."
+            )
+            st.dataframe(rows, hide_index=True, width="stretch")
+
     summary = spelling.grade_summary(db, student["id"])
     if summary:
         st.caption(
@@ -6283,6 +6314,33 @@ def render_spelling_settings(db: Database, student: dict[str, Any]) -> None:
             f"{'zes' if summary['quizzes'] != 1 else ''}) · "
             f"last {summary['last_correct']}/{summary['last_total']}."
         )
+        # Let a parent wipe the grade without losing his logged hours or word
+        # progress -- for exactly the "the bar was too high on the first rollout
+        # and now he has an F" case. Gated behind a tick so it's never a misclick.
+        with st.expander("↺ Reset his spelling grade (keep the hours)"):
+            st.caption(
+                "Deletes his weekly-quiz scores only — the thing the letter grade is "
+                "averaged from. His **logged spelling hours**, his **word progress**, "
+                "and his typed-answer history all stay. Good for a fresh start after a "
+                "too-hard first run."
+            )
+            confirm = st.checkbox(
+                f"Yes — clear his spelling grade (currently **{summary['letter']}**). "
+                "Hours and progress are kept.",
+                key="spelling_grade_reset_confirm",
+            )
+            if st.button(
+                "↺ Clear spelling grade now", key="spelling_grade_reset",
+                disabled=not confirm,
+            ):
+                removed = db.clear_spelling_grade(student["id"])
+                st.session_state.pop("spelling_grade_reset_confirm", None)
+                st.success(
+                    f"✅ Cleared his spelling grade ({removed} quiz "
+                    f"score{'s' if removed != 1 else ''} removed). His hours and word "
+                    "progress are untouched — the grade rebuilds from his next quiz."
+                )
+                st.rerun()
 
 
 def _spelling_harden_inputs() -> None:
