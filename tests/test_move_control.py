@@ -50,6 +50,16 @@ class _FakeSt:
     def button(self, *args, **kwargs):
         return False
 
+    def columns(self, spec, **kwargs):
+        n = spec if isinstance(spec, int) else len(spec)
+        return [self for _ in range(n)]
+
+    def expander(self, *args, **kwargs):
+        return _FakePopover(args[0] if args else "")
+
+    def toast(self, *args, **kwargs):
+        pass
+
     def rerun(self):
         pass
 
@@ -140,6 +150,64 @@ def test_an_active_unscheduled_story_shows_the_icon_alone(monkeypatch):
 def test_a_backlogged_unscheduled_story_also_shows_backlog(monkeypatch):
     label = _label_for(monkeypatch, active=False, scheduled_for=None)
     assert label == "🗄️ Backlog"
+
+
+# --- the one-click weekday buttons (board callers pass week_start) -----------
+
+
+class _DayButtonSt(_FakeSt):
+    """Clicks exactly one of the five weekday quick-buttons -- the one whose key
+    ends in `_qd_<click_index>`."""
+
+    def __init__(self, click_index: int) -> None:
+        super().__init__()
+        self._click_index = click_index
+        self.day_button_labels: list[str] = []
+
+    def checkbox(self, *args, **kwargs):
+        return False  # leave the "another date" picker closed
+
+    def button(self, label, *args, **kwargs):
+        key = kwargs.get("key", "")
+        if "_qd_" in key:
+            self.day_button_labels.append(label)
+            return key.endswith(f"_qd_{self._click_index}")
+        return False
+
+
+def test_week_day_buttons_move_in_one_click(monkeypatch):
+    """With a week on screen, the popover shows five one-click day buttons, and
+    clicking one schedules that day directly -- no checkbox, picker, confirm
+    chain. Reported: moving a card is 'very laggy and broken.'"""
+    import datetime as _dt
+
+    monday = _dt.date(2026, 11, 2)  # a Monday
+    scheduled: list[str | None] = []
+    fake = _DayButtonSt(click_index=2)  # click Wednesday (index 2)
+    monkeypatch.setattr(ui, "st", fake)
+    ui.render_story_move_control(
+        key="x", active=True, scheduled_for=None,
+        set_active=lambda a: None, schedule=lambda s: scheduled.append(s),
+        week_start=monday,
+    )
+    assert len(fake.day_button_labels) == 5          # Mon–Fri, all one tap
+    assert scheduled == [(monday + _dt.timedelta(days=2)).isoformat()]  # Wednesday
+
+
+def test_week_day_buttons_respect_a_blocking_validator(monkeypatch):
+    """If a validator blocks the target day, the click doesn't schedule."""
+    import datetime as _dt
+
+    monday = _dt.date(2026, 11, 2)
+    scheduled: list[str | None] = []
+    fake = _DayButtonSt(click_index=0)
+    monkeypatch.setattr(ui, "st", fake)
+    ui.render_story_move_control(
+        key="x", active=True, scheduled_for=None,
+        set_active=lambda a: None, schedule=lambda s: scheduled.append(s),
+        validate_schedule=lambda d: "no good", week_start=monday,
+    )
+    assert scheduled == []  # blocked, nothing written
 
 
 # --- the optional Delete section (lessons only) ------------------------------

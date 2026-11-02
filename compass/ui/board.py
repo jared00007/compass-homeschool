@@ -49,6 +49,7 @@ def render_story_move_control(
     validate_schedule: Callable[[str], str | None] | None = None,
     show_backlog_toggle: bool = True,
     delete: Callable[[], None] | None = None,
+    week_start: Any = None,
 ) -> None:
     """`key` must be unique per story (the caller's own id namespace, e.g.
     `f"step_{step['id']}"`). `set_active`/`schedule` are the two writes this
@@ -109,10 +110,50 @@ def render_story_move_control(
         label = f"📅 {scheduled_for}"
     else:
         label = "📅"
+    def _do_move(iso: str) -> None:
+        """One place the move is actually written -- validate, schedule, rerun.
+        A single rerun per move (not the old tick-checkbox -> pick-date ->
+        click-confirm chain of three), so a move is one tap and one refresh."""
+        problem = validate_schedule(iso) if validate_schedule else None
+        if problem:
+            _ui.st.error(problem)
+            return
+        if iso != scheduled_for:
+            schedule(iso)
+        _ui.st.rerun()
+
     with _ui.st.popover(label, use_container_width=False, help="Move to a day, or send to Backlog"):
         if not active:
             _ui.st.caption("🗄️ Currently in the Backlog.")
 
+        # Fast path: one-click buttons for the five days of the week on screen.
+        # This is the move a parent makes constantly (bump a card a day over), and
+        # it used to take a checkbox, a date picker, and a confirm button -- three
+        # reruns and a popover that vanished before you were done. One button =
+        # one move. Reported: "i assign to a specific date and then the quick edit
+        # window disappears. its very laggy and broken."
+        if week_start is not None:
+            _ui.st.caption("Move to a day this week:")
+            day_cols = _ui.st.columns(5)
+            for i in range(5):
+                day = week_start + _ui.timedelta(days=i)
+                iso = day.isoformat()
+                is_here = iso == scheduled_for
+                lbl = ("📍 " if is_here else "") + f"{day.strftime('%a')} {day.month}/{day.day}"
+                if day_cols[i].button(
+                    lbl, key=f"move_{key}_qd_{i}", disabled=is_here,
+                    use_container_width=True,
+                    help="Already here" if is_here else f"Move to {iso}",
+                ):
+                    _do_move(iso)
+
+        # Any other date (a different week, or a precise pick). Rendered inline --
+        # NOT in a nested expander, which Streamlit forbids inside the card's own
+        # expander. When the quick day-buttons are shown above, this is just the
+        # "some other date" fallback, so it sits under a divider and a caption.
+        if week_start is not None:
+            _ui.st.divider()
+            _ui.st.caption("Or pick another date:")
         assign = _ui.st.checkbox(
             "Assign to a specific day",
             value=bool(scheduled_for),
@@ -125,22 +166,12 @@ def render_story_move_control(
                 key=f"move_{key}_date_{scheduled_for}",
             )
             # The move happens only when you click this button -- never the
-            # instant the picker opens. It used to reschedule on any picked date
-            # that differed from the stored one, but for a story with no day yet
-            # the picker *defaults to today*, so merely ticking "Assign to a
-            # specific day" fired schedule(today) and jumped the card to the
-            # current day before you could pick the day you actually wanted
-            # (reported directly). Now you open the picker, choose any day, and
-            # confirm here.
+            # instant the picker opens (for a dayless story the picker defaults
+            # to today, so ticking the box alone must not fire schedule(today)).
             if _ui.st.button(
                 "📌 Assign to this day", key=f"move_{key}_assign_btn", type="primary"
             ):
-                problem = validate_schedule(picked.isoformat()) if validate_schedule else None
-                if problem:
-                    _ui.st.error(problem)
-                elif picked.isoformat() != scheduled_for:
-                    schedule(picked.isoformat())
-                    _ui.st.rerun()
+                _do_move(picked.isoformat())
         elif scheduled_for:
             schedule(None)
             _ui.st.rerun()
@@ -476,10 +507,20 @@ def _board_schedule(
         moved_week = weekly.week_start(_ui.date.fromisoformat(new_date))
         if moved_week != board_week_start:
             when = "next week's" if moved_week > board_week_start else "an earlier week's"
-            _ui.st.session_state[_BOARD_MOVE_NOTICE_KEY] = (
-                f"Moved to {new_date} -- that's on {when} board, not this one. "
-                "Nothing was lost; switch weeks above to see it."
-            )
+            _ui.st.session_state[_BOARD_MOVE_NOTICE_KEY] = {
+                "cross_week": True,
+                "text": (
+                    f"Moved to {new_date} -- that's on {when} board, not this one. "
+                    "Nothing was lost; switch weeks above to see it."
+                ),
+            }
+        else:
+            # Same-week move: a quick toast so the popover closing reads as "done,"
+            # not "it glitched and vanished." Reported: "the quick edit window
+            # disappears. its very laggy and broken."
+            _ui.st.session_state[_BOARD_MOVE_NOTICE_KEY] = {
+                "cross_week": False, "text": f"✅ Moved to {new_date}."
+            }
 
     return _wrapped
 
@@ -487,10 +528,21 @@ def _board_schedule(
 def render_board_move_notice() -> None:
     """Shows and clears whatever `_board_schedule` stashed on the previous
     run, if anything -- call once, near the top of the Board tab, before
-    any card can queue a new one of its own."""
+    any card can queue a new one of its own. A same-week move gets a light
+    toast; a cross-week move gets a persistent note (it's not on screen)."""
     notice = _ui.st.session_state.pop(_BOARD_MOVE_NOTICE_KEY, None)
-    if notice:
+    if not notice:
+        return
+    if isinstance(notice, str):  # tolerate an old-shape value across a deploy
         _ui.st.info(notice)
+        return
+    if notice.get("cross_week"):
+        _ui.st.info(notice["text"])
+    else:
+        try:
+            _ui.st.toast(notice["text"])
+        except Exception:
+            _ui.st.caption(notice["text"])
 
 
 def render_reading_board_card(db: Database, student: dict[str, Any], *, can_edit: bool) -> None:
@@ -763,6 +815,7 @@ def render_board_card(
                             board_week_start,
                         ),
                         delete=lambda lid=item["id"]: db.delete_lesson(lid),
+                        week_start=board_week_start,
                     )
                 if interactive:
                     # Leave a note on this card for him -- he has to acknowledge it
@@ -790,6 +843,7 @@ def render_board_card(
                             lambda s, sid=item["id"]: db.schedule_life_skill(sid, s),
                             board_week_start,
                         ),
+                        week_start=board_week_start,
                     )
                 _render_board_deep_link(kind)
 
@@ -811,6 +865,7 @@ def render_board_card(
                             lambda s, mid=item["id"]: db.schedule_coding_module(mid, s),
                             board_week_start,
                         ),
+                        week_start=board_week_start,
                     )
                 _render_board_deep_link(kind)
 
@@ -834,6 +889,7 @@ def render_board_card(
                                 lambda s, tid=item["id"]: db.schedule_choice_topic(tid, s),
                                 board_week_start,
                             ),
+                            week_start=board_week_start,
                         )
                     else:
                         _ui.st.caption("Closed out — nothing left to move.")
@@ -861,6 +917,7 @@ def render_board_card(
                                 lambda s, sid=item["id"]: db.schedule_project_step(sid, s),
                                 board_week_start,
                             ),
+                            week_start=board_week_start,
                         )
                     else:
                         _ui.st.caption("Done — nothing left to move.")
@@ -886,6 +943,7 @@ def render_board_card(
                                 lambda s, eid=item["id"]: db.schedule_travel_entry(eid, s),
                                 board_week_start,
                             ),
+                            week_start=board_week_start,
                         )
                     else:
                         _ui.st.caption("Completed — nothing left to move.")
