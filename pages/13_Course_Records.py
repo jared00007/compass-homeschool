@@ -137,13 +137,30 @@ def _render_suggestions(courses: list[dict]) -> None:
                     f"**{label(subject)}** — {hours:.1f} untagged hours this year, "
                     "not part of any course yet."
                 )
-                if st.button(f"Set up a {label(subject)} course", key=f"nudge_{subject}"):
-                    st.session_state["course_add_subject"] = subject
-                    st.session_state["course_add_title"] = label(subject)
+                # Create the course right here, in one click, and jump to it.
+                # It used to only pre-fill the hidden "Add a course" tab and rerun
+                # -- but a rerun snaps tabs back to "Courses," so the parent stayed
+                # on this tab and saw nothing change. Reported: "i click set up a
+                # reading class and nothing happens." Now it actually makes the
+                # course (which auto-counts those untagged hours) and scrolls to it;
+                # description/goals/grade are filled in on the card below.
+                if st.button(
+                    f"➕ Set up a {label(subject)} course", key=f"nudge_{subject}",
+                    type="primary",
+                ):
+                    start, end = db.school_year_bounds()
+                    new_id = db.create_course(
+                        student["id"], label(subject), subject, start, end,
+                        grade_level=str(student.get("grade") or ""), credit_value=1.0,
+                    )
+                    st.session_state[f"course_open_{new_id}"] = True
+                    st.session_state["_scroll_to_course"] = new_id
+                    st.toast(f"✅ Created a {label(subject)} course and counted those hours.")
                     st.rerun()
                 st.caption(
-                    "Fills in the subject and a starter title on the **Add a course** "
-                    "tab — click over there to finish it."
+                    f"Creates the course and counts those **{hours:.1f} hours** toward "
+                    "it. Add a description, goals, and a grade on the card below — or "
+                    "draft them with AI."
                 )
     st.divider()
 

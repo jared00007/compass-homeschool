@@ -1139,6 +1139,42 @@ def test_the_open_course_nudge_expands_and_scrolls_to_it(monkeypatch, tmp_path):
     db.close()
 
 
+def test_set_up_a_course_nudge_creates_the_course_in_one_click(monkeypatch, tmp_path):
+    """The 'Set up a <subject> course' nudge (for a subject with no course yet)
+    used to only pre-fill the hidden Add tab and rerun -- a rerun snaps tabs back,
+    so nothing visibly happened. Reported: 'i click set up a reading class and
+    nothing happens.' Now one click creates the course and counts its hours."""
+    st.cache_resource.clear()
+    db_path = tmp_path / "setup.db"
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", str(db_path))
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    start, _end = db.school_year_bounds()
+    # Enough untagged reading hours (no reading course yet) to surface the nudge.
+    db.log_activity(student["id"], "Read-aloud", "core", "reading", 30 * 60,
+                    {"reading": 30 * 60}, occurred_on=start)
+    assert not db.list_courses(student["id"])  # none yet
+    db.close()
+
+    at = AppTest.from_file(HOME_PATH)
+    at.session_state["parent_unlocked"] = True
+    at.run(timeout=30)
+    at.switch_page(str(REPO_ROOT / "pages" / "13_Course_Records.py"))
+    at.run(timeout=30)
+
+    setup = [b for b in at.button if (b.label or "").startswith("➕ Set up")]
+    assert setup, [b.label for b in at.button]
+    setup[0].click().run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+
+    db = Database(db_path)
+    courses = db.list_courses(student["id"])
+    assert len(courses) == 1                              # the course now exists
+    assert courses[0]["credit_subject"] == "reading"
+    assert db.course_minutes(courses[0]["id"]) == 30 * 60  # its hours are counted
+    db.close()
+
+
 def test_issuing_credit_on_an_unfinished_course_needs_an_explicit_confirm(monkeypatch, tmp_path):
     """A 1.0-credit course (≈150 hrs) with only a few hours logged looks
     unfinished, so "Issue credit" must not be a one-tap primary button -- it's
