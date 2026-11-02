@@ -872,10 +872,31 @@ GRAPHING_LADDER: list[dict[str, str]] = [
 ]
 
 
-def _ladder_proposal():
+# The default teaching instructions for the ladder -- the "ease in, break it
+# down, teach the how and why, lay out the steps" framing a struggling student
+# needs. Shown pre-filled in an editable box so a parent can tune the pacing and
+# emphasis before building; whatever's there is passed straight into the prompt
+# for every rung (it lands under "## How to approach it").
+_LADDER_GUIDANCE_DEFAULT = (
+    "He is STRUGGLING with this, so EASE IN gently and go slow — assume he's shaky "
+    "and build his confidence first. BREAK every idea into the smallest steps and "
+    "introduce them one at a time. Spend real time on the HOW and the WHY: don't "
+    "just state a rule, show WHY it works and walk the step-by-step method for "
+    "doing it, out loud, before any practice. ESTABLISH AN EXPLICIT, NUMBERED "
+    "METHOD he can follow every single time (e.g. ① find where it starts → ② go "
+    "right 1 and count up/down → ③ write y = mx + b). Anchor every day in ONE "
+    "concrete real-world story (money, speed, a recipe) and show the SAME "
+    "relationship as a table, a graph, and an equation so the connections are "
+    "explicit. Keep the numbers friendly and the wins frequent. Point him to the "
+    "in-app “Slope & Intercept Explorer” (Graphing page) to try each idea hands-on."
+)
+
+
+def _ladder_proposal(guidance: str | None = None):
     """A hand-built proposal for the graphing ladder -- heavy scaffolding, a
     concrete real-world story, and a pointer to the Explorer, for a student who
-    was stuck on exactly this."""
+    was stuck on exactly this. `guidance` overrides the default teaching
+    instructions so a parent can tune how the rungs are taught."""
     from compass.agents.framework import TopicProposal
 
     return TopicProposal(
@@ -883,14 +904,7 @@ def _ladder_proposal():
         rationale="A scaffolded ladder for a student who was struggling with "
                   "graphing proportional relationships and reading intercepts.",
         strategy="parent_graphing_ladder",
-        guidance=(
-            "This student is STRUGGLING with this topic — scaffold heavily. Anchor "
-            "every day in ONE concrete real-world story (money, speed, a recipe) and "
-            "show the same relationship as a table, a graph, and an equation so the "
-            "connections are explicit. Keep numbers friendly. Point him to the "
-            "in-app “Slope & Intercept Explorer” (Graphing page) to try each idea "
-            "hands-on."
-        ),
+        guidance=(guidance or _LADDER_GUIDANCE_DEFAULT).strip() or _LADDER_GUIDANCE_DEFAULT,
         context_lines=[
             "The student has been struggling with graphing proportional "
             "relationships and reading y-intercepts.",
@@ -898,6 +912,18 @@ def _ladder_proposal():
             "(the Graphing page) he can use alongside these lessons.",
         ],
     )
+
+
+def _existing_ladder_lessons(db, student) -> list[dict]:
+    """The graphing-ladder lessons already built for this student (so the page can
+    show 'here's where they went' instead of leaving him hunting). Identified by
+    the ladder's own strategy tag; skipped ones are dropped."""
+    lessons = db.list_lessons(student["id"], agent="math", limit=300)
+    return [
+        lesson for lesson in lessons
+        if (lesson.get("strategy") == "parent_graphing_ladder"
+            and lesson.get("status") != "skipped")
+    ]
 
 
 # The fixed frame height. With the canvas capped and the layout maxed at ~1040px
@@ -1040,9 +1066,67 @@ def render_graphing_ladder_builder(db, student, *, api_ok: bool) -> None:
         "Board's **Backlog** for you to assign by day. Each is a full graded lesson "
         "that points back to the Explorer."
     )
+
+    # One-time confirmation right after a build, so the result doesn't vanish on
+    # the rerun.
+    just_built = st.session_state.pop("ladder_just_built", 0)
+    if just_built:
+        st.success(
+            f"✅ Built **{just_built}** lessons into the Backlog. They're listed just "
+            "below — open **Mission Control → Board** and scroll to **Backlog** to "
+            "give each one a day."
+        )
+
+    # Persistent "here's where they went" panel: the ladder lessons already built,
+    # so it's never "I generated them but don't see them anywhere." Reported exactly
+    # that. Always visible once any exist.
+    existing = _existing_ladder_lessons(db, student)
+    if existing:
+        waiting = [lesson for lesson in existing if lesson["status"] != "completed"]
+        done = len(existing) - len(waiting)
+        st.info(
+            f"📋 You have **{len(existing)}** graphing-ladder lesson(s)"
+            + (f" — **{len(waiting)}** waiting to assign, {done} finished"
+               if done else " waiting in the Backlog")
+            + ". They live in **Mission Control → Board → Backlog** (assign each a day)."
+        )
+        with st.expander("See the ladder lessons you've built"):
+            for lesson in existing:
+                mark = "✅ " if lesson["status"] == "completed" else "• "
+                planned = (lesson.get("metadata") or {}).get("planned_for")
+                where = f" — scheduled {planned}" if planned else " — in Backlog"
+                st.caption(mark + str(lesson["title"]) + where)
+        try:
+            st.page_link(
+                "pages/14_Mission_Control.py",
+                label="🚀 Open Mission Control → Board to schedule them", icon="🚀",
+            )
+        except Exception:
+            pass
+
     with st.expander("See the six rungs"):
         for i, day in enumerate(GRAPHING_LADDER, 1):
             st.markdown(f"**{i}. {day['title']}** — {day['focus']}")
+
+    # Editable teaching prompt -- the parent can tune how the rungs are taught
+    # (ease in, break it down, how & why, the steps). Reported: "i want to be able
+    # to adjust the prompt to ease in. break it down. focus on how and why and
+    # establishing the steps." Whatever's here steers every rung the AI writes.
+    # Seed the box once (and honor a reset) BEFORE the widget is created, so we
+    # never set a widget-backed key after instantiation (Streamlit forbids that).
+    if st.session_state.pop("_ladder_guidance_reset", False):
+        st.session_state["ladder_guidance"] = _LADDER_GUIDANCE_DEFAULT
+    st.session_state.setdefault("ladder_guidance", _LADDER_GUIDANCE_DEFAULT)
+    guidance = st.text_area(
+        "How should these lessons be taught? (tune the prompt)",
+        key="ladder_guidance", height=190,
+        help="This text is handed to the AI for every rung — it controls the "
+             "pacing, how much it breaks ideas down, and how much it teaches the "
+             "how and why. Edit freely.",
+    )
+    if st.button("↺ Reset prompt to the default", key="ladder_guidance_reset_btn"):
+        st.session_state["_ladder_guidance_reset"] = True
+        st.rerun()
 
     if st.button(
         "✍️ Build the 6-lesson ladder → Backlog",
@@ -1055,15 +1139,13 @@ def render_graphing_ladder_builder(db, student, *, api_ok: bool) -> None:
         ctx = context_for(db, student, minutes=minutes)
         with st.spinner("Writing six scaffolded graphing lessons…"):
             try:
-                results = agent.generate_series(ctx, _ladder_proposal(), plan=GRAPHING_LADDER)
+                results = agent.generate_series(
+                    ctx, _ladder_proposal(guidance=guidance), plan=GRAPHING_LADDER
+                )
             except LessonGenerationError as exc:
                 st.error(str(exc))
                 return
-        st.success(
-            f"✅ Built {len(results)} lessons into the Backlog. Assign them by day "
-            "from **Mission Control → Board**."
-        )
-        for r in results:
-            st.caption("• " + (r.payload.get("title") or "Lesson"))
+        st.session_state["ladder_just_built"] = len(results)
+        st.rerun()  # so the persistent "already built" panel picks them up
     if not api_ok:
         st.caption("⚠️ Add an API key (Student Profile) to generate the lessons.")

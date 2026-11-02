@@ -144,6 +144,90 @@ def test_ladder_builds_six_backlog_lessons(tmp_path):
     db.close()
 
 
+def test_ladder_default_guidance_emphasizes_easing_in_and_the_steps():
+    """The default teaching prompt leads with the things the parent asked for:
+    ease in, break it down, the how and why, and an explicit numbered method."""
+    from compass.ui.grapher import _LADDER_GUIDANCE_DEFAULT, _ladder_proposal
+
+    g = _LADDER_GUIDANCE_DEFAULT.lower()
+    for bit in ("ease in", "break", "how and the why", "step", "method"):
+        assert bit in g, bit
+    # a blank override falls back to the default, a real one is used verbatim
+    assert _ladder_proposal(guidance="   ").guidance == _LADDER_GUIDANCE_DEFAULT
+    assert _ladder_proposal(guidance="GO SLOW please").guidance == "GO SLOW please"
+
+
+def test_custom_ladder_guidance_reaches_the_lesson_prompt(tmp_path):
+    """Whatever the parent types in the prompt box is handed to the AI for every
+    rung (it lands under 'How to approach it'). Reported: 'i want to be able to
+    adjust the prompt to ease in ... focus on how and why and establishing the
+    steps.'"""
+    from unittest.mock import patch
+
+    from compass.agents import get_agent
+    from compass.ui import context_for
+    from compass.ui.grapher import _ladder_proposal
+
+    db = Database(tmp_path / "ladder.db")
+    student = db.ensure_default_student()
+    seen_prompts: list[str] = []
+
+    def fake_lesson(**kw):
+        seen_prompts.append(kw.get("user_prompt", ""))
+        return {"title": "Graphing day", "topic": "graphing", "overview": "x",
+                "activities": [{"title": "a", "minutes": 20}, {"title": "b", "minutes": 20}],
+                "quiz": [], "subject_credits": [{"subject": "math", "minutes": 40}]}
+
+    marker = "ZEBRA-PACING-INSTRUCTION-9271"
+    with patch("compass.agents.framework.generate_lesson", side_effect=fake_lesson):
+        agent = get_agent("math")
+        ctx = context_for(db, student, minutes=45)
+        agent.generate_series(ctx, _ladder_proposal(guidance=marker),
+                              plan=GRAPHING_LADDER[:2])
+    assert seen_prompts and all(marker in p for p in seen_prompts)
+    db.close()
+
+
+def test_built_ladder_lessons_are_findable_on_the_page(tmp_path, monkeypatch):
+    """After building, the Graphing page shows a persistent 'here's where they
+    went' panel so they're never lost. Reported: 'i tried to generate a 6 ladder
+    lesson ... but i dont see it anywhere.'"""
+    from unittest.mock import patch
+
+    from compass.agents import get_agent
+    from compass.ui import context_for
+    from compass.ui.grapher import _existing_ladder_lessons, _ladder_proposal
+
+    monkeypatch.setattr(config, "DEFAULT_DB_PATH", str(tmp_path / "g.db"))
+    db = Database(tmp_path / "g.db")
+    student = db.ensure_default_student()
+
+    def fake_lesson(**kw):
+        return {"title": "Graphing day", "topic": "graphing", "overview": "x",
+                "activities": [{"title": "a", "minutes": 20}, {"title": "b", "minutes": 20}],
+                "quiz": [], "subject_credits": [{"subject": "math", "minutes": 40}]}
+
+    with patch("compass.agents.framework.generate_lesson", side_effect=fake_lesson):
+        agent = get_agent("math")
+        ctx = context_for(db, student, minutes=45)
+        agent.generate_series(ctx, _ladder_proposal(), plan=GRAPHING_LADDER)
+    assert len(_existing_ladder_lessons(db, student)) == 6
+    db.close()
+
+    st.cache_resource.clear()
+    at = AppTest.from_file(HOME_PATH)
+    at.session_state["parent_unlocked"] = True
+    at.run(timeout=30)
+    at.switch_page(EXPLORER_PATH)
+    at.run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+    panel = "\n".join(i.value for i in at.info)      # the persistent "where they went" note
+    assert "graphing-ladder lesson" in panel
+    assert "Backlog" in panel
+    # the editable teaching-prompt box exists too
+    assert any((t.key or "") == "ladder_guidance" for t in at.text_area)
+
+
 def test_parent_sees_the_ladder_builder_student_does_not(tmp_path, monkeypatch):
     from compass import auth
 
