@@ -142,6 +142,29 @@ def test_the_journal_page_loads_for_both_views(monkeypatch, tmp_path):
     _open_travels(monkeypatch, db_path, as_parent=True)
 
 
+def test_a_parent_can_delete_a_travel_entry_behind_a_confirm(monkeypatch, tmp_path):
+    """A parent can hard-delete a bogus/mistaken trip from the Travels page, but
+    only after ticking the confirm (it's irreversible). Reported: 'how can we
+    delete a record ... a state weve actually never been to.'"""
+    db_path = tmp_path / "home.db"
+    database = Database(db_path)
+    student = database.ensure_default_student()
+    eid = database.add_travel_entry(
+        student["id"], "Hawaii", "2025-06-10", title="Never went", status="submitted"
+    )
+    database.close()
+
+    at = _open_travels(monkeypatch, db_path, as_parent=True)
+    assert at.button(key=f"travels_travel_del_{eid}").disabled  # locked until confirmed
+    at.checkbox(key=f"travels_travel_del_confirm_{eid}").check().run(timeout=30)
+    at.button(key=f"travels_travel_del_{eid}").click().run(timeout=30)
+    assert not at.exception, [e.message for e in at.exception]
+
+    database = Database(db_path)
+    assert database.list_travel_entries(student["id"]) == []  # gone
+    database.close()
+
+
 def test_writing_a_real_entry_submits_it_not_completes_it(monkeypatch, tmp_path):
     """The core behavior change this feature makes: a real entry with a
     story now waits on a parent instead of existing as done the instant

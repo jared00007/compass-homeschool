@@ -629,6 +629,35 @@ def test_sending_a_travel_entry_back_sets_needs_revision(monkeypatch, tmp_path):
     assert "more detail" in entry["revision_note"]
 
 
+def test_a_bogus_travel_entry_can_be_deleted_from_the_review_queue(monkeypatch, tmp_path):
+    """A submitted trip to a state they never visited should be deletable right
+    where it's reviewed, behind a confirm. Reported: 'how can we delete a record
+    ... he submitted one that is on a state weve actually never been to.'"""
+    db_path = tmp_path / "review.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    entry_id = db.add_travel_entry(
+        student["id"], "Hawaii", "2025-06-10", title="Beach week",
+        story="Made this up.", status="submitted",
+    )
+    db.close()
+
+    at, _review_tab_el = _open_review_tab(monkeypatch, db_path)
+    # The delete is locked until the confirm box is ticked.
+    assert at.button(key=f"mc_travel_del_{entry_id}").disabled
+    db = Database(db_path)
+    assert len(db.list_travel_entries(student["id"])) == 1  # still there
+    db.close()
+
+    at.checkbox(key=f"mc_travel_del_confirm_{entry_id}").check().run()
+    at.button(key=f"mc_travel_del_{entry_id}").click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db = Database(db_path)
+    assert db.list_travel_entries(student["id"]) == []  # gone for good
+    db.close()
+
+
 # --- Grades & Record: completed/skipped history behind a checkbox --------------
 
 

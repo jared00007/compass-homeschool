@@ -68,6 +68,7 @@ from compass.ui import (
     render_rewind_generator,
     render_story_move_control,
     render_subject_plan_panel,
+    render_travel_delete,
     render_week_planner,
     render_xp_reward_editor,
     series_day_title,
@@ -491,6 +492,9 @@ def _render_travel_review_card(entry: dict, *, open: bool = False) -> None:
                         db.send_travel_entry_back(entry["id"], note.strip())
                         st.session_state["mc_reviewing_travel"] = None
                         st.rerun()
+        # Delete it right here -- a bogus submission (a state you never visited)
+        # can be removed without a trip to the Travels page. Confirm-gated.
+        render_travel_delete(db, entry, key_prefix="mc")
         st.page_link("pages/9_Landons_Travels.py", label="Open in Landon's Travels", icon="🧭")
 
     with st.expander(header, expanded=open):

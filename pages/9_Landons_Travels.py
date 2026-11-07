@@ -31,6 +31,7 @@ from compass.ui import (
     md,
     page_setup,
     render_story_move_control,
+    render_travel_delete,
     render_travel_feedback_reply_form,
 )
 
@@ -337,7 +338,9 @@ def _render_entry(entry: dict) -> None:
         # Project steps, there's nothing left for a move to do to a trip
         # that's already been written up and approved.
         movable = entry["status"] != "completed"
-        button_columns = st.columns([1, 1, 1, 1, 1, 3] if movable else [1, 1, 1, 1, 4])
+        # Delete moved out of this button row into its own confirm-gated control
+        # below (it was a one-click, unlabelled hard-delete right next to Edit).
+        button_columns = st.columns([1, 1, 1, 3] if movable else [1, 1, 2])
         if button_columns[0].button(
             "Cancel" if editing else "Edit", key=f"edit_entry_{entry['id']}"
         ):
@@ -348,11 +351,8 @@ def _render_entry(entry: dict) -> None:
         ):
             st.session_state["logging_travel_entry"] = None if logging_hours else entry["id"]
             st.rerun()
-        if button_columns[2].button("Remove", key=f"remove_entry_{entry['id']}"):
-            db.delete_travel_entry(entry["id"])
-            st.rerun()
         if movable:
-            with button_columns[4]:
+            with button_columns[3]:
                 render_story_move_control(
                     key=f"travel_{entry['id']}",
                     active=bool(entry["active"]),
@@ -361,7 +361,7 @@ def _render_entry(entry: dict) -> None:
                     schedule=lambda s, eid=entry["id"]: db.schedule_travel_entry(eid, s),
                     show_backlog_toggle=False,
                 )
-        if button_columns[3].button("Suggest lesson", key=f"suggest_entry_{entry['id']}"):
+        if button_columns[2].button("Suggest lesson", key=f"suggest_entry_{entry['id']}"):
             rationale = (
                 f"A real family trip: {story_text[:400]}"
                 if story_text
@@ -379,6 +379,8 @@ def _render_entry(entry: dict) -> None:
                 "Added to History's open topics -- pick it up next time a "
                 "history lesson gets generated."
             )
+
+        render_travel_delete(db, entry, key_prefix="travels")
 
         if logging_hours:
             with st.form(f"log_travel_entry_{entry['id']}"):

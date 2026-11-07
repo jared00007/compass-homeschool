@@ -2609,6 +2609,35 @@ def render_travel_feedback_reply_form(
                 st.rerun()
 
 
+def render_travel_delete(
+    db: Database, entry: dict[str, Any], *, key_prefix: str
+) -> None:
+    """A confirm-gated hard-delete for a travel entry -- for a bogus or mistaken
+    trip (wrong state, a place they never went) a parent just wants gone, not
+    sent back for him to fix. Parent-only; irreversible, so it's tucked in an
+    expander behind a tick. Shared by the Travels page and Mission Control's
+    review card (`key_prefix` keeps their widget keys apart) so a bad submission
+    can be deleted right where it's seen. Reported: 'how can we delete a record
+    or entry ... he submitted one that is on a state weve actually never been to.'"""
+    with st.expander("🗑️ Delete this trip"):
+        st.caption(
+            "Removes this travel entry **for good** — use it for a mistaken or "
+            "made-up trip (wrong state, a place you never went). Can't be undone. "
+            "To have him fix a real trip instead, use **Send back**."
+        )
+        confirm = st.checkbox(
+            "Yes, delete this trip for good",
+            key=f"{key_prefix}_travel_del_confirm_{entry['id']}",
+        )
+        if st.button(
+            "🗑️ Delete trip", key=f"{key_prefix}_travel_del_{entry['id']}",
+            disabled=not confirm, type="primary",
+        ):
+            db.delete_travel_entry(entry["id"])
+            st.toast("🗑️ Trip deleted.")
+            st.rerun()
+
+
 def render_writing_feedback_reply_form(
     db: Database,
     lesson_id: int,
