@@ -133,6 +133,35 @@ def test_migrate_adds_credit_award_columns_to_an_old_courses_table(tmp_path):
     database.close()
 
 
+def test_migrate_backfills_the_done_signal_on_a_marked_done_lesson(tmp_path):
+    """A lesson finished via the board's 'Mark done' before the fix was
+    status='completed' but had no student_done_on, so its card stayed unchecked
+    and it never rolled into 'done today'. The one-time backfill stamps it from
+    its completing activity. Reported: 'i marked as done but theres still not
+    green check mark ... or it doesnt roll up the sum.'"""
+    path = tmp_path / "done.db"
+    database = Database(path)
+    student = database.ensure_default_student()
+    lid = database.save_lesson(
+        student["id"], agent="math", subject="math", topic="t", title="Day 6/6",
+        payload={"title": "Day 6/6"}, metadata={"planned_for": "2026-11-08"},
+    )
+    database.log_activity(
+        student_id=student["id"], title="Day 6/6", tier="core", primary_subject="math",
+        minutes=45, subject_credits={"math": 45}, occurred_on="2026-11-08",
+        source="math", lesson_id=lid,
+    )
+    assert (database.get_lesson(lid)["metadata"]).get("student_done_on") is None
+    database.set_setting("did_backfill_done_signal", "")  # re-arm as if pre-fix
+    database.close()
+
+    database = Database(path)  # migrate() runs on open
+    # stamped from the completing activity's date, so the card shows the green
+    # check and it counts toward that day's "done today".
+    assert database.get_lesson(lid)["metadata"]["student_done_on"] == "2026-11-08"
+    database.close()
+
+
 def test_migrate_carries_old_park_visits_into_travel_entries(db, student):
     """park_visits (park-only, no story) predates the state-first travel
     journal -- a family already running the old tracker has real rows in it

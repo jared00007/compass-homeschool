@@ -1593,6 +1593,7 @@ class Database:
         self._migrate_lessons_allow_review_states()
         self._migrate_activities_allow_coding_tier()
         self._migrate_autocredit_existing_courses()
+        self._backfill_completed_lesson_done_signal()
         # Runs after the rebuild above, not before: that rebuild recreates
         # `books` from its own hardcoded column list on a database old enough
         # to need it, which would otherwise silently drop a column added here
@@ -6573,6 +6574,47 @@ class Database:
         except sqlite3.OperationalError:
             return  # no courses table yet on a very old db -- nothing to credit
         self.set_setting("did_course_hour_autocredit", "1")
+
+    def _backfill_completed_lesson_done_signal(self) -> None:
+        """A lesson finished via the board's 'Mark done' before the fix got
+        status='completed' but no metadata.student_done_on -- so its card stayed
+        ⬜ and it never rolled into 'done today'. One time, stamp student_done_on
+        on every completed (non-enrichment) lesson that's missing it, dated from
+        its own completing activity when there is one, else its created date.
+        Enrichment cards are left alone -- they complete through their own path.
+        Reported: "i marked as done but theres still not green check mark ... or
+        it doesnt roll up the sum for total lesson completed today."
+        """
+        if self.get_setting("did_backfill_done_signal"):
+            return
+        try:
+            rows = _rows(self.conn.execute(
+                "SELECT id, created_at FROM lessons "
+                "WHERE status = 'completed' "
+                "AND json_extract(metadata, '$.student_done_on') IS NULL "
+                "AND IFNULL(json_extract(metadata, '$.enrichment'), 0) != 1"
+            ))
+            for row in rows:
+                lid = int(row["id"])
+                act = _row(self.conn.execute(
+                    "SELECT occurred_on FROM activities WHERE lesson_id = ? "
+                    "ORDER BY id DESC LIMIT 1",
+                    (lid,),
+                ))
+                done_on = (
+                    ((act or {}).get("occurred_on") or "")
+                    or str(row.get("created_at") or "")
+                    or date.today().isoformat()
+                )[:10]
+                self.conn.execute(
+                    "UPDATE lessons SET metadata = "
+                    "json_set(metadata, '$.student_done_on', ?) WHERE id = ?",
+                    (done_on, lid),
+                )
+            self.conn.commit()
+        except sqlite3.OperationalError:
+            return  # a very old db without these columns -- nothing to backfill
+        self.set_setting("did_backfill_done_signal", "1")
 
     def list_courses(self, student_id: int) -> list[dict[str, Any]]:
         return _rows(

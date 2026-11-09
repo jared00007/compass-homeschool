@@ -335,6 +335,9 @@ def test_a_parent_can_mark_an_overdue_lesson_done_from_the_board(monkeypatch, tm
     assert lesson["status"] == "completed"          # no longer overdue
     assert len(activities) == 1                      # and the time is counted
     assert activities[0]["minutes"] == 45 and activities[0]["source"] == "math"
+    # ...and the "did the work today" signal is stamped, so the card shows the
+    # green check and it rolls into the "done today" count (reported: it didn't).
+    assert (lesson["metadata"] or {}).get("student_done_on") == date.today().isoformat()
 
 
 def test_a_submitted_khan_card_can_still_be_rescheduled(monkeypatch, tmp_path):

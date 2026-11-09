@@ -733,6 +733,12 @@ def render_board_mark_done(db: Database, item: dict[str, Any]) -> None:
                 source=item["agent"],
                 lesson_id=item["id"],
             )
+            # Stamp the "did the work today" signal too -- log_activity only flips
+            # the status to completed, but the green ✅ on the card and the "done
+            # today" roll-up both read student_done_on. Without this a marked-done
+            # lesson stayed ⬜ and didn't count. Reported: "i marked as done but
+            # theres still no green check mark ... doesnt roll up the sum."
+            db.mark_student_done(item["id"])
             _ui.st.toast("✅ Marked done and logged.")
             _ui.st.rerun()
 
