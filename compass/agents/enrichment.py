@@ -13,6 +13,7 @@ point of enrichment is that it's a break from the grind, not more of it.
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 from typing import Any
 
 from compass import config, subjects
@@ -192,6 +193,14 @@ def generate_activity(
     )
     subject = spec["subject"] if subjects.is_valid(spec["subject"]) else "health"
     title = payload.get("title") or spec["label"]
+    # Give it a real scheduled day (today) so it's a first-class card on the
+    # weekly board -- schedulable and movable like any lesson -- instead of an
+    # undated activity that only ever lands on "today" and shows just the newest
+    # one. The move control reschedules it (and the Home enrichment block, which
+    # day-filters on planned_for, follows). Reported: "i want those cards just
+    # like all other cards ... so i can move them around."
+    today = date.today()
+    monday = today - timedelta(days=today.weekday())
     return db.save_lesson(
         student_id=student["id"],
         agent=track,
@@ -201,5 +210,8 @@ def generate_activity(
         payload=payload,
         strategy="parent_requested",
         rationale=f"A light {spec['label']} enrichment activity.",
-        metadata={"enrichment": True, "track": track, "credit_subject": subject},
+        metadata={
+            "enrichment": True, "track": track, "credit_subject": subject,
+            "planned_for": today.isoformat(), "week_start": monday.isoformat(),
+        },
     )

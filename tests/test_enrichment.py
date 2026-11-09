@@ -104,6 +104,36 @@ def test_unknown_track_raises(db, student):
         enrichment.generate_activity(db, student, "underwater_basket_weaving")
 
 
+def test_generated_card_is_scheduled_and_lands_on_the_board(db, student):
+    """An enrichment card is a first-class board card now: it's stamped with
+    today's date so it sits on a weekday column (schedulable + movable), not just
+    the undated 'today, newest-only' fallback. Reported: 'i want those cards just
+    like all other cards ... so i can move them around.'"""
+    from datetime import date, timedelta
+
+    from compass import weekly
+
+    lesson_id = _generate(db, student, "art_music")
+    meta = db.get_lesson(lesson_id)["metadata"]
+    assert meta["planned_for"] == date.today().isoformat()
+    assert meta["week_start"]
+
+    monday = date.today() - timedelta(days=date.today().weekday())
+    board = weekly.board_for_week(db, student, monday)
+    on_a_day = any(
+        i.get("id") == lesson_id
+        for day, items in board.items() if day != "backlog"
+        for _k, i in items
+    )
+    assert on_a_day, "the art card should sit on a board day column"
+    # and it still surfaces in his do-it enrichment block for today
+    due = weekly.due_lessons(
+        db.list_enrichment_activities(student["id"], "art_music", include_done=False),
+        date.today().isoformat(),
+    )
+    assert any(a["id"] == lesson_id for a in due)
+
+
 def test_art_card_seed_prompt_seeds_off_a_skill():
     """The editable art-card shell mentions a seed skill when given, and is the
     generic maker prompt otherwise."""
