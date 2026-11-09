@@ -299,6 +299,44 @@ def test_a_planned_lesson_shows_on_the_board_with_a_move_control(monkeypatch, tm
     assert any("Locking In the Coordinate Plane" in s.value for s in at.subheader)
 
 
+def test_a_parent_can_mark_an_overdue_lesson_done_from_the_board(monkeypatch, tmp_path):
+    """A lesson he finished off-app (or whose turn-in stuck) sits 'overdue' with
+    no path to done -- the review queue only completes a lesson he TURNED IN.
+    The board's '✅ Mark done' logs the hours and completes it. Reported: 'this
+    card on his board, i cant seem to mark as done ... he did it but it still
+    says overdue.'"""
+    db_path = tmp_path / "week.db"
+    db = Database(db_path)
+    student = db.ensure_default_student()
+    lesson_id = db.save_lesson(
+        student_id=student["id"], agent="math", subject="math", topic="t",
+        title="When the Line Doesn't Start at Zero",
+        payload={"title": "When the Line Doesn't Start at Zero", "overview": "y=mx+b",
+                 "estimated_minutes": 45, "activities": [],
+                 "subject_credits": [{"subject": "math", "minutes": 45}]},
+        # A planned (never-turned-in) lesson on the board -- the overdue case is the
+        # same lesson on a past day; Mark done isn't gated on overdue, just on
+        # not-yet-done, so planning it on the board week is enough to exercise it.
+        metadata={"planned_for": TARGET_MONDAY.isoformat(),
+                  "week_start": TARGET_MONDAY.isoformat()},
+    )
+    db.close()
+
+    at, board_tab = _open_board_tab(monkeypatch, db_path)
+    done_key = f"board_markdone_{lesson_id}"
+    assert any(b.key == done_key for b in board_tab.button), "expected a Mark done button"
+    at.button(key=done_key).click().run()
+    assert not at.exception, [e.message for e in at.exception]
+
+    db = Database(db_path)
+    lesson = [l for l in db.list_lessons(student["id"]) if l["id"] == lesson_id][0]
+    activities = db.list_activities(student["id"])
+    db.close()
+    assert lesson["status"] == "completed"          # no longer overdue
+    assert len(activities) == 1                      # and the time is counted
+    assert activities[0]["minutes"] == 45 and activities[0]["source"] == "math"
+
+
 def test_a_submitted_khan_card_can_still_be_rescheduled(monkeypatch, tmp_path):
     """Reported: a Khan card he'd moved to today had no 📅 move control to bump
     it to tomorrow, because he'd already tapped turn-in -- status 'submitted' --

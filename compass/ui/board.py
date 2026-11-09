@@ -674,6 +674,69 @@ def _board_card_status_tag(item: dict[str, Any], today_iso: str) -> str:
     return ""
 
 
+def _lesson_default_minutes(payload: dict[str, Any]) -> int:
+    """A sensible default 'minutes' for marking a lesson done -- its own estimate,
+    else the sum of its subject credits, else 60."""
+    est = payload.get("estimated_minutes")
+    try:
+        if est and int(est) > 0:
+            return int(est)
+    except (TypeError, ValueError):
+        pass
+    total = sum(int(c.get("minutes") or 0) for c in (payload.get("subject_credits") or []))
+    return total or 60
+
+
+def render_board_mark_done(db: Database, item: dict[str, Any]) -> None:
+    """Parent-only: a 'he did it, just mark it done' control for a lesson card.
+    The review queue only completes a lesson he TURNED IN; a lesson he finished
+    off-app, or one whose turn-in is stuck, has no path to done and sits 'overdue'
+    forever. Reported: 'this card on his board, i cant seem to mark as done ... he
+    did it but it still says overdue.' This logs the hours (which flips the lesson
+    to completed and clears the overdue flag) using the lesson's own subject
+    credits; the parent can still fine-tune the time in the Activity Log."""
+    payload = item.get("payload") or {}
+    with _ui.st.popover(
+        "✅ Mark done", use_container_width=False,
+        help="He finished it — log the hours and clear it off the board",
+    ):
+        _ui.st.caption(
+            "Use this when he's **done the work** but the card is stuck (he did it "
+            "on paper, or the turn-in didn't go through). Logs the time and marks "
+            "it complete."
+        )
+        minutes = _ui.st.number_input(
+            "Minutes (real time)", min_value=5, max_value=600,
+            value=_lesson_default_minutes(payload), step=5,
+            key=f"board_markdone_min_{item['id']}",
+        )
+        if _ui.st.button(
+            "✅ Mark done & log hours", key=f"board_markdone_{item['id']}",
+            type="primary",
+        ):
+            credits = {
+                c["subject"]: int(c.get("minutes") or 0)
+                for c in (payload.get("subject_credits") or [])
+                if int(c.get("minutes") or 0) > 0
+            }
+            if not credits:
+                credits = {item["subject"]: int(minutes)}
+            db.log_activity(
+                student_id=item["student_id"],
+                title=item.get("title", "Lesson"),
+                tier=config.TIER_CORE,
+                primary_subject=item["subject"],
+                minutes=int(minutes),
+                subject_credits=credits,
+                occurred_on=_ui.date.today().isoformat(),
+                description=payload.get("overview", ""),
+                source=item["agent"],
+                lesson_id=item["id"],
+            )
+            _ui.st.toast("✅ Marked done and logged.")
+            _ui.st.rerun()
+
+
 def render_board_card(
     db: Database,
     kind: str,
@@ -817,6 +880,12 @@ def render_board_card(
                         delete=lambda lid=item["id"]: db.delete_lesson(lid),
                         week_start=board_week_start,
                     )
+                if interactive and item["status"] in (
+                    "planned", "needs_revision", "submitted"
+                ):
+                    # "He did it, just mark it done" -- for a lesson finished off-app
+                    # or stuck 'overdue' because the turn-in never went through.
+                    render_board_mark_done(db, item)
                 if interactive:
                     # Leave a note on this card for him -- he has to acknowledge it
                     # before he can turn the card in.
